@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "package": "dev.cadence.sceneoptimizer.mixin",
+  "plugin": "dev.cadence.sceneoptimizer.mixin.SceneOptimizerMixinPlugin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "RenderSectionPositionMixin",
+    "RenderSectionFeaturesMixin",
+    "SectionUpdateTrackerMixin",
+    "SectionDirtyStateMixin",
+    "CompiledSectionLayersMixin",
+    "LevelRendererLayersMixin",
+    "CompiledMeshDrawsMixin",
+    "RenderSectionInfoMixin",
+    "TerrainAllocationEventsMixin",
+    "LevelRendererDrawMetadataMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

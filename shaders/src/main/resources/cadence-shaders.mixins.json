@@ -1,0 +1,40 @@
+{
+  "required": true,
+  "package": "dev.cadence.shaders.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "ShaderGameRendererMixin",
+    "ShaderHudMixin",
+    "ShaderScreenEffectMixin",
+    "ShaderRenderSystemMixin",
+    "ShaderPipelineCacheMixin",
+    "ShaderGlslCompilerMixin",
+    "ShaderSpirvReflectionMixin",
+    "ShaderSkyFlagsMixin",
+    "ShaderCloudFlagMixin",
+    "ShaderCommandEncoderMixin",
+    "TerrainBufferBuilderMixin",
+    "TerrainChunkLayerMixin",
+    "DynamicBlockPipelineMixin",
+    "PortalBufferBuilderMixin",
+    "TerrainSectionCompilerMixin",
+    "TerrainModelBlockRendererMixin",
+    "TerrainFluidRendererMixin",
+    "TerrainBlockLightingMixin",
+    "LevelRendererShaderMixin",
+    "LevelExtractorShaderMixin",
+    "TerrainIndigoLightingMixin",
+    "TerrainIndigoAoMixin",
+    "TerrainIndigoFlatLightingMixin",
+    "EntityFeatureTagMixin",
+    "BlockEntityFeatureTagMixin",
+    "FeatureSubmitTagMixin",
+    "FeatureTranslucentSubmitTagMixin",
+    "FeatureGroupTagMixin",
+    "FeaturePreparedGroupTagMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "plugin": "dev.cadence.shaders.CadencePackGate"
+}

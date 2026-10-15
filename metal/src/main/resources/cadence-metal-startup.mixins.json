@@ -1,0 +1,8 @@
+{
+	"required": true,
+	"package": "dev.cadence.metal.mixin.startup",
+	"plugin": "dev.cadence.metal.mixin.startup.StartupMixinPlugin",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["NarratorMixin", "CrashPreloadMixin", "BlockCacheMixin", "BootstrapCacheMixin", "FadeMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

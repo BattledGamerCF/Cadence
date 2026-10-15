@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "cadence_shaders",
+  "version": "${version}",
+  "name": "Cadence Shaders",
+  "authors": [
+    "Cadence authors"
+  ],
+  "contributors": [
+    "Kausik Velaga (Minecraft Shader Loader)",
+    "Noah Dunnagan (mcopt)"
+  ],
+  "contact": {
+    "sources": "https://github.com/Kausik-Velaga/minecraft-metal-renderer"
+  },
+  "description": "Runs shader packs (such as BSL) on Cadence's native Metal renderer. Based on the Shader Loader from minecraft-metal-renderer by Kausik Velaga (MIT).",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.cadence.shaders.ShaderLoaderMod",
+      "dev.cadence.sceneoptimizer.SceneOptimizerMod"
+    ]
+  },
+  "mixins": [
+    "cadence-shaders.mixins.json",
+    "cadence-scene-api.mixins.json",
+    "cadence-shaders-ui.mixins.json",
+    "cadence-scene-optimizer.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "cadence": ">=0.3.0-alpha.5"
+  },
+  "license": ["Apache-2.0", "MIT"]
+}

@@ -1,0 +1,8 @@
+{
+	"required": true,
+	"package": "dev.cadence.metal.mixin.qos",
+	"plugin": "dev.cadence.metal.mixin.qos.QosMixinPlugin",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["RenderQosMixin", "ServerQosMixin", "WorkerQosMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

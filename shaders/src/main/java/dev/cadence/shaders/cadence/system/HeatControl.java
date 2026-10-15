@@ -1,0 +1,224 @@
+package dev.cadence.shaders.cadence.system;
+
+import dev.cadence.metal.MacSystem;
+import dev.cadence.shaders.cadence.RenderScale;
+import dev.cadence.shaders.cadence.ShaderToggle;
+import dev.cadence.shaders.cadence.ShadowReuse;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.client.Minecraft;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Cadence: Heat Control (Video Settings, on by default in the Balanced preset). A fanless Mac slows itself down as it heats
+ * up; easing off a little before that keeps the game steady instead of fast-then-sluggish. macOS reports a thermal state
+ * (nominal, fair, serious, critical) and Low Power Mode; SystemMonitor polls them every 2 seconds.
+ *
+ * <p>A thermostat, not a switch. The first version capped at the screen's refresh rate the moment the Mac was "warm" and gave
+ * everything back a minute after it was "cool" again, so the Mac heated, eased off, cooled, released and heated again every
+ * few minutes (and said so each time). Now:
+ * <ul>
+ * <li>Warm (or Low Power Mode): the frame rate is held at the screen's refresh rate (or the current frame rate, if lower).
+ * macOS can report "warm" for a long time without slowing anything down, so warm alone holds there.</li>
+ * <li>Cool again: nothing changes for 3 minutes, then the cap rises 5% a minute. If the Mac warms up again on the way, the
+ * cap it had reached is remembered and later rises stop just below it (that memory loosens by 5% every 10 cool minutes), so
+ * the cap settles where the Mac stays cool instead of oscillating. Once it reaches the player's own limit it is released.</li>
+ * <li>Hot (macOS is throttling): also shadows redrawn at most every 2nd frame (3rd when critical) and, with a shader pack,
+ * Auto resolution kept at 85% (70%) or below, and the cap is lowered 5% every 10 seconds while it stays hot, down to 30 fps. These come back 5 minutes after it's no longer hot.</li>
+ * </ul>
+ * Fixed settings the player chose are never lowered except the frame rate. A notice is shown when holding starts, when it
+ * ends, and when it gets hot (at most one ordinary notice every 3 minutes). Nothing is saved: turning it off gives everything
+ * back. -Dcadence.heatFast=true runs the clock 10x faster (self-tests).
+ */
+public final class HeatControl {
+	private static volatile boolean enabled = !"false".equalsIgnoreCase(
+		System.getProperty("cadence.heatControl", ShaderToggle.configValue("heatControl", "true")).strip());
+	private static final long SECOND = Boolean.getBoolean("cadence.heatFast") ? 100_000_000L : 1_000_000_000L;
+	private static final long LOWER_EVERY = 10 * SECOND, RAISE_AFTER = 180 * SECOND, RAISE_EVERY = 60 * SECOND,
+		LOOSEN_EVERY = 600 * SECOND, HOT_RELEASE = 300 * SECOND, NOTICE_GAP = 180 * SECOND;
+	private static volatile int thermal, extras;
+	private static volatile boolean lowPower;
+	private static volatile int displayHz = 60;
+	/** The frame-rate cap in force (Double.POSITIVE_INFINITY: none), and the cap at which the Mac last warmed up again. */
+	private static volatile double cap = Double.POSITIVE_INFINITY, learned = Double.POSITIVE_INFINITY;
+	private static long warmSince, coolSince, lastLower, lastRaise, lastLoosen, notHotSince, lastNotice, releasedAt;
+	/** The cap just before the last release: warming up again soon after means it was too high to keep. */
+	private static double releasedCap = Double.POSITIVE_INFINITY;
+	private static final long RECENT_RELEASE = 1200 * SECOND;
+	/** Self-test: a pretend thermal state (-1 = the real one). */
+	public static volatile int fakeThermal = -1;
+
+	private HeatControl() {
+	}
+
+	public static boolean enabled() {
+		return enabled;
+	}
+
+	public static void setEnabled(boolean on) {
+		enabled = on;
+		ShaderToggle.saveKey("heatControl", Boolean.toString(on));
+		if (!on) release(false);
+	}
+
+	/** 0 nothing eased, 1 frame rate held, 2 hot (shadows/resolution eased too), 3 critical. */
+	public static int level() {
+		if (!enabled) return 0;
+		if (extras > 0) return extras;
+		return holding() ? 1 : 0;
+	}
+
+	private static boolean holding() {
+		return cap != Double.POSITIVE_INFINITY;
+	}
+
+	/** SystemMonitor, every 2 s. */
+	static void poll(long now) {
+		thermal = fakeThermal >= 0 ? fakeThermal : MacSystem.thermalState();
+		lowPower = MacSystem.lowPowerMode();
+		displayHz = Math.max(30, MacSystem.displayHz());
+		if (!enabled) return;
+		boolean warm = thermal >= 1 || lowPower;
+		int hot = Math.min(thermal, 3) >= 2 ? Math.min(thermal, 3) : 0;
+		double floor = hot > 0 ? 30 : Math.max(30, displayHz * 0.75);
+		if (warm) {
+			coolSince = 0;
+			if (!holding()) {
+				if (releasedAt != 0 && now - releasedAt < RECENT_RELEASE) {
+					// warm again soon after letting go: the full rate is more than this Mac keeps up; stay below it from now on
+					learned = Math.min(learned, releasedCap);
+					log("warm again after a release", now);
+				}
+				double fps = Minecraft.getInstance().getFps();
+				cap = Math.max(floor, Math.min(displayHz, fps > 0 ? fps : displayHz));
+				if (learned != Double.POSITIVE_INFINITY) cap = Math.min(cap, learned);
+				warmSince = now;
+				lastLower = now;
+				notice("Your Mac is warm: Cadence is holding about " + Math.round(cap) + " fps to keep it steady", describe(), false, now);
+			} else if (warmSince == 0) {
+				// warmed up again while the cap was being raised: remember where, and go back to the screen's rate
+				warmSince = now;
+				lastLower = now;
+				learned = Math.min(learned, cap);
+				cap = Math.max(floor, Math.min(cap * 0.95, displayHz));
+				log("warm again on the way back up", now);
+			} else if (hot > 0 && now - lastLower >= LOWER_EVERY && cap > floor) {
+				// only while macOS is actually slowing the Mac down; merely warm ("fair") holds the screen's rate
+				lastLower = now;
+				cap = Math.max(floor, cap * 0.95);
+			}
+			if (cap < floor) cap = floor;
+		} else if (holding()) {
+			warmSince = 0;
+			if (coolSince == 0) {
+				coolSince = now;
+				lastRaise = now;
+				lastLoosen = now;
+			}
+			if (learned != Double.POSITIVE_INFINITY && now - lastLoosen >= LOOSEN_EVERY) {
+				lastLoosen = now;
+				learned *= 1.05;
+			}
+			if (now - coolSince >= RAISE_AFTER && now - lastRaise >= RAISE_EVERY) {
+				lastRaise = now;
+				double next = cap * 1.05;
+				if (learned != Double.POSITIVE_INFINITY) next = Math.min(next, learned * 0.97);
+				if (next >= limit() * 0.98) release(true);
+				else cap = Math.max(cap, next);
+			}
+		}
+		// hot: shadows and resolution too, given back 5 minutes after it isn't hot any more
+		if (hot > extras) {
+			applyExtras(hot);
+			notHotSince = 0;
+			notice(hot >= 3 ? "Your Mac is very hot: Cadence eased off more" : "Your Mac is hot: Cadence eased off more", describe(), true, now);
+		} else if (extras > 0 && hot < extras) {
+			if (notHotSince == 0) notHotSince = now;
+			else if (now - notHotSince >= HOT_RELEASE) {
+				notHotSince = 0;
+				applyExtras(hot);
+			}
+		} else notHotSince = 0;
+	}
+
+	/** The player's own frame-rate limit (Max Framerate; 260 is Unlimited). */
+	private static double limit() {
+		int l = Minecraft.getInstance().options.framerateLimit().get();
+		return l >= 260 ? Math.max(displayHz * 4, 240) : l;
+	}
+
+	private static void release(boolean noticed) {
+		boolean was = holding() || extras > 0;
+		if (holding() && noticed) {
+			releasedCap = cap;
+			releasedAt = System.nanoTime();
+		}
+		cap = Double.POSITIVE_INFINITY;
+		warmSince = coolSince = 0;
+		applyExtras(0);
+		if (was && noticed) notice("Your Mac cooled down: back to full speed", "", false, System.nanoTime());
+	}
+
+	private static void applyExtras(int hot) {
+		extras = hot;
+		ShadowReuse.setHeatMinimum(hot >= 3 ? 3 : hot >= 2 ? 2 : 1);
+		RenderScale.setCeiling(hot >= 3 ? 0.70f : hot >= 2 ? 0.85f : 1.0f);
+	}
+
+	private static void notice(String title, String detail, boolean always, long now) {
+		log(title, now);
+		if (!always && lastNotice != 0 && now - lastNotice < NOTICE_GAP) return;
+		lastNotice = now;
+		Notices.post(title, detail);
+	}
+
+	private static void log(String what, long now) {
+		LoggerFactory.getLogger("cadence").info("Heat control: {} (thermal state {}, low power {}, cap {}, learned {})",
+			what, thermal, lowPower, holding() ? Math.round(cap) : "none",
+			learned == Double.POSITIVE_INFINITY ? "none" : Math.round(learned));
+	}
+
+	/** The frame-rate limit heat control asks for, or Integer.MAX_VALUE for none. */
+	public static int fpsCap() {
+		if (!enabled || !holding()) return extras >= 3 && enabled ? Math.min(60, displayHz) : Integer.MAX_VALUE;
+		int c = (int) Math.round(cap);
+		return extras >= 3 ? Math.min(c, Math.min(60, displayHz)) : c;
+	}
+
+	public static int displayHz() {
+		return displayHz;
+	}
+
+	/** What heat control is doing right now, in plain words ("" when nothing). */
+	public static String describe() {
+		int l = level();
+		if (l == 0) return "";
+		List<String> parts = new ArrayList<>();
+		if (fpsCap() != Integer.MAX_VALUE) parts.add("about " + fpsCap() + " fps");
+		if (l >= 2) parts.add("shadows every " + (l >= 3 ? "3rd" : "2nd") + " frame");
+		if (l >= 2 && RenderScale.isAuto() && dev.cadence.shaders.runtime.ShaderRuntime.get() != null)
+			parts.add("Auto resolution at most " + Math.round(RenderScale.ceiling() * 100) + "%");
+		String why = thermal >= 2 ? "Mac is hot" : thermal == 1 ? "Mac is warm" : lowPower ? "Low Power Mode is on" : "Mac is cooling down";
+		return why + ": " + String.join(", ", parts);
+	}
+
+	/** One short line for the settings screen. */
+	public static String shortDescribe() {
+		int l = level();
+		if (l == 0) return "";
+		String why = thermal >= 2 ? "Mac hot" : thermal == 1 ? "Mac warm" : lowPower ? "Low Power Mode" : "cooling down";
+		String what = (fpsCap() != Integer.MAX_VALUE ? "holding ~" + fpsCap() + " fps" : "")
+			+ (l >= 2 ? ", shadows every " + (l >= 3 ? "3rd" : "2nd") + " frame" : "");
+		return "Heat (" + why + "): " + what;
+	}
+
+	/** The thermal state macOS last reported, in words (for the settings tooltip). */
+	public static String thermalWords() {
+		return switch (thermal) {
+			case 0 -> "cool";
+			case 1 -> "warm";
+			case 2 -> "hot (macOS is slowing it down)";
+			default -> "very hot";
+		} + (lowPower ? ", Low Power Mode on" : "");
+	}
+}

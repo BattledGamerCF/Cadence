@@ -1,0 +1,21 @@
+{
+	"required": true,
+	"package": "dev.cadence.metal.mixin.chunk",
+	"plugin": "dev.cadence.metal.mixin.chunk.ChunkMixinPlugin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"PalettedContainerFactoryMixin",
+		"AcquirePoiMixin",
+		"PoiSectionAccessor",
+		"SectionStorageAccess",
+		"ServerLevelTickMixin",
+		"LevelRandAccessor",
+		"DataLayerStorageMapMixin",
+		"BlockLightMapMixin",
+		"SkyLightMapMixin",
+		"ChunkAccessSectionMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

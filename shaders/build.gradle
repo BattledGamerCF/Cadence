@@ -1,0 +1,30 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+// The shader-pack loader, adapted from minecraft-metal-renderer's Shader Loader (MIT; see LICENSE-MIT-shader-loader and
+// UPSTREAM_COMMIT). An optional second mod: it needs Cadence's Metal backend (the `metal` module) at runtime.
+base.archivesName = 'cadence-shaders'
+version = '0.2.2-cadence.1'
+
+dependencies {
+	minecraft "com.mojang:minecraft:${minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${loader_version}"
+	// The backend's extension classes (dev.cadence.metal.MetalPassHints & co.); a separate mod, never bundled here.
+	compileOnly project(':metal')
+	// Its Indigo mixins target Fabric API's renderer when present: compile only, never bundled.
+	compileOnly "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+}
+
+processResources {
+	inputs.property 'version', version
+	filesMatching('fabric.mod.json') { expand 'version': version }
+}
+
+tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
+
+jar {
+	from(file('LICENSE-MIT-shader-loader'))
+	from(rootProject.file('LICENSE'))
+	from(rootProject.file('NOTICE'))
+}

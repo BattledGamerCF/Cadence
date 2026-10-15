@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "package": "dev.cadence.scene.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "LevelRendererSceneMixin",
+    "ViewAreaSceneAccessor",
+    "FrustumSceneAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "plugin": "dev.cadence.shaders.CadencePackGate"
+}

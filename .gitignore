@@ -1,0 +1,16 @@
+refs/
+build/
+.gradle/
+run/
+out/
+*.class
+__pycache__/
+cadence-pack-cache/
+dist/
+.replay-stamp
+.replay-lineage
+.DS_Store
+mcopt-pack-cache/
+.idea/
+*.iml
+.vscode/

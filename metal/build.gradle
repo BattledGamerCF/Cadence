@@ -1,0 +1,64 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+base.archivesName = 'cadence-metal'
+version = '0.3.0-alpha.5'
+
+dependencies {
+	minecraft "com.mojang:minecraft:${minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${loader_version}"
+	// Our mesher's FRAPI path (dev.cadence.metal.own.OwnFrapi, loaded only when Fabric API's renderer API is): compile only, never bundled.
+	compileOnly "net.fabricmc.fabric-api:fabric-renderer-api-v1:17.0.15+79385d0b5d"
+	compileOnly "net.fabricmc.fabric-api:fabric-api-base:2.0.6+fcdff87f5d"
+}
+
+def nativeOut = layout.buildDirectory.dir('natives/natives')
+
+tasks.register('compileNative', Exec) {
+	def sources = ['mcmetal.m', 'mclod.m', 'lodseam.m', 'lodmesh.c', 'lodnoise.c', 'rec.m', 'mcown.m', 'mccap.m', 'mcfx.m', 'mccull.m', 'mcsys.m', 'mcbench.m', 'mcpack.m'].collect { file("src/main/native/$it") }
+	def output = nativeOut.get().file('libmcmetal.dylib').asFile
+	inputs.files sources, file('src/main/native/mcmetal.h'), file('src/main/native/lodmesh.h')
+	outputs.file output
+	doFirst { output.parentFile.mkdirs() }
+	commandLine(['clang', '-fno-objc-arc', '-O2', '-Wall', '-arch', 'arm64', '-mmacosx-version-min=15.0', '-dynamiclib', '-install_name', '@rpath/libmcmetal.dylib',
+		'-framework', 'AppKit', '-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'IOKit', '-framework', 'Metal', '-framework', 'MetalFX', '-framework', 'QuartzCore', '-o', output] + sources)
+}
+
+processResources {
+	dependsOn 'compileNative'
+	from(layout.buildDirectory.dir('natives'))
+	inputs.property 'version', version
+	filesMatching('fabric.mod.json') { expand 'version': version }
+}
+
+// Double-clicking the jar (java -jar) explains that it's a Fabric mod and how to install it.
+jar {
+	manifest { attributes 'Main-Class': 'dev.cadence.metal.InstallHelp', 'Implementation-Version': version }
+	// Apache-2.0 asks for LICENSE and NOTICE in every copy.
+	from(rootProject.file('LICENSE'))
+	from(rootProject.file('NOTICE'))
+	// MetalPassHints, MetalPipelineMath and SpirvMathPolicy are adapted from the MIT-licensed Shader Loader: its notice travels with them.
+	from(rootProject.file('shaders/LICENSE-MIT-shader-loader'))
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	// the far terrain's Vector API noise control (LodNoiseVector, opt-in -Dcadence.lod.nativeNoise=vector): loaded only when the game runs with
+	// --add-modules jdk.incubator.vector
+	if (it.name == 'compileJava') it.options.compilerArgs += ['--add-modules', 'jdk.incubator.vector']
+}
+
+// Cadence: the dev client's classpath written to a file, so the game can be started without Gradle (tools/cadence-run.sh):
+// on an 8 GB Mac the Gradle client and daemon are memory the game needs.
+tasks.register('writeRunClasspath') {
+	dependsOn 'configureClientLaunch', 'classes', 'processResources'
+	def out = layout.buildDirectory.file('cadence-run/classpath.txt')
+	def cp = sourceSets.main.runtimeClasspath
+	outputs.file out
+	doLast {
+		def f = out.get().asFile
+		f.parentFile.mkdirs()
+		f.text = cp.files.collect { it.absolutePath }.join(':')
+	}
+}

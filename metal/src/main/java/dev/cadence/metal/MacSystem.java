@@ -1,0 +1,129 @@
+package dev.cadence.metal;
+
+/**
+ * Cadence: macOS system signals (native/mcsys.m) for callers outside this package. Each call is cheap (a property read or
+ * an atomic load); none throws: if the native side is missing the neutral value comes back.
+ */
+public final class MacSystem {
+	public static final int QOS_USER_INTERACTIVE = 0x21, QOS_USER_INITIATED = 0x19, QOS_DEFAULT = 0x15, QOS_UTILITY = 0x11,
+		QOS_BACKGROUND = 0x09;
+
+	private MacSystem() {
+	}
+
+	/** 0 nominal, 1 fair (warming), 2 serious (throttling), 3 critical. */
+	public static int thermalState() {
+		try {
+			return Native.thermalState();
+		} catch (Throwable t) {
+			return 0;
+		}
+	}
+
+	public static boolean lowPowerMode() {
+		try {
+			return Native.lowPower() != 0;
+		} catch (Throwable t) {
+			return false;
+		}
+	}
+
+	/** 0 normal, 1 warning, 2 critical (macOS memory pressure). */
+	public static int memoryPressure() {
+		try {
+			return Native.memoryPressure();
+		} catch (Throwable t) {
+			return 0;
+		}
+	}
+
+	/** How many memory-pressure changes macOS has reported. */
+	public static long memoryPressureEvents() {
+		try {
+			return Native.memoryPressureEvents();
+		} catch (Throwable t) {
+			return 0;
+		}
+	}
+
+	/** Sets the calling thread's QoS class; true if macOS accepted it. */
+	public static boolean setQos(int qos) {
+		try {
+			return Native.setQos(qos) == 0;
+		} catch (Throwable t) {
+			return false;
+		}
+	}
+
+	public static int qos() {
+		try {
+			return Native.qosSelf();
+		} catch (Throwable t) {
+			return 0;
+		}
+	}
+
+	/** The main screen's refresh rate in Hz (60 if unknown). */
+	public static int displayHz() {
+		try {
+			return Native.displayHz();
+		} catch (Throwable t) {
+			return 60;
+		}
+	}
+
+	// ---- Cadence Quick Setup: what this Mac is ----
+
+	/** A sysctl string ("machdep.cpu.brand_string" = "Apple M2"), "" if unknown. */
+	public static String sysString(String name) {
+		try (var arena = java.lang.foreign.Arena.ofConfined()) {
+			var out = arena.allocate(256);
+			int n = Native.sysString(arena.allocateFrom(name), out, 256);
+			return n > 0 ? out.getString(0) : "";
+		} catch (Throwable t) {
+			return "";
+		}
+	}
+
+	/** A sysctl number ("hw.memsize"), -1 if unknown. */
+	public static long sysLong(String name) {
+		try (var arena = java.lang.foreign.Arena.ofConfined()) {
+			return Native.sysLong(arena.allocateFrom(name));
+		} catch (Throwable t) {
+			return -1;
+		}
+	}
+
+	/** "MacBook Air (M2, 2022)" (the device tree's product name), "" if unknown. */
+	public static String productName() {
+		try (var arena = java.lang.foreign.Arena.ofConfined()) {
+			var out = arena.allocate(256);
+			return Native.productName(out, 256) > 0 ? out.getString(0) : "";
+		} catch (Throwable t) {
+			return "";
+		}
+	}
+
+	/** The GPU's core count, -1 if unknown. */
+	public static int gpuCores() {
+		try {
+			return Native.gpuCores();
+		} catch (Throwable t) {
+			return -1;
+		}
+	}
+
+	/**
+	 * Quick Setup's GPU test (native/mcbench.m, ~3 s, its own device and queue): {ms per frame of a fixed terrain-like scene,
+	 * ms of a fixed shader-pack-like full-screen chain}, each at 1920x1080 and the median of three runs; null if it failed.
+	 */
+	public static double[] benchGpu() {
+		try (var arena = java.lang.foreign.Arena.ofConfined()) {
+			var out = arena.allocate(16);
+			if (Native.benchGpu(out) == 0) return null;
+			return new double[] {out.getAtIndex(java.lang.foreign.ValueLayout.JAVA_DOUBLE, 0), out.getAtIndex(java.lang.foreign.ValueLayout.JAVA_DOUBLE, 1)};
+		} catch (Throwable t) {
+			return null;
+		}
+	}
+}

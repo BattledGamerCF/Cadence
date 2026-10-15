@@ -1,0 +1,44 @@
+Cadence
+Copyright 2026 the Cadence authors
+
+Cadence is a performance mod for Minecraft on Apple Silicon Macs. It is a fork of, and is built from the code of, two
+open-source projects. Cadence's own code is licensed under the Apache License, Version 2.0 (LICENSE). See CREDITS.md for
+what came from where and which license applies to which part.
+
+Keep this NOTICE with any copy or redistribution of Cadence.
+
+----
+1. mcopt (Apache License 2.0)
+
+Cadence is a modified version of mcopt (https://github.com/noahdunnagan/mcopt, upstream commit 7b1d0fb). Its original
+NOTICE follows, unchanged:
+
+    mcopt
+    Copyright 2026 Noah Dunnagan
+
+    mcopt, a Minecraft mod, was created by Noah Dunnagan. If you use or redistribute this code, keep this NOTICE with it
+    and credit mcopt (https://github.com/noahdunnagan/mcopt).
+
+    mcopt is licensed under the Apache License, Version 2.0 (LICENSE).
+
+Changes (Apache-2.0 section 4(b)): Cadence renamed mcopt's packages, mod ids, configuration names and messages to
+Cadence, and added and changed much else. Source files that came from mcopt carry the line
+"Cadence: derived from mcopt (c) Noah Dunnagan, Apache-2.0; modified." as their first line. docs/CHANGES-FROM-MCOPT.md lists what
+Cadence changed or added relative to mcopt commit 7b1d0fb (it is written with the old names; docs/LICENSING.md maps them to
+the new ones).
+
+----
+2. Minecraft Shader Loader / minecraft-metal-renderer (MIT License)
+
+Cadence includes code adapted from minecraft-metal-renderer by Kausik Velaga
+(https://github.com/Kausik-Velaga/minecraft-metal-renderer, upstream commit c609745),
+Copyright (c) 2026 Minecraft Metal Renderer contributors, under the MIT License (shaders/LICENSE-MIT-shader-loader):
+the whole shaders module (its Shader Loader and scene layer, now "Cadence Shaders"), and in the metal module
+MetalPassHints, MetalPipelineMath and SpirvMathPolicy. Source files that came from it carry the line
+"Cadence: derived from Minecraft Shader Loader (c) Minecraft Metal Renderer contributors, MIT; modified." (the three
+metal files carry their own "Adapted from" header). The MIT copyright notice and permission notice are kept in
+shaders/LICENSE-MIT-shader-loader and are included in the jars that contain this code.
+
+----
+Not included: Minecraft (Mojang), Fabric, Fabric API, Sodium and shader packs such as BSL are not part of Cadence and not
+bundled with it. Shader packs are chosen and supplied by the player and keep their own licenses.

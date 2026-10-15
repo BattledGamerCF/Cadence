@@ -1,0 +1,95 @@
+package dev.cadence.shaders.cadence.system;
+
+import dev.cadence.shaders.cadence.ShaderToggle;
+import java.util.Locale;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+
+/**
+ * Cadence: what Cadence says in game. One short chat line when you join a world or server (grey, the few words that matter
+ * in the green vanilla uses for a LAN port), and the corner notices (Notices). Both can be turned off from that line
+ * ("[Hide these messages]", a client-side /cadence command that never reaches a server) or from Video Settings; once off,
+ * the join line isn't shown either. Saved in Cadence's config ("messages").
+ */
+public final class CadenceMessages {
+	private static volatile boolean enabled = !"false".equalsIgnoreCase(
+		System.getProperty("cadence.messages", ShaderToggle.configValue("messages", "true")).strip());
+
+	private CadenceMessages() {
+	}
+
+	public static boolean enabled() {
+		return enabled;
+	}
+
+	public static void setEnabled(boolean on) {
+		enabled = on;
+		ShaderToggle.saveKey("messages", Boolean.toString(on));
+	}
+
+	/** ClientPacketListener.handleLogin (joining a world or a server; not a dimension change), render thread. */
+	public static void joined() {
+		if (!enabled) return;
+		say(joinLine());
+	}
+
+	private static Component joinLine() {
+		MutableComponent line = grey("Cadence: ");
+		if (HeatControl.enabled()) {
+			line.append(green("Heat Control", "When your Mac warms up, Cadence eases off a little so the game stays smooth instead of "
+				+ "slowing down later. Change it in Video Settings.", null));
+			line.append(grey(" keeps your Mac cool and smooth. "));
+		} else {
+			line.append(grey("running. Settings are in Video Settings. "));
+		}
+		line.append(green("[Hide these messages]", "Turns off this line and Cadence's pop-ups in the corner. "
+			+ "Turn them back on in Video Settings.", "/cadence messages off"));
+		return line;
+	}
+
+	/**
+	 * A command typed or clicked: true when it is Cadence's (handled here, never sent to the server). "cadence messages
+	 * off|on".
+	 */
+	public static boolean command(String command) {
+		String c = command.strip().toLowerCase(Locale.ROOT);
+		if (c.startsWith("/")) c = c.substring(1);
+		if (!c.equals("cadence") && !c.startsWith("cadence ")) return false;
+		switch (c) {
+			case "cadence messages off" -> {
+				setEnabled(false);
+				say(grey("Cadence messages are off. Turn them back on in Video Settings."));
+			}
+			case "cadence messages on" -> {
+				setEnabled(true);
+				say(grey("Cadence messages are on."));
+			}
+			default -> say(grey("Cadence: /cadence messages off | on"));
+		}
+		return true;
+	}
+
+	private static void say(Component line) {
+		Minecraft mc = Minecraft.getInstance();
+		mc.execute(() -> {
+			if (mc.gui != null) mc.gui.chatListener().handleSystemMessage(line, false);
+		});
+	}
+
+	private static MutableComponent grey(String text) {
+		return Component.literal(text).withStyle(ChatFormatting.GRAY);
+	}
+
+	private static MutableComponent green(String text, String hover, String command) {
+		MutableComponent c = Component.literal(text).withStyle(ChatFormatting.GREEN);
+		c.withStyle(s -> {
+			var styled = s.withHoverEvent(new HoverEvent.ShowText(Component.literal(hover)));
+			return command == null ? styled : styled.withClickEvent(new ClickEvent.RunCommand(command));
+		});
+		return c;
+	}
+}

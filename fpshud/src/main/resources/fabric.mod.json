@@ -1,0 +1,13 @@
+{
+	"schemaVersion": 1,
+	"id": "cadence_hud",
+	"version": "${version}",
+	"name": "Cadence HUD",
+	"description": "Shows the frame rate in the top-left corner. Part of Cadence, a fork of mcopt by Noah Dunnagan.",
+	"license": "Apache-2.0",
+	"authors": ["Cadence authors"],
+	"contributors": ["Noah Dunnagan (mcopt)"],
+	"environment": "client",
+	"mixins": ["cadence-hud.mixins.json"],
+	"depends": { "fabricloader": ">=0.19.5", "minecraft": "~26.3", "java": ">=25" }
+}

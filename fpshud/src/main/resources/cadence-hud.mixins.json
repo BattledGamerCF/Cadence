@@ -1,0 +1,7 @@
+{
+	"required": true,
+	"package": "dev.cadence.fps.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["HudMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

@@ -1,0 +1,8 @@
+{
+	"required": true,
+	"package": "dev.cadence.metal.mixin.cpu",
+	"plugin": "dev.cadence.metal.mixin.cpu.CpuMixinPlugin",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["LoadingFpsMixin", "EntityBoxVanillaMixin", "EntityRendererBoxInvoker", "EntityBoxAbMixin", "ModelLoopMixin", "ModelAbMixin", "AbFrameMixin", "LeashMixin", "LeashAbMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

@@ -1,0 +1,16 @@
+{
+	"schemaVersion": 1,
+	"id": "cadence",
+	"version": "${version}",
+	"name": "Cadence",
+	"description": "A performance mod for Minecraft on Apple Silicon Macs: a native Apple Metal renderer with its own fast terrain path and faster startup, meshing and chunk handling. A fork of mcopt by Noah Dunnagan.",
+	"license": ["Apache-2.0"],
+	"authors": ["Cadence authors"],
+	"contributors": ["Noah Dunnagan (mcopt)", "Kausik Velaga (Minecraft Shader Loader)"],
+	"custom": { "cadence:upstream": ["mcopt by Noah Dunnagan, Apache-2.0, https://github.com/noahdunnagan/mcopt", "Minecraft Shader Loader by Kausik Velaga, MIT, https://github.com/Kausik-Velaga/minecraft-metal-renderer"] },
+	"environment": "client",
+	"entrypoints": { "preLaunch": ["dev.cadence.metal.Preload"] },
+	"mixins": ["cadence-metal.mixins.json", "cadence-metal-lod.mixins.json", "cadence-metal-gen.mixins.json", "cadence-metal-own.mixins.json", "cadence-metal-ownmesh.mixins.json", "cadence-metal-startup.mixins.json", "cadence-metal-qos.mixins.json", "cadence-metal-cpu.mixins.json", "cadence-metal-chunk.mixins.json", "cadence-metal-alloc.mixins.json", "cadence-metal-chunkio.mixins.json", "cadence-metal-edge.mixins.json", "cadence-metal-compat.mixins.json"],
+	"depends": { "fabricloader": ">=0.19.5", "minecraft": "~26.3", "java": ">=25" },
+	"breaks": { "sodium": "*" }
+}
