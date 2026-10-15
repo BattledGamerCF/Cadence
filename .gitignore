@@ -14,3 +14,4 @@ mcopt-pack-cache/
 .idea/
 *.iml
 .vscode/
+logs/

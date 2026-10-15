@@ -29,6 +29,10 @@ Steps include a pack file name, `off`, `time=`, `cmd=` (a command; `@me` is the 
 runs a memory guard (`tools/cadence-guard.sh`), so it's safe on an 8 GB Mac. It expects a singleplayer world called
 `tester`.
 
+Before running the game after changing a mixin, run `tools/mixin-check.sh`: it checks every mixin's targets, methods,
+fields and call sites against Minecraft 26.3 and catches the mistakes that would otherwise crash the game at launch.
+`tools/logic-tests/run.sh` fuzz-tests the game-logic optimizations against Minecraft's own classes.
+
 `tools/pack-census.sh [pack.zip ...]` checks shader packs for unsupported features without starting the game.
 
 ## Code layout

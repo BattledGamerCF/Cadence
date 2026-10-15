@@ -4,7 +4,7 @@
 Apple **Metal** renderer, adds a faster terrain path and quicker startup, and runs **shader packs** (BSL, Complementary,
 Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
 
-> **Alpha software.** Expect bugs and back up your worlds before trying it.
+> **Beta software.** Expect the occasional bug and back up your worlds before trying it.
 
 ## Features
 
@@ -14,6 +14,9 @@ Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
 - **Auto resolution.** Shaders render at a lower internal resolution when your Mac can't hold the target frame rate,
   then upscale with Apple's MetalFX. Temporal anti-aliasing history survives the changes, so the picture stays clean.
 - **Thermal-aware.** On fanless Macs, Cadence holds a steady frame rate rather than letting the Mac overheat and throttle.
+- **Faster game logic (Cadence Logic).** Cadence's own replacement for Lithium: entity searches up to 22× faster, mob
+  brains and villager sensors without per-tick garbage, smoother chunk unloading. Exact: the game plays the same.
+  See [docs/GAME-LOGIC.md](docs/GAME-LOGIC.md).
 - **Faster chunk meshing, startup and memory use**, plus an fps counter (Cadence HUD).
 
 ## Requirements
@@ -31,7 +34,8 @@ Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
    **Options > Video Settings > Shaders**.
 4. Start the game. To check that Cadence is running, press F3 (fn + F3): the bottom right says `Metal 3 (Cadence)`.
 
-Cadence replaces Sodium and Iris, so remove them from the `mods` folder. Fabric API isn't required, but keep it if
+Cadence replaces Sodium and Iris, so remove them from the `mods` folder. Lithium isn't needed either (if it's installed,
+Cadence's own game-logic optimizations step aside for it). Fabric API isn't required, but keep it if
 your other mods need it.
 
 ## Shader packs

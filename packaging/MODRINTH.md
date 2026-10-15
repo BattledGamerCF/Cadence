@@ -3,7 +3,7 @@
 **Minecraft on Apple Silicon, on Metal.** Cadence replaces Minecraft's OpenGL renderer with a native Apple Metal renderer
 and runs **shader packs directly on Metal**, with no Iris, Sodium or OpenGL translation in between.
 
-> ⚠️ **Alpha.** Expect bugs and back up your worlds.
+> ⚠️ **Beta.** Expect the occasional bug and back up your worlds.
 
 ## Features
 

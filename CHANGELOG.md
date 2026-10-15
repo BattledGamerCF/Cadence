@@ -2,6 +2,18 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.1 / shaders 0.3.0 (2026-10-15)
+
+- **Cadence Logic**, Cadence's own replacement for Lithium (written from scratch; exact, so the game plays the same):
+  - entity searches look up only the sections they need: a mob-sized search is 22× faster (mobs pushing each other,
+    hoppers, item merging, AI sensors, collisions all use it);
+  - mob brains (villagers, piglins, frogs and more) tick without allocating iterators and lists every tick;
+  - villagers skip a 405-block scan every 2 seconds when their profession has no secondary work blocks;
+  - unloading many block entities at once no longer costs quadratic time.
+  Details: [docs/GAME-LOGIC.md](docs/GAME-LOGIC.md). Each can be turned off with `cadence.logic.<name>=false`.
+- Developer tools: `tools/mixin-check.sh` checks every mixin against Minecraft without starting it;
+  `tools/logic-tests/run.sh` fuzz-tests the game-logic changes against Minecraft's own classes.
+
 ## 0.3.0-alpha.5 / shaders 0.2.2 (2026-10-15)
 
 - **Pegasus works:** no more pink, red or blue halos where distant land meets water, and no yellow blocks on night
