@@ -29,8 +29,9 @@ public final class CadencePackGate implements IMixinConfigPlugin {
 	}
 	private static final String PACK = selectedName();
 	private static final boolean SELECTED = !PACK.isBlank();
-	/** liveSwitching= in the config, default true: the hooks load even with no pack, so shaders can be turned on in game. */
-	private static final boolean LIVE = !"false".equalsIgnoreCase(configValue("liveSwitching", "true").strip());
+	/** Shader switching (Profile.liveSwitching): "instant" loads the hooks with no pack too; "auto" (default) only with a pack. */
+	private static final boolean LIVE = dev.cadence.metal.Profile.liveSwitching(configValue("shaderSwitching", null),
+		configValue("liveSwitching", null), SELECTED);
 	private static final boolean HOOKS = SELECTED || LIVE;
 
 	/** Whether this launch has the loader's hooks, so packs can be switched (on, off, another) without a restart. */

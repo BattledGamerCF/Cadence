@@ -25,7 +25,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		dev.cadence.shaders.cadence.CadenceSettings.newScreen();
 		this.list.addHeader(Component.literal("Cadence"));
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.presetButton(), ShaderToggle.packButton());
-		// only when Cadence is adjusting something on its own (heat, memory, Auto resolution): nothing to read otherwise
+		// what Cadence tunes on its own (always one line), then anything it is easing right now (heat, memory, Auto resolution)
 		for (Component line : dev.cadence.shaders.cadence.CadenceSettings.status()) this.list.addHeader(line);
 		Screen self = this;
 		this.list.addSmall(net.minecraft.client.gui.components.Button.builder(Component.literal("Quick Setup..."),
@@ -38,7 +38,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 				b -> this.minecraft.gui.setScreen(new dev.cadence.shaders.cadence.CadenceSettingsScreen(self)))
 			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
 			.tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-				"Heat Control, resolution, leaves, messages and shader options.")))
+				"Cooling, resolution, leaves, messages and shader options.")))
 			.build());
 	}
 

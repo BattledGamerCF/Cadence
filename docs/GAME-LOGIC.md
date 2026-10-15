@@ -35,6 +35,11 @@ and less garbage means fewer collection pauses on 8 GB machines.
 - **Skipping air in block collisions**: the per-block collision call is a cached lookup; the earlier measurement of
   block-collision speed-ups found no gain. Dropped.
 - **Pathfinding streams**: once per path search, small against the search itself.
-- **Block-entity "sleeping" (furnaces, hoppers, brewing stands), mob spawning counts, collision shape fast paths**:
-  potentially large but they change *when* things run or touch many systems; they need profiling in game and testing
-  before they can be shipped exactly. Planned for a later beta, picked by measurement.
+- **Measured in game (2026-10-15 night) before building the rest.** Busy test scene (about 320 mobs, items, chests,
+  campfires), Lithium removed, 45 s JFR profile of the integrated server thread: the server thread is only about 12-15%
+  busy, against about 78% for the render thread. Inside it: natural spawning bookkeeping (`NaturalSpawner.createState`,
+  local mob caps, environment attributes) under 2%, chunk ticket removal about 2%, block-entity ticking barely visible,
+  pathfinding's node-type lookups about 3%. Each is well under 1% of the game's CPU, so none can change the frame rate,
+  and block-entity "sleeping" would risk redstone and hopper timing for nothing measurable: they are not built. What
+  remains on the server thread is inherent work: block reads for collisions, pathfinding and random ticks (an earlier
+  exact collision fast path measured no gain), and checking crowded mobs against each other.

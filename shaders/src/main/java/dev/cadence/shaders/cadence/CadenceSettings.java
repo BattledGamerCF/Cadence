@@ -131,24 +131,44 @@ public final class CadenceSettings {
 		return Component.literal("Performance: " + current().label);
 	}
 
+	/** Cooling (HeatControl.Cooling): how early Cadence eases off as the Mac heats up. */
 	public static Button heatButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(heatLabel(), b -> {
-			HeatControl.setEnabled(!HeatControl.enabled());
+			HeatControl.Cooling[] all = HeatControl.Cooling.values();
+			HeatControl.setCooling(all[(HeatControl.cooling().ordinal() + 1) % all.length]);
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(tip(
-			"Keeps your Mac at a steady temperature, so the game stays smooth instead of fast at first and sluggish later.\n"
-				+ "When your Mac warms up, Cadence lowers the frame rate a little at a time until it stops heating, and raises it "
-				+ "again slowly once it has cooled. If it gets hot, shadows and (with shaders) resolution ease off too.\n"
-				+ "Off: always your full settings, but macOS may slow the Mac down when it's hot.\n"
-				+ "Your Mac right now: " + HeatControl.thermalWords() + "."))).build();
-		onRefresh(() -> self[0].setMessage(heatLabel()));
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(tip(coolingTip()))).build();
+		onRefresh(() -> {
+			self[0].setMessage(heatLabel());
+			self[0].setTooltip(Tooltip.create(tip(coolingTip())));
+		});
 		return self[0];
 	}
 
+	private static String coolingTip() {
+		int fans = dev.cadence.metal.MacSystem.fanCount();
+		double watts = dev.cadence.metal.MacSystem.systemWatts();
+		int rpm = dev.cadence.metal.MacSystem.fanRpm();
+		String now = "Your Mac right now: " + HeatControl.thermalWords()
+			+ (watts > 0 ? String.format(java.util.Locale.ROOT, ", using %.0f W", watts) : "")
+			+ (fans > 0 ? (rpm >= 0 ? ", fans at " + rpm + " rpm" : ", " + fans + " fan" + (fans > 1 ? "s" : "")) : fans == 0 ? ", no fans" : "")
+			+ ".";
+		return "How Cadence keeps your Mac's temperature steady, so the game stays smooth instead of fast at first and "
+			+ "sluggish later.\n"
+			+ "Quiet: when your Mac gets warm, holds the frame rate at your screen's refresh rate. Coolest and quietest.\n"
+			+ "Balanced (recommended): when warm, holds at twice your screen's rate; eases off more only if it gets hot.\n"
+			+ "Max Performance: full speed until macOS itself starts slowing the Mac; then holds steady"
+			+ (fans > 0 ? " and lets your fans work harder" : "") + ".\n"
+			+ "Off: never eases off; macOS may slow a hot Mac down.\n"
+			+ (fans > 0 ? "Cadence doesn't set fan speed directly (macOS only allows that with administrator rights); "
+				+ "Max Performance lets macOS run the fans faster instead of slowing the game.\n" : "")
+			+ now;
+	}
+
 	private static Component heatLabel() {
-		if (HeatControl.level() > 0) return Component.literal("Heat Control: Easing Off").withStyle(ChatFormatting.YELLOW);
-		return Component.literal("Heat Control: " + (HeatControl.enabled() ? "On" : "Off"));
+		if (HeatControl.level() > 0) return Component.literal("Cooling: Easing Off").withStyle(ChatFormatting.YELLOW);
+		return Component.literal("Cooling: " + HeatControl.cooling().label);
 	}
 
 	/** Leaves (SmartLeaves): Detailed (vanilla) or Smart. */
@@ -246,6 +266,15 @@ public final class CadenceSettings {
 	/** What Cadence is changing on its own right now, one short line each (a gray "nothing" line when nothing). */
 	public static List<Component> status() {
 		List<Component> lines = new ArrayList<>();
+		// always one line: Cadence tunes the game on its own by default, and says so
+		List<String> auto = new ArrayList<>();
+		if (RenderScale.isAuto()) auto.add("Auto resolution");
+		if (HeatControl.enabled()) auto.add("Cooling " + HeatControl.cooling().label);
+		if (dev.cadence.shaders.cadence.system.BackgroundFps.enabled()) auto.add("background fps");
+		String mac = ShaderToggle.configValue("setupMac", "");
+		if (!mac.isEmpty()) auto.add("set up for " + mac);
+		lines.add(Component.literal(auto.isEmpty() ? "Cadence: automatic tuning off (your settings as set)"
+			: "Cadence tunes automatically: " + String.join(" · ", auto)).withStyle(ChatFormatting.GREEN));
 		if (RenderScale.isAuto() && RenderScale.get() < 0.995f)
 			lines.add(Component.literal("Auto: world drawn at " + Math.round(RenderScale.get() * 100) + "% to keep it smooth")
 				.withStyle(ChatFormatting.GRAY));

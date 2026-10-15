@@ -20,6 +20,56 @@ public final class MacSystem {
 		}
 	}
 
+	/**
+	 * How many fans this Mac has (0: fanless, such as a MacBook Air; -1: unknown). Read from the System Management Controller
+	 * once; reading needs no privileges. Cadence never sets fan speed: macOS only allows that with administrator rights.
+	 */
+	public static int fanCount() {
+		int n = fans;
+		if (n == Integer.MIN_VALUE) {
+			try {
+				n = Native.fanCount();
+			} catch (Throwable t) {
+				n = -1;
+			}
+			fans = n;
+		}
+		return n;
+	}
+
+	private static volatile int fans = Integer.MIN_VALUE;
+
+	/** The average speed of this Mac's fans in rpm, or -1 (no fans, or unreadable). */
+	public static int fanRpm() {
+		int n = fanCount();
+		if (n <= 0) return -1;
+		long sum = 0;
+		int read = 0;
+		for (int i = 0; i < n; i++) {
+			int rpm;
+			try {
+				rpm = Native.fanRpm(i);
+			} catch (Throwable t) {
+				rpm = -1;
+			}
+			if (rpm >= 0) {
+				sum += rpm;
+				read++;
+			}
+		}
+		return read == 0 ? -1 : (int) (sum / read);
+	}
+
+	/** The whole Mac's power draw in watts (Apple Silicon's SMC sensor), or -1 if unreadable. */
+	public static double systemWatts() {
+		try {
+			int mw = Native.systemPowerMw();
+			return mw < 0 ? -1 : mw / 1000.0;
+		} catch (Throwable t) {
+			return -1;
+		}
+	}
+
 	public static boolean lowPowerMode() {
 		try {
 			return Native.lowPower() != 0;

@@ -1,5 +1,7 @@
 package dev.cadence.shaders.cadence.setup;
 
+import dev.cadence.shaders.cadence.system.HeatControl;
+
 import dev.cadence.metal.MacSystem;
 import dev.cadence.shaders.cadence.CadenceSettings;
 import dev.cadence.shaders.cadence.ShaderToggle;
@@ -63,7 +65,8 @@ public final class QuickSetup {
 			case "Ultra" -> 64;
 			default -> 8;
 		};
-		boolean fanless = product.startsWith("MacBook Air");
+		int fans = MacSystem.fanCount();
+		boolean fanless = fans == 0 || fans < 0 && product.startsWith("MacBook Air");
 		return new Mac(product, chip, gen, variant, Math.max(p, 0), Math.max(e, 0), (int) Math.round(mem / 1073741824.0), gpu, fanless);
 	}
 
@@ -93,8 +96,20 @@ public final class QuickSetup {
 	public record Result(Mac mac, boolean measured, double gpuScore, double cpuScore, int tier, List<Change> changes) {
 	}
 
+	/** What the player wants most (asked before the test). */
+	public enum Goal {
+		/** Frame rate matched to the screen, Cooling Balanced: steady, cool and quiet. */
+		SMOOTH,
+		/** Unlimited frame rate, Cooling Max Performance: as many frames as the Mac can make. */
+		MAX_FPS
+	}
+
 	/** The test and the recommendations (any thread; the GPU part has its own device and queue). progress: a short stage name. */
 	public static Result run(java.util.function.Consumer<String> progress) {
+		return run(progress, Goal.SMOOTH);
+	}
+
+	public static Result run(java.util.function.Consumer<String> progress, Goal goal) {
 		Mac mac = detect();
 		double expected = expectedGpu(mac);
 		boolean warm = !Boolean.getBoolean("cadence.setupForce") && (MacSystem.thermalState() >= 1 || MacSystem.lowPowerMode());
@@ -122,13 +137,13 @@ public final class QuickSetup {
 			testing = false;
 		}
 		int tier = tier(gpu);
-		Result r = new Result(mac, measured, gpu, cpu, tier, recommend(mac, tier, cpu));
+		Result r = new Result(mac, measured, gpu, cpu, tier, recommend(mac, tier, cpu, goal));
 		LoggerFactory.getLogger("cadence").info("Quick Setup: {} (chip {} {}, {}P+{}E CPU, {} GPU cores) -> tier {}, {} change(s)", mac.describe(),
 			mac.chip(), mac.variant(), mac.pCores(), mac.eCores(), mac.gpuCores(), tier, r.changes().size());
 		return r;
 	}
 
-	private static List<Change> recommend(Mac mac, int tier, double cpu) {
+	private static List<Change> recommend(Mac mac, int tier, double cpu, Goal goal) {
 		List<Change> out = new ArrayList<>();
 		Minecraft mc = Minecraft.getInstance();
 		int rd = new int[] {12, 16, 20, 24, 32}[tier - 1];
@@ -142,13 +157,22 @@ public final class QuickSetup {
 				() -> mc.options.renderDistance().set(rdTo)));
 		int hz = Math.max(30, Math.min(MacSystem.displayHz(), 240));
 		int fpsNow = mc.options.framerateLimit().get();
-		if (fpsNow != hz)
-			out.add(new Change("Max Framerate", fpsNow >= 260 ? "Unlimited" : fpsNow + " fps", hz + " fps", "matches your screen",
-				() -> mc.options.framerateLimit().set(hz)));
-		CadenceSettings.Preset preset = mac.fanless() || tier <= 3 ? CadenceSettings.Preset.BALANCED : CadenceSettings.Preset.QUALITY;
+		int fpsTo = goal == Goal.MAX_FPS ? 260 : hz;
+		if (fpsNow != fpsTo)
+			out.add(new Change("Max Framerate", fpsNow >= 260 ? "Unlimited" : fpsNow + " fps", fpsTo >= 260 ? "Unlimited" : fpsTo + " fps",
+				fpsTo >= 260 ? "as many frames as your Mac makes" : "matches your screen", () -> mc.options.framerateLimit().set(fpsTo)));
+		// the preset first: Max Quality turns cooling off, so the cooling line below must agree with it
+		CadenceSettings.Preset preset = goal == Goal.MAX_FPS || mac.fanless() || tier <= 3 ? CadenceSettings.Preset.BALANCED
+			: CadenceSettings.Preset.QUALITY;
 		if (CadenceSettings.current() != preset)
 			out.add(new Change("Performance", CadenceSettings.current().label(), preset.label(),
-				preset == CadenceSettings.Preset.BALANCED ? "cool and smooth" : "full quality", () -> CadenceSettings.apply(preset)));
+				preset == CadenceSettings.Preset.BALANCED ? "sharp, eases off when needed" : "full quality", () -> CadenceSettings.apply(preset)));
+		HeatControl.Cooling cooling = preset == CadenceSettings.Preset.QUALITY ? HeatControl.Cooling.OFF
+			: goal == Goal.MAX_FPS ? HeatControl.Cooling.PERFORMANCE : HeatControl.Cooling.BALANCED;
+		if (HeatControl.cooling() != cooling)
+			out.add(new Change("Cooling", HeatControl.cooling().label, cooling.label,
+				cooling == HeatControl.Cooling.PERFORMANCE ? (mac.fanless() ? "full speed until macOS slows it" : "lets the fans work")
+					: cooling == HeatControl.Cooling.OFF ? "full quality" : "steady and cool", () -> HeatControl.setCooling(cooling)));
 		boolean smart = mac.fanless() || tier <= 2;
 		if (smart != SmartLeaves.enabled())
 			out.add(new Change("Leaves", SmartLeaves.enabled() ? "Smart" : "Detailed", smart ? "Smart" : "Detailed",

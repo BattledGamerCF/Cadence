@@ -71,6 +71,9 @@ final class Native {
 	private static final MethodHandle DEVICE_ALLOCATED = fn("mc_device_allocated", false, JAVA_LONG, JAVA_LONG);
 	// Cadence: system signals (mcsys.m)
 	private static final MethodHandle THERMAL = fn("mc_thermal_state", false, JAVA_INT);
+	private static final MethodHandle FAN_COUNT = fn("mc_fan_count", false, JAVA_INT);
+	private static final MethodHandle FAN_RPM = fn("mc_fan_rpm", false, JAVA_INT, JAVA_INT);
+	private static final MethodHandle SYS_POWER = fn("mc_system_power_mw", false, JAVA_INT);
 	private static final MethodHandle LOW_POWER = fn("mc_low_power", false, JAVA_INT);
 	private static final MethodHandle MEM_PRESSURE = fn("mc_memory_pressure", false, JAVA_INT);
 	private static final MethodHandle MEM_PRESSURE_EVENTS = fn("mc_memory_pressure_events", false, JAVA_LONG);
@@ -246,6 +249,9 @@ final class Native {
 	static void cullT(long enc, long st, long draws, long drawsOff, int count, long infos, long infosOff) { try { CULL_T.invokeExact(enc, st, draws, drawsOff, count, infos, infosOff); } catch (Throwable t) { throw rethrow(t); } }
 	static void fxSpatialRelease(long scaler) { try { FX_SPATIAL_RELEASE.invokeExact(scaler); } catch (Throwable t) { throw rethrow(t); } }
 	static int thermalState() { try { return (int) THERMAL.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static int fanCount() { try { return (int) FAN_COUNT.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static int systemPowerMw() { try { return (int) SYS_POWER.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static int fanRpm(int i) { try { return (int) FAN_RPM.invokeExact(i); } catch (Throwable t) { throw rethrow(t); } }
 	static int lowPower() { try { return (int) LOW_POWER.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int memoryPressure() { try { return (int) MEM_PRESSURE.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static long memoryPressureEvents() { try { return (long) MEM_PRESSURE_EVENTS.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }

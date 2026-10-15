@@ -39,13 +39,10 @@ public final class CadenceMessages {
 
 	private static Component joinLine() {
 		MutableComponent line = grey("Cadence: ");
-		if (HeatControl.enabled()) {
-			line.append(green("Heat Control", "When your Mac warms up, Cadence eases off a little so the game stays smooth instead of "
-				+ "slowing down later. Change it in Video Settings.", null));
-			line.append(grey(" keeps your Mac cool and smooth. "));
-		} else {
-			line.append(grey("running. Settings are in Video Settings. "));
-		}
+		line.append(green("optimizing your game automatically", "Cadence picks settings for your Mac (Quick Setup) and adjusts "
+			+ "resolution, frame rate and shadows while you play to keep it smooth and cool (Cooling: "
+			+ HeatControl.cooling().label + "). Everything can be changed in Video Settings.", null));
+		line.append(grey(". "));
 		line.append(green("[Hide these messages]", "Turns off this line and Cadence's pop-ups in the corner. "
 			+ "Turn them back on in Video Settings.", "/cadence messages off"));
 		return line;

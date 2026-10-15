@@ -31,8 +31,60 @@ import org.slf4j.LoggerFactory;
  * back. -Dcadence.heatFast=true runs the clock 10x faster (self-tests).
  */
 public final class HeatControl {
-	private static volatile boolean enabled = !"false".equalsIgnoreCase(
-		System.getProperty("cadence.heatControl", ShaderToggle.configValue("heatControl", "true")).strip());
+	/**
+	 * Cadence: the cooling preference (Video Settings "Cooling"). How early Cadence eases off as the Mac heats up:
+	 * <ul>
+	 * <li>Quiet: when the Mac is merely warm, the frame rate is held at the screen's refresh rate (coolest, quietest).</li>
+	 * <li>Balanced (default): warm holds at twice the screen's rate; hot (macOS slowing the Mac) eases off as Quiet.</li>
+	 * <li>Max Performance: nothing until macOS actually throttles; then the frame rate is held, never below the screen's rate,
+	 * and shadows/resolution ease only when it is critical. On a Mac with fans this lets macOS spin them up instead.</li>
+	 * <li>Off: never eases off (macOS may still slow a hot Mac down).</li>
+	 * </ul>
+	 * Cadence never sets fan speed itself: macOS allows that only with administrator rights.
+	 */
+	public enum Cooling {
+		QUIET("Quiet"), BALANCED("Balanced"), PERFORMANCE("Max Performance"), OFF("Off");
+
+		public final String label;
+
+		Cooling(String label) {
+			this.label = label;
+		}
+	}
+
+	private static volatile Cooling cooling = initialCooling();
+	private static volatile boolean enabled = cooling != Cooling.OFF;
+
+	/** cadence.heatControl=false (tests, old configs) is Off; otherwise the saved "cooling" value, Balanced by default. */
+	private static Cooling initialCooling() {
+		if ("false".equalsIgnoreCase(System.getProperty("cadence.heatControl", ShaderToggle.configValue("heatControl", "true")).strip()))
+			return Cooling.OFF;
+		String saved = System.getProperty("cadence.cooling", ShaderToggle.configValue("cooling", "balanced")).strip().toUpperCase(java.util.Locale.ROOT);
+		try {
+			return Cooling.valueOf(saved);
+		} catch (IllegalArgumentException e) {
+			return Cooling.BALANCED;
+		}
+	}
+
+	public static Cooling cooling() {
+		return cooling;
+	}
+
+	public static void setCooling(Cooling mode) {
+		cooling = mode;
+		enabled = mode != Cooling.OFF;
+		ShaderToggle.saveKey("cooling", mode.name().toLowerCase(java.util.Locale.ROOT));
+		ShaderToggle.saveKey("heatControl", Boolean.toString(enabled));
+		release(false);
+		// a new mode starts fresh: what the old one learned (and the frame rate its cap produced) says nothing about this one
+		learned = releasedCap = Double.POSITIVE_INFINITY;
+		releasedAt = 0;
+		freshMode = true;
+	}
+
+	/** Just switched modes: the next hold starts at the mode's own ceiling, not at the frame rate the old cap allowed. */
+	private static volatile boolean freshMode;
 	private static final long SECOND = Boolean.getBoolean("cadence.heatFast") ? 100_000_000L : 1_000_000_000L;
 	private static final long LOWER_EVERY = 10 * SECOND, RAISE_AFTER = 180 * SECOND, RAISE_EVERY = 60 * SECOND,
 		LOOSEN_EVERY = 600 * SECOND, HOT_RELEASE = 300 * SECOND, NOTICE_GAP = 180 * SECOND;
@@ -55,10 +107,10 @@ public final class HeatControl {
 		return enabled;
 	}
 
+	/** Presets: on keeps the chosen cooling (Balanced if it was Off), off is Off. */
 	public static void setEnabled(boolean on) {
-		enabled = on;
-		ShaderToggle.saveKey("heatControl", Boolean.toString(on));
-		if (!on) release(false);
+		if (on == enabled) return;
+		setCooling(on ? (cooling == Cooling.OFF ? Cooling.BALANCED : cooling) : Cooling.OFF);
 	}
 
 	/** 0 nothing eased, 1 frame rate held, 2 hot (shadows/resolution eased too), 3 critical. */
@@ -78,9 +130,15 @@ public final class HeatControl {
 		lowPower = MacSystem.lowPowerMode();
 		displayHz = Math.max(30, MacSystem.displayHz());
 		if (!enabled) return;
-		boolean warm = thermal >= 1 || lowPower;
-		int hot = Math.min(thermal, 3) >= 2 ? Math.min(thermal, 3) : 0;
-		double floor = hot > 0 ? 30 : Math.max(30, displayHz * 0.75);
+		Cooling mode = cooling;
+		boolean performance = mode == Cooling.PERFORMANCE;
+		// when holding starts, the highest it holds at, and when shadows/resolution ease too
+		boolean warm = thermal >= (performance ? 2 : 1) || lowPower;
+		// Max Performance holds at whatever the Mac manages when macOS starts throttling; the others at most 1x / 2x the screen
+		double ceiling = mode == Cooling.QUIET ? displayHz : performance ? Double.MAX_VALUE : Math.max(displayHz * 2.0, 120);
+		int hot = Math.min(thermal, 3) >= (performance ? 3 : 2) ? Math.min(thermal, 3) : 0;
+		double floor = hot > 0 ? (performance ? displayHz : 30) : Math.max(30, displayHz * 0.75);
+		if (performance && thermal >= 2 && hot == 0) floor = Math.max(floor, displayHz);
 		if (warm) {
 			coolSince = 0;
 			if (!holding()) {
@@ -89,9 +147,10 @@ public final class HeatControl {
 					learned = Math.min(learned, releasedCap);
 					log("warm again after a release", now);
 				}
-				double fps = Minecraft.getInstance().getFps();
-				cap = Math.max(floor, Math.min(displayHz, fps > 0 ? fps : displayHz));
+				double fps = freshMode ? 0 : Minecraft.getInstance().getFps();
+				cap = Math.max(floor, Math.min(ceiling, fps > 0 ? fps : Math.min(ceiling, limit())));
 				if (learned != Double.POSITIVE_INFINITY) cap = Math.min(cap, learned);
+				freshMode = false;
 				warmSince = now;
 				lastLower = now;
 				notice("Your Mac is warm: Cadence is holding about " + Math.round(cap) + " fps to keep it steady", describe(), false, now);
@@ -100,9 +159,9 @@ public final class HeatControl {
 				warmSince = now;
 				lastLower = now;
 				learned = Math.min(learned, cap);
-				cap = Math.max(floor, Math.min(cap * 0.95, displayHz));
+				cap = Math.max(floor, Math.min(cap * 0.95, Math.min(ceiling, limit())));
 				log("warm again on the way back up", now);
-			} else if (hot > 0 && now - lastLower >= LOWER_EVERY && cap > floor) {
+			} else if ((hot > 0 || performance && thermal >= 2) && now - lastLower >= LOWER_EVERY && cap > floor) {
 				// only while macOS is actually slowing the Mac down; merely warm ("fair") holds the screen's rate
 				lastLower = now;
 				cap = Math.max(floor, cap * 0.95);

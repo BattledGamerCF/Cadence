@@ -152,11 +152,20 @@ public final class CadenceSelfTest {
 					boolean open = lower.endsWith("video");
 					if (lower.endsWith("cadence")) mc.execute(() -> mc.gui.setScreen(new dev.cadence.shaders.cadence.CadenceSettingsScreen(null)));
 					else if (lower.endsWith("offer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(null)));
+					else if (lower.endsWith("goal")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.goal(null)));
+					else if (lower.endsWith("setupmax")) {
+						var r = dev.cadence.shaders.cadence.setup.QuickSetup.run(stage -> { }, dev.cadence.shaders.cadence.setup.QuickSetup.Goal.MAX_FPS);
+						mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.results(r, null)));
+					}
 					else if (lower.endsWith("setupresult")) {
 						var r = dev.cadence.shaders.cadence.setup.QuickSetup.run(stage -> { });
 						mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.results(r, null)));
 					} else mc.execute(() -> mc.gui.setScreen(open
 						? new net.minecraft.client.gui.screens.options.VideoSettingsScreen(null, mc, mc.options) : null));
+				} else if (lower.startsWith("cooling=")) {
+					// "cooling=quiet|balanced|performance|off": Video Settings' Cooling
+					dev.cadence.shaders.cadence.system.HeatControl.setCooling(dev.cadence.shaders.cadence.system.HeatControl.Cooling
+						.valueOf(lower.substring(8).toUpperCase(java.util.Locale.ROOT)));
 				} else if (lower.startsWith("thermal=")) {
 					// "thermal=N": pretend macOS reports thermal state N (0-3), "thermal=real" to stop pretending
 					String v = lower.substring(8);

@@ -69,8 +69,10 @@ public final class Profile {
 				}
 			}
 			pack = System.getProperty("cadence.shaders.pack", p.getProperty("pack", ""));
-			// Cadence live switching (default on): the loader's hooks load even with no pack, so ours must stay off too.
-			live = !"false".equalsIgnoreCase(p.getProperty("liveSwitching", "true").strip());
+			// Cadence shader switching (shaderSwitching=auto|instant|restart, default auto): with "instant" the loader's hooks
+			// load even with no pack, so ours must stay off; "auto" does that only when a pack is on at launch, so a game started
+			// without shaders gets Cadence's faster own terrain (turning shaders on then needs a restart).
+			live = liveSwitching(p.getProperty("shaderSwitching"), p.getProperty("liveSwitching"), !pack.isBlank());
 		} catch (IOException | RuntimeException e) {
 			System.out.println("[cadence] profile: can't read the Cadence Shaders config: " + e);
 			return;
@@ -95,6 +97,22 @@ public final class Profile {
 		System.out.println("[cadence] shader " + (pack.isBlank() ? "live switching on" : "pack '" + pack.strip() + "' selected")
 			+ ": terrain through the game's section pipeline for the loader;"
 			+ (set.isEmpty() ? " (kept your explicit flags)" : " set" + set));
+	}
+
+	/**
+	 * Cadence: whether this launch loads the shader loader's hooks with no pack selected ("instant" switching). auto (the
+	 * default): only when a pack is on at launch, so a game without shaders gets Cadence's own, faster terrain (measured
+	 * 30-70% more fps at 1080p); instant: always (packs can be turned on in game without a restart); restart: never. The old
+	 * key liveSwitching=false means restart. Shared with the shaders module (CadencePackGate), which must agree.
+	 */
+	public static boolean liveSwitching(String mode, String oldLive, boolean packAtLaunch) {
+		String m = mode == null ? ("false".equalsIgnoreCase(oldLive == null ? "" : oldLive.strip()) ? "restart" : "auto")
+			: mode.strip().toLowerCase(java.util.Locale.ROOT);
+		return switch (m) {
+			case "instant" -> true;
+			case "restart" -> false;
+			default -> packAtLaunch;
+		};
 	}
 
 	/**
