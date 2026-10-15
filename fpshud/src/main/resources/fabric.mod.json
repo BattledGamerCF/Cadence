@@ -7,6 +7,7 @@
 	"license": "Apache-2.0",
 	"authors": ["Cadence authors"],
 	"contributors": ["Noah Dunnagan (mcopt)"],
+	"contact": { "homepage": "https://github.com/BattledGamerCF/Cadence", "sources": "https://github.com/BattledGamerCF/Cadence", "issues": "https://github.com/BattledGamerCF/Cadence/issues" },
 	"environment": "client",
 	"mixins": ["cadence-hud.mixins.json"],
 	"depends": { "fabricloader": ">=0.19.5", "minecraft": "~26.3", "java": ">=25" }

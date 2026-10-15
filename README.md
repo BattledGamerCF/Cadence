@@ -85,7 +85,7 @@ For the development and test tools, see [CONTRIBUTING.md](CONTRIBUTING.md).
 | [`fpshud/`](fpshud) | **Cadence HUD**: the fps counter |
 | [`tools/`](tools) | Release packaging, the automated in-game test harness, benchmarks |
 | [`docs/`](docs) | Shader-pack status, changes from mcopt, licensing notes, development log and research notes |
-| [`packaging/`](packaging) | The README that goes into release zips |
+| [`packaging/`](packaging) | Release README, Modrinth page text, project icon |
 
 ## Credits and license
 

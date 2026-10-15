@@ -11,7 +11,9 @@
     "Noah Dunnagan (mcopt)"
   ],
   "contact": {
-    "sources": "https://github.com/Kausik-Velaga/minecraft-metal-renderer"
+    "homepage": "https://github.com/BattledGamerCF/Cadence",
+    "sources": "https://github.com/BattledGamerCF/Cadence",
+    "issues": "https://github.com/BattledGamerCF/Cadence/issues"
   },
   "description": "Runs shader packs (such as BSL) on Cadence's native Metal renderer. Based on the Shader Loader from minecraft-metal-renderer by Kausik Velaga (MIT).",
   "environment": "client",
