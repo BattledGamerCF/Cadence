@@ -28,6 +28,7 @@ public final class ShaderLoaderMod implements ClientModInitializer {
     // Cadence: the render thread's scheduling role, and the heat/memory monitor (Heat Control, memory guard)
     dev.cadence.shaders.cadence.system.ThreadRoles.renderThread();
     dev.cadence.shaders.cadence.system.SystemMonitor.start();
+    dev.cadence.shaders.cadence.system.StallTrace.start();  // (diagnostics: -Dcadence.stallTrace=MS)
     // Cadence: proof of the hand-off in the game log (the profile's own lines print before the log is up).
     LOGGER.info(
         "Cadence: pack at launch '{}', live switching {}, cadence.own={}, cadence.startup.mslCache={}",
