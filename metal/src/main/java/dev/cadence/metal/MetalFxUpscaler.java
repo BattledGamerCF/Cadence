@@ -33,6 +33,11 @@ public final class MetalFxUpscaler {
 				return false;
 			}
 		}
+		// (lazy clears: MetalFX reads the source and writes every destination pixel outside a render pass, so the source's deferred
+		// clear is written first and the destination's is dropped; left pending, it ran at the next pass on the destination and
+		// wiped the upscaled world: packs below 100% scale showed only the clear colour and the HUD)
+		encoder.flushClear((MetalTexture) a);
+		encoder.dropPendingClear((MetalTexture) b);
 		if (Native.fxSpatialEncode(encoder.enc, scaler, in.handle, out.handle) == 0) {
 			unsupported = true;
 			System.out.println("cadence-metal: MetalFX can't write the main target (texture usage); using the shader upscale");

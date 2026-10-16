@@ -128,6 +128,17 @@ public final class MetalCompute {
 	}
 
 	/** Every mip level of texture from its base level, in one blit command on the frame's encoder. */
+	/** The whole mip chain of texture from its level 0, after its deferred clear (lazy clears) is written. */
+	public static void generateMipmaps(com.mojang.renderpearl.api.textures.GpuTexture texture) {
+		MetalEncoder e = encoder();
+		e.flushClear(texture);
+		try {
+			GENERATE_MIPS.invokeExact(e.enc, ((MetalTexture) texture).handle);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
 	public static void generateMipmaps(long texture) {
 		try {
 			GENERATE_MIPS.invokeExact(encoder().enc, texture);
@@ -241,6 +252,8 @@ public final class MetalCompute {
 	/** Opens a compute encoder in the frame (whatever encoder is open ends first: call between render passes). */
 	public static Pass begin() {
 		MetalEncoder e = encoder();
+		// (lazy clears: the kernel binds textures by handle, so every deferred clear is written before it can read or write one)
+		e.flushPendingClears();
 		try {
 			return new Pass(e, (long) BEGIN.invokeExact(e.enc));
 		} catch (Throwable t) {

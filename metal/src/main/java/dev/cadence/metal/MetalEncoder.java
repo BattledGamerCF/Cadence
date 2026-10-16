@@ -521,6 +521,14 @@ final class MetalEncoder implements CommandEncoderBackend {
 		return true;
 	}
 
+	/** Every deferred clear written now (before work that binds textures by handle: compute). */
+	void flushPendingClears() {
+		for (MetalTexture t : List.copyOf(this.pendingClears)) {
+			if (t.isClosed()) this.pendingClears.remove(t);
+			else this.flushClear(t);
+		}
+	}
+
 	/** Forgets a pending clear of t: something is about to overwrite all of it (the shaderpack's final pass). */
 	void dropPendingClear(MetalTexture t) {
 		t.pendingColorClear = null;

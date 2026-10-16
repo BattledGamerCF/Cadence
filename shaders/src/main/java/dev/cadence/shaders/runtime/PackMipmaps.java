@@ -129,7 +129,7 @@ public final class PackMipmaps implements AutoCloseable {
     // Cadence: the whole chain in one blit command (Metal's box filter, what OpenGL's glGenerateMipmap gives on this
     // hardware) instead of a render pass per level, for formats Metal filters on every Apple GPU
     if (BLIT_MIPS && blitFormat(texture.texture.getFormat())) {
-      dev.cadence.metal.MetalCompute.generateMipmaps(dev.cadence.metal.MetalBridge.textureHandle(texture.texture));
+      dev.cadence.metal.MetalCompute.generateMipmaps(texture.texture);
       return;
     }
     int firstRasterLevel = 1;
