@@ -7,5 +7,6 @@ Day-by-day notes written while building Cadence: what was measured, what changed
 - [OVERNIGHT.md](OVERNIGHT.md): memory, loading and hang fixes.
 - [DAY2.md](DAY2.md): entity culling, shadow reuse, particle physics and more.
 - [DESIGN-DAY3.md](DESIGN-DAY3.md): design notes for the third day.
+- [PERF-NIGHT.md](PERF-NIGHT.md): the performance night: how gains were proven, what was kept and dropped.
 
 The shader-pack work is logged in [../SHADER-PACKS.md](../SHADER-PACKS.md).
