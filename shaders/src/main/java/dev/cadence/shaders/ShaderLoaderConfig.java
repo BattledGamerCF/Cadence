@@ -36,6 +36,18 @@ public record ShaderLoaderConfig(Path pack, Map<String, String> options, String 
       if (key.startsWith("option."))
         options.put(key.substring(7), properties.getProperty(key).trim());
     }
+    // Cadence: the pack's own settings (Shader Pack Settings), in shaderpacks/<pack>.txt as Iris keeps them, so settings made
+    // in Iris carry over; they win over the older global option.* keys
+    if (!selected.isEmpty()) {
+      Path own = packs.resolve(Path.of(selected).getFileName().toString() + ".txt");
+      if (Files.isRegularFile(own)) {
+        Properties p = new Properties();
+        try (var input = Files.newBufferedReader(own)) {
+          p.load(input);
+        }
+        for (String key : p.stringPropertyNames()) options.put(key, p.getProperty(key).trim());
+      }
+    }
     for (String key : System.getProperties().stringPropertyNames()) {
       if (key.startsWith("cadence.shaders.option."))
         options.put(key.substring("cadence.shaders.option.".length()), System.getProperty(key));

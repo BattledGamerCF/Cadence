@@ -44,9 +44,23 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addSmall(ShaderToggle.scaleButton(), ShaderToggle.upscalerButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.leavesButton(), dev.cadence.shaders.cadence.CadenceSettings.messagesButton());
 		this.list.addHeader(Component.literal("Cadence: Shaders"));
-		this.list.addSmall(ShaderToggle.packButton(), ShaderToggle.qualityButton());
-		this.list.addSmall(ShaderToggle.shadowRateButton(), ShaderToggle.liveButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.packCheckButton(), ShaderToggle.folderButton());
+		net.minecraft.client.gui.components.Button settings = net.minecraft.client.gui.components.Button.builder(
+				Component.literal("Shader Pack Settings..."), b -> {
+					Screen next = dev.cadence.shaders.cadence.PackSettingsScreen.open(self);
+					if (next != null) this.minecraft.gui.setScreen(next);
+				})
+			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
+			.tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+				"The chosen pack's own options (sun, clouds, water, shadows...), laid out the way its author arranged them. "
+					+ "Changes apply when you leave the settings.")))
+			.build();
+		settings.active = !ShaderToggle.selectedPack().isEmpty();
+		if (!settings.active) settings.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
+			"Pick a shader pack first (the Shaders button), then its settings open here.")));
+		this.list.addSmall(ShaderToggle.packButton(), settings);
+		this.list.addSmall(ShaderToggle.qualityButton(), ShaderToggle.shadowRateButton());
+		this.list.addSmall(ShaderToggle.liveButton(), dev.cadence.shaders.cadence.CadenceSettings.packCheckButton());
+		this.list.addSmall(ShaderToggle.folderButton(), null);
 	}
 
 	@Inject(method = "removed", at = @At("HEAD"))

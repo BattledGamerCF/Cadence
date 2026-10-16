@@ -150,7 +150,17 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("screen=")) {
 					// "screen=video": open Video Settings (its screenshot shows the Cadence rows); "screen=close": close it
 					boolean open = lower.endsWith("video");
-					if (lower.endsWith("offer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(null)));
+					if (lower.endsWith("packsettings")) mc.execute(() -> mc.gui.setScreen(PackSettingsScreen.open(null)));
+					else if (lower.startsWith("screen=packpage:")) {
+						// "screen=packpage:N": the open settings page's Nth page button (1 = first) pressed
+						int n = Integer.parseInt(lower.substring(16));
+						mc.execute(() -> PackSettingsScreen.pressPage(mc.gui.screen(), n));
+					} else if (lower.startsWith("screen=packclick:")) {
+						// "screen=packclick:N": the open settings page's Nth option button pressed (one value on)
+						int n = Integer.parseInt(lower.substring(17));
+						mc.execute(() -> PackSettingsScreen.pressOption(mc.gui.screen(), n));
+					} else if (lower.endsWith("packclose")) mc.execute(() -> mc.gui.screen().onClose());
+					else if (lower.endsWith("offer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(null)));
 					else if (lower.endsWith("goal")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.goal(null)));
 					else if (lower.endsWith("setupmax")) {
 						var r = dev.cadence.shaders.cadence.setup.QuickSetup.run(stage -> { }, dev.cadence.shaders.cadence.setup.QuickSetup.Goal.MAX_FPS);

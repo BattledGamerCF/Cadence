@@ -58,6 +58,15 @@ public final class ShaderToggle {
 		return p;
 	}
 
+	/** The pack picked in Video Settings (not applied yet), or else the saved one; "" for off (Shader Pack Settings). */
+	public static String selectedPack() {
+		return pending != null ? pending : saved();
+	}
+
+	public static Path packsDirectory() {
+		return packsDir();
+	}
+
 	/** A key from the config file, or {@code fallback}. */
 	public static String configValue(String key, String fallback) {
 		return load().getProperty(key, fallback);

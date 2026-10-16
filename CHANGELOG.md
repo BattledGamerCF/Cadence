@@ -25,6 +25,9 @@ Easier:
   (the separate Cadence Settings screen is gone), and Cadence's status lines wrap instead of running past the menu at
   large GUI scales or small windows.
 - The Graphics API option's default now reads **Cadence (Metal)**.
+- **Shader Pack Settings**: every pack's own options (shadows, clouds, water, sky...) on the pack's own pages, with its
+  names and help text, as in Iris. Click for the next value, shift-click for the previous one; changes apply when you
+  leave. Settings are kept per pack in `shaderpacks/<pack>.txt`, the same file Iris uses, so Iris settings carry over.
 - **Compatibility layers (first version)**: where another mod hooks code Cadence replaces, Cadence uses Minecraft's own
   code in that one area and keeps every other optimization ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)).
 
