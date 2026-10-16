@@ -69,6 +69,9 @@ public final class CompatLayers {
 		"Lcom/llamalad7/mixinextras/injector/wrapmethod/WrapMethod;");
 
 	/** One hook: a mixin's injector or overwrite on a target method. */
+	/** Mod id to the name players know it by (fabric.mod.json "name"), for the report. */
+	private static final Map<String, String> NAMES = new HashMap<>();
+
 	record Hook(String mod, String mixin, String target, String method, boolean replacing) {
 	}
 
@@ -107,6 +110,7 @@ public final class CompatLayers {
 			List<Hook> ours = new ArrayList<>(), theirs = new ArrayList<>();
 			for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
 				String id = mod.getMetadata().getId();
+				NAMES.put(id, mod.getMetadata().getName());
 				if (id.startsWith("cadence")) read(mod, ours);
 				else if (!known(id)) read(mod, theirs);
 			}
@@ -120,7 +124,7 @@ public final class CompatLayers {
 				Set<Hook> other = byMethod.get(o.target + "." + o.method);
 				if (other == null) continue;
 				Set<String> mods = new LinkedHashSet<>();
-				for (Hook t : other) if (o.replacing || t.replacing) mods.add(t.mod);
+				for (Hook t : other) if (o.replacing || t.replacing) mods.add(NAMES.getOrDefault(t.mod, t.mod));
 				if (mods.isEmpty()) continue;
 				String area = area(o.mixin);
 				boolean applied = act && (area.equals("own terrain renderer") || o.mixin.startsWith("dev.cadence.metal.mixin.cpu.")
