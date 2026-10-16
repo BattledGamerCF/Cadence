@@ -265,6 +265,12 @@ public final class ShaderPack {
     // (the loader's own macros too: Pegasus declares a profile only #if defined IS_IRIS)
     ShaderProperties properties = properties(Map.of(), dev.cadence.shaders.runtime.PackEnvironment.definitions());
     Map<String, String> result = new TreeMap<>();
+    // Cadence: a profile this pack doesn't have (one saved for another pack, or removed in a newer version) is ignored, as
+    // OptiFine and Iris do: the pack loads with its defaults instead of being refused
+    if (!properties.values().containsKey("profile." + profile)) {
+      org.slf4j.LoggerFactory.getLogger("cadence_shaders").warn("{} has no shader profile {}: using its defaults", name(), profile);
+      return Map.of();
+    }
     expandProfile(profile, properties.values(), result, new ArrayDeque<>());
     // (options a profile names that the pack doesn't have are left out: they'd be ignored anyway)
     result.keySet().retainAll(options.options().keySet());
@@ -286,7 +292,9 @@ public final class ShaderPack {
     for (String token : profile.trim().split("\\s+")) {
       if (token.isEmpty()) continue;
       if (token.startsWith("profile.")) {
-        expandProfile(token.substring(8), properties, result, stack);
+        // (a profile naming one that doesn't exist: that part is skipped)
+        if (properties.containsKey(token)) expandProfile(token.substring(8), properties, result, stack);
+        else org.slf4j.LoggerFactory.getLogger("cadence_shaders").warn("Shader profile {} names a missing {}", name, token);
       } else if (token.startsWith("!")) {
         result.put(token.substring(1), "false");
       } else if (token.contains("=") || token.contains(":")) {

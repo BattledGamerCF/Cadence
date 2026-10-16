@@ -83,7 +83,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			ShaderPack pack = ShaderPack.load(ShaderToggle.packsDirectory().resolve(name));
 			Map<String, String> lang = lang(pack);
 			Session s = new Session(name, pack, lang, Map.of());
-			s.profile = ShaderToggle.configValue("profile", "").strip();
+			s.profile = ShaderToggle.profileFor(name);
 			s.own.putAll(readOwn(name));
 			Map<String, String> props = pack.properties(s.values(), PackEnvironment.definitions()).values();
 			Session session = new Session(name, pack, lang, props);
@@ -252,7 +252,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		} catch (IOException e) {
 			LoggerFactory.getLogger("cadence_shaders").warn("Shader Pack Settings: can't save {}: {}", file, e.toString());
 		}
-		ShaderToggle.saveKey("profile", this.session.profile);
+		ShaderToggle.saveProfile(this.session.packName, this.session.profile);
 		if (this.session.packName.equals(ShaderSwitcher.active())) ShaderSwitcher.reload();
 	}
 

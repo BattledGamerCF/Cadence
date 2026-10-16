@@ -32,6 +32,8 @@ Easier:
   code in that one area and keeps every other optimization ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)).
 
 Fixed:
+- A shader pack refused to load when the quality profile chosen for another pack didn't exist in it ("Unknown shader
+  profile: MINIMUM" with MakeUp). Profiles are now kept per pack, and a profile a pack lacks is ignored, as in Iris.
 - A crash when turning a shader pack on with World Resolution below 100%.
 - When a shader pack fails, it is turned off and the game keeps running (it used to crash a frame later).
 - Auto resolution: a light pack after a heavy one comes back to full sharpness at once instead of over 20-30 s.

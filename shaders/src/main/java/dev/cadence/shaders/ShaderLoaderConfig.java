@@ -28,8 +28,10 @@ public record ShaderLoaderConfig(Path pack, Map<String, String> options, String 
     }
     String selected =
         System.getProperty("cadence.shaders.pack", properties.getProperty("pack", "")).trim();
+    // Cadence: the profile chosen for this pack (profile.<pack>=), else the older shared one (ignored if the pack lacks it)
     String profile =
-        System.getProperty("cadence.shaders.profile", properties.getProperty("profile", ""))
+        System.getProperty("cadence.shaders.profile",
+                properties.getProperty("profile." + selected, properties.getProperty("profile", "")))
             .trim();
     Map<String, String> options = new TreeMap<>();
     for (String key : properties.stringPropertyNames()) {

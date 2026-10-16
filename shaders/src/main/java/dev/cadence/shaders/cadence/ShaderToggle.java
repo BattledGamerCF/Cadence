@@ -67,6 +67,20 @@ public final class ShaderToggle {
 		return packsDir();
 	}
 
+	/**
+	 * The quality profile chosen for this pack (profile.&lt;pack&gt;=), or the older shared profile= when none was chosen for it yet;
+	 * "" is the pack's default. (A shared profile once leaked into other packs: BSL's MINIMUM refused MakeUp at launch.)
+	 */
+	public static String profileFor(String pack) {
+		Properties p = load();
+		String own = p.getProperty("profile." + pack);
+		return (own != null ? own : p.getProperty("profile", "")).strip();
+	}
+
+	public static void saveProfile(String pack, String profile) {
+		saveKey("profile." + pack, profile);
+	}
+
 	/** A key from the config file, or {@code fallback}. */
 	public static String configValue(String key, String fallback) {
 		return load().getProperty(key, fallback);
@@ -291,7 +305,8 @@ public final class ShaderToggle {
 
 	/** Cycles the selected pack's quality profiles (pack default first). Applied, with a live reload, when the screen closes. */
 	public static Button qualityButton() {
-		profileAtOpen = configValue("profile", "").strip();
+		profileAtOpen = profileFor(selectedPack());
+		if (!profileAtOpen.isEmpty() && !profiles(selectedPack()).contains(profileAtOpen)) profileAtOpen = "";  // (not this pack's)
 		pendingProfile = profileAtOpen;
 		Button[] self = new Button[1];
 		self[0] = Button.builder(profileLabel(pendingProfile), b -> {
@@ -299,9 +314,11 @@ public final class ShaderToggle {
 			List<String> list = new ArrayList<>();
 			list.add("");
 			list.addAll(profiles(pack));
-			int i = list.indexOf(pendingProfile);
+			// (the pack may have changed since the screen opened: start from that pack's own profile)
+			String now = profileFor(pack);
+			int i = list.indexOf(list.contains(pendingProfile) ? pendingProfile : now);
 			pendingProfile = list.get((i + 1) % list.size());
-			saveKey("profile", pendingProfile);
+			saveProfile(pack, pendingProfile);
 			self[0].setMessage(profileLabel(pendingProfile));
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(Component.literal(
 			"The shader pack's own quality levels (for BSL: Minimum to Ultra). Lower is much faster: simpler shadows, fewer "

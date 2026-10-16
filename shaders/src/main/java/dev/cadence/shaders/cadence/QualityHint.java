@@ -56,7 +56,7 @@ final class QualityHint {
 		String pack = ShaderSwitcher.active();
 		if (pack.isEmpty()) return;
 		List<String> profiles = ShaderToggle.profiles(pack);
-		String current = ShaderToggle.configValue("profile", "").strip();
+		String current = ShaderToggle.profileFor(pack);
 		String[] pick = suggestions(profiles, current);
 		if (pick == null) return;
 		Minecraft mc = Minecraft.getInstance();

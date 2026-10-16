@@ -78,7 +78,7 @@ public final class CadenceSelfTest {
 					String profile = step.substring(8).strip();
 					String chosen = profile.equalsIgnoreCase("default") ? "" : profile;
 					mc.execute(() -> {
-						ShaderToggle.saveKey("profile", chosen);
+						ShaderToggle.saveProfile(ShaderToggle.selectedPack(), chosen);
 						ShaderSwitcher.reload();
 					});
 				} else if (lower.startsWith("compact=")) {
