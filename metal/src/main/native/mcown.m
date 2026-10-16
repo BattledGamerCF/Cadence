@@ -686,7 +686,7 @@ static uint32_t ownVgClass(Own *w, int v, int id) {
 // the cull. u: projection, projOff, globals, globalsOff, terrain, terrainOff, fog, fogOff (the game's uniform buffers).
 // Leaves pipeline, depth and cull state changed: the caller puts the game's back. 1 drawn, 0 no encoder open, -1 err set.
 // Cadence: own_fs's flags (buffer 29), from mco_set_hiz_tiled bits 20-21: 1 = RGSS's samples skipped where vanilla's blend is 0 (exact),
-// 2 = verification (magenta where the skip would change the sample)
+// 2 = verification (magenta where the shortcuts would change the sample)
 static uint32_t mco_cad_frag = 1;
 
 int mco_draw(Own *w, Enc *enc, int cutout, const void *frame, int frameLength, id<MTLBuffer> arena, id<MTLBuffer> sections, id<MTLBuffer> recs,
