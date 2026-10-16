@@ -320,9 +320,15 @@ final class MetalRenderPass implements RenderPassBackend {
 		}
 	}
 
+	/** Measurement only (FrameHints.dropPipeline): this pipeline's draws are skipped, to measure what they cost. */
+	private boolean dropped() {
+		String drop = FrameHints.dropPipeline;
+		return drop != null && this.pipeline != null && this.pipeline.name.contains(drop);
+	}
+
 	@Override
 	public void drawIndexed(int indexCount, int instanceCount, int firstIndex, int vertexOffset, int firstInstance) {
-		if (!this.delegated()) return;
+		if (!this.delegated() || this.dropped()) return;
 		this.bindUniforms(1);
 		this.indices += (long) indexCount * instanceCount;
 		String name = Objects.requireNonNull(this.pipeline).name;
@@ -371,14 +377,14 @@ final class MetalRenderPass implements RenderPassBackend {
 
 	@Override
 	public void drawIndexedIndirect(GpuBufferSlice commands, int drawCount) {
-		if (!this.delegated()) return;
+		if (!this.delegated() || this.dropped()) return;
 		this.bindUniforms(drawCount);
 		Native.drawIndexedIndirect(this.enc, this.encoder.use(commands.buffer()).handle, commands.offset(), drawCount);
 	}
 
 	@Override
 	public void draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
-		if (!this.delegated()) return;
+		if (!this.delegated() || this.dropped()) return;
 		this.bindUniforms(1);
 		this.indices += (long) vertexCount * instanceCount;
 		Native.draw(this.enc, vertexCount, instanceCount, firstVertex, firstInstance);

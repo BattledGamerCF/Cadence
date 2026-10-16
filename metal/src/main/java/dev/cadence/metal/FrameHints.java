@@ -23,4 +23,7 @@ public final class FrameHints {
 	public static boolean lazyClears() {
 		return MetalEncoder.LAZY_CLEARS;
 	}
+
+	/** Measurement only (self-test ab=drop-NAME): draws whose pipeline name contains this are skipped; null: none. */
+	public static volatile String dropPipeline;
 }

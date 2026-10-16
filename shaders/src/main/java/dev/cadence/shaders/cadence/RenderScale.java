@@ -223,7 +223,13 @@ public final class RenderScale {
 	/** Cadence (PackCheck): the scale is held while a pack check runs. */
 	public static volatile boolean frozen;
 
+	/** Frames drawn so far, and the render thread's id (self-test A/B: its CPU time per frame). */
+	public static volatile long frameCount;
+	public static volatile long renderThreadId = -1;
+
 	public static void frame(long nowNanos, boolean chunksBuilding) {
+		frameCount++;
+		if (renderThreadId < 0) renderThreadId = Thread.currentThread().threadId();
 		if (frozen) return;
 		if (chunksBuilding) upVotes = 0;
 		if (lastFrame != 0) {

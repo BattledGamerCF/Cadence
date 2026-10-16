@@ -524,10 +524,12 @@ public final class CadenceSelfTest {
 				case "meshtint" -> dev.cadence.shaders.cadence.mesh.MeshTintCache.enabled = on;
 				case "facepacked" -> dev.cadence.shaders.cadence.facecull.FaceCull.packedGroups = on;
 				case "lazyclears" -> dev.cadence.metal.FrameHints.lazyClears(on);
+				case "modelwrite" -> dev.cadence.metal.cpu.Cpu.modelWrite = on;
 				case "fsdiscard" -> dev.cadence.shaders.runtime.ShaderRuntime.setDiscardFullscreenLoads(on);
 				default -> {
 					// "skip-PROGRAM": ON = that pack program draws nothing (its GPU cost, measured interleaved: thermal drift cancels)
-					if (feature.startsWith("skip-"))
+					if (feature.startsWith("drop-")) dev.cadence.metal.FrameHints.dropPipeline = on ? feature.substring(5) : null;
+					else if (feature.startsWith("skip-"))
 						dev.cadence.shaders.runtime.ShaderRenderPass.SKIP_PROGRAMS = on ? java.util.Set.of(feature.substring(5)) : java.util.Set.of();
 					else LOGGER.info("[selftest] ab: unknown feature {}", feature);
 				}
@@ -536,6 +538,8 @@ public final class CadenceSelfTest {
 	}
 
 	private static void abTest(Minecraft mc, String feature, int seconds) {
+		double[] cpuMs = new double[2];
+		int[] cpuN = new int[2];
 		double[] gpu = new double[2], interval = new double[2];
 		int[] n = new int[2];
 		boolean on = false;
@@ -545,6 +549,10 @@ public final class CadenceSelfTest {
 			abSet(mc, feature, on);
 			long w0 = RenderScale.windows(), wStart = w0;
 			long until = System.nanoTime() + 2_000_000_000L;
+			// the render thread's CPU time per frame in this state (after 300 ms to settle): CPU work shows even when the GPU sets the pace
+			sleep(300);
+			java.lang.management.ThreadMXBean mx = java.lang.management.ManagementFactory.getThreadMXBean();
+			long tid = RenderScale.renderThreadId, cpu0 = tid >= 0 ? mx.getThreadCpuTime(tid) : -1, f0 = RenderScale.frameCount;
 			while (System.nanoTime() < until) {
 				sleep(50);
 				long w = RenderScale.windows();
@@ -557,6 +565,12 @@ public final class CadenceSelfTest {
 					w0 = w;
 				}
 			}
+			long cpu1 = tid >= 0 ? mx.getThreadCpuTime(tid) : -1, f1 = RenderScale.frameCount;
+			if (cpu0 >= 0 && cpu1 > cpu0 && f1 > f0) {
+				int k = on ? 1 : 0;
+				cpuMs[k] += (cpu1 - cpu0) / 1e6 / (f1 - f0);
+				cpuN[k]++;
+			}
 			// no pack (no render-scale windows): the frame time from the game's fps counter, which covers the second that
 			// ended just now (wholly in this state)
 			if (RenderScale.windows() == wStart && mc.getFps() > 0) {
@@ -566,6 +580,10 @@ public final class CadenceSelfTest {
 			}
 		}
 		abSet(mc, feature, true);
+		LOGGER.info("[selftest] ab {}: render-thread CPU per frame OFF {} ms (n {}) | ON {} ms (n {}) | ON-OFF {} ms ({}%)", feature,
+			String.format(Locale.ROOT, "%.3f", cpuN[0] == 0 ? 0 : cpuMs[0] / cpuN[0]), cpuN[0], String.format(Locale.ROOT, "%.3f", cpuN[1] == 0 ? 0 : cpuMs[1] / cpuN[1]), cpuN[1],
+			String.format(Locale.ROOT, "%+.3f", (cpuN[1] == 0 ? 0 : cpuMs[1] / cpuN[1]) - (cpuN[0] == 0 ? 0 : cpuMs[0] / cpuN[0])),
+			String.format(Locale.ROOT, "%+.1f", cpuN[0] == 0 || cpuMs[0] == 0 ? 0 : 100 * ((cpuMs[1] / Math.max(1, cpuN[1])) / (cpuMs[0] / cpuN[0]) - 1)));
 		LOGGER.info("[selftest] ab {}: OFF gpu {} ms interval {} ms (n {}) | ON gpu {} ms interval {} ms (n {}) | ON-OFF gpu {} ms, interval {} ms",
 			feature, String.format(Locale.ROOT, "%.2f", n[0] == 0 ? 0 : gpu[0] / n[0]), String.format(Locale.ROOT, "%.2f", n[0] == 0 ? 0 : interval[0] / n[0]), n[0],
 			String.format(Locale.ROOT, "%.2f", n[1] == 0 ? 0 : gpu[1] / n[1]), String.format(Locale.ROOT, "%.2f", n[1] == 0 ? 0 : interval[1] / n[1]), n[1],
