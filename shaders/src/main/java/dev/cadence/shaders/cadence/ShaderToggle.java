@@ -152,13 +152,11 @@ public final class ShaderToggle {
 		return base.copy().append(Component.literal("  (restart)").withStyle(ChatFormatting.YELLOW));
 	}
 
-	private static final Component TOOLTIP = Component.literal(
-		"Shaders add realistic light, shadows and water, but cost a lot of speed. Click to pick a pack, or Off. It switches "
-			+ "when you close Video Settings. To add packs, put their .zip files in the Shader Packs folder.");
-	private static final Component TOOLTIP_RESTART = Component.literal(
-		"Click to pick a shader pack, or Off. You started without shaders, so Cadence is using its faster way of drawing "
-			+ "terrain: a pack you pick turns on after you restart Minecraft. (Shader Switching: Instant in Video Settings "
-			+ "makes it switch without a restart, with the slower terrain.)");
+	private static final Tooltip TOOLTIP = Tips.of("Realistic light, shadows and water, at a cost in speed.",
+		"#Click to pick a pack or Off; it switches when you leave this screen.",
+		"#Add packs: put their .zip files in the Shader Packs folder.");
+	private static final Tooltip TOOLTIP_RESTART = Tips.of("Click to pick a pack or Off.",
+		"#It turns on after a restart (Shader Switching is set to Restart in your config).");
 
 	/** Video Settings closed: switch to the chosen pack now (live), if it differs from the one in use. */
 	public static void applyPending() {
@@ -191,17 +189,15 @@ public final class ShaderToggle {
 			pending = list.get((i + 1) % list.size());
 			save(pending);
 			self[0].setMessage(label(pending));
-			self[0].setTooltip(Tooltip.create(CadencePackGate.hooksApplied() ? TOOLTIP : TOOLTIP_RESTART));
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(none ? TOOLTIP_NONE
-			: CadencePackGate.hooksApplied() ? TOOLTIP : TOOLTIP_RESTART)).build();
+			self[0].setTooltip(CadencePackGate.hooksApplied() ? TOOLTIP : TOOLTIP_RESTART);
+		}).width(Button.DEFAULT_WIDTH).tooltip(none ? TOOLTIP_NONE
+			: CadencePackGate.hooksApplied() ? TOOLTIP : TOOLTIP_RESTART).build();
 		return self[0];
 	}
 
 	private static final Component NONE_LABEL = Component.literal("Shaders: None Installed").withStyle(ChatFormatting.GRAY);
-	private static final Component TOOLTIP_NONE = Component.literal(
-		"You don't have any shader packs yet, so there is nothing to turn on.\n"
-			+ "Download a pack (for example BSL or Complementary Reimagined) as a .zip, then click here: Cadence opens your "
-			+ "shaderpacks folder in Finder. Put the .zip in it and come back to Video Settings to pick it.");
+	private static final Tooltip TOOLTIP_NONE = Tips.of("No shader packs installed yet.",
+		"#Click to open the shaderpacks folder, put a pack's .zip in it (BSL, Complementary...), then pick it here.");
 
 	/** Opens shaderpacks/ in Finder, creating it if missing. */
 	static void openPacksFolder() {
@@ -251,11 +247,9 @@ public final class ShaderToggle {
 			};
 			saveKey("shaderSwitching", mode[0]);
 			self[0].setMessage(liveLabel(mode[0]));
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(Component.literal(
-			"Auto (recommended): if you start the game without shaders, Cadence uses its faster way of drawing terrain (up to "
-				+ "70% more fps); turning shaders on then needs a restart. Started with shaders, you can switch packs any time.\n"
-				+ "Instant: switch shaders on and off any time, but always the slower terrain.\n"
-				+ "Restart: like Auto, but switching packs always needs a restart.\nChanging this takes effect after a restart."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("When a chosen shader pack turns on.",
+			"Auto|right away, and Cadence's faster terrain returns when shaders are off",
+			"Restart|only after a restart")).build();
 		return self[0];
 	}
 
@@ -320,9 +314,10 @@ public final class ShaderToggle {
 			pendingProfile = list.get((i + 1) % list.size());
 			saveProfile(pack, pendingProfile);
 			self[0].setMessage(profileLabel(pendingProfile));
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(Component.literal(
-			"The shader pack's own quality levels (for BSL: Minimum to Ultra). Lower is much faster: simpler shadows, fewer "
-				+ "light effects. Changes when you close Video Settings."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The pack's own quality presets.",
+			"Lower|much faster: simpler shadows and lighting",
+			"Higher|nicer, slower",
+			"#Applies when you leave this screen.")).build();
 		return self[0];
 	}
 
@@ -347,11 +342,11 @@ public final class ShaderToggle {
 				else RenderScale.set(SCALES[i + 1]);
 			}
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(Component.literal(
-			"How sharply the 3D world (and your hand) is drawn. Your hotbar, crosshair, inventory, menus and text always stay "
-				+ "sharp.\nLower = faster and cooler, but softer.\nAuto (recommended): full sharpness whenever your Mac can keep "
-				+ "up, lowered only as much as needed when it can't. With shaders this is the biggest fps setting; without "
-				+ "shaders Auto rarely needs to lower it."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How sharp the world is drawn. Menus, hotbar and text always stay sharp.",
+			"Auto|sharp whenever your Mac keeps up, lower only when needed (recommended)",
+			"100%|always full sharpness",
+			"85% to 50%|faster and cooler, softer",
+			"#With shaders this is the biggest fps setting.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(scaleLabel()));
 		return self[0];
 	}
@@ -362,10 +357,10 @@ public final class ShaderToggle {
 		self[0] = Button.builder(upscalerLabel(), b -> {
 			RenderScale.setUpscaler((RenderScale.upscaler() + 1) % 3);
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(Component.literal(
-			"Only matters when World Resolution is below 100%: how the smaller picture is stretched back to full size.\n"
-				+ "Apple (recommended): sharpest edges, made by Apple for Macs (MetalFX).\nSmooth: a little softer, very even.\n"
-				+ "Fast: softest, but the cheapest; best for older or very hot Macs."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("When Resolution is below 100%, how the picture is sharpened back:",
+			"Apple|sharpest edges, Apple's MetalFX (recommended)",
+			"Smooth|a little softer, very even",
+			"Fast|softest, cheapest")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(upscalerLabel()));
 		return self[0];
 	}
@@ -377,10 +372,9 @@ public final class ShaderToggle {
 			ShadowReuse.setRate(ShadowReuse.rate() == 1 ? 2 : 1);
 			saveKey("shadowRate", Integer.toString(ShadowReuse.rate()));
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(Component.literal(
-			"Shaders only: how often sun shadows are redrawn.\nEvery 2nd frame (recommended): about 15% more fps. Shadows of "
-				+ "buildings and terrain look exactly the same; shadows of moving things (mobs, you, swaying leaves) move a "
-				+ "little less smoothly.\nEvery frame: smoothest moving shadows, slower."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Shaders only: how often sun shadows are redrawn.",
+			"Every 2nd Frame|about 15% more fps; moving shadows a little less smooth (recommended)",
+			"Every Frame|smoothest, slower")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(shadowRateLabel()));
 		return self[0];
 	}
@@ -409,6 +403,6 @@ public final class ShaderToggle {
 			} catch (IOException e) {
 				System.out.println("[cadence-shaders] can't open " + dir + ": " + e);
 			}
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(Component.literal("Open the shaderpacks folder in Finder."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Opens the shaderpacks folder in Finder.")).build();
 	}
 }

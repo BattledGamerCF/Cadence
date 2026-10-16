@@ -36,8 +36,8 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 			net.minecraft.client.gui.components.Button.builder(Component.literal("Quick Setup..."),
 				b -> this.minecraft.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(self)))
 			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
-			.tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-				"Checks what your Mac can do (about 15 seconds) and recommends settings for it. Nothing changes unless you press Apply.")))
+			.tooltip(dev.cadence.shaders.cadence.Tips.of("Tests your Mac (about 15 seconds) and recommends settings.",
+				"#Nothing changes until you press Apply."))
 			.build());
 		this.list.addHeader(Component.literal("Cadence: Performance"));
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.backgroundButton());
@@ -52,13 +52,11 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 						"Its files couldn't be read (see the log). The pack itself may still work.");
 				})
 			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
-			.tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-				"The chosen pack's own options (sun, clouds, water, shadows...), laid out the way its author arranged them. "
-					+ "Changes apply when you leave the settings.")))
+			.tooltip(dev.cadence.shaders.cadence.Tips.of("The chosen pack's own options (sun, clouds, water, shadows...), on its own pages.",
+				"#Changes apply when you leave."))
 			.build();
 		settings.active = !ShaderToggle.selectedPack().isEmpty();
-		if (!settings.active) settings.setTooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-			"Pick a shader pack first (the Shaders button), then its settings open here.")));
+		if (!settings.active) settings.setTooltip(dev.cadence.shaders.cadence.Tips.of("Pick a shader pack first (the Shaders button)."));
 		this.list.addSmall(ShaderToggle.packButton(), settings);
 		this.list.addSmall(ShaderToggle.qualityButton(), ShaderToggle.shadowRateButton());
 		// (Shader Switching is gone from the menu: packs switch in game and Cadence's faster terrain returns when they're off)

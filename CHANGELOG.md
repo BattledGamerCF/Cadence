@@ -29,6 +29,7 @@ Easier:
 - The Graphics API option's default now reads **Cadence (Metal)**.
 - **Shader Pack Settings** has sliders where the pack asks for them, Reset to Defaults and Done at the bottom, changed
   values in yellow, information lines that can't be clicked, and text that wraps at any GUI scale.
+- **Shorter tooltips that are quick to scan**: one line per choice, with the choice's name in green.
 - Clearer names: the Performance preset "Balanced" is now **Recommended** (so it isn't confused with Cooling: Balanced),
   "Shader Quality" is **Shader Profile**, and Shadows reads "Every 4th Frame" instead of "Every 4rd Frame".
 - **Shader Pack Settings**: every pack's own options (shadows, clouds, water, sky...) on the pack's own pages, with its

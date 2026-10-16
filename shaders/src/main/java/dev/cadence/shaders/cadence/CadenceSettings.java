@@ -98,10 +98,6 @@ public final class CadenceSettings {
 		refreshers.add(r);
 	}
 
-	private static Component tip(String text) {
-		return Component.literal(text);
-	}
-
 	public static Button presetButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(presetLabel(), b -> {
@@ -113,16 +109,12 @@ public final class CadenceSettings {
 			};
 			apply(next);
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(tip(
-			"One click sets everything below.\n"
-				+ "Battery Saver: coolest and quietest; the world may look softer when the Mac is busy (aims for 40 fps).\n"
-				+ "Recommended: smooth 60 fps, sharp when possible, eases off when the Mac gets warm.\n"
-				+ "Max Quality: always full sharpness and every-frame shadows; the Mac may get hot and slow itself down.\n"
-				+ "Custom: you changed something below by hand.\n"
-				+ "Tip: set Max Framerate to 60 (or 120 if your screen is ProMotion) unless you need more; extra frames your "
-				+ "screen can't show only make heat.\n"
-				+ "Java memory manager: " + dev.cadence.metal.JvmDefaults.summary() + ". Cadence starts Java with the settings measured "
-				+ "best for 8 GB Macs; any Java arguments you set in your launcher win over them."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("One click sets the options below.",
+			"Battery Saver|coolest and quietest, aims for 40 fps",
+			"Recommended|smooth 60 fps, sharp whenever it can be",
+			"Max Quality|always full sharpness; the Mac may run hot",
+			"Custom|you changed something by hand",
+			"#Tip: Max Framerate 60 (120 on ProMotion) saves heat.")).build();
 		onRefresh(() -> self[0].setMessage(presetLabel()));
 		return self[0];
 	}
@@ -138,32 +130,29 @@ public final class CadenceSettings {
 			HeatControl.Cooling[] all = HeatControl.Cooling.values();
 			HeatControl.setCooling(all[(HeatControl.cooling().ordinal() + 1) % all.length]);
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(tip(coolingTip()))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(coolingTip()).build();
 		onRefresh(() -> {
 			self[0].setMessage(heatLabel());
-			self[0].setTooltip(Tooltip.create(tip(coolingTip())));
+			self[0].setTooltip(coolingTip());
 		});
 		return self[0];
 	}
 
-	private static String coolingTip() {
+	private static Tooltip coolingTip() {
 		int fans = dev.cadence.metal.MacSystem.fanCount();
 		double watts = dev.cadence.metal.MacSystem.systemWatts();
 		int rpm = dev.cadence.metal.MacSystem.fanRpm();
-		String now = "Your Mac right now: " + HeatControl.thermalWords()
-			+ (watts > 0 ? String.format(java.util.Locale.ROOT, ", using %.0f W", watts) : "")
-			+ (fans > 0 ? (rpm >= 0 ? ", fans at " + rpm + " rpm" : ", " + fans + " fan" + (fans > 1 ? "s" : "")) : fans == 0 ? ", no fans" : "")
-			+ ".";
-		return "How Cadence keeps your Mac's temperature steady, so the game stays smooth instead of fast at first and "
-			+ "sluggish later.\n"
-			+ "Quiet: when your Mac gets warm, holds the frame rate at your screen's refresh rate. Coolest and quietest.\n"
-			+ "Balanced (recommended): when warm, holds at twice your screen's rate; eases off more only if it gets hot.\n"
-			+ "Max Performance: full speed until macOS itself starts slowing the Mac; then holds steady"
-			+ (fans > 0 ? " and lets your fans work harder" : "") + ".\n"
-			+ "Off: never eases off; macOS may slow a hot Mac down.\n"
-			+ (fans > 0 ? "Cadence doesn't set fan speed directly (macOS only allows that with administrator rights); "
-				+ "Max Performance lets macOS run the fans faster instead of slowing the game.\n" : "")
-			+ now;
+		String now = "#Right now: " + HeatControl.thermalWords()
+			+ (watts > 0 ? String.format(java.util.Locale.ROOT, ", %.0f W", watts) : "")
+			+ (fans > 0 ? (rpm >= 0 ? ", fans at " + rpm + " rpm" : ", " + fans + " fan" + (fans > 1 ? "s" : "")) : fans == 0 ? ", no fans" : "");
+		java.util.List<String> lines = new java.util.ArrayList<>(java.util.List.of(
+			"Quiet|when warm, holds your screen's refresh rate",
+			"Balanced|when warm, holds twice your screen's rate (recommended)",
+			"Max Performance|full speed until macOS slows the Mac" + (fans > 0 ? "; fans work harder" : ""),
+			"Off|never eases off"));
+		if (fans > 0) lines.add("#Fan speed itself needs administrator rights, so Cadence doesn't set it.");
+		lines.add(now);
+		return Tips.of("Keeps your Mac's temperature steady, so the game stays smooth.", lines.toArray(String[]::new));
 	}
 
 	private static Component heatLabel() {
@@ -177,10 +166,9 @@ public final class CadenceSettings {
 		self[0] = Button.builder(leavesLabel(), b -> {
 			dev.cadence.shaders.cadence.mesh.SmartLeaves.setEnabled(!dev.cadence.shaders.cadence.mesh.SmartLeaves.enabled());
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(tip(
-			"Smart: trees look the same from outside, but leaves buried deep inside a canopy aren't drawn. Forests get much "
-				+ "lighter for your Mac (up to about twice as fast in a dense forest); through gaps you see a little less deep "
-				+ "into the tree.\nDetailed: every leaf face, as in vanilla.\nOnly matters with See-Through Leaves on."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("With See-Through Leaves on:",
+			"Smart|leaves buried inside a canopy aren't drawn; forests up to 2x faster",
+			"Detailed|every leaf face, as in vanilla")).build();
 		onRefresh(() -> self[0].setMessage(leavesLabel()));
 		return self[0];
 	}
@@ -195,9 +183,9 @@ public final class CadenceSettings {
 		self[0] = Button.builder(messagesLabel(), b -> {
 			dev.cadence.shaders.cadence.system.CadenceMessages.setEnabled(!dev.cadence.shaders.cadence.system.CadenceMessages.enabled());
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(tip(
-			"On: a short line in chat when you join, and a small pop-up in the corner whenever Cadence adjusts something "
-				+ "for you (heat, memory). Off: Cadence stays quiet; what it's doing is still shown here in Video Settings."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Cadence's chat line and corner pop-ups.",
+			"On|a line when you join, a pop-up when Cadence adjusts something",
+			"Off|quiet; what Cadence is doing still shows here")).build();
 		onRefresh(() -> self[0].setMessage(messagesLabel()));
 		return self[0];
 	}
@@ -212,13 +200,9 @@ public final class CadenceSettings {
 		self[0] = Button.builder(backgroundLabel(), b -> {
 			dev.cadence.shaders.cadence.system.BackgroundFps.setEnabled(!dev.cadence.shaders.cadence.system.BackgroundFps.enabled());
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(tip(
-			"When you switch to another app (or another full-screen space), Minecraft draws only "
-				+ dev.cadence.shaders.cadence.system.BackgroundFps.FPS + " frames per second behind it instead of your full Max Framerate. "
-				+ "The game, its sounds and your world keep running normally, and it's back to full speed the moment you return.\n"
-				+ "Saves battery and heat while you're doing something else.\n"
-				+ "Normal: always draws at your Max Framerate (like vanilla, which only slows down when minimized or after a minute "
-				+ "without input)."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("While another app is in front:",
+			dev.cadence.shaders.cadence.system.BackgroundFps.FPS + " fps|the game keeps running, drawn slowly; saves battery and heat",
+			"Normal|full Max Framerate, as in vanilla")).build();
 		onRefresh(() -> self[0].setMessage(backgroundLabel()));
 		return self[0];
 	}
@@ -236,12 +220,9 @@ public final class CadenceSettings {
 			if (dev.cadence.shaders.runtime.ShaderRuntime.get() == null) return;
 			dev.cadence.shaders.cadence.packcheck.PackCheck.start(CadenceSettings::refreshAll);
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(tip(
-			"Tests whether this shader pack can use Cadence's faster shadows (skipping shadows nothing on screen can show; "
-				+ "often 10-25% more fps). It looks around from where you stand and compares the pictures with the speed-up on and "
-				+ "off; only if they are identical is it turned on, for this pack, its settings and this dimension.\n"
-				+ "Takes about 10 seconds; the game is paused and your view is put back afterwards. Needs a world loaded with the "
-				+ "shader pack on. Click again to re-check somewhere else."))).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Tests if this pack can use Cadence's faster shadows (often 10-25% more fps).",
+			"#Compares the picture with it on and off; keeps it only if identical.",
+			"#About 10 seconds, game paused. Needs the pack on in a world.")).build();
 		onRefresh(() -> self[0].setMessage(packCheckLabel()));
 		return self[0];
 	}

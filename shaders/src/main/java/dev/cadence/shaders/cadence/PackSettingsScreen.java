@@ -205,8 +205,8 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		ShaderOption option = this.session.pack.options().get(name);
 		List<String> values = option.allowedValues();
 		String help = this.session.lang.get("option." + name + ".comment");
-		Tooltip tip = Tooltip.create(Component.literal((help != null ? help + "\n\n" : "")
-			+ "Default: " + this.valueText(name, option.defaultValue())));
+		Tooltip tip = help != null ? Tips.of(help, "Default|" + this.valueText(name, option.defaultValue()))
+			: Tips.of("Default: " + this.valueText(name, option.defaultValue()));
 		if (values.size() <= 1) {
 			// (an information line, like BSL's "BSL v10.1.8 by Capt Tatsu")
 			Button info = Button.builder(Component.literal(this.session.lang.getOrDefault("option." + name, name.replace('_', ' '))), b -> { }).build();

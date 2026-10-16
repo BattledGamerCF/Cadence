@@ -178,6 +178,10 @@ public final class CadenceSelfTest {
 						mc.options.guiScale().set(n);
 						mc.resizeGui();
 					});
+				} else if (lower.startsWith("hover=")) {
+					// "hover=TEXT": the mouse put on the open screen's first widget whose label starts with TEXT (its tooltip shows)
+					String want = step.substring(6).strip();
+					mc.execute(() -> hover(mc, want));
 				} else if (lower.startsWith("scroll=")) {
 					// "scroll=PX": the open options screen's list scrolled to PX
 					double px = Double.parseDouble(lower.substring(7));
@@ -542,6 +546,40 @@ public final class CadenceSelfTest {
 			}
 			mc.execute(mc::stop);
 		}
+	}
+
+	private static void hover(Minecraft mc, String prefix) {
+		var screen = mc.gui.screen();
+		if (screen == null) return;
+		net.minecraft.client.gui.components.AbstractWidget w = find(screen.children(), prefix);
+		if (w == null) {
+			LOGGER.info("[selftest] hover: no widget starting with '{}'", prefix);
+			return;
+		}
+		// (MouseHandler keeps window points: gui x * screen width / gui-scaled width)
+		var win = mc.getWindow();
+		double sx = (double) win.getScreenWidth() / win.getGuiScaledWidth(), sy = (double) win.getScreenHeight() / win.getGuiScaledHeight();
+		try {
+			var x = net.minecraft.client.MouseHandler.class.getDeclaredField("xpos");
+			var y = net.minecraft.client.MouseHandler.class.getDeclaredField("ypos");
+			x.setAccessible(true);
+			y.setAccessible(true);
+			x.setDouble(mc.mouseHandler, (w.getX() + w.getWidth() / 2.0) * sx);
+			y.setDouble(mc.mouseHandler, (w.getY() + w.getHeight() / 2.0) * sy);
+		} catch (ReflectiveOperationException e) {
+			LOGGER.info("[selftest] hover failed: {}", e.toString());
+		}
+	}
+
+	private static net.minecraft.client.gui.components.AbstractWidget find(java.util.List<? extends net.minecraft.client.gui.components.events.GuiEventListener> children, String prefix) {
+		for (net.minecraft.client.gui.components.events.GuiEventListener c : children) {
+			if (c instanceof net.minecraft.client.gui.components.AbstractWidget w && w.getMessage().getString().startsWith(prefix)) return w;
+			if (c instanceof net.minecraft.client.gui.components.events.ContainerEventHandler h) {
+				var found = find(h.children(), prefix);
+				if (found != null) return found;
+			}
+		}
+		return null;
 	}
 
 	private static void abSet(Minecraft mc, String feature, boolean on) {
