@@ -12,6 +12,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /** Metal goes first in every backend list; OpenGL and Vulkan stay behind it as fallbacks. -Dcadence.metal=false opts out. */
 @Mixin(PreferredGraphicsApi.class)
 abstract class PreferredGraphicsApiMixin {
+	/** Cadence: the default choice is Metal (Cadence's renderer), so the Graphics API option names it. */
+	@Inject(method = "caption", at = @At("RETURN"), cancellable = true)
+	private void cadence$caption(CallbackInfoReturnable<net.minecraft.network.chat.Component> cir) {
+		if ((Object) this == PreferredGraphicsApi.DEFAULT && Boolean.parseBoolean(System.getProperty("cadence.metal", "true")))
+			cir.setReturnValue(net.minecraft.network.chat.Component.literal("Cadence (Metal)"));
+	}
+
 	@Inject(method = "getBackendsToTry", at = @At("RETURN"), cancellable = true)
 	private void cadence$metalFirst(CallbackInfoReturnable<GpuBackend[]> cir) {
 		if (!Boolean.parseBoolean(System.getProperty("cadence.metal", "true"))) return;

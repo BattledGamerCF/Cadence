@@ -12,7 +12,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Cadence: a short Cadence section at the top of Video Settings (the rest is in Cadence Settings). */
+/**
+ * Cadence: every Cadence setting at the top of Video Settings, under its own headings (no separate screen to find), with the
+ * status lines wrapped to the list's width so they never run past the menu at any GUI scale.
+ */
 @Mixin(VideoSettingsScreen.class)
 public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 	private VideoSettingsShadersMixin(Screen lastScreen, Options options, Component title) {
@@ -24,22 +27,26 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		if (this.list == null) return;
 		dev.cadence.shaders.cadence.CadenceSettings.newScreen();
 		this.list.addHeader(Component.literal("Cadence"));
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.presetButton(), ShaderToggle.packButton());
 		// what Cadence tunes on its own (always one line), then anything it is easing right now (heat, memory, Auto resolution)
-		for (Component line : dev.cadence.shaders.cadence.CadenceSettings.status()) this.list.addHeader(line);
+		int wrap = Math.max(120, Math.min(this.list.getRowWidth(), this.width - 24));
+		for (Component line : dev.cadence.shaders.cadence.CadenceSettings.status())
+			for (Component part : dev.cadence.shaders.cadence.CadenceSettings.wrap(line, wrap, this.font)) this.list.addHeader(part);
 		Screen self = this;
-		this.list.addSmall(net.minecraft.client.gui.components.Button.builder(Component.literal("Quick Setup..."),
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.presetButton(),
+			net.minecraft.client.gui.components.Button.builder(Component.literal("Quick Setup..."),
 				b -> this.minecraft.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(self)))
 			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
 			.tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
 				"Checks what your Mac can do (about 15 seconds) and recommends settings for it. Nothing changes unless you press Apply.")))
-			.build(),
-			net.minecraft.client.gui.components.Button.builder(Component.literal("Cadence Settings..."),
-				b -> this.minecraft.gui.setScreen(new dev.cadence.shaders.cadence.CadenceSettingsScreen(self)))
-			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
-			.tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(
-				"Cooling, resolution, leaves, messages and shader options.")))
 			.build());
+		this.list.addHeader(Component.literal("Cadence: Performance"));
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.backgroundButton());
+		this.list.addSmall(ShaderToggle.scaleButton(), ShaderToggle.upscalerButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.leavesButton(), dev.cadence.shaders.cadence.CadenceSettings.messagesButton());
+		this.list.addHeader(Component.literal("Cadence: Shaders"));
+		this.list.addSmall(ShaderToggle.packButton(), ShaderToggle.qualityButton());
+		this.list.addSmall(ShaderToggle.shadowRateButton(), ShaderToggle.liveButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.packCheckButton(), ShaderToggle.folderButton());
 	}
 
 	@Inject(method = "removed", at = @At("HEAD"))

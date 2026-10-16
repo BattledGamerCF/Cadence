@@ -150,8 +150,7 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("screen=")) {
 					// "screen=video": open Video Settings (its screenshot shows the Cadence rows); "screen=close": close it
 					boolean open = lower.endsWith("video");
-					if (lower.endsWith("cadence")) mc.execute(() -> mc.gui.setScreen(new dev.cadence.shaders.cadence.CadenceSettingsScreen(null)));
-					else if (lower.endsWith("offer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(null)));
+					if (lower.endsWith("offer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(null)));
 					else if (lower.endsWith("goal")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.goal(null)));
 					else if (lower.endsWith("setupmax")) {
 						var r = dev.cadence.shaders.cadence.setup.QuickSetup.run(stage -> { }, dev.cadence.shaders.cadence.setup.QuickSetup.Goal.MAX_FPS);
@@ -162,6 +161,26 @@ public final class CadenceSelfTest {
 						mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.results(r, null)));
 					} else mc.execute(() -> mc.gui.setScreen(open
 						? new net.minecraft.client.gui.screens.options.VideoSettingsScreen(null, mc, mc.options) : null));
+				} else if (lower.startsWith("guiscale=")) {
+					// "guiscale=N": GUI Scale N (0 = Auto), the window re-laid out as the option does
+					int n = Integer.parseInt(lower.substring(9));
+					mc.execute(() -> {
+						mc.options.guiScale().set(n);
+						mc.resizeGui();
+					});
+				} else if (lower.startsWith("scroll=")) {
+					// "scroll=PX": the open options screen's list scrolled to PX
+					double px = Double.parseDouble(lower.substring(7));
+					mc.execute(() -> {
+						try {
+							var f = net.minecraft.client.gui.screens.options.OptionsSubScreen.class.getDeclaredField("list");
+							f.setAccessible(true);
+							Object l = f.get(mc.gui.screen());
+							if (l instanceof net.minecraft.client.gui.components.AbstractScrollArea a) a.setScrollAmount(px);
+						} catch (ReflectiveOperationException | RuntimeException e) {
+							LOGGER.info("[selftest] scroll failed: {}", e.toString());
+						}
+					});
 				} else if (lower.startsWith("cooling=")) {
 					// "cooling=quiet|balanced|performance|off": Video Settings' Cooling
 					dev.cadence.shaders.cadence.system.HeatControl.setCooling(dev.cadence.shaders.cadence.system.HeatControl.Cooling

@@ -263,6 +263,34 @@ public final class CadenceSettings {
 		};
 	}
 
+	/** line split into pieces no wider than width (words kept whole; its style kept), for list headers that would clip. */
+	public static List<Component> wrap(Component line, int width, net.minecraft.client.gui.Font font) {
+		List<Component> out = new ArrayList<>();
+		String text = line.getString();
+		if (font.width(text) <= width) {
+			out.add(line);
+			return out;
+		}
+		// break at " · " between items first (keeps "Cooling Balanced" together), then at spaces inside a long item
+		String[] units = text.contains(" · ") ? text.split(" · ") : text.split(" ");
+		String sep = text.contains(" · ") ? " · " : " ";
+		List<String> pieces = new ArrayList<>();
+		for (String u : units) {
+			if (font.width(u) <= width || !sep.equals(" · ")) pieces.add(u);
+			else pieces.addAll(java.util.Arrays.asList(u.split(" ")));
+		}
+		StringBuilder cur = new StringBuilder();
+		for (String word : pieces) {
+			String next = cur.length() == 0 ? word : cur + sep + word;
+			if (cur.length() > 0 && font.width(next) > width) {
+				out.add(Component.literal(cur.toString()).withStyle(line.getStyle()));
+				cur = new StringBuilder(word);
+			} else cur = new StringBuilder(next);
+		}
+		if (cur.length() > 0) out.add(Component.literal(cur.toString()).withStyle(line.getStyle()));
+		return out;
+	}
+
 	/** What Cadence is changing on its own right now, one short line each (a gray "nothing" line when nothing). */
 	public static List<Component> status() {
 		List<Component> lines = new ArrayList<>();

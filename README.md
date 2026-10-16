@@ -35,7 +35,7 @@ Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
    CurseForge.
 2. Download `cadence-<version>.jar` from the Releases page (or Modrinth) and put it in your `mods` folder.
 3. For shaders, put shader pack `.zip` files in the `shaderpacks` folder and choose one in
-   **Options > Video Settings > Shaders**.
+   **Options > Video Settings (Cadence: Shaders)**.
 4. Start the game. To check that Cadence is running, press F3 (fn + F3): the bottom right says `Metal 3 (Cadence)`.
 
 Cadence replaces Sodium and Iris, so remove them from the `mods` folder. Lithium isn't needed either (if it's installed,
@@ -55,7 +55,7 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 
 ## Settings
 
-- **In game:** Options > Video Settings > Shaders (pack, preset, render scale) and the Cadence settings screen.
+- **In game:** Options > Video Settings (Cadence: Shaders) (pack, preset, render scale) and the Cadence settings screen.
 - **Config files:** `config/cadence.properties` and `config/cadence-shaders.properties` in your Minecraft folder.
   Set `profile=none` in `cadence.properties` to turn off Cadence's performance profile.
 - **Advanced:** every switch is also a `-Dcadence.*` JVM flag. To turn off the Metal renderer for a mod that needs

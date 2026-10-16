@@ -21,6 +21,10 @@ Easier:
 - **Quick Setup asks what matters more**: smooth and cool, or the most fps.
 - **Shader switching is automatic**: a game started without shaders uses Cadence's faster terrain renderer.
 - With no shader packs installed, the Shaders button says so and opens the folder.
+- **Every Cadence setting is now in Video Settings**, under "Cadence", "Cadence: Performance" and "Cadence: Shaders"
+  (the separate Cadence Settings screen is gone), and Cadence's status lines wrap instead of running past the menu at
+  large GUI scales or small windows.
+- The Graphics API option's default now reads **Cadence (Metal)**.
 - **Compatibility layers (first version)**: where another mod hooks code Cadence replaces, Cadence uses Minecraft's own
   code in that one area and keeps every other optimization ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)).
 

@@ -134,7 +134,7 @@ public final class ShaderToggle {
 			+ "when you close Video Settings. To add packs, put their .zip files in the Shader Packs folder.");
 	private static final Component TOOLTIP_RESTART = Component.literal(
 		"Click to pick a shader pack, or Off. You started without shaders, so Cadence is using its faster way of drawing "
-			+ "terrain: a pack you pick turns on after you restart Minecraft. (Shader Switching: Instant in Cadence Settings "
+			+ "terrain: a pack you pick turns on after you restart Minecraft. (Shader Switching: Instant in Video Settings "
 			+ "makes it switch without a restart, with the slower terrain.)");
 
 	/** Video Settings closed: switch to the chosen pack now (live), if it differs from the one in use. */
