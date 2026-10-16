@@ -556,7 +556,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 		this.currentPass.restoreAfterSplit();
 		this.lazySplits++;
 		long now = System.nanoTime();
-		if (now - this.lazySplitLog > 10_000_000_000L) {
+		if (FrameHints.LOG_STATS && now - this.lazySplitLog > 10_000_000_000L) {
 			System.out.println("cadence-metal: lazy clears split a pass " + this.lazySplits + " times so far (" + t.getLabel() + ")");
 			this.lazySplitLog = now;
 		}

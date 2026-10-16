@@ -856,7 +856,7 @@ final class OwnFrag {
 	/** tieClose: every 5 s, the frames by fallback reason, the promotions a counted frame, the rings. */
 	private void tieLog() {
 		long now = System.nanoTime();
-		if (now - this.tieLogAt < 5_000_000_000L) return;
+		if (!dev.cadence.metal.FrameHints.LOG_STATS || now - this.tieLogAt < 5_000_000_000L) return;
 		this.tieLogAt = now;
 		long[] t = TIE_FRAMES;
 		long all = t[0] + t[1] + t[2] + t[3] + t[4] + t[5];
@@ -1142,7 +1142,7 @@ final class OwnFrag {
 	/** (every 5 s while a1Exact or a2Exact is requested) the effective mode, from the native telemetry (mco_frag_exact_telemetry). */
 	private void exactLog() {
 		long now = System.nanoTime();
-		if (!(this.a1Req || this.a2Req) || now - this.exactLogAt < 5_000_000_000L) return;
+		if (!dev.cadence.metal.FrameHints.LOG_STATS || !(this.a1Req || this.a2Req) || now - this.exactLogAt < 5_000_000_000L) return;
 		this.exactLogAt = now;
 		OwnNative.fragExactTelemetry(this.own, this.exactTel);
 		int cores = dev.cadence.metal.Profile.gpuCores();

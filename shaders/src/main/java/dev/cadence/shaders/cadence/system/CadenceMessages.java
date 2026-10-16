@@ -31,8 +31,21 @@ public final class CadenceMessages {
 		ShaderToggle.saveKey("messages", Boolean.toString(on));
 	}
 
+	/** A problem found while the game was starting (a shader pack that couldn't load), told once at the first join. */
+	private static volatile String launchFailure;
+
+	public static void launchFailure(String message) {
+		launchFailure = message;
+	}
+
 	/** ClientPacketListener.handleLogin (joining a world or a server; not a dimension change), render thread. */
 	public static void joined() {
+		String failure = launchFailure;
+		if (failure != null) {
+			launchFailure = null;
+			// (always shown, even with Cadence messages off: it explains why shaders are missing)
+			say(Component.literal("Cadence: " + failure).withStyle(net.minecraft.ChatFormatting.RED));
+		}
 		if (!enabled) return;
 		say(joinLine());
 	}

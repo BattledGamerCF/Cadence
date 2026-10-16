@@ -44,10 +44,13 @@ public record ShaderLoaderConfig(Path pack, Map<String, String> options, String 
       Path own = packs.resolve(Path.of(selected).getFileName().toString() + ".txt");
       if (Files.isRegularFile(own)) {
         Properties p = new Properties();
-        try (var input = Files.newBufferedReader(own)) {
+        try (var input = Files.newInputStream(own)) {
           p.load(input);
+          for (String key : p.stringPropertyNames()) options.put(key, p.getProperty(key).trim());
+        } catch (IOException | IllegalArgumentException e) {
+          // (an unreadable settings file: the pack loads with its defaults, never refused)
+          org.slf4j.LoggerFactory.getLogger("cadence_shaders").warn("Ignoring unreadable {}: {}", own, e.toString());
         }
-        for (String key : p.stringPropertyNames()) options.put(key, p.getProperty(key).trim());
       }
     }
     for (String key : System.getProperties().stringPropertyNames()) {

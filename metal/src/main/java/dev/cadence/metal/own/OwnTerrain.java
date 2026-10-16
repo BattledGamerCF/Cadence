@@ -1175,7 +1175,7 @@ public final class OwnTerrain {
 		// records in use; tieCloseFallback must grow the lists before encoding, counted as 'lists grown at the cull')
 		if (live > this.listCap && !LIST_GROW_FAULT) this.growLists(Integer.highestOneBit(live) * 2);
 		this.pickRing();
-		if (OwnTieGroups.ON) this.tieGroupLog();
+		if (OwnTieGroups.ON && dev.cadence.metal.FrameHints.LOG_STATS) this.tieGroupLog();
 	}
 
 	private long tgLogAt;
@@ -2651,7 +2651,7 @@ public final class OwnTerrain {
 			}
 			this.tsFrames++;
 		}
-		if (TCULL && ++this.tcFrames % 600 == 0) {
+		if (TCULL && ++this.tcFrames % 600 == 0 && dev.cadence.metal.FrameHints.LOG_STATS) {
 			long now = System.nanoTime();
 			if (now > this.tcLogAt) {
 				this.tcLogAt = now + 5_000_000_000L;
@@ -2689,7 +2689,7 @@ public final class OwnTerrain {
 				if (m != null && !(m.tOut = this.tFrNow && this.tOutside(m, slot, cx, cy, cz))) n += this.tCount(m, slot, cx, cy, cz);
 			}
 		}
-		if (this.tFrNow && ++this.tFrFrames % 600 == 0) {
+		if (this.tFrNow && ++this.tFrFrames % 600 == 0 && dev.cadence.metal.FrameHints.LOG_STATS) {
 			long now = System.nanoTime();
 			if (now > this.tFrLogAt) {
 				this.tFrLogAt = now + 5_000_000_000L;

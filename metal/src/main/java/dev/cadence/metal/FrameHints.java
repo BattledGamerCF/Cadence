@@ -15,6 +15,9 @@ public final class FrameHints {
 	private FrameHints() {
 	}
 
+	/** Periodic statistics in the log: -Dcadence.logStats=true, or any self-test run; players' logs stay quiet. */
+	public static final boolean LOG_STATS = Boolean.getBoolean("cadence.logStats") || System.getProperty("cadence.selftest") != null;
+
 	/** Lazy clears (MetalEncoder.LAZY_CLEARS), switchable at run time for in-run A/B tests. */
 	public static void lazyClears(boolean on) {
 		MetalEncoder.LAZY_CLEARS = on;
