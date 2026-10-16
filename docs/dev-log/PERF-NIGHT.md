@@ -22,6 +22,7 @@ gain proven by a test that background load and heat can't fake.
 | Change | Result | Picture |
 |---|---|---|
 | **RGSS skip** (terrain shader): with RGSS texture filtering, which the player's instances use, vanilla takes 9 atlas samples per terrain pixel and blends "nearest" and "RGSS" by a factor that is exactly 0 wherever a texel covers at least a pixel on screen, which is most of the frame. Then only the nearest sample is taken. | Frame time **-25%** at native (in-run A/B: without it +32.9%, 44 windows, quartiles +29..+35%). The coastal view went from about 340-360 fps to 400-445. | Bit-exact: 0 differing pixels in 6 views |
+| **The same RGSS skip in vanilla's own terrain shader** (used when a pack was on at launch and is turned off), patched into `texture_sampling.glsl` as it loads | 5 interleaved on/off pairs (resource reloads in one session): **352-363 fps vs 244-291**, GPU 2.8 vs 3.55 ms | Bit-exact: 0 differing pixels in 4 views (positive control 232k) |
 | Lazy clears with shader packs (earlier tonight) | BSL GPU -1.6 to -1.75 ms | Identical |
 | Entity model writer (earlier tonight) | Render-thread CPU -5% | 155M faces compared, 0 mismatches |
 | **Glowing-outline target only while outlines show**: vanilla keeps a colour + depth target at window size for glowing outlines all the time; it is now 1 x 1 until a frame draws outlines, and 1 x 1 again 10 s after | **-38 MB** of GPU memory at 2940 x 1686 (about -41 MB fullscreen) | Outline drawn and aligned at 100% and 50% world resolution |
@@ -76,3 +77,27 @@ culling saves 2.3 ms and HiZ 1.0 ms (both on). The rest is the pack's own math. 
 - Opaque terrain is about 70% of the frame; everything else (sky, entities, translucent, HUD, present) about 0.35 ms.
 - In the nearer solid terrain draw, a constant colour instead of the shader saves 16%; the vertex colour alone saves 14%,
   so the remaining texture sample is most of the shading. Fog and the fade mix are about 1% each.
+
+## Compatibility layers (end of the night, first version)
+
+At launch Cadence reads every other mod's mixins and its own; where both touch one method and either replaces it, that
+area runs vanilla code (CPU and logic mixins one by one, the own terrain renderer as a whole; the rest is reported).
+Checked with `tools/compat-test-mod` (a hook on `ModelPart.Cube.compile`, the method the model writer overwrites): the
+writer stepped aside, the test hook ran millions of times, entities drew normally. With Lithium (in the dev mods folder)
+the four logic mixins step aside, as the hand-written "Lithium wins" rule already did. See ../COMPATIBILITY.md.
+
+## The honest benchmark (00:40-00:52, after ~5 hours of testing: a warm Mac)
+
+Fullscreen 2940 x 1846 (the M2 Air's screen below the notch), render distance 16, Cooling: Performance, VSync off, the
+same world and spot, average fps over two 20 s spins. Separate launches, alternated (Metal, OpenGL, Metal, OpenGL).
+
+| | Runs | Average |
+|---|---|---|
+| Minecraft's OpenGL renderer (`cadence.metal=false`, World Resolution held at 100%) | 86, 87, 85, 86 | **86** |
+| Cadence, no shaders | 487, 498, 489, 493 (425 standing still) | **492** |
+| Cadence, BSL 10.1.8, Auto resolution (settled at 50%) | 63, 69 | **66** |
+
+The first OpenGL runs were thrown out: Cadence's Auto World Resolution was active on OpenGL too and scaled its world
+down to 50-90%. The old graphic said 622 fps at a 1920 x 1080 framebuffer and render distance 12; the player saw about
+400 fullscreen. The new graphic (`packaging/gallery/3-benchmark.png`, drawn by `tools/profile/benchmark-graphic.py` from
+these numbers) shows the fullscreen numbers and says that the default Cooling (Balanced) caps at 120 fps once the Mac is warm.
