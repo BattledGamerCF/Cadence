@@ -193,6 +193,19 @@ public final class RenderScale {
 	private static int frames, upVotes;
 	private static double busySum;
 
+	/** Auto's last scale per pack this session (packSwitched): a pack starts where it settled before, a new one at full size. */
+	private static final java.util.Map<String, Float> PACK_SCALE = new java.util.HashMap<>();
+
+	/** Cadence (ShaderSwitcher): the pack changed from {@code from} to {@code to} ("" = none). Render thread. */
+	public static void packSwitched(String from, String to) {
+		if (!auto) return;
+		if (!from.isEmpty()) PACK_SCALE.put(from, scale);
+		if (!to.isEmpty()) {
+			scale = Math.max(autoMin, PACK_SCALE.getOrDefault(to, MAX));
+			upVotes = 0;
+		}
+	}
+
 	/** A resize or a pack reload just happened: its first frames are not representative (empty or reallocating). */
 	public static void settle() {
 		holdUntil = System.nanoTime() + 2_000_000_000L;
@@ -291,8 +304,12 @@ public final class RenderScale {
 		if (slow || fast) {
 			// GPU work goes with pixel count, i.e. scale squared. Down: jump to the scale that should hit the target (aiming 5%
 			// under it), 0.05-quantized; converges in one or two resizes (each reallocates the pack's targets, a short hitch).
-			// Up: one step at a time (frame time is not all GPU: overshooting up costs a resize back down).
-			double wanted = slow ? scale * Math.sqrt(targetMs * 0.95 / intervalMs) : scale + STEP;
+			// Up: one step at a time (frame time is not all GPU: overshooting up costs a resize back down), except with the GPU
+			// under half the budget: then to the scale that should use 75% of it. Packs' frames are partly per-vertex work that
+			// doesn't grow with pixels, so scale squared overestimates the rise's cost (it lands under 75%). Cadence: a light pack
+			// after a heavy one, or a cooled-down Mac, came back to full size 0.05 every few seconds (20-30 s blurry).
+			double wanted = slow ? scale * Math.sqrt(targetMs * 0.95 / intervalMs)
+				: gpuMs < targetMs * 0.5 ? Math.max(scale + STEP, scale * Math.sqrt(targetMs * 0.75 / gpuMs)) : scale + STEP;
 			next = Math.max(autoMin, clamp(Math.round((float) wanted / STEP) * STEP));
 		}
 		// the heat/memory ceiling only with a pack: without one a lower scale costs more than it saves (measured)

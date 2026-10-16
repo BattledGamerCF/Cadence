@@ -92,6 +92,7 @@ public final class ShaderSwitcher {
 		Minecraft mc = Minecraft.getInstance();
 		mc.execute(() -> {
 			long t0 = System.nanoTime();
+			String before = active;
 			Object geometryBefore = dev.cadence.shaders.geometry.TerrainShaderGeometry.configurationKey();
 			try {
 				ShaderLoaderMod.deactivate();
@@ -127,6 +128,7 @@ public final class ShaderSwitcher {
 				LOGGER.info("Shader reload: chunks rebuilt ({})", difference == null ? "keepChunksOnReload=false" : difference);
 				reload(mc, mode);
 			}
+			RenderScale.packSwitched(before, active);
 			RenderScale.settle(); // the new pack's first frames say nothing about its cost
 			SwitchProbe.start("switch to " + (pack.isEmpty() ? "off" : pack) + " (" + mode + ")");
 		});
