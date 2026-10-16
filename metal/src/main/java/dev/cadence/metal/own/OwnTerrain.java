@@ -3050,6 +3050,12 @@ public final class OwnTerrain {
 		dev.cadence.metal.GpuTimes.probeTag(this.probeMode, this.probeWindow, PROBE_MODES);
 	}
 
+	/** The RGSS skip (OwnNative.rgssSkip) switched at runtime: the self-test's A/B and picture checks (render thread). */
+	public static void rgssSkip(boolean on) {
+		OwnNative.rgssSkip = on;
+		applyNativeFlags();
+	}
+
 	/** The pyramid / unit-test flags in the native globals (OwnNative.setHizTiled), through OwnProbe. */
 	static void applyNativeFlags() {
 		OwnNative.setHizTiled(Boolean.getBoolean("cadence.own.hizTile"), OwnProbe.bool("hizTop", Boolean.getBoolean("cadence.own.hizTop")),

@@ -685,6 +685,10 @@ static uint32_t ownVgClass(Own *w, int v, int id) {
 // The layer's draw into the open render encoder: one instanced indexed draw of 64-quad instances, its instance count from
 // the cull. u: projection, projOff, globals, globalsOff, terrain, terrainOff, fog, fogOff (the game's uniform buffers).
 // Leaves pipeline, depth and cull state changed: the caller puts the game's back. 1 drawn, 0 no encoder open, -1 err set.
+// Cadence: own_fs's flags (buffer 29), from mco_set_hiz_tiled bits 20-21: 1 = RGSS's samples skipped where vanilla's blend is 0 (exact),
+// 2 = verification (magenta where the skip would change the sample)
+static uint32_t mco_cad_frag = 1;
+
 int mco_draw(Own *w, Enc *enc, int cutout, const void *frame, int frameLength, id<MTLBuffer> arena, id<MTLBuffer> sections, id<MTLBuffer> recs,
 	id<MTLBuffer> lists, id<MTLBuffer> args, int64_t argsOffset, const int64_t *u, id<MTLTexture> atlas, id<MTLSamplerState> atlasSampler, id<MTLTexture> light,
 	id<MTLSamplerState> lightSampler, id<MTLBuffer> indices, char *err, int errCap) {
@@ -808,6 +812,7 @@ int mco_draw(Own *w, Enc *enc, int cutout, const void *frame, int frameLength, i
 	[r setFragmentTexture:atlas atIndex:16];
 	[r setFragmentSamplerState:atlasSampler atIndex:14];
 drawCall:
+	[r setFragmentBytes:&mco_cad_frag length:4 atIndex:29];
 	if (w->vcount && !mesh) [r setVertexBuffer:w->vcount offset:0 atIndex:28];
 	if (cutout & (1 << 30)) {
 		// the visibility oracle: the drawn units (vertex stage) and the units with a visible pixel (fragment stage), this sample's number
@@ -1350,6 +1355,7 @@ void mco_set_hiz_tiled(int on) {
 	mco_uocc_fast = (on >> 17) & 1;
 	mco_uocc_box = (on >> 18) & 1;
 	mco_uocc_gather = (on >> 19) & 1;
+	mco_cad_frag = (on >> 20) & 3;
 }
 
 // (uoccEnc) the open compute encoder ended and a new one on the same command buffer, labelled: timed into op slot (-Dcadence.own.gputime),

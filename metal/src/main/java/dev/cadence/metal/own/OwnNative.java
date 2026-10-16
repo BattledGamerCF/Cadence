@@ -377,6 +377,14 @@ final class OwnNative {
 		}
 	}
 
+	/**
+	 * -Dcadence.own.rgssSkip (default on; in-run probe key rgssSkip): with RGSS texture filtering, terrain pixels where vanilla's blend
+	 * factor is 0 (a texel at least a pixel on screen) take only the nearest sample vanilla returns there, not its eight unused RGSS samples.
+	 */
+	/** Verification: -Dcadence.own.rgssVerify draws terrain pixels magenta where the skip's sample differs from vanilla's in any bit. */
+	static final boolean RGSS_VERIFY = Boolean.getBoolean("cadence.own.rgssVerify");
+	static volatile boolean rgssSkip = !"false".equals(System.getProperty("cadence.own.rgssSkip"));
+
 	/** top: the tiled pyramid's small top levels in one dispatch (-Dcadence.own.hizTop). */
 	static void setHizTiled(boolean on, boolean top, boolean gather) {
 		if (OwnCapture.ON) dev.cadence.metal.FrameCapture.Own.hizBits = (on ? 1 : 0) | (top ? 2 : 0) | (gather ? 4 : 0) | (Integer.getInteger("cadence.own.frag.uoccDebug", 0) & 255) << 8
@@ -387,7 +395,8 @@ final class OwnNative {
 				| (Boolean.getBoolean("cadence.own.frag.uoccEnc") ? 1 << 16 : 0)
 				| (OwnProbe.bool("frag.testFast", Boolean.getBoolean("cadence.own.frag.testFast")) ? 1 << 17 : 0)
 				| (Boolean.getBoolean("cadence.own.frag.testBox") ? 1 << 18 : 0)
-				| (OwnProbe.bool("frag.testGather", Boolean.getBoolean("cadence.own.frag.testGather")) ? 1 << 19 : 0));  // (with testFast: frag_uocc_test_fg, the pyramid read four texels a gather)  // (with testFast: frag_uocc_test_fb, the whole box's coarse reject before the sub-boxes)  // (uocc's unit test as frag_uocc_test_f: same verdicts, less work)  // (measurement: uocc's pyramid, test and finish in encoders of their own)
+				| (OwnProbe.bool("frag.testGather", Boolean.getBoolean("cadence.own.frag.testGather")) ? 1 << 19 : 0)
+				| (OwnProbe.bool("rgssSkip", rgssSkip) ? 1 << 20 : 0) | (RGSS_VERIFY ? 1 << 21 : 0));  // (with testFast: frag_uocc_test_fg, the pyramid read four texels a gather)  // (with testFast: frag_uocc_test_fb, the whole box's coarse reject before the sub-boxes)  // (uocc's unit test as frag_uocc_test_f: same verdicts, less work)  // (measurement: uocc's pyramid, test and finish in encoders of their own)
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}

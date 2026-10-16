@@ -280,6 +280,9 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("wait=")) {
 					// "wait=SECONDS": nothing for that long (a running glide keeps going; soak tests)
 					sleep(Integer.parseInt(lower.substring(5)) * 1000L);
+				} else if (lower.startsWith("rgssskip=")) {
+					boolean on = lower.endsWith("on") || lower.endsWith("true");
+					mc.execute(() -> dev.cadence.metal.own.OwnTerrain.rgssSkip(on));
 				} else if (lower.startsWith("facecull=")) {
 					dev.cadence.shaders.cadence.facecull.FaceCull.enabled = lower.endsWith("on") || lower.endsWith("true");
 				} else if (lower.startsWith("shadowproxy=")) {
@@ -525,6 +528,7 @@ public final class CadenceSelfTest {
 				case "facepacked" -> dev.cadence.shaders.cadence.facecull.FaceCull.packedGroups = on;
 				case "lazyclears" -> dev.cadence.metal.FrameHints.lazyClears(on);
 				case "modelwrite" -> dev.cadence.metal.cpu.Cpu.modelWrite = on;
+				case "rgssskip" -> dev.cadence.metal.own.OwnTerrain.rgssSkip(on);
 				case "fsdiscard" -> dev.cadence.shaders.runtime.ShaderRuntime.setDiscardFullscreenLoads(on);
 				default -> {
 					// "skip-PROGRAM": ON = that pack program draws nothing (its GPU cost, measured interleaved: thermal drift cancels)

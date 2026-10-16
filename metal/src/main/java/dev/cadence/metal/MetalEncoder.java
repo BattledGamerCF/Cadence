@@ -567,12 +567,6 @@ final class MetalEncoder implements CommandEncoderBackend {
 			int continued = Native.renderBegin(this.enc, depthFormat ? 0 : 1, colors, clears, depthFormat ? t.handle : 0, clearDepth ? 1 : 0,
 				clearDepth ? (float) t.pendingDepthClear : 0, t.getWidth(0), t.getHeight(0));
 			this.trace(continued == 0 ? "flushClear #" + this.encoderIndex : "flushClear (in place)", t);
-			if (this.submitIndex == TRACE_SUBMIT) { // TEMP: who flushed it
-				StackTraceElement[] st = new Throwable().getStackTrace();
-				StringBuilder w = new StringBuilder("cadence-metal trace:   flushed by");
-				for (int i = 1; i < Math.min(st.length, 7); i++) w.append(' ').append(st[i].getClassName().replaceAll(".*\\.", "")).append('.').append(st[i].getMethodName());
-				System.out.println(w);
-			}
 			if (continued == 0) this.encoderIndex++;
 		}
 		t.pendingColorClear = null;

@@ -2164,7 +2164,9 @@ static float4 sampleNearest(texture2d<float> source, sampler s, float2 uv, float
 	return sampleNearestG(source, s, uv, pixelSize, du, dv, texelScreenSize);
 }
 
-static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 pixelSize) {
+// Cadence (skip, -Dcadence.own.rgssSkip): where the blend factor is 0 (a texel covers at least a pixel on screen: the nearer terrain,
+// most of the frame) vanilla's result is the nearest sample exactly (mix(x, y, 0) is x), so its eight RGSS samples are not taken
+static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 pixelSize, bool skip) {
 	float2 du = dfdx(uv);
 	float2 dv = dfdy(uv);
 	float2 texelScreenSize = sqrt(du * du + dv * dv);
@@ -2173,6 +2175,7 @@ static float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, float2 p
 	float transitionStart = minPixelSize * 1.0;
 	float transitionEnd = minPixelSize * 2.0;
 	float blendFactor = smoothstep(transitionStart, transitionEnd, maxTexelSize);
+	if (skip && blendFactor == 0.0f) return sampleNearestG(source, s, uv, pixelSize, du, dv, texelScreenSize);
 	float duLength = length(du);
 	float dvLength = length(dv);
 	float minDerivative = min(duLength, dvLength);
@@ -2207,7 +2210,7 @@ constant bool CUTOUT [[function_constant(0)]];
 constant float CUTOUT_LIMIT [[function_constant(5)]];  // vanilla's ALPHA_CUTOUT: 0.5 cutout, 0.1 translucent
 
 fragment float4 own_fs(VOut in [[stage_in]], constant Globals &g [[buffer(22)]], constant Terrain &t [[buffer(23)]], constant Fog &fog [[buffer(24)]],
-	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]]) {
+	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]], constant uint &cadFrag [[buffer(29)]]) {
 #ifdef OWN_TPROBE
 	// (probes 1 and 3: the translucent fragment stage returns a constant, blending kept; translucent = cutout at limit 0.1)
 	if ((OWN_TPROBE == 1 || OWN_TPROBE == 3) && CUTOUT && CUTOUT_LIMIT < 0.2) return float4(0.2, 0.3, 0.8, 0.5);
@@ -2218,7 +2221,10 @@ fragment float4 own_fs(VOut in [[stage_in]], constant Globals &g [[buffer(22)]],
 		return sampleNearest(atlas, atlasSampler, in.texCoord0, 1.0f / float2(t.TextureSize)) * getColor(in);
 #endif
 	float2 pixelSize = 1.0f / float2(t.TextureSize);
-	float4 color = (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize))
+	// (verification, cadFrag bit 2, -Dcadence.own.rgssVerify: magenta where the skip's sample differs from vanilla's in any bit)
+	if ((cadFrag & 2) != 0 && g.UseRgss == 1 && any(sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize, true)
+		!= sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize, false))) return float4(1, 0, 1, 1);
+	float4 color = (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize, (cadFrag & 1) != 0) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize))
 		* getColor(in);
 	// F_LEAN: the chunk visibility is 1 (mix(x, y, 1) is y), the render-distance fog value 0 (max(e, 0) is e for e >= 0)
 	if (F_RICH) color = mix(fog.FogColor * float4(1, 1, 1, color.a), color, in.chunkVisibility);
@@ -2286,7 +2292,7 @@ fragment float4 own_fs_pos(VOut in [[stage_in]]) {
 fragment float4 own_fs_tex(VOut in [[stage_in]], constant Globals &g [[buffer(22)]], constant Terrain &t [[buffer(23)]],
 	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]]) {
 	float2 pixelSize = 1.0f / float2(t.TextureSize);
-	return (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize))
+	return (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize, false) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize))
 		* getColor(in);
 }
 
@@ -2295,7 +2301,7 @@ fragment float4 own_fs_tex(VOut in [[stage_in]], constant Globals &g [[buffer(22
 fragment float4 own_fs_nofade(VOut in [[stage_in]], constant Globals &g [[buffer(22)]], constant Terrain &t [[buffer(23)]], constant Fog &fog [[buffer(24)]],
 	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]]) {
 	float2 pixelSize = 1.0f / float2(t.TextureSize);
-	float4 color = (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize))
+	float4 color = (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize, false) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize))
 		* getColor(in);
 	float fogValue = linear_fog_value(in.sphericalVertexDistance, fog.FogEnvironmentalStart, fog.FogEnvironmentalEnd);
 	if (F_RICH) fogValue = max(fogValue, linear_fog_value(in.cylindricalVertexDistance, fog.FogRenderDistanceStart, fog.FogRenderDistanceEnd));
@@ -2306,7 +2312,7 @@ fragment float4 own_fs_nofade(VOut in [[stage_in]], constant Globals &g [[buffer
 fragment float4 own_fs_nofog(VOut in [[stage_in]], constant Globals &g [[buffer(22)]], constant Terrain &t [[buffer(23)]], constant Fog &fog [[buffer(24)]],
 	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]]) {
 	float2 pixelSize = 1.0f / float2(t.TextureSize);
-	float4 color = (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize))
+	float4 color = (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize, false) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize))
 		* getColor(in);
 	if (F_RICH) color = mix(fog.FogColor * float4(1, 1, 1, color.a), color, in.chunkVisibility);
 	return color;
@@ -2321,9 +2327,9 @@ fragment float4 own_fs_flat(VOut in [[stage_in]]) {
 // fade mix, against 0.5), depth only
 // (alpha only: the fade mix's alpha is mix(FogColor.a * a, a, visibility))
 fragment void own_fs_alpha(VOut in [[stage_in]], constant Globals &g [[buffer(22)]], constant Terrain &t [[buffer(23)]], constant Fog &fog [[buffer(24)]],
-	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]]) {
+	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]], constant uint &cadFrag [[buffer(29)]]) {
 	float2 pixelSize = 1.0f / float2(t.TextureSize);
-	float a = (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize)).a
+	float a = (g.UseRgss == 1 ? sampleRGSS(atlas, atlasSampler, in.texCoord0, pixelSize, (cadFrag & 1) != 0) : sampleNearest(atlas, atlasSampler, in.texCoord0, pixelSize)).a
 		* getColor(in).a;
 	if (F_RICH) a = mix(fog.FogColor.a * a, a, in.chunkVisibility);
 	if (a < CUTOUT_LIMIT) discard_fragment();
