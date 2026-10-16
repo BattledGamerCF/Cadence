@@ -23,6 +23,31 @@ public final class EdgeCap {
 	private static final int MARGIN = Integer.getInteger("cadence.edgeCap.margin", 32);
 	private static final boolean LOG = Boolean.getBoolean("cadence.edgeCap.log");
 	private static volatile long lastGenNs = Long.MIN_VALUE / 2;
+	/**
+	 * Cadence: cap only when terrain is behind (-Dcadence.edgeCap.lag=K, default 1; 0 = the old rule, any generation within
+	 * reach): while new terrain generates near the player AND a chunk K inside the render distance (8 directions) isn't loaded,
+	 * the flight has outrun generation and the edge is (about to be) empty. Measured on the M2 Air, flight at 20 blocks/s, fps /
+	 * chunks loaded ahead: RD 16 old rule 119 / 15.7, uncapped 326 / 9.0, this (K=1) 288 / 15.7 (K=2: 246 / 14.1); RD 12 old 119 /
+	 * 11.8, this 385-400 / 11.2-11.7. The hold (1 s) lets it catch up.
+	 */
+	private static final int LAG = Integer.getInteger("cadence.edgeCap.lag", 1);
+	private static long nextLagCheck;
+	private static boolean lagging;
+
+	/** Any of 8 directions missing its chunk LAG chunks inside the render distance (render thread, every 250 ms). */
+	private static boolean lagging(Minecraft mc, long now) {
+		if (now < nextLagCheck) return lagging;
+		nextLagCheck = now + 250_000_000L;
+		int d = mc.options.getEffectiveRenderDistance() - LAG;
+		if (d < 2 || mc.level == null) return lagging = false;
+		int px = mc.player.chunkPosition().x(), pz = mc.player.chunkPosition().z();
+		var chunks = mc.level.getChunkSource();
+		for (int i = 0; i < 8; i++) {
+			double a = i * Math.PI / 4;
+			if (!chunks.hasChunk(px + (int) Math.round(Math.cos(a) * d), pz + (int) Math.round(Math.sin(a) * d))) return lagging = true;
+		}
+		return lagging = false;
+	}
 	/** The player's chunk and the reach (RD + margin), published by the render thread for the worldgen threads; reach 0 = none. */
 	private static volatile long player;
 	private static volatile int reach;
@@ -65,7 +90,7 @@ public final class EdgeCap {
 			long now = System.nanoTime();
 			player = (long) SectionPos.blockToSectionCoord(mc.player.getBlockX()) << 32 | (SectionPos.blockToSectionCoord(mc.player.getBlockZ()) & 0xffffffffL);
 			reach = mc.options.getEffectiveRenderDistance() + MARGIN;
-			c = now - lastGenNs < HOLD_NS;
+			c = now - lastGenNs < HOLD_NS && (LAG <= 0 || lagging(mc, now));
 			if (LOG && now >= nextDiag) {
 				nextDiag = now + 2_000_000_000L;
 				System.out.printf("cadence-edgecap: generated %d chunks (%d within reach %d), distance %d..%d, capped %b%n", GEN.getAndSet(0),
