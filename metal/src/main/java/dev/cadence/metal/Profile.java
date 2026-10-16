@@ -66,7 +66,7 @@ public final class Profile {
 			Path cfg = Legacy.readable(gameDir().resolve("config"), Legacy.SHADERS_CONFIG, Legacy.SHADERS_CONFIG_OLD);
 			if (Files.isRegularFile(cfg)) {
 				try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
-					p.load(r);
+					dev.cadence.metal.ConfigFiles.load(p, r);
 				}
 			}
 			pack = System.getProperty("cadence.shaders.pack", p.getProperty("pack", ""));
@@ -83,7 +83,7 @@ public final class Profile {
 		Path cfg = Legacy.readable(gameDir().resolve("config"), Legacy.CONFIG, Legacy.CONFIG_OLD);
 		if (Files.isRegularFile(cfg)) {
 			try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
-				ours.load(r);
+				dev.cadence.metal.ConfigFiles.load(ours, r);
 			} catch (IOException e) {
 				// the profile reports it
 			}
@@ -159,7 +159,7 @@ public final class Profile {
 		Path cfg = Legacy.readable(gameDir().resolve("config"), Legacy.CONFIG, Legacy.CONFIG_OLD);
 		if (Files.isRegularFile(cfg)) {
 			try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
-				file.load(r);
+				dev.cadence.metal.ConfigFiles.load(file, r);
 			} catch (IOException e) {
 				System.out.println("[cadence] profile: can't read " + cfg + ": " + e);
 			}
@@ -174,7 +174,7 @@ public final class Profile {
 				if (in == null) {
 					System.out.println("[cadence] profile: no profile named '" + name + "' (ignored)");
 				} else {
-					p.load(in);
+					dev.cadence.metal.ConfigFiles.load(p, in);
 				}
 			} catch (IOException e) {
 				System.out.println("[cadence] profile " + name + ": " + e);

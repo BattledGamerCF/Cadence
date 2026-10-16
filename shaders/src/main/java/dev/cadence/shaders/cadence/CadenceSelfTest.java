@@ -178,6 +178,20 @@ public final class CadenceSelfTest {
 						mc.options.guiScale().set(n);
 						mc.resizeGui();
 					});
+				} else if (lower.startsWith("click=")) {
+					// "click=TEXT": the open screen's first button whose label starts with TEXT pressed (as a mouse click)
+					String want = step.substring(6).strip();
+					mc.execute(() -> {
+						var screen = mc.gui.screen();
+						var w = screen == null ? null : findButton(screen.children(), want);
+						if (w instanceof net.minecraft.client.gui.components.Button b && b.active) b.onPress(null);
+						else LOGGER.info("[selftest] click: no active button starting with '{}'", want);
+					});
+				} else if (lower.equals("fullscreen")) {
+					// "fullscreen": toggles fullscreen as F11 does
+					mc.execute(() -> {
+						mc.options.fullscreen().set(!mc.options.fullscreen().get());  // (the option applies it to the window, as Video Settings does)
+					});
 				} else if (lower.startsWith("hover=")) {
 					// "hover=TEXT": the mouse put on the open screen's first widget whose label starts with TEXT (its tooltip shows)
 					String want = step.substring(6).strip();
@@ -576,6 +590,18 @@ public final class CadenceSelfTest {
 			if (c instanceof net.minecraft.client.gui.components.AbstractWidget w && w.getMessage().getString().startsWith(prefix)) return w;
 			if (c instanceof net.minecraft.client.gui.components.events.ContainerEventHandler h) {
 				var found = find(h.children(), prefix);
+				if (found != null) return found;
+			}
+		}
+		return null;
+	}
+
+	/** As find, buttons only (a status line can start with a button's text too). */
+	private static net.minecraft.client.gui.components.Button findButton(java.util.List<? extends net.minecraft.client.gui.components.events.GuiEventListener> children, String prefix) {
+		for (net.minecraft.client.gui.components.events.GuiEventListener c : children) {
+			if (c instanceof net.minecraft.client.gui.components.Button b && b.getMessage().getString().startsWith(prefix)) return b;
+			if (c instanceof net.minecraft.client.gui.components.events.ContainerEventHandler h) {
+				var found = findButton(h.children(), prefix);
 				if (found != null) return found;
 			}
 		}

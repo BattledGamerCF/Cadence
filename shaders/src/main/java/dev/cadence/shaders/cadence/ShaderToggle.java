@@ -50,7 +50,7 @@ public final class ShaderToggle {
 		Path cfg = readableConfigFile();
 		if (Files.isRegularFile(cfg)) {
 			try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
-				p.load(r);
+				dev.cadence.metal.ConfigFiles.load(p, r);
 			} catch (IOException | IllegalArgumentException e) {
 				// treated as no selection
 			}

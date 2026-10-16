@@ -85,7 +85,7 @@ public final class PackCheck {
 		if (!Files.isRegularFile(file())) return;
 		Properties p = new Properties();
 		try (Reader r = Files.newBufferedReader(file(), StandardCharsets.UTF_8)) {
-			p.load(r);
+			dev.cadence.metal.ConfigFiles.load(p, r);
 			for (String k : p.stringPropertyNames()) results.put(k, p.getProperty(k));
 		} catch (IOException e) {
 			// no saved checks

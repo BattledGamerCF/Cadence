@@ -41,6 +41,9 @@ Easier:
 Fixed:
 - **A shader pack that can't load no longer stops Minecraft from starting.** The game starts without shaders and says
   why in chat when you join a world. Unreadable pack settings files are skipped instead of refusing the pack.
+- **A damaged config file can't stop Minecraft from starting** any more: a malformed line (found by testing a hand-broken
+  config) used to crash the launch; now only the bad line is skipped. An unreadable Resolution value falls back to Auto, and
+  a selected pack whose file was deleted says so in plain words.
 - Quieter logs: Cadence's periodic statistics are only written with `-Dcadence.logStats=true`.
 - A shader pack refused to load when the quality profile chosen for another pack didn't exist in it ("Unknown shader
   profile: MINIMUM" with MakeUp). Profiles are now kept per pack, and a profile a pack lacks is ignored, as in Iris.

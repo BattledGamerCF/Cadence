@@ -49,7 +49,7 @@ public final class CadencePackGate implements IMixinConfigPlugin {
 		if (!Files.isRegularFile(cfg)) return fallback;
 		Properties p = new Properties();
 		try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
-			p.load(r);
+			dev.cadence.metal.ConfigFiles.load(p, r);
 		} catch (IOException e) {
 			return fallback;
 		}
@@ -73,7 +73,7 @@ public final class CadencePackGate implements IMixinConfigPlugin {
 			if (!Files.isRegularFile(cfg)) return "";
 			Properties p = new Properties();
 			try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
-				p.load(r);
+				dev.cadence.metal.ConfigFiles.load(p, r);
 			} catch (IOException e) {
 				System.out.println("[cadence-shaders] can't read " + cfg + ": " + e);
 				return "";

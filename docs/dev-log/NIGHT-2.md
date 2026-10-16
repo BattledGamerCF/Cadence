@@ -33,3 +33,14 @@ Test matrix (each a self-test plan; anything that crashes, errors, renders wrong
 - stress: memory pressure and thermal states (simulated), the busy scene with a pack, glowing entities with a pack,
   spectator mode
 - settings: every Cadence button cycled through every value; Quick Setup; presets
+
+### Results so far
+
+| Test | Found | Fixed |
+|---|---|---|
+| Rapid pack switching (12 switches, 3 s apart) | No crash; memory returns to ~330 MB at every "off" (no leak); a 1.6-1.8 GB short peak on direct pack-to-pack switches while the old pack is released | - |
+| Dimensions, render distance live, leave and rejoin (with and without a pack) | Nothing broken; the stall tracer mistook world loading for a stall | Tracer ignores loading screens |
+| Every pack's Shader Pack Settings clicked and reloaded (12 packs) | All reload cleanly ("White World" in Sildur's is the pack's own white mode); VanillaEX's 3-column layout put spacers in the wrong places | Each page's own column count honoured |
+| Every Cadence button cycled, fullscreen, GUI scale, F3+T, spectator, glowing mob, simulated heat and memory pressure, Quick Setup | Nothing broken (glowing outline draws with BSL; Cooling holds the right rate in every mode) | (test tool: click matched a status line) |
+| Pack switching while flying | Hand-over works mid-flight; memory back to 338 MB each time | - |
+| **Damaged config files** | **A malformed line in a config crashed the launch** ("A mod crashed on startup"); a deleted pack's chat message showed the full disk path; an unreadable Resolution fell back to a fixed 100% | Tolerant loader everywhere (12 call sites), plain message, Auto fallback |

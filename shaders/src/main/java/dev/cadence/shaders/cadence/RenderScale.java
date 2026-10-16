@@ -171,11 +171,13 @@ public final class RenderScale {
 			if (scale == 0f) scale = MAX;
 			return;
 		}
-		auto = false;
 		try {
 			scale = clamp(Float.parseFloat(v));
+			auto = false;
 		} catch (NumberFormatException e) {
-			scale = MAX;
+			// (an unreadable value: the default, Auto, rather than a fixed 100%)
+			auto = true;
+			if (scale == 0f) scale = MAX;
 		}
 	}
 

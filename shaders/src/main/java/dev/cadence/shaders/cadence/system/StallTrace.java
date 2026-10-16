@@ -40,7 +40,10 @@ public final class StallTrace {
 				sinceNs = now;
 				continue;
 			}
-			if (count <= 0 || (now - sinceNs) / 1_000_000 < LIMIT_MS) continue;
+			if (count <= 0 || (now - sinceNs) / 1_000_000 < LIMIT_MS || loading()) {
+				if (loading()) sinceNs = now;  // (world loading or saving: no world frames are drawn, nothing is stuck)
+				continue;
+			}
 			Thread render = find(RenderScale.renderThreadId);
 			if (render == null) continue;
 			StackTraceElement[] st = render.getStackTrace();
@@ -62,6 +65,15 @@ public final class StallTrace {
 		log.info("Stall: a frame took about {} ms ({} samples of the render thread)", ms, samples);
 		hits.entrySet().stream().sorted((a, b) -> b.getValue() - a.getValue()).limit(3)
 			.forEach(e -> log.info("  {}x {}", e.getValue(), e.getKey()));
+	}
+
+	private static boolean loading() {
+		var mc = net.minecraft.client.Minecraft.getInstance();
+		var screen = mc == null || mc.gui == null ? null : mc.gui.screen();
+		if (mc == null || mc.level == null) return true;
+		if (screen == null) return false;
+		String n = screen.getClass().getSimpleName();
+		return n.contains("Loading") || n.contains("Progress") || n.contains("GenericMessage") || n.contains("Receiving");
 	}
 
 	private static Thread find(long id) {

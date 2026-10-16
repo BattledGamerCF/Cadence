@@ -119,6 +119,10 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		List<String> tokens = new ArrayList<>();
 		if (layout != null && !layout.isBlank()) for (String t : layout.trim().split("\\s+")) tokens.add(t);
 		else if (this.top) tokens.addAll(new TreeMap<>(this.session.pack.options()).keySet());  // (no layout from the author)
+		// the author's grid (screen.columns / screen.NAME.columns, default 2): its <empty> spacers only line things up in 2 columns,
+		// which is what this list shows; with another column count they'd land in the wrong places, so the entries just flow in pairs
+		String columns = this.session.props.getOrDefault(this.screenKey + ".columns", "2").strip();  // (as OptiFine: each page its own, default 2)
+		if (!columns.equals("2")) tokens.removeIf(t -> t.equals("<empty>"));
 		Set<String> listed = new LinkedHashSet<>();
 		for (String t : tokens) if (!t.startsWith("[") && !t.startsWith("<")) listed.add(t);
 		List<AbstractWidget> row = new ArrayList<>();
@@ -350,7 +354,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		if (!Files.isRegularFile(file)) return out;
 		Properties p = new Properties();
 		try (var in = Files.newInputStream(file)) {
-			p.load(in);
+			dev.cadence.metal.ConfigFiles.load(p, in);
 		} catch (IOException | IllegalArgumentException e) {
 			return out;
 		}

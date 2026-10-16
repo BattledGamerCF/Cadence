@@ -59,7 +59,8 @@ public final class ShaderLoaderMod implements ClientModInitializer {
       dev.cadence.shaders.cadence.system.CadenceMessages.launchFailure(
           (selected == null ? "Cadence Shaders' settings" : "Shader pack "
               + dev.cadence.shaders.cadence.ShaderToggle.display(selected.getFileName().toString()))
-              + " couldn't load (" + failure.getMessage() + "), so shaders are off. Pick another pack or Off in Video Settings.");
+              + " couldn't load (" + (failure instanceof java.nio.file.NoSuchFileException ? "its file is missing from the shaderpacks folder"
+                  : failure.getMessage()) + "), so shaders are off. Pick another pack or Off in Video Settings.");
     }
   }
 

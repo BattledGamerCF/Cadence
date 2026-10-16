@@ -155,7 +155,7 @@ public final class JvmDefaults {
 		if (!Files.isRegularFile(cfg)) return true;
 		Properties props = new Properties();
 		try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
-			props.load(r);
+			dev.cadence.metal.ConfigFiles.load(props, r);
 		} catch (IOException e) {
 			return true;
 		}
