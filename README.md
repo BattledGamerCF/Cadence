@@ -55,7 +55,11 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 
 ## Settings
 
-- **In game:** Options > Video Settings (Cadence: Shaders) (pack, preset, render scale) and the Cadence settings screen.
+- **In game:** everything is in **Options > Video Settings**, at the top: the status line, Performance preset and
+  Quick Setup under **Cadence**; Cooling, background frame rate, resolution, sharpening, leaves and messages under
+  **Cadence: Performance**; the shader pack, its profile, shadows and **Shader Pack Settings** (the pack's own options,
+  on its own pages, as in Iris) under **Cadence: Shaders**.
+- **Shader pack options** are kept per pack in `shaderpacks/<pack>.txt`, the same file Iris uses.
 - **Config files:** `config/cadence.properties` and `config/cadence-shaders.properties` in your Minecraft folder.
   Set `profile=none` in `cadence.properties` to turn off Cadence's performance profile.
 - **Advanced:** every switch is also a `-Dcadence.*` JVM flag. To turn off the Metal renderer for a mod that needs
