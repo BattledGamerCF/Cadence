@@ -19,7 +19,9 @@ Easier:
 - **Cooling** (Quiet, Balanced, Performance, Off) replaces the heat-control switch; the tooltip shows temperature
   state, power and fan speed. Fan speed itself can't be set without administrator rights.
 - **Quick Setup asks what matters more**: smooth and cool, or the most fps.
-- **Shader switching is automatic**: a game started without shaders uses Cadence's faster terrain renderer.
+- **Shader packs switch in game, any time, and Cadence's faster terrain renderer is back the moment they're off.**
+  No restarts and no Shader Switching setting: the fast renderer steps aside while a pack draws and returns when it's
+  turned off (measured: 506 fps, BSL 60, off 509, Complementary 57, off 504).
 - With no shader packs installed, the Shaders button says so and opens the folder.
 - **Every Cadence setting is now in Video Settings**, under "Cadence", "Cadence: Performance" and "Cadence: Shaders"
   (the separate Cadence Settings screen is gone), and Cadence's status lines wrap instead of running past the menu at

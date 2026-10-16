@@ -61,8 +61,8 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 			"Pick a shader pack first (the Shaders button), then its settings open here.")));
 		this.list.addSmall(ShaderToggle.packButton(), settings);
 		this.list.addSmall(ShaderToggle.qualityButton(), ShaderToggle.shadowRateButton());
-		this.list.addSmall(ShaderToggle.liveButton(), dev.cadence.shaders.cadence.CadenceSettings.packCheckButton());
-		this.list.addSmall(ShaderToggle.folderButton(), null);
+		// (Shader Switching is gone from the menu: packs switch in game and Cadence's faster terrain returns when they're off)
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.packCheckButton(), ShaderToggle.folderButton());
 	}
 
 	@Inject(method = "removed", at = @At("HEAD"))

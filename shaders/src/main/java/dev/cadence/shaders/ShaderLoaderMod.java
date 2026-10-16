@@ -87,6 +87,8 @@ public final class ShaderLoaderMod implements ClientModInitializer {
     TerrainShaderGeometry.configure(
         materials, Boolean.parseBoolean(separateAo), materials.allBlockIdsFitSigned16());
     FeatureDrawContext.configure(materials::entityTypeId, materials);
+    // Cadence: our own near terrain steps aside while the pack draws (the caller's chunk rebuild fills vanilla's buffers)
+    dev.cadence.metal.own.OwnTerrain.packActive(true);
     ShaderRuntime.install(runtime);
     LOGGER.info(
         "Selected shader pack {} with {} cached block states; render programs initialize when"
@@ -102,5 +104,6 @@ public final class ShaderLoaderMod implements ClientModInitializer {
     if (old != null) old.close();
     TerrainShaderGeometry.disable();
     FeatureDrawContext.disable();
+    dev.cadence.metal.own.OwnTerrain.packActive(false);  // (the next chunk rebuild meshes for our terrain again)
   }
 }

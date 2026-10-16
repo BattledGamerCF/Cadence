@@ -498,8 +498,27 @@ public final class OwnTerrain {
 		}
 	}
 
+	/**
+	 * Cadence: a shader pack is drawing the world. The pack needs the game's own section pipeline (its geometry and material ids), so
+	 * our near terrain steps aside: get() is null (every hook then takes vanilla's path, the mesher included), its meshes are
+	 * freed, and the chunk rebuild that every shader switch does fills vanilla's buffers. When the pack goes off, the next rebuild
+	 * meshes for us again. This is what lets shaders switch in game while a game without shaders keeps the faster terrain.
+	 */
+	private static volatile boolean packActive;
+
+	/** ShaderLoaderMod, on the render thread (or before any frame), when a pack is activated or deactivated. */
+	public static void packActive(boolean on) {
+		packActive = on;
+		if (on && instance != null) instance.disposeAll();
+	}
+
+	public static boolean packActive() {
+		return packActive;
+	}
+
 	/** Render thread, at the top of the level's frame: creates the renderer the first time (null when not on Metal). */
 	public static @Nullable OwnTerrain init() {
+		if (packActive) return null;
 		if (instance != null || failed) return instance;
 		try {
 			Object encoder = MetalBridge.encoder(((FrontendCommandEncoder) RenderSystem.getDevice().createCommandEncoder()).backend());
@@ -518,7 +537,7 @@ public final class OwnTerrain {
 	}
 
 	public static @Nullable OwnTerrain get() {
-		return instance;
+		return packActive ? null : instance;
 	}
 
 	/** AnimCopy's compute copy: the native state (its library and pipelines) and the backend encoder. */

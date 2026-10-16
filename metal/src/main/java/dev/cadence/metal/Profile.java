@@ -89,30 +89,30 @@ public final class Profile {
 			}
 		}
 		StringBuilder set = new StringBuilder();
-		for (String[] kv : new String[][] {{"cadence.own", "false"}, {"cadence.startup.mslCache", "true"}}) {
+		// (cadence.own is no longer turned off here: our terrain hands over to the pack at run time, OwnTerrain.packActive)
+		for (String[] kv : new String[][] {{"cadence.startup.mslCache", "true"}}) {
 			if (System.getProperty(kv[0]) == null && ours.getProperty(kv[0]) == null && ours.getProperty("mcopt." + kv[0].substring("cadence.".length())) == null) {
 				System.setProperty(kv[0], kv[1]);
 				set.append(' ').append(kv[0]).append('=').append(kv[1]);
 			}
 		}
 		System.out.println("[cadence] shader " + (pack.isBlank() ? "live switching on" : "pack '" + pack.strip() + "' selected")
-			+ ": terrain through the game's section pipeline for the loader;"
+			+ ": the loader's hooks on, Cadence's terrain hands over while a pack draws;"
 			+ (set.isEmpty() ? " (kept your explicit flags)" : " set" + set));
 	}
 
 	/**
-	 * Cadence: whether this launch loads the shader loader's hooks with no pack selected ("instant" switching). auto (the
-	 * default): only when a pack is on at launch, so a game without shaders gets Cadence's own, faster terrain (measured
-	 * 30-70% more fps at 1080p); instant: always (packs can be turned on in game without a restart); restart: never. The old
-	 * key liveSwitching=false means restart. Shared with the shaders module (CadencePackGate), which must agree.
+	 * Cadence: whether this launch loads the shader loader's hooks. auto (the default) and instant: always, so packs switch in
+	 * game, and our own faster terrain still draws whenever no pack is on (it steps aside while one is: OwnTerrain.packActive;
+	 * before that, auto chose one or the other at launch and switching needed a restart); restart: only when a pack is on at
+	 * launch. The old key liveSwitching=false means restart. Shared with the shaders module (CadencePackGate), which must agree.
 	 */
 	public static boolean liveSwitching(String mode, String oldLive, boolean packAtLaunch) {
 		String m = mode == null ? ("false".equalsIgnoreCase(oldLive == null ? "" : oldLive.strip()) ? "restart" : "auto")
 			: mode.strip().toLowerCase(java.util.Locale.ROOT);
 		return switch (m) {
-			case "instant" -> true;
-			case "restart" -> false;
-			default -> packAtLaunch;
+			case "restart" -> packAtLaunch;
+			default -> true;  // auto and instant: our terrain steps aside while a pack draws (OwnTerrain.packActive)
 		};
 	}
 
