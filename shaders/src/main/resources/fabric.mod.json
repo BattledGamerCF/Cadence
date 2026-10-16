@@ -33,7 +33,7 @@
     "fabricloader": ">=0.19.3",
     "minecraft": "~26.3",
     "java": ">=25",
-    "cadence": ">=0.4.0-beta.1"
+    "cadence": ">=0.4.0-beta.2"
   },
   "license": ["Apache-2.0", "MIT"]
 }

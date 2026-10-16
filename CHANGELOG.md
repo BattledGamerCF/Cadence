@@ -2,6 +2,33 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.2 / shaders 0.3.1 (2026-10-16)
+
+Faster:
+- **About 25% more fps without shaders** with RGSS texture filtering (Minecraft's default): terrain pixels that RGSS
+  can't change take one texture sample instead of nine. The picture is identical (checked pixel by pixel). The same
+  applies when a shader pack is turned off mid-session.
+- **Shader packs: about 1.6-1.8 ms less GPU time per frame**: cleared buffers a pack never draws into are no longer
+  written to memory.
+- Entity models are written a face at a time: about 5% less render-thread CPU in busy scenes.
+- Less memory: the glowing-outline target exists only while outlines are on screen (about 40 MB at fullscreen), and the
+  Java heap now shrinks when macOS reports memory pressure.
+
+Easier:
+- **Cadence says it is optimizing your game**, and the settings show what it tunes automatically.
+- **Cooling** (Quiet, Balanced, Performance, Off) replaces the heat-control switch; the tooltip shows temperature
+  state, power and fan speed. Fan speed itself can't be set without administrator rights.
+- **Quick Setup asks what matters more**: smooth and cool, or the most fps.
+- **Shader switching is automatic**: a game started without shaders uses Cadence's faster terrain renderer.
+- With no shader packs installed, the Shaders button says so and opens the folder.
+- **Compatibility layers (first version)**: where another mod hooks code Cadence replaces, Cadence uses Minecraft's own
+  code in that one area and keeps every other optimization ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)).
+
+Fixed:
+- A crash when turning a shader pack on with World Resolution below 100%.
+- When a shader pack fails, it is turned off and the game keeps running (it used to crash a frame later).
+- Auto resolution: a light pack after a heavy one comes back to full sharpness at once instead of over 20-30 s.
+
 ## 0.4.0-beta.1 / shaders 0.3.0 (2026-10-15)
 
 - **Cadence Logic**, Cadence's own replacement for Lithium (written from scratch; exact, so the game plays the same):
