@@ -129,6 +129,7 @@ public final class ShaderSwitcher {
 				reload(mc, mode);
 			}
 			RenderScale.packSwitched(before, active);
+			if (!before.equals(active)) dev.cadence.shaders.cadence.system.HeatControl.workloadChanged();
 			RenderScale.settle(); // the new pack's first frames say nothing about its cost
 			SwitchProbe.start("switch to " + (pack.isEmpty() ? "off" : pack) + " (" + mode + ")");
 		});

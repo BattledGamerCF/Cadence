@@ -28,6 +28,8 @@ Fixed:
 - A crash when turning a shader pack on with World Resolution below 100%.
 - When a shader pack fails, it is turned off and the game keeps running (it used to crash a frame later).
 - Auto resolution: a light pack after a heavy one comes back to full sharpness at once instead of over 20-30 s.
+- Cooling: a Mac that warmed up under a shader pack kept holding the pack's frame rate (about 60 fps) after the pack was
+  turned off. Changing shaders now starts the hold again (Balanced: up to 120 fps while warm).
 
 ## 0.4.0-beta.1 / shaders 0.3.0 (2026-10-15)
 

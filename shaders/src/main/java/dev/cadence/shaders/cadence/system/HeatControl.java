@@ -83,6 +83,21 @@ public final class HeatControl {
 		freshMode = true;
 	}
 
+	/**
+	 * Cadence (ShaderSwitcher): a shader pack turned on, off or changed. The frame rate held so far was the old workload's
+	 * (a Mac that warmed up under a pack running at 60 fps held 60 fps after the pack was turned off, for as long as it stayed
+	 * warm), so the hold starts again at the cooling mode's ceiling; hot-only measures (shadows, resolution) stay as they are.
+	 */
+	public static void workloadChanged() {
+		if (!enabled || !holding()) return;
+		cap = Double.POSITIVE_INFINITY;
+		warmSince = coolSince = 0;
+		learned = releasedCap = Double.POSITIVE_INFINITY;
+		releasedAt = 0;
+		freshMode = true;
+		LoggerFactory.getLogger("cadence").info("Heat control: shaders changed, the frame-rate hold starts again");
+	}
+
 	/** Just switched modes: the next hold starts at the mode's own ceiling, not at the frame rate the old cap allowed. */
 	private static volatile boolean freshMode;
 	private static final long SECOND = Boolean.getBoolean("cadence.heatFast") ? 100_000_000L : 1_000_000_000L;
