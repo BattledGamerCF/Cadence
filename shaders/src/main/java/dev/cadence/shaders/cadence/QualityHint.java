@@ -63,7 +63,7 @@ final class QualityHint {
 		if (mc.player == null) return;
 		mc.player.sendSystemMessage(Component.literal(String.format(Locale.ROOT,
 			"Cadence: shaders are limited by the GPU (about %.0f fps, already at 50%% resolution). "
-				+ "Video Settings > Shaders > Quality: %s", 1000.0 / intervalMs,
+				+ "Video Settings > Cadence: Shaders > Shader Profile: %s", 1000.0 / intervalMs,
 			pick[1] == null ? pick[0] + " is much faster." : pick[0] + " is faster, " + pick[1] + " fastest."))
 			.withStyle(ChatFormatting.GRAY));
 	}

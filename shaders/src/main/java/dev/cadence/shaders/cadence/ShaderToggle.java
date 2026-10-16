@@ -51,7 +51,7 @@ public final class ShaderToggle {
 		if (Files.isRegularFile(cfg)) {
 			try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
 				p.load(r);
-			} catch (IOException e) {
+			} catch (IOException | IllegalArgumentException e) {
 				// treated as no selection
 			}
 		}
@@ -124,7 +124,7 @@ public final class ShaderToggle {
 		try {
 			Files.createDirectories(cfg.getParent());
 			try (Writer w = Files.newBufferedWriter(cfg, StandardCharsets.UTF_8)) {
-				p.store(w, "Cadence shaders (Video Settings > Shaders). pack= empty is off. liveSwitching=false: Cadence's faster terrain when"
+				p.store(w, "Cadence shaders (Video Settings, Cadence: Shaders). pack= empty is off. liveSwitching=false: Cadence's faster terrain when"
 					+ " shaders are off at launch, but turning them on then needs a restart.");
 			}
 		} catch (IOException e) {
@@ -132,7 +132,7 @@ public final class ShaderToggle {
 		}
 	}
 
-	static String display(String pack) {
+	public static String display(String pack) {
 		if (pack.isEmpty()) return "Off";
 		String name = pack;
 		if (name.toLowerCase(Locale.ROOT).endsWith(".zip")) name = name.substring(0, name.length() - 4);
@@ -299,8 +299,8 @@ public final class ShaderToggle {
 	}
 
 	private static Component profileLabel(String profile) {
-		return Component.literal("Shader Quality: " + (profile.isEmpty() ? "Pack default" : profile.charAt(0)
-			+ profile.substring(1).toLowerCase(Locale.ROOT)));
+		return Component.literal("Shader Profile: " + (profile.isEmpty() ? "Default" : profile.charAt(0)
+			+ profile.substring(1).toLowerCase(Locale.ROOT).replace('_', ' ')));
 	}
 
 	/** Cycles the selected pack's quality profiles (pack default first). Applied, with a live reload, when the screen closes. */
@@ -387,7 +387,7 @@ public final class ShaderToggle {
 
 	private static Component shadowRateLabel() {
 		int r = ShadowReuse.effectiveRate();
-		Component base = Component.literal("Shadows: " + (r == 1 ? "Every Frame" : r == 2 ? "Every 2nd Frame" : "Every " + r + "rd Frame"));
+		Component base = Component.literal("Shadows: " + (r == 1 ? "Every Frame" : "Every " + r + (r == 2 ? "nd" : r == 3 ? "rd" : "th") + " Frame"));
 		return r > ShadowReuse.rate() ? base.copy().withStyle(ChatFormatting.YELLOW) : base;
 	}
 

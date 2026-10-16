@@ -48,6 +48,8 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 				Component.literal("Shader Pack Settings..."), b -> {
 					Screen next = dev.cadence.shaders.cadence.PackSettingsScreen.open(self);
 					if (next != null) this.minecraft.gui.setScreen(next);
+					else dev.cadence.shaders.cadence.system.Notices.post("Can't open this pack's settings",
+						"Its files couldn't be read (see the log). The pack itself may still work.");
 				})
 			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
 			.tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.literal(

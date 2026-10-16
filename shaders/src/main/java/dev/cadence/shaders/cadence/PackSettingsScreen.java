@@ -4,8 +4,6 @@ import dev.cadence.shaders.pack.ShaderOption;
 import dev.cadence.shaders.pack.ShaderPack;
 import dev.cadence.shaders.runtime.PackEnvironment;
 import java.io.IOException;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -52,15 +50,25 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			this.props = props;
 		}
 
+		/** (the profile's expansion parses shaders.properties: computed once per change, not once per label) */
+		private Map<String, String> cached;
+
 		Map<String, String> values() {
+			if (cached != null) return cached;
 			Map<String, String> v = new TreeMap<>();
 			try {
 				if (!profile.isEmpty()) v.putAll(pack.profileOverrides(profile));
 				v.putAll(own);
-				return pack.optionValues(v);
+				cached = pack.optionValues(v);
 			} catch (Exception e) {
-				return Map.of();
+				cached = Map.of();
 			}
+			return cached;
+		}
+
+		void changed() {
+			cached = null;
+			changed = true;
 		}
 	}
 
@@ -84,6 +92,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			Map<String, String> lang = lang(pack);
 			Session s = new Session(name, pack, lang, Map.of());
 			s.profile = ShaderToggle.profileFor(name);
+			if (!s.profile.isEmpty() && !ShaderToggle.profiles(name).contains(s.profile)) s.profile = "";  // (another pack's)
 			s.own.putAll(readOwn(name));
 			Map<String, String> props = pack.properties(s.values(), PackEnvironment.definitions()).values();
 			Session session = new Session(name, pack, lang, props);
@@ -98,43 +107,42 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 
 	@Override
 	protected void addOptions() {
-		if (this.top) {
-			this.list.addSmall(Button.builder(Component.literal("Reset to Defaults"), b -> {
-				this.session.own.clear();
-				this.session.profile = "";
-				this.session.changed = true;
-				this.rebuildWidgets();
-			}).tooltip(Tooltip.create(Component.literal("Every option back to the pack author's default, and no profile."))).build(), null);
-		}
 		this.pageButtons.clear();
 		this.optionButtons.clear();
+		if (this.top) {
+			int wrap = Math.max(120, Math.min(this.list.getRowWidth(), this.width - 24));
+			for (Component line : CadenceSettings.wrap(Component.literal(
+				"Click for the next value, shift-click for the previous. Changes apply when you leave.").withStyle(ChatFormatting.GRAY), wrap, this.font))
+				this.list.addHeader(line);
+		}
 		String layout = this.session.props.get(this.screenKey);
 		List<String> tokens = new ArrayList<>();
 		if (layout != null && !layout.isBlank()) for (String t : layout.trim().split("\\s+")) tokens.add(t);
-		else if (this.top) {
-			// no layout from the author: every option, by name
-			tokens.addAll(new TreeMap<>(this.session.pack.options()).keySet());
-		}
+		else if (this.top) tokens.addAll(new TreeMap<>(this.session.pack.options()).keySet());  // (no layout from the author)
 		Set<String> listed = new LinkedHashSet<>();
 		for (String t : tokens) if (!t.startsWith("[") && !t.startsWith("<")) listed.add(t);
 		List<AbstractWidget> row = new ArrayList<>();
 		for (String t : tokens) {
 			if (t.equals("*")) {
-				for (String name : new TreeMap<>(this.session.pack.options()).keySet()) if (!listed.contains(name)) row.add(this.optionButton(name));
+				for (String name : new TreeMap<>(this.session.pack.options()).keySet())
+					if (!listed.contains(name)) this.place(row, this.optionWidget(name));
 				continue;
 			}
-			AbstractWidget w = t.equals("<empty>") ? null
+			// (a name that isn't an option keeps its slot empty so the author's columns stay aligned)
+			this.place(row, t.equals("<empty>") ? null
 				: t.equals("<profile>") ? this.profileButton()
 				: t.startsWith("[") && t.endsWith("]") ? this.pageButton(t.substring(1, t.length() - 1))
-				: this.session.pack.options().containsKey(t) ? this.optionButton(t) : null;
-			// (a name that isn't an option, like BSL's ABOUT, keeps its slot empty so the author's columns stay aligned)
-			row.add(w);
-			if (row.size() == 2) {
-				this.addRow(row.get(0), row.get(1));
-				row.clear();
-			}
+				: this.session.pack.options().containsKey(t) ? this.optionWidget(t) : null);
 		}
 		if (!row.isEmpty()) this.addRow(row.get(0), null);
+	}
+
+	private void place(List<AbstractWidget> row, AbstractWidget w) {
+		row.add(w);
+		if (row.size() == 2) {
+			this.addRow(row.get(0), row.get(1));
+			row.clear();
+		}
 	}
 
 	private void addRow(AbstractWidget left, AbstractWidget right) {
@@ -143,9 +151,22 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		else this.list.addSmall(left, right);
 	}
 
+	/** Bottom row: Reset to Defaults (first page only) and Done, as vanilla's option screens. */
+	@Override
+	protected void addFooter() {
+		var row = this.layout.addToFooter(net.minecraft.client.gui.layouts.LinearLayout.horizontal().spacing(8));
+		if (this.top) row.addChild(Button.builder(Component.literal("Reset to Defaults"), b -> {
+			this.session.own.clear();
+			this.session.profile = "";
+			this.session.changed();
+			this.rebuildWidgets();
+		}).width(150).tooltip(Tooltip.create(Component.literal("Every option back to the pack author's defaults, and no profile."))).build());
+		row.addChild(Button.builder(net.minecraft.network.chat.CommonComponents.GUI_DONE, b -> this.onClose()).width(150).build());
+	}
+
 	private AbstractWidget pageButton(String page) {
 		String label = this.session.lang.getOrDefault("screen." + page, page.replace('_', ' '));
-		Button.Builder b = Button.builder(Component.literal(label + "..."), btn -> this.minecraft.gui.setScreen(
+		Button.Builder b = Button.builder(Component.literal(label + "§r..."), btn -> this.minecraft.gui.setScreen(
 			new PackSettingsScreen(this, this.session, "screen." + page, Component.literal(strip(label)), false)));
 		String help = this.session.lang.get("screen." + page + ".comment");
 		if (help != null) b.tooltip(Tooltip.create(Component.literal(help)));
@@ -158,51 +179,79 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		List<String> profiles = new ArrayList<>();
 		profiles.add("");
 		profiles.addAll(ShaderToggle.profiles(this.session.packName));
-		Button[] self = new Button[1];
-		self[0] = Button.builder(this.profileLabel(), b -> {
+		StringBuilder list = new StringBuilder();
+		for (String p : profiles) list.append(list.length() == 0 ? "" : ", ").append(this.profileName(p));
+		return Button.builder(this.profileLabel(), b -> {
 			int i = profiles.indexOf(this.session.profile);
 			int step = this.minecraft.hasShiftDown() ? profiles.size() - 1 : 1;
 			this.session.profile = profiles.get(((i < 0 ? 0 : i) + step) % profiles.size());
 			this.session.own.clear();  // a profile sets the options it names, as in Iris
-			this.session.changed = true;
+			this.session.changed();
 			this.rebuildWidgets();
-		}).tooltip(Tooltip.create(Component.literal("The pack author's quality presets. Choosing one sets its options; changing an option after that makes it Custom."))).build();
-		return self[0];
+		}).tooltip(Tooltip.create(Component.literal("The pack author's quality presets: " + list
+			+ ". Choosing one sets its options; changing an option afterwards makes it Custom."))).build();
+	}
+
+	private String profileName(String p) {
+		return p.isEmpty() ? "Default" : strip(this.session.lang.getOrDefault("profile." + p, p));
 	}
 
 	private Component profileLabel() {
-		String p = this.session.profile;
-		String name = p.isEmpty() ? "Default" : this.session.lang.getOrDefault("profile." + p, p);
-		boolean custom = !this.session.own.isEmpty();
-		return Component.literal("Profile: " + strip(name) + (custom ? " (Custom)" : ""));
+		return Component.literal("Profile: " + this.profileName(this.session.profile) + (this.session.own.isEmpty() ? "" : " (Custom)"));
 	}
 
-	private AbstractWidget optionButton(String name) {
+	/** An option: a slider when the author lists it under sliders=, a plain line when it has one value, else a button. */
+	private AbstractWidget optionWidget(String name) {
 		ShaderOption option = this.session.pack.options().get(name);
 		List<String> values = option.allowedValues();
-		Button[] self = new Button[1];
-		self[0] = Button.builder(this.optionLabel(name), b -> {
-			String now = this.session.values().getOrDefault(name, option.defaultValue());
-			int i = values.indexOf(now);
-			int step = this.minecraft.hasShiftDown() ? values.size() - 1 : 1;
-			String next = values.get(((i < 0 ? 0 : i) + step) % values.size());
-			this.session.own.put(name, next);
-			this.session.changed = true;
-			self[0].setMessage(this.optionLabel(name));
-		}).build();
 		String help = this.session.lang.get("option." + name + ".comment");
-		self[0].setTooltip(Tooltip.create(Component.literal((help != null ? help + "\n" : "")
-			+ "Default: " + this.valueText(name, option.defaultValue()) + ". Shift-click for the previous value.")));
-		this.optionButtons.add(self[0]);
-		return self[0];
+		Tooltip tip = Tooltip.create(Component.literal((help != null ? help + "\n\n" : "")
+			+ "Default: " + this.valueText(name, option.defaultValue())));
+		if (values.size() <= 1) {
+			// (an information line, like BSL's "BSL v10.1.8 by Capt Tatsu")
+			Button info = Button.builder(Component.literal(this.session.lang.getOrDefault("option." + name, name.replace('_', ' '))), b -> { }).build();
+			info.active = false;
+			if (help != null) info.setTooltip(Tooltip.create(Component.literal(help)));
+			return info;
+		}
+		AbstractWidget w;
+		if (this.sliders().contains(name)) w = new OptionSlider(name, values);
+		else {
+			Button[] self = new Button[1];
+			self[0] = Button.builder(this.optionLabel(name), b -> {
+				String now = this.session.values().getOrDefault(name, option.defaultValue());
+				int i = values.indexOf(now);
+				int step = this.minecraft.hasShiftDown() ? values.size() - 1 : 1;
+				this.set(name, values.get(((i < 0 ? 0 : i) + step) % values.size()));
+				self[0].setMessage(this.optionLabel(name));
+			}).build();
+			w = self[0];
+			this.optionButtons.add(self[0]);
+		}
+		w.setTooltip(tip);
+		return w;
 	}
 
+	private void set(String name, String value) {
+		this.session.own.put(name, value);
+		this.session.changed();
+	}
+
+	private Set<String> sliders() {
+		String s = this.session.props.get("sliders");
+		Set<String> out = new LinkedHashSet<>();
+		if (s != null) for (String t : s.trim().split("\\s+")) out.add(t);
+		return out;
+	}
+
+	/** "Name: value", the pack's own colours in the name; a value changed from the default in yellow. */
 	private Component optionLabel(String name) {
 		ShaderOption option = this.session.pack.options().get(name);
 		String value = this.session.values().getOrDefault(name, option.defaultValue());
-		String label = strip(this.session.lang.getOrDefault("option." + name, name.replace('_', ' ')));
-		Component c = Component.literal(label + ": " + this.valueText(name, value));
-		return value.equals(option.defaultValue()) ? c : c.copy().withStyle(ChatFormatting.YELLOW);
+		String label = this.session.lang.getOrDefault("option." + name, name.replace('_', ' '));
+		var c = Component.literal(label + "§r: ");
+		Component v = Component.literal(this.valueText(name, value));
+		return c.append(value.equals(option.defaultValue()) ? v : v.copy().withStyle(ChatFormatting.YELLOW));
 	}
 
 	private String valueText(String name, String value) {
@@ -211,6 +260,44 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		ShaderOption option = this.session.pack.options().get(name);
 		if (option != null && option.kind() == ShaderOption.Kind.SWITCH) return value.equals("true") ? "On" : "Off";
 		return value;
+	}
+
+	/** A slider over an option's listed values (each a stop), as the author asked with sliders=. */
+	private final class OptionSlider extends net.minecraft.client.gui.components.AbstractSliderButton {
+		private final String name;
+		private final List<String> values;
+
+		OptionSlider(String name, List<String> values) {
+			super(0, 0, 150, 20, Component.empty(), 0);
+			this.name = name;
+			this.values = values;
+			String now = PackSettingsScreen.this.session.values().getOrDefault(name, values.get(0));
+			int i = Math.max(0, values.indexOf(now));
+			this.value = values.size() <= 1 ? 0 : (double) i / (values.size() - 1);
+			this.updateMessage();
+		}
+
+		private int index() {
+			return (int) Math.round(this.value * (this.values.size() - 1));
+		}
+
+		@Override
+		protected void updateMessage() {
+			this.setMessage(PackSettingsScreen.this.sliderLabel(this.name, this.values.get(this.index())));
+		}
+
+		@Override
+		protected void applyValue() {
+			String v = this.values.get(this.index());
+			if (!v.equals(PackSettingsScreen.this.session.values().get(this.name))) PackSettingsScreen.this.set(this.name, v);
+		}
+	}
+
+	private Component sliderLabel(String name, String value) {
+		ShaderOption option = this.session.pack.options().get(name);
+		String label = this.session.lang.getOrDefault("option." + name, name.replace('_', ' '));
+		Component v = Component.literal(this.valueText(name, value));
+		return Component.literal(label + "§r: ").append(value.equals(option.defaultValue()) ? v : v.copy().withStyle(ChatFormatting.YELLOW));
 	}
 
 	/** Self-test: the Nth (1-based) page button / option button of the open settings page pressed. */
@@ -245,8 +332,9 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			else {
 				Properties p = new Properties();
 				this.session.own.forEach(p::setProperty);
-				try (Writer w = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
-					p.store(w, "Shader pack settings (Cadence; the same file Iris uses)");
+				// (Properties' own byte format, as Iris writes this file)
+				try (var out = Files.newOutputStream(file)) {
+					p.store(out, "Shader pack settings (Cadence; the same file Iris uses)");
 				}
 			}
 		} catch (IOException e) {
@@ -261,9 +349,9 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		Path file = ShaderToggle.packsDirectory().resolve(Path.of(packName).getFileName().toString() + ".txt");
 		if (!Files.isRegularFile(file)) return out;
 		Properties p = new Properties();
-		try (var r = Files.newBufferedReader(file)) {
-			p.load(r);
-		} catch (IOException e) {
+		try (var in = Files.newInputStream(file)) {
+			p.load(in);
+		} catch (IOException | IllegalArgumentException e) {
 			return out;
 		}
 		for (String k : p.stringPropertyNames()) out.put(k, p.getProperty(k).trim());

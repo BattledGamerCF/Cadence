@@ -17,7 +17,7 @@ import net.minecraft.network.chat.Component;
  */
 public final class CadenceSettings {
 	public enum Preset {
-		BATTERY("Battery Saver"), BALANCED("Balanced"), QUALITY("Max Quality"), CUSTOM("Custom");
+		BATTERY("Battery Saver"), BALANCED("Recommended"), QUALITY("Max Quality"), CUSTOM("Custom");
 
 		final String label;
 
@@ -116,7 +116,7 @@ public final class CadenceSettings {
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tooltip.create(tip(
 			"One click sets everything below.\n"
 				+ "Battery Saver: coolest and quietest; the world may look softer when the Mac is busy (aims for 40 fps).\n"
-				+ "Balanced (recommended): smooth 60 fps, sharp when possible, eases off when the Mac gets warm.\n"
+				+ "Recommended: smooth 60 fps, sharp when possible, eases off when the Mac gets warm.\n"
 				+ "Max Quality: always full sharpness and every-frame shadows; the Mac may get hot and slow itself down.\n"
 				+ "Custom: you changed something below by hand.\n"
 				+ "Tip: set Max Framerate to 60 (or 120 if your screen is ProMotion) unless you need more; extra frames your "

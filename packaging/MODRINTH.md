@@ -31,7 +31,7 @@ preset. Shader packs are not included; download them from their authors.
 
 1. Minecraft **26.3** with **Fabric Loader 0.19.5+** (Java 25; launchers download it for you)
 2. Put the Cadence jar in your `mods` folder, and shader packs in `shaderpacks`
-3. Choose a pack in **Options → Video Settings → Shaders**
+3. Choose a pack in **Options → Video Settings** (Cadence: Shaders); **Shader Pack Settings** has its options
 
 **Remove Sodium and Iris:** Cadence replaces them. Mods that draw with OpenGL directly won't work while the Metal
 renderer is on.

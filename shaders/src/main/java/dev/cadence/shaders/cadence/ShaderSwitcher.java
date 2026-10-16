@@ -105,7 +105,7 @@ public final class ShaderSwitcher {
 					active = pack;
 				}
 				LOGGER.info("Shaders switched to {} in {} ms (chunks rebuilding)", pack.isEmpty() ? "off" : pack, (System.nanoTime() - t0) / 1_000_000);
-				tell(mc, Component.literal("Shaders: " + (pack.isEmpty() ? "off" : ShaderToggle.display(pack))).withStyle(ChatFormatting.GRAY));
+				tell(mc, Component.literal("Shaders: " + (pack.isEmpty() ? "Off" : ShaderToggle.display(pack))).withStyle(ChatFormatting.GRAY));
 			} catch (Exception | LinkageError e) {
 				LOGGER.error("Couldn't switch to shader pack {}; shaders are off", pack, e);
 				try {

@@ -25,6 +25,10 @@ Easier:
   (the separate Cadence Settings screen is gone), and Cadence's status lines wrap instead of running past the menu at
   large GUI scales or small windows.
 - The Graphics API option's default now reads **Cadence (Metal)**.
+- **Shader Pack Settings** has sliders where the pack asks for them, Reset to Defaults and Done at the bottom, changed
+  values in yellow, information lines that can't be clicked, and text that wraps at any GUI scale.
+- Clearer names: the Performance preset "Balanced" is now **Recommended** (so it isn't confused with Cooling: Balanced),
+  "Shader Quality" is **Shader Profile**, and Shadows reads "Every 4th Frame" instead of "Every 4rd Frame".
 - **Shader Pack Settings**: every pack's own options (shadows, clouds, water, sky...) on the pack's own pages, with its
   names and help text, as in Iris. Click for the next value, shift-click for the previous one; changes apply when you
   leave. Settings are kept per pack in `shaderpacks/<pack>.txt`, the same file Iris uses, so Iris settings carry over.
@@ -32,6 +36,9 @@ Easier:
   code in that one area and keeps every other optimization ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)).
 
 Fixed:
+- **A shader pack that can't load no longer stops Minecraft from starting.** The game starts without shaders and says
+  why in chat when you join a world. Unreadable pack settings files are skipped instead of refusing the pack.
+- Quieter logs: Cadence's periodic statistics are only written with `-Dcadence.logStats=true`.
 - A shader pack refused to load when the quality profile chosen for another pack didn't exist in it ("Unknown shader
   profile: MINIMUM" with MakeUp). Profiles are now kept per pack, and a profile a pack lacks is ignored, as in Iris.
 - A crash when turning a shader pack on with World Resolution below 100%.
