@@ -187,6 +187,11 @@ public final class CadenceSelfTest {
 						if (w instanceof net.minecraft.client.gui.components.Button b && b.active) b.onPress(null);
 						else LOGGER.info("[selftest] click: no active button starting with '{}'", want);
 					});
+				} else if (lower.startsWith("window=")) {
+					// "window=WxH": the window resized to W x H (points), as dragging its corner does
+					String[] wh = lower.substring(7).split("x");
+					int w = Integer.parseInt(wh[0]), h = Integer.parseInt(wh[1]);
+					mc.execute(() -> mc.getWindow().setWindowed(w, h));
 				} else if (lower.equals("fullscreen")) {
 					// "fullscreen": toggles fullscreen as F11 does
 					mc.execute(() -> {

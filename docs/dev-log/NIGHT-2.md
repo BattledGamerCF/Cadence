@@ -44,3 +44,15 @@ Test matrix (each a self-test plan; anything that crashes, errors, renders wrong
 | Every Cadence button cycled, fullscreen, GUI scale, F3+T, spectator, glowing mob, simulated heat and memory pressure, Quick Setup | Nothing broken (glowing outline draws with BSL; Cooling holds the right rate in every mode) | (test tool: click matched a status line) |
 | Pack switching while flying | Hand-over works mid-flight; memory back to 338 MB each time | - |
 | **Damaged config files** | **A malformed line in a config crashed the launch** ("A mod crashed on startup"); a deleted pack's chat message showed the full disk path; an unreadable Resolution fell back to a fixed 100% | Tolerant loader everywhere (12 call sites), plain message, Auto fallback |
+| Every sharpening mode (Apple, Smooth, Fast) at 70% with and without BSL | All pictures correct (the old lazy-clear bug lived in this path) | - |
+| Pack Speed-ups check (BSL, Complementary, no pack) | Works: SAFE verdicts match its picture comparisons; refuses without a pack | - |
+| Busy scene (320 mobs) with BSL, Complementary, Insanity, off | No errors; the slower frame rate after the packs is the scene's own drift (474 -> 380 fps over 70 s with no pack at all) | - |
+| Window resized repeatedly with BSL (and World Resolution 70%) | No errors, pictures correct | - |
+
+### Known, not fixed tonight
+
+- After a pack has been on, Cadence's own terrain keeps its 64 MB vertex arena reserved (it has no full shutdown).
+- Turning a pack on or changing its settings recompiles its shaders on the render thread: a 0.5-3 s pause, as in Iris.
+- A compile that started just before a pack switch can finish after it; the switch's full rebuild redoes it, so at most a
+  chunk can be missing for a moment.
+- Multiplayer servers weren't tested (no local server without downloading one).
