@@ -280,6 +280,9 @@ public final class CadenceSettings {
 				.withStyle(ChatFormatting.GRAY));
 		if (HeatControl.level() > 0) lines.add(Component.literal(HeatControl.shortDescribe()).withStyle(ChatFormatting.YELLOW));
 		if (MemoryGuard.level() > 0) lines.add(Component.literal(MemoryGuard.shortDescribe()).withStyle(ChatFormatting.YELLOW));
+		// other mods that hook what Cadence replaces: those areas run vanilla's code for them (CompatLayers)
+		String compat = dev.cadence.metal.compat.CompatLayers.summary();
+		if (!compat.isEmpty()) lines.add(Component.literal(compat).withStyle(ChatFormatting.AQUA));
 		return lines;
 	}
 }

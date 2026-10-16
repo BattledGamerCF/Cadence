@@ -18,6 +18,7 @@ public final class CpuMixinPlugin implements IMixinConfigPlugin {
 	@Override public String getRefMapperConfig() { return null; }
 	@Override public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
 		String name = mixinClassName.substring(mixinClassName.lastIndexOf('.') + 1);
+		if (dev.cadence.metal.compat.CompatLayers.yields(mixinClassName)) return false;  // (another mod hooks the same code)
 		if (name.startsWith("CullFast")) return false;  // (the culler mixins need Sodium: not in this tree)
 		if (name.endsWith("Access")) return false;  // (likewise)
 		if (name.startsWith("Cull")) return Cpu.cullHooks();

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "compat_test",
+  "version": "1.0.0",
+  "name": "Cadence compat test",
+  "environment": "client",
+  "mixins": ["compat_test.mixins.json"],
+  "depends": { "fabricloader": "*" }
+}

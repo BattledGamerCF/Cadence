@@ -32,6 +32,7 @@ public final class LogicMixinPlugin implements IMixinConfigPlugin {
 		String name = mixinClassName.substring(mixinClassName.lastIndexOf('.') + 1);
 		String option = OPTION.get(name);
 		if (option == null || !Logic.enabled(option)) return false;
+		if (dev.cadence.metal.compat.CompatLayers.yields(mixinClassName)) return false;  // (another mod hooks the same code)
 		if (FabricLoader.getInstance().isModLoaded("lithium")) {
 			System.out.println("cadence-logic: " + option + " not applied: Lithium is loaded");
 			return false;

@@ -47,6 +47,16 @@ gain proven by a test that background load and heat can't fake.
   exception skipped vanilla's end-of-frame release. It is released now; a self-test step (`failframe`) injects a failure
   at the same point to prove the recovery (pack off, game keeps running, pack can be turned back on).
 
+- **Shader packs below 100% render scale showed only the sky colour and the HUD** (a regression from tonight's lazy
+  clears, caught by the 12-pack sweep: every pack Auto had scaled down was affected; the beta.1 jar predates it). MetalFX
+  writes the upscaled world outside a render pass, so the main target's deferred clear ran afterwards and wiped it. MetalFX
+  now drops the destination's pending clear (it overwrites every pixel); compute passes and blit mip generation write
+  pending clears first. All 12 packs render again at Auto scale, and lazy clears still save 1.8 ms (BSL) / 1.6 ms
+  (Complementary) at 0.5 scale.
+- **Auto resolution after a heavy pack**: a light pack picked up the heavy pack's low scale and climbed back 0.05 every
+  few seconds (Sildur's Enhanced sat at 0.65 for 20-30 s). Each pack now starts at the scale it settled at this session (full
+  size when new), and with the GPU under half its budget Auto rises straight to the scale that should use 75% of it.
+
 ## CPU: where it stands
 
 On the M2 the frame is GPU-bound almost everywhere: in the normal scene the render thread uses about 0.5 ms of CPU per

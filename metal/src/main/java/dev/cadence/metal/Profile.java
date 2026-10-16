@@ -45,6 +45,7 @@ public final class Profile {
 		shaderPackSelected(); // before the profile's flags, so its explicit-wins rule keeps our hand-off
 		applyFlags();
 		distantHorizonsOnOpenGl();
+		dev.cadence.metal.compat.CompatLayers.apply(); // after the flags (it may turn cadence.own off), before any is read
 	}
 
 	/**
