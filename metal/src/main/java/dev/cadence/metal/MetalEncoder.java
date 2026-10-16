@@ -68,7 +68,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 	}
 	/** Above this, an upload is cheaper as an async GPU blit than as a memcpy on the render thread. */
 	private static final long CPU_COPY_MAX = 256 << 10;
-	private static final int PROFILE_FRAMES = 100, PROFILE_ENCODERS = 16;
+	private static final int PROFILE_FRAMES = 100, PROFILE_ENCODERS = 64;
 	private static final boolean GPU_TIMES = Boolean.getBoolean("cadence.metal.gpuTimes");
 	/**
 	 * -Dcadence.metal.presentQueue=true (idea: ByteV0rtex, noahdunnagan/mcopt#2): present from a second command queue, so the frame's
@@ -97,7 +97,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 	 * level's main pass loses its overlap with the previous frame (~0.6-1 ms of GPU on the base chips on those frames). Exact: every
 	 * texture still reads its clear wherever it is read.
 	 */
-	static final boolean LAZY_CLEARS = Boolean.getBoolean("cadence.metal.lazyClears");
+	static volatile boolean LAZY_CLEARS = Boolean.getBoolean("cadence.metal.lazyClears");
+	static final boolean CLEAR_ALL_MIPS = Boolean.getBoolean("cadence.metal.clearAllMips");
 	private long[] passColors = new long[8];
 	private int passColorCount, passWidth, passHeight;
 	private long passDepth;
@@ -111,6 +112,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 	/** Recording the current submit's terrain draws for the visibility probe (-Dcadence.metal.probe=N); null otherwise. */
 	/** Summed GPU µs over the profiled frames: whole submit, then vertex and fragment per encoder. */
 	private final double[] profileSums = new double[1 + 2 * PROFILE_ENCODERS];
+	private String[] traceLabels;
+	private int profileShape = -1, profileSkipped;
 	/** Per encoder: summed {vertex start, vertex end, fragment start, fragment end} offsets in the frame (us from its first sample), and how many frames had each. */
 	private final double[] profileAt = new double[4 * PROFILE_ENCODERS];
 	private final int[] profileAtN = new int[4 * PROFILE_ENCODERS];
@@ -179,7 +182,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 		if (profiled(this.submitIndex)) {
 			try (MemoryStack stack = MemoryStack.stackPush()) {
 				long count = stack.ncalloc(4, 1, 4);
-				if (ENC_LOG) {
+				if (ENC_LOG || TRACE_SUBMIT >= 0) {
 					long names = stack.ncalloc(1, 128 * 64, 1);
 					Native.profileLabels(this.enc, names, 64, 128);
 					for (int g = 0; g < 128; g++) {
@@ -191,6 +194,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 						long[] st = this.encStats[g];
 						if (st[0] + st[1] > 0) this.encLabels[g] += " d=" + st[0] + " tb=" + st[1] + " first=" + st[2] + " cold=" + st[3];
 					}
+					// the traced submit's labels name the per-encoder GPU times printed after PROFILE_FRAMES submits
+					if (this.submitIndex == TRACE_SUBMIT) this.traceLabels = this.encLabels.clone();
 				}
 				samples = Native.profileEnd(this.enc, count);
 				sampleCount = MemoryUtil.memGetInt(count);
@@ -275,7 +280,16 @@ final class MetalEncoder implements CommandEncoderBackend {
 	}
 
 	private void accumulateProfile(long cmd, long samples, int count) {
-		try (MemoryStack stack = MemoryStack.stackPush()) {
+		// only submits shaped like the traced one (same encoder count) are averaged, so index e is the same pass in each
+		if (this.profileShape < 0) this.profileShape = count;
+		if (!ENC_LOG && count != this.profileShape) {
+			this.profileSkipped++;
+			if (samples != 0) Native.profileRead(this.ctx, samples, 0, 0);
+			if (++this.profiledFrames < PROFILE_FRAMES) return;
+			this.profiledFrames--;
+			this.profileShape = -2; // finish below with what was kept
+		}
+		if (this.profileShape != -2) try (MemoryStack stack = MemoryStack.stackPush()) {
 			long out = stack.nmalloc(8, Math.max(1, count) * 8);
 			Native.profileRead(this.ctx, samples, count, out);
 			this.profileSums[0] += Native.cmdGpuMicros(cmd);
@@ -289,13 +303,15 @@ final class MetalEncoder implements CommandEncoderBackend {
 			}
 		}
 		if (++this.profiledFrames < PROFILE_FRAMES) return;
-		double[] avg = Arrays.stream(this.profileSums).map(v -> v / PROFILE_FRAMES).toArray();
-		System.out.printf("cadence-metal gpu: submits %d-%d took %.0f us on the GPU on average%n", TRACE_SUBMIT, TRACE_SUBMIT + PROFILE_FRAMES - 1, avg[0]);
+		int kept = Math.max(1, PROFILE_FRAMES - this.profileSkipped);
+		double[] avg = Arrays.stream(this.profileSums).map(v -> v / kept).toArray();
+		System.out.printf("cadence-metal gpu: submits %d-%d took %.0f us on the GPU on average (%d of them shaped like the traced one)%n", TRACE_SUBMIT,
+			TRACE_SUBMIT + PROFILE_FRAMES - 1, avg[0], kept);
 		for (int e = 0; e < PROFILE_ENCODERS && avg[1 + 2 * e] + avg[2 + 2 * e] > 0; e++) {
 			double[] at = new double[4];
 			for (int k = 0; k < 4; k++) at[k] = this.profileAtN[4 * e + k] > 0 ? this.profileAt[4 * e + k] / this.profileAtN[4 * e + k] : -1;
-			System.out.printf("cadence-metal gpu: #%d vertex %6.0f us, fragment %6.0f us; at vertex %.0f-%.0f, fragment %.0f-%.0f us%n", e, avg[1 + 2 * e], avg[2 + 2 * e],
-				at[0], at[1], at[2], at[3]);
+			System.out.printf("cadence-metal gpu: #%d vertex %6.0f us, fragment %6.0f us; at vertex %.0f-%.0f, fragment %.0f-%.0f us  %s%n", e, avg[1 + 2 * e], avg[2 + 2 * e],
+				at[0], at[1], at[2], at[3], this.traceLabels != null && e < this.traceLabels.length && this.traceLabels[e] != null ? this.traceLabels[e] : "");
 		}
 	}
 
@@ -431,7 +447,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 			if (keptDelegate != null) keptDelegate.begin(this.enc, depthHandle != 0);
 			MetalHooks.Labeler labeler = MetalHooks.labeler;
 			if (labeler != null && continued == 0) labeler.label(this.enc, "game " + descriptor.label().get());
-			if (ENC_LOG && continued == 0) {
+			if ((ENC_LOG || profiled(this.submitIndex)) && continued == 0) {
 				int c = Native.profileCount(this.enc);
 				if (c >= 4 && c / 4 - 1 < this.encLabels.length) this.encLabels[c / 4 - 1] = descriptor.label().get();
 				this.encGroupOpen = c >= 4 ? c / 4 - 1 : -1;
@@ -551,6 +567,12 @@ final class MetalEncoder implements CommandEncoderBackend {
 			int continued = Native.renderBegin(this.enc, depthFormat ? 0 : 1, colors, clears, depthFormat ? t.handle : 0, clearDepth ? 1 : 0,
 				clearDepth ? (float) t.pendingDepthClear : 0, t.getWidth(0), t.getHeight(0));
 			this.trace(continued == 0 ? "flushClear #" + this.encoderIndex : "flushClear (in place)", t);
+			if (this.submitIndex == TRACE_SUBMIT) { // TEMP: who flushed it
+				StackTraceElement[] st = new Throwable().getStackTrace();
+				StringBuilder w = new StringBuilder("cadence-metal trace:   flushed by");
+				for (int i = 1; i < Math.min(st.length, 7); i++) w.append(' ').append(st[i].getClassName().replaceAll(".*\\.", "")).append('.').append(st[i].getMethodName());
+				System.out.println(w);
+			}
 			if (continued == 0) this.encoderIndex++;
 		}
 		t.pendingColorClear = null;
@@ -565,8 +587,11 @@ final class MetalEncoder implements CommandEncoderBackend {
 	private void deferClear(GpuTexture texture, @Nullable Vector4fc color, double depth) {
 		MetalTexture t = (MetalTexture) texture;
 		if (t.getMipLevels() != 1) {
-			// Rare (only mip chains); clear every level for real rather than tracking per-level state.
-			for (int mip = 0; mip < t.getMipLevels(); mip++) this.clearRegion(t, color, null, depth, 0, 0, t.getWidth(mip), t.getHeight(mip), mip);
+			// Mip chains (shader-pack buffers with mipmaps): level 0 only, as the game's OpenGL backend (and Iris) clear a
+			// texture through a framebuffer bound at level 0; the other levels keep their contents until mipmaps are generated.
+			// Clearing all 11 levels was 22 extra passes a frame with BSL. -Dcadence.metal.clearAllMips=true: every level.
+			int levels = CLEAR_ALL_MIPS ? t.getMipLevels() : 1;
+			for (int mip = 0; mip < levels; mip++) this.clearRegion(t, color, null, depth, 0, 0, t.getWidth(mip), t.getHeight(mip), mip);
 			return;
 		}
 		if (color != null) t.pendingColorClear = color;

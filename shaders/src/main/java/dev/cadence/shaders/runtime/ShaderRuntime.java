@@ -181,6 +181,9 @@ public final class ShaderRuntime implements AutoCloseable {
 
   public static void install(ShaderRuntime runtime) {
     instance = runtime;
+    // Cadence: lazy clears while a pack runs (BSL: ~1.6-1.75 ms less GPU a frame, pictures alike); off without a pack, where
+    // they measured nothing. -Dcadence.metal.lazyClears=true|false fixes it either way.
+    if (System.getProperty("cadence.metal.lazyClears") == null) dev.cadence.metal.FrameHints.lazyClears(runtime != null);
   }
 
   public static ShaderRuntime get() {

@@ -53,6 +53,11 @@ for i in $(seq 1 72); do [ -z "$(pgrep -f "[f]abric.dli.config=$ROOT")" ] && bre
 sleep 3
 # CADENCE_WORLD_SNAPSHOT=dir: the world "tester" is restored from it first (benchmarks that move the player or build chunks)
 # (--checksum: a world file the run rewrote can keep its size and time; quick-check rsync left those behind)
+# default: metal/run/world-snapshots/tester (a clean copy of the world, kept outside temp folders that get cleaned up);
+# CADENCE_WORLD_SNAPSHOT=none keeps whatever the world is now
+[ -z "$CADENCE_WORLD_SNAPSHOT" ] && [ -d "$RUN/world-snapshots/tester" ] && CADENCE_WORLD_SNAPSHOT="$RUN/world-snapshots/tester"
+[ "$CADENCE_WORLD_SNAPSHOT" = none ] && CADENCE_WORLD_SNAPSHOT=
+if [ -n "$CADENCE_WORLD_SNAPSHOT" ] && [ ! -d "$CADENCE_WORLD_SNAPSHOT" ]; then echo "$(ts) NOT STARTED: world snapshot $CADENCE_WORLD_SNAPSHOT is missing"; exit 7; fi
 if [ -n "$CADENCE_WORLD_SNAPSHOT" ]; then rsync -a --checksum --delete "$CADENCE_WORLD_SNAPSHOT/" "$RUN/saves/tester/" && echo "$(ts) world restored from snapshot"; fi
 # a full-size screenshot is ~5 MB: never start with less than 3 GB free (a full disk broke a run and the world restore)
 freegb=$(df -g "$RUN" | awk 'NR==2 {print $4}'); [ "${freegb:-0}" -lt 3 ] && { echo "$(ts) NOT STARTED: only ${freegb} GB free on disk"; exit 6; }
@@ -66,6 +71,14 @@ J=$(ls -t "$ROOT"/shaders/build/libs/cadence-shaders-*.jar 2>/dev/null | grep -v
 cd "$RUN"
 # the shader config as it was: restored after the run even if the game crashes (the self-test restores it only on a clean exit)
 CFG_BACKUP=$(mktemp); cp config/cadence-shaders.properties "$CFG_BACKUP" 2>/dev/null
+# shader switching for this run (restored after with the config): CADENCE_SWITCHING=auto|instant|restart; a plan that turns a
+# pack on (a .zip step) needs instant, since a game started without shaders otherwise uses Cadence's own terrain (Auto)
+SWITCHING="$CADENCE_SWITCHING"
+[ -z "$SWITCHING" ] && [[ "$PLAN" == *.zip* ]] && SWITCHING=instant
+if [ -n "$SWITCHING" ]; then
+  grep -v '^shaderSwitching=' config/cadence-shaders.properties > config/cadence-shaders.properties.tmp 2>/dev/null
+  echo "shaderSwitching=$SWITCHING" >> config/cadence-shaders.properties.tmp && mv config/cadence-shaders.properties.tmp config/cadence-shaders.properties
+fi
 # render distance for this run (CADENCE_RD), default 6
 sed -i '' -E "s/^renderDistance:[0-9]+$/renderDistance:${CADENCE_RD:-6}/" options.txt
 sed -i '' -E "s/^enableVsync:(true|false)$/enableVsync:${CADENCE_VSYNC:-false}/" options.txt  # CADENCE_VSYNC=true: as the player's default

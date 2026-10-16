@@ -523,7 +523,14 @@ public final class CadenceSelfTest {
 				case "meshlight" -> dev.cadence.shaders.cadence.mesh.MeshLightCache.enabled = on;
 				case "meshtint" -> dev.cadence.shaders.cadence.mesh.MeshTintCache.enabled = on;
 				case "facepacked" -> dev.cadence.shaders.cadence.facecull.FaceCull.packedGroups = on;
-				default -> LOGGER.info("[selftest] ab: unknown feature {}", feature);
+				case "lazyclears" -> dev.cadence.metal.FrameHints.lazyClears(on);
+				case "fsdiscard" -> dev.cadence.shaders.runtime.ShaderRuntime.setDiscardFullscreenLoads(on);
+				default -> {
+					// "skip-PROGRAM": ON = that pack program draws nothing (its GPU cost, measured interleaved: thermal drift cancels)
+					if (feature.startsWith("skip-"))
+						dev.cadence.shaders.runtime.ShaderRenderPass.SKIP_PROGRAMS = on ? java.util.Set.of(feature.substring(5)) : java.util.Set.of();
+					else LOGGER.info("[selftest] ab: unknown feature {}", feature);
+				}
 			}
 		});
 	}

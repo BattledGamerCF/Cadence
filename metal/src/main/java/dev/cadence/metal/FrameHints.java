@@ -14,4 +14,13 @@ public final class FrameHints {
 
 	private FrameHints() {
 	}
+
+	/** Lazy clears (MetalEncoder.LAZY_CLEARS), switchable at run time for in-run A/B tests. */
+	public static void lazyClears(boolean on) {
+		MetalEncoder.LAZY_CLEARS = on;
+	}
+
+	public static boolean lazyClears() {
+		return MetalEncoder.LAZY_CLEARS;
+	}
 }
