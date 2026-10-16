@@ -16,7 +16,8 @@ import org.slf4j.LoggerFactory;
  *
  * <p>How: for the duration of GameRenderer.renderLevel (the world, then the hand) the game renderer's main target and its
  * hand-depth target are swapped for scaled ones; vanilla sizes everything it draws the world into from the main target,
- * so the level renderer's own targets follow. The glowing-outline target is kept at the same size (its blit stretches it).
+ * so the level renderer's own targets follow. The glowing-outline target follows the main target's size (OutlineTarget; its
+ * blit stretches it).
  * After renderLevel the real targets come back and the scaled image is upscaled into the main one, so the outline blit,
  * vanilla's post effects (spectator views, menu blur), screenshots and the GUI all work on the full-size image as before.
  * With a shader pack the pack does its own scaling (ShaderRuntime) and this sits out. Render thread.
@@ -72,8 +73,6 @@ public final class WorldScale {
 		if (world == null || world.width != w || world.height != h) allocate(main, w, h);
 		var encoder = RenderSystem.getDevice().createCommandEncoder();
 		encoder.clearColorAndDepthTextures(world.getColorTexture(), CLEAR, world.getDepthTexture(), 0.0);
-		RenderTarget outline = ((Outline) mc.levelRenderer).cadence$entityOutline();
-		if (outline != null && (outline.width != w || outline.height != h)) outline.resize(w, h);
 		savedMain = main;
 		savedHand = targets.cadence$hudDepth();
 		targets.cadence$setTargets(world, hand);
@@ -111,15 +110,10 @@ public final class WorldScale {
 		}
 	}
 
-	/** Back to vanilla sizes (100%, a shader pack, no world): the outline target follows the window again. */
+	/** Back to vanilla sizes (100%, a shader pack, no world); the outline target follows the main one (OutlineTarget). */
 	private static void restoreOutline(Minecraft mc) {
 		if (world == null) return;
 		release();
-		if (mc.levelRenderer != null) {
-			RenderTarget outline = ((Outline) mc.levelRenderer).cadence$entityOutline();
-			RenderTarget main = mc.gameRenderer.mainRenderTarget();
-			if (outline != null && (outline.width != main.width || outline.height != main.height)) outline.resize(main.width, main.height);
-		}
 	}
 
 	private static void release() {
