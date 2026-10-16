@@ -34,7 +34,7 @@
     "FaceGroupsResultsMixin",
     "FaceGroupsMeshMixin",
     "FaceGroupsCompileMixin",
-    "FaceGroupsDrawMixin", "PackedDrawsMixin", "ParticleLightMixin", "PackCheckTextureMixin", "WorldClosedMixin", "FramerateCapMixin", "ThreadRolesMixin", "ThreadRolesWorkerMixin", "GameRendererWorldScaleMixin", "LevelRendererOutlineAccess", "SectionInfoReuseMixin", "SectionInfoHolderMixin", "UberGpuBufferAccess", "UberGpuBufferHeapAccess", "SectionUberBuffersAccess", "ChunkHeapCompactMixin", "ChunkHeapCompactStepMixin", "ChunkHeapCompactHookMixin",
+    "FaceGroupsDrawMixin", "PackedDrawsMixin", "ParticleLightMixin", "PackCheckTextureMixin", "WorldClosedMixin", "FramerateCapMixin", "ThreadRolesMixin", "ThreadRolesWorkerMixin", "GameRendererWorldScaleMixin", "LevelRendererOutlineAccess", "SkyRendererTargetMixin", "FeatureFrameAccess", "FeatureDispatcherAccess", "LevelRendererTargetsAccess", "SectionInfoReuseMixin", "SectionInfoHolderMixin", "UberGpuBufferAccess", "UberGpuBufferHeapAccess", "SectionUberBuffersAccess", "ChunkHeapCompactMixin", "ChunkHeapCompactStepMixin", "ChunkHeapCompactHookMixin",
     "HiZDrawIndirectMixin",
     "HiZRenderGroupMixin",
     "HiZPrepareMixin",

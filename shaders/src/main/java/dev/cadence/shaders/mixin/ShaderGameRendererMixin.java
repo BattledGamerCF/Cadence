@@ -43,6 +43,7 @@ public abstract class ShaderGameRendererMixin {
       // Cadence: with a pack, a failed frame turns shaders off (and says why) instead of crashing the game
       if (ShaderRuntime.get() == null) throw failure;
       dev.cadence.shaders.cadence.ShaderSwitcher.failedInFrame(failure);
+      dev.cadence.shaders.cadence.FrameRecovery.afterFailedFrame();
     } finally {
       ShaderRuntime runtime = ShaderRuntime.get();
       if (runtime != null) {
