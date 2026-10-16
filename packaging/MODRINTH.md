@@ -14,6 +14,8 @@ and runs **shader packs directly on Metal**, with no Iris, Sodium or OpenGL tran
   Apple's MetalFX, without breaking the packs' anti-aliasing.
 - 🌡️ **Heat control.** Fanless MacBook Airs hold a steady frame rate instead of overheating and stuttering.
 - ⚡ **Faster terrain, startup and memory use**, plus a built-in fps counter
+- 🧩 **Plays well with other mods.** Where another mod hooks code Cadence replaces, Cadence uses Minecraft's own code in
+  that one area and keeps everything else fast
 
 ## Tested shader packs
 

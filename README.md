@@ -17,6 +17,10 @@ Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
 - **Faster game logic (Cadence Logic).** Cadence's own replacement for Lithium: entity searches up to 22× faster, mob
   brains and villager sensors without per-tick garbage, smoother chunk unloading. Exact: the game plays the same.
   See [docs/GAME-LOGIC.md](docs/GAME-LOGIC.md).
+- **Faster terrain shading.** With RGSS texture filtering, terrain pixels that RGSS can't change take one texture
+  sample instead of nine: about 25% more fps without shaders, with an identical picture (checked pixel by pixel).
+- **Works next to other mods (compatibility layers).** Where another mod hooks code Cadence replaces, Cadence uses
+  Minecraft's own code in that one area and keeps every other optimization. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 - **Faster chunk meshing, startup and memory use**, plus an fps counter (Cadence HUD).
 
 ## Requirements
@@ -60,6 +64,8 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 ## Known issues
 
 - Mods that require Sodium or Iris, or that draw with OpenGL directly, can't be used while the Metal renderer is on.
+  Mods that use Minecraft's own rendering API work; where one hooks code Cadence replaces, Cadence steps aside in that
+  area (compatibility layers, first version).
 - Far terrain (`cadence.lod=true`) is experimental and best on Macs with 10 or more GPU cores.
 - Pegasus's rain draws as wide, blocky streaks (most likely the pack's own look; unverified).
 
