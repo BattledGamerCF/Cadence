@@ -283,6 +283,9 @@ public final class CadenceSelfTest {
 				} else if (lower.equals("failframe")) {
 					// "failframe": the next sky pass throws (FrameRecovery), as a pack frame failing part way
 					FrameRecovery.failNextSky = true;
+				} else if (lower.startsWith("vanillargss=")) {
+					// "vanillargss=on|off": VanillaRgss for the next resource reload (step reload)
+					VanillaRgss.MODE = lower.endsWith("on") || lower.endsWith("true") ? "true" : "false";
 				} else if (lower.startsWith("rgssskip=")) {
 					boolean on = lower.endsWith("on") || lower.endsWith("true");
 					mc.execute(() -> dev.cadence.metal.own.OwnTerrain.rgssSkip(on));
