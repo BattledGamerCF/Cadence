@@ -10,11 +10,12 @@ import org.slf4j.LoggerFactory;
  * <p>Launchers often set -Xmx4096m (CurseForge's default here) on an 8 GB Mac; G1 grows the committed heap toward it under
  * Minecraft's allocation rate and rarely shrinks it (it uncommits only when more than MaxHeapFreeRatio, 70%, is free after a
  * collection), while the shader pack's GPU memory competes for the same RAM. These are manageable JVM flags, set at runtime:
- * SoftMaxHeapSize (G1 aims to stay under it, still free to grow to -Xmx when it must), MaxHeapFreeRatio 30 / MinHeapFreeRatio
- * 10 (shrink after collections when much is free), G1PeriodicGCInterval (a concurrent cycle when idle, so a quiet game also
- * shrinks). Nothing about rendering changes. Applied when -Xmx is over 1.5 GB and RAM is 16 GB or less (G1 and ZGC: ZGC
- * honours SoftMaxHeapSize, the G1-only flags are skipped); every 30 s SoftMaxHeapSize follows the heap that was live after
- * the last collection (×1.6 + 128 MB, between 768 MB and 75% of -Xmx), so the heap stays near what the game needs;
+ * MaxHeapFreeRatio 30 / MinHeapFreeRatio 10 (G1 shrinks the heap after collections when much is free: what actually keeps
+ * the heap small; 15 / 5 while macOS reports memory pressure), G1PeriodicGCInterval (a concurrent cycle when idle, so a quiet
+ * game also shrinks), SoftMaxHeapSize (honoured by ZGC; G1 in JDK 25 ignores it, JDK-8236073). Nothing about rendering
+ * changes. Applied when -Xmx is over 1.5 GB and RAM is 16 GB or less (G1 and ZGC; the G1-only flags are skipped under ZGC);
+ * every 30 s SoftMaxHeapSize follows the heap that was live after the last collection (×1.6 + 128 MB, between 768 MB and
+ * 75% of -Xmx), so a ZGC heap stays near what the game needs;
  * -Dcadence.heapTrim=false: leave the JVM as launched. Logs the heap every 10 minutes (every minute in self-tests). Also
  * returns LWJGL's freed native pages every 30 s (NativeTrim).
  */
@@ -67,14 +68,23 @@ public final class HeapTrim {
 	private static volatile long maxHeap;
 
 	/**
-	 * Cadence (MemoryGuard): macOS memory pressure. Under pressure the soft limit hugs the live heap (×1.2 + 64 MB, from 512
-	 * MB) so G1 hands back what it can at its next collections; normal factors return when the pressure goes.
+	 * Cadence (MemoryGuard): macOS memory pressure. Under pressure G1's free ratios tighten to 15 / 5 (it hands back more at its
+	 * next shrink) and ZGC's soft limit hugs the live heap (×1.2 + 64 MB, from 512 MB); normal values return when it goes.
 	 */
 	public static void pressure(int level) {
+		boolean was = tight;
 		tight = level > 0;
 		if (applied) {
 			lastSoft = 0;
 			follow(maxHeap);
+			// (G1 shrinks by the free ratios; the order keeps Min <= Max at every step)
+			if (tight && !was) {
+				set("MinHeapFreeRatio", "5");
+				set("MaxHeapFreeRatio", "15");
+			} else if (!tight && was) {
+				set("MaxHeapFreeRatio", "30");
+				set("MinHeapFreeRatio", "10");
+			}
 		}
 	}
 
