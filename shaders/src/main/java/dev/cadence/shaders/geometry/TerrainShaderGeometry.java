@@ -118,7 +118,8 @@ public final class TerrainShaderGeometry {
                 && !"false".equals(System.getProperty("cadence.shaders.compactTerrainVertices"))
             ? Layout.COMPACT
             : Layout.FULL;
-    PIPELINES.clear();
+    // Cadence: PIPELINES is kept (an extended pipeline depends only on the game's pipeline and the layout): the same objects
+    // across pack switches, so pipelines compiled for them can be found again (ShaderRuntime's session list, PipelineMemory)
     configuration = new Configuration(Objects.requireNonNull(resolver), separateAo, layout);
   }
 
@@ -127,7 +128,6 @@ public final class TerrainShaderGeometry {
    */
   public static synchronized void disable() {
     dev.cadence.scene.SceneViews.materialsChanged();
-    PIPELINES.clear();
     configuration = null;
   }
 
@@ -252,6 +252,13 @@ public final class TerrainShaderGeometry {
     return PIPELINES
         .computeIfAbsent(original, unused -> new EnumMap<>(Layout.class))
         .computeIfAbsent(layout, selected -> extendPipeline(original, selected));
+  }
+
+  /** Cadence: the extended pipeline for that layout, whichever is on (the object pipeline(original) gives under it). */
+  public static synchronized RenderPipeline pipeline(RenderPipeline original, boolean compact) {
+    return PIPELINES
+        .computeIfAbsent(original, unused -> new EnumMap<>(Layout.class))
+        .computeIfAbsent(compact ? Layout.COMPACT : Layout.FULL, selected -> extendPipeline(original, selected));
   }
 
   private static RenderPipeline extendPipeline(RenderPipeline original, Layout layout) {

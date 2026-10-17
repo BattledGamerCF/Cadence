@@ -71,6 +71,18 @@ public final class ShaderLoaderMod implements ClientModInitializer {
    * before anything global changes, so a pack that fails them changes nothing.
    */
   public static void activate(ShaderLoaderConfig config) throws IOException {
+    install(prepare(config));
+  }
+
+  /** Cadence: a loaded pack, not yet installed (see prepare). */
+  public record Prepared(ShaderRuntime runtime, BlockMaterialMap materials, boolean separateAo, String name) {}
+
+  /**
+   * Cadence: the CPU half of activate, safe on any thread (nothing global changes): the pack read, its properties checked,
+   * the block material map built and the runtime made (which starts translating its programs in the background). A switch
+   * in a running game does this off the render thread (ShaderSwitcher), so the game doesn't pause for it.
+   */
+  public static Prepared prepare(ShaderLoaderConfig config) throws IOException {
     ShaderPack pack = ShaderPack.load(config.pack());
     var options = config.effectiveOptions(pack);
     var environment = PackEnvironment.definitions();
@@ -85,17 +97,23 @@ public final class ShaderLoaderMod implements ClientModInitializer {
     BlockMaterialMap materials =
         new BlockMaterialMap(MaterialMappings.load(pack, options, environment));
     ShaderRuntime runtime = new ShaderRuntime(pack, options, properties);
-    runtime.uniforms().setItemIdResolver(materials::itemId);
+    return new Prepared(runtime, materials, Boolean.parseBoolean(separateAo), pack.name());
+  }
+
+  /** Cadence: the render-thread half of activate: terrain material IDs and vertex layout, draw tags, the runtime. */
+  public static void install(Prepared prepared) {
+    BlockMaterialMap materials = prepared.materials();
+    prepared.runtime().uniforms().setItemIdResolver(materials::itemId);
     TerrainShaderGeometry.configure(
-        materials, Boolean.parseBoolean(separateAo), materials.allBlockIdsFitSigned16());
+        materials, prepared.separateAo(), materials.allBlockIdsFitSigned16());
     FeatureDrawContext.configure(materials::entityTypeId, materials);
     // Cadence: our own near terrain steps aside while the pack draws (the caller's chunk rebuild fills vanilla's buffers)
     dev.cadence.metal.own.OwnTerrain.packActive(true);
-    ShaderRuntime.install(runtime);
+    ShaderRuntime.install(prepared.runtime());
     LOGGER.info(
         "Selected shader pack {} with {} cached block states; render programs initialize when"
             + " entering a world.",
-        pack.name(),
+        prepared.name(),
         materials.stateCount());
   }
 

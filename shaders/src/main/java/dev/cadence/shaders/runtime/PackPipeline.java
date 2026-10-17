@@ -99,7 +99,33 @@ public record PackPipeline(
     }
   }
 
+  /** (measurement: pipelines built and their time, full-screen vs geometry) */
+  public static final java.util.concurrent.atomic.AtomicLong STAT_SCREEN_NS = new java.util.concurrent.atomic.AtomicLong(),
+      STAT_GEOM_NS = new java.util.concurrent.atomic.AtomicLong(), STAT_SCREEN_N = new java.util.concurrent.atomic.AtomicLong(),
+      STAT_GEOM_N = new java.util.concurrent.atomic.AtomicLong();
+
   public static PackPipeline compile(
+      GpuDevice device,
+      PackPrograms.Source source,
+      TranslatedProgram translated,
+      RenderPipeline original,
+      PackRenderTargets targets,
+      boolean finalPass,
+      boolean shadow,
+      int depthTarget,
+      int renderStage,
+      float alphaTestRef) {
+    long t0 = System.nanoTime();
+    try {
+      return compile0(device, source, translated, original, targets, finalPass, shadow, depthTarget, renderStage, alphaTestRef);
+    } finally {
+      long dt = System.nanoTime() - t0;
+      if (original == null) { STAT_SCREEN_NS.addAndGet(dt); STAT_SCREEN_N.incrementAndGet(); }
+      else { STAT_GEOM_NS.addAndGet(dt); STAT_GEOM_N.incrementAndGet(); }
+    }
+  }
+
+  private static PackPipeline compile0(
       GpuDevice device,
       PackPrograms.Source source,
       TranslatedProgram translated,

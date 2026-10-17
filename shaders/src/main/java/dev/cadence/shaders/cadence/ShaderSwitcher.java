@@ -87,24 +87,61 @@ public final class ShaderSwitcher {
 		apply(pack, mode, false);
 	}
 
+	/** Cadence: the newest switch asked for; an older one still preparing is dropped when it finishes. */
+	private static final java.util.concurrent.atomic.AtomicInteger generation = new java.util.concurrent.atomic.AtomicInteger();
+
 	private static void apply(String pack, String mode, boolean force) {
 		if (!CadencePackGate.hooksApplied() || (!force && pack.equals(active))) return;
 		Minecraft mc = Minecraft.getInstance();
-		mc.execute(() -> {
-			long t0 = System.nanoTime();
-			String before = active;
-			Object geometryBefore = dev.cadence.shaders.geometry.TerrainShaderGeometry.configurationKey();
+		int ticket = generation.incrementAndGet();
+		if (pack.isEmpty()) {
+			mc.execute(() -> finish(mc, ticket, pack, mode, null, null, System.nanoTime()));
+			return;
+		}
+		// Cadence: the pack is read and its programs and images prepared on a worker thread while the old picture keeps
+		// drawing (0.4-0.6 s of render-thread work at each switch or settings change before); then it's installed between
+		// two frames. -Dcadence.switchOnRenderThread=true: all of it on the render thread, as before.
+		long t0 = System.nanoTime();
+		Runnable prepare = () -> {
+			ShaderLoaderMod.Prepared prepared = null;
+			Exception failure = null;
 			try {
+				FabricLoader loader = FabricLoader.getInstance();
+				ShaderLoaderConfig config = ShaderLoaderConfig.load(loader.getGameDir(), loader.getConfigDir());
+				if (config.pack() == null) throw new IllegalStateException("no pack saved in the config");
+				prepared = ShaderLoaderMod.prepare(config);
+				if (generation.get() == ticket) prepared.runtime().awaitWarm();
+			} catch (Exception | LinkageError e) {
+				failure = e instanceof Exception x ? x : new RuntimeException(e);
+			}
+			var ready = prepared;
+			var failed = failure;
+			mc.execute(() -> finish(mc, ticket, pack, mode, ready, failed, t0));
+		};
+		if (Boolean.getBoolean("cadence.switchOnRenderThread")) mc.execute(prepare);
+		else Thread.ofPlatform().daemon().name("cadence-pack-switch").start(prepare);
+	}
+
+	private static void finish(Minecraft mc, int ticket, String pack, String mode, ShaderLoaderMod.Prepared prepared,
+			Exception failure, long t0) {
+		if (generation.get() != ticket) { // a newer switch was asked for meanwhile
+			if (prepared != null) prepared.runtime().close();
+			return;
+		}
+		long installStart = System.nanoTime();
+		String before = active;
+		Object geometryBefore = dev.cadence.shaders.geometry.TerrainShaderGeometry.configurationKey();
+		{
+			try {
+				if (failure != null) throw failure;
 				ShaderLoaderMod.deactivate();
 				active = "";
-				if (!pack.isEmpty()) {
-					FabricLoader loader = FabricLoader.getInstance();
-					ShaderLoaderConfig config = ShaderLoaderConfig.load(loader.getGameDir(), loader.getConfigDir());
-					if (config.pack() == null) throw new IllegalStateException("no pack saved in the config");
-					ShaderLoaderMod.activate(config);
+				if (prepared != null) {
+					ShaderLoaderMod.install(prepared);
 					active = pack;
 				}
-				LOGGER.info("Shaders switched to {} in {} ms (chunks rebuilding)", pack.isEmpty() ? "off" : pack, (System.nanoTime() - t0) / 1_000_000);
+				LOGGER.info("Shaders switched to {} in {} ms ({} ms on the render thread; chunks rebuilding)",
+					pack.isEmpty() ? "off" : pack, (System.nanoTime() - t0) / 1_000_000, (System.nanoTime() - installStart) / 1_000_000);
 				tell(mc, Component.literal("Shaders: " + (pack.isEmpty() ? "Off" : ShaderToggle.display(pack))).withStyle(ChatFormatting.GRAY));
 			} catch (Exception | LinkageError e) {
 				LOGGER.error("Couldn't switch to shader pack {}; shaders are off", pack, e);
@@ -132,7 +169,7 @@ public final class ShaderSwitcher {
 			if (!before.equals(active)) dev.cadence.shaders.cadence.system.HeatControl.workloadChanged();
 			RenderScale.settle(); // the new pack's first frames say nothing about its cost
 			SwitchProbe.start("switch to " + (pack.isEmpty() ? "off" : pack) + " (" + mode + ")");
-		});
+		}
 	}
 
 	/**

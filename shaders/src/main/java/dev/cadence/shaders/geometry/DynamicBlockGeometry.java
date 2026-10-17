@@ -36,6 +36,11 @@ public final class DynamicBlockGeometry {
     return PIPELINES.computeIfAbsent(original, DynamicBlockGeometry::extend);
   }
 
+  /** Cadence: the extended version whether or not a pack is on (PipelineMemory), or null if this pipeline has none. */
+  public static synchronized RenderPipeline extended(RenderPipeline original) {
+    return needsNormals(original) ? PIPELINES.computeIfAbsent(original, DynamicBlockGeometry::extend) : null;
+  }
+
   public static synchronized OitPipelineSet pipelines(OitPipelineSet original) {
     if (original == null || !TerrainShaderGeometry.isEnabled()) return original;
     if (!needsNormals(original.depthBoundsPipeline())

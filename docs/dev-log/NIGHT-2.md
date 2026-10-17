@@ -51,6 +51,8 @@ Test matrix (each a self-test plan; anything that crashes, errors, renders wrong
 
 ### Known, not fixed tonight
 
+(All four were dealt with the next night: see NIGHT-3.md.)
+
 - After a pack has been on, Cadence's own terrain keeps its 64 MB vertex arena reserved (it has no full shutdown).
 - Turning a pack on or changing its settings recompiles its shaders on the render thread: a 0.5-3 s pause, as in Iris.
 - A compile that started just before a pack switch can finish after it; the switch's full rebuild redoes it, so at most a

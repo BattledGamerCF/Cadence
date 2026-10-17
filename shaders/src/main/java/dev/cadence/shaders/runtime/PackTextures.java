@@ -33,6 +33,38 @@ public final class PackTextures implements AutoCloseable {
   private final List<PackTexture> owned = new ArrayList<>();
   private final GpuDevice device;
   private final PackAlbedoSamplers albedoSamplers;
+  private Map<String, Decoded> decoded = Map.of();
+
+  /** Cadence: a pack image as RGBA8 pixels, ready to upload. */
+  public record Decoded(int width, int height, ByteBuffer pixels) {}
+
+  /**
+   * Cadence: every custom texture of these properties decoded to pixels (any thread; PNG decoding was 2 of the 8 stall
+   * samples of a pack's first frame). Images that fail are left out: the constructor's own decode reports them.
+   */
+  public static Map<String, Decoded> decode(ShaderPack pack, ShaderProperties properties) {
+    Map<String, Decoded> out = new java.util.concurrent.ConcurrentHashMap<>();
+    for (var property : properties.values().entrySet()) {
+      if (!property.getKey().startsWith("texture.")) continue;
+      String path = property.getValue();
+      if (path.contains(" ") || out.containsKey(path)) continue;
+      try {
+        out.put(path, decodePixels(pack, path));
+      } catch (IOException | RuntimeException failure) {
+        // reported when the textures are made
+      }
+    }
+    return out;
+  }
+
+  private static Decoded decodePixels(ShaderPack pack, String path) throws IOException {
+    BufferedImage image = decodeImage(pack.bytes(path), path);
+    int width = image.getWidth(), height = image.getHeight();
+    int[] argb = image.getRGB(0, 0, width, height, null, 0, width);
+    ByteBuffer pixels = ByteBuffer.allocateDirect(width * height * 4);
+    for (int c : argb) pixels.put((byte) (c >> 16)).put((byte) (c >> 8)).put((byte) c).put((byte) (c >> 24));
+    return new Decoded(width, height, pixels.flip());
+  }
 
   public PackTextures(GpuDevice device, ShaderPack pack, ShaderProperties properties)
       throws IOException {
@@ -45,7 +77,19 @@ public final class PackTextures implements AutoCloseable {
       ShaderProperties properties,
       ShadowComparison shadowComparison)
       throws IOException {
+    this(device, pack, properties, shadowComparison, Map.of());
+  }
+
+  /** Cadence: as above, with images decoded beforehand off the render thread (decode), by pack path. */
+  public PackTextures(
+      GpuDevice device,
+      ShaderPack pack,
+      ShaderProperties properties,
+      ShadowComparison shadowComparison,
+      Map<String, Decoded> decoded)
+      throws IOException {
     this.device = device;
+    this.decoded = decoded;
     albedoSamplers = new PackAlbedoSamplers(device);
     GpuSampler createdLinear = null,
         createdNearest = null,
@@ -150,19 +194,9 @@ public final class PackTextures implements AutoCloseable {
   }
 
   private PackTexture image(ShaderPack pack, String path) throws IOException {
-    BufferedImage image = decodeImage(pack.bytes(path), path);
-    int width = image.getWidth(), height = image.getHeight();
-    ByteBuffer pixels = ByteBuffer.allocateDirect(width * height * 4);
-    for (int y = 0; y < height; y++)
-      for (int x = 0; x < width; x++) {
-        int argb = image.getRGB(x, y);
-        pixels
-            .put((byte) (argb >> 16))
-            .put((byte) (argb >> 8))
-            .put((byte) argb)
-            .put((byte) (argb >> 24));
-      }
-    return upload(path, width, height, pixels.flip());
+    Decoded d = decoded.get(path);
+    if (d == null) d = decodePixels(pack, path);
+    return upload(path, d.width(), d.height(), d.pixels().duplicate());
   }
 
   /** Inspect the encoded dimensions before an image reader can allocate decoded pixel storage. */
@@ -191,12 +225,13 @@ public final class PackTextures implements AutoCloseable {
   }
 
   // Cadence: lookups by program and sampler, cached (asked for every sampler at every bind; the key was a new string
-  // each time). Cleared with the textures. Render thread.
-  private final Map<String, Map<String, java.util.Optional<PackTexture>>> customLookups = new HashMap<>();
+  // each time). Cleared with the textures. Render thread, and the pipeline compile threads (ShaderRuntime.prewarmPipelines).
+  private final Map<String, Map<String, java.util.Optional<PackTexture>>> customLookups =
+      new java.util.concurrent.ConcurrentHashMap<>();
 
   public PackTexture custom(String program, String sampler) {
     if (custom.isEmpty()) return null;
-    var bySampler = customLookups.computeIfAbsent(program, ignored -> new HashMap<>());
+    var bySampler = customLookups.computeIfAbsent(program, ignored -> new java.util.concurrent.ConcurrentHashMap<>());
     var known = bySampler.get(sampler);
     if (known == null) {
       known = java.util.Optional.ofNullable(findCustom(program, sampler));
@@ -279,7 +314,7 @@ public final class PackTextures implements AutoCloseable {
   // otherwise picks blurry levels (Complementary's FXAA turned every edge into dashes)
   private GpuSampler baseLevel;
 
-  public GpuSampler linearBaseLevel() {
+  public synchronized GpuSampler linearBaseLevel() {
     if (baseLevel == null)
       baseLevel =
           device.createSampler(

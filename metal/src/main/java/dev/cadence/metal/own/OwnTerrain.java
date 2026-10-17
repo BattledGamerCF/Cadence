@@ -508,8 +508,26 @@ public final class OwnTerrain {
 
 	/** ShaderLoaderMod, on the render thread (or before any frame), when a pack is activated or deactivated. */
 	public static void packActive(boolean on) {
+		boolean was = packActive;
 		packActive = on;
-		if (on && instance != null) instance.disposeAll();
+		if (instance == null || was == on) return;  // (every switch deactivates first: off -> off must leave our live meshes alone)
+		if (on) instance.disposeAll();
+		else instance.dropStale();
+	}
+
+	/**
+	 * Cadence: the pack went off. Sections a worker had started meshing for us just before it came on finished while it drew:
+	 * their meshes and queued events are from before the pack (the switch's rebuild replaced every section since), so they
+	 * are released, not published. Published, one showed the old terrain in its slot until its rebuild, and its arena space
+	 * was never freed (the game's release of it came while get() was null). Render thread; nothing of ours was drawn meanwhile.
+	 */
+	private void dropStale() {
+		int events = 0;
+		for (Object e; (e = this.events.poll()) != null; ) events++;
+		int meshesDropped = this.meshes.size();
+		for (Object m : new java.util.ArrayList<>(this.meshes.keySet())) this.release(m);
+		if (events + meshesDropped > 0)
+			System.out.println("cadence-own: dropped " + meshesDropped + " meshes and " + events + " events left from before the shader pack");
 	}
 
 	public static boolean packActive() {

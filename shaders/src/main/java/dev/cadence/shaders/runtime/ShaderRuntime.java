@@ -103,6 +103,23 @@ public final class ShaderRuntime implements AutoCloseable {
   private java.util.concurrent.CompletableFuture<PackPrograms> warm;
   private String warmDimension;
   private ShaderCompatibilityCompiler.ShadowComparison warmComparison;
+  private volatile Map<String, PackTextures.Decoded> warmImages = Map.of();
+
+  /**
+   * Cadence: waits (off the render thread) until the warm-up is done, so a pack switched to in a running game is installed
+   * with its programs and images ready and its first frame doesn't pause the game for them. False if it failed or there
+   * is none (the first frame then does that work, and reports a failure, as before).
+   */
+  public boolean awaitWarm() {
+    var future = warm;
+    if (future == null) return false;
+    try {
+      future.join();
+      return true;
+    } catch (RuntimeException failure) {
+      return false;
+    }
+  }
 
   private void warmUp() {
     if ("false".equals(System.getProperty("cadence.shaders.warmUp"))) return;
@@ -116,7 +133,18 @@ public final class ShaderRuntime implements AutoCloseable {
       var future = warm;
       Thread.ofPlatform().daemon().name("cadence-pack-warm-up").start(() -> {
         try {
-          future.complete(new PackPrograms(pack, options, dimension, comparison));
+          PackPrograms made = new PackPrograms(pack, options, dimension, comparison);
+          warmImages = PackTextures.decode(pack, made.properties);
+          // the game pipelines packs drew with (this session, and earlier ones: PipelineMemory), translated for this pack now
+          // (prewarmPipelines compiles them)
+          PipelineMemory.load(SESSION_VARIANTS);
+          for (Variant v : SESSION_VARIANTS)
+            try {
+              adapt(made, v);
+            } catch (RuntimeException failure) {
+              // left for its first use, which reports it
+            }
+          future.complete(made);
         } catch (Throwable failure) {
           future.completeExceptionally(failure);
         }
@@ -268,7 +296,9 @@ public final class ShaderRuntime implements AutoCloseable {
           LoggerFactory.getLogger("cadence_shaders")
               .info("Proven unused mip generations: {}", unusedMipmaps.skipped());
         uniforms.setCustomUniforms(CustomUniforms.compile(programs.properties));
-        textures = new PackTextures(device(), pack, programs.properties, shadowComparison);
+        textures = new PackTextures(device(), pack, programs.properties, shadowComparison,
+            warmed != null ? warmImages : Map.of());
+        warmImages = Map.of();
         {
           // which colour buffers each screen program finds already drawn this frame (PackTextures.setWrittenBefore)
           Map<String, java.util.Set<Integer>> writtenBefore = new java.util.HashMap<>();
@@ -349,6 +379,7 @@ public final class ShaderRuntime implements AutoCloseable {
             LoggerFactory.getLogger("cadence_shaders").debug("Carried {} history buffers over a resize", carried);
         }
         long screensStart = System.nanoTime();
+        prewarmPipelines();
         for (String phase : new String[] {"setup", "begin", "prepare", "deferred", "composite", "shadowcomp"}) {
           for (var step : programs.steps(phase)) {
             if (step.compute()) kernel(step.source());
@@ -374,6 +405,7 @@ public final class ShaderRuntime implements AutoCloseable {
                 dev.cadence.shaders.compile.SpirvCache.misses);
       }
       prepareScaledOutput(main);
+      PipelineMemory.maybeSave(SESSION_VARIANTS, false);
       if (profiler != null) profiler.beginFrame(device(), pack.name() + " " + dimension, frameWidth, frameHeight);
       frameBuffers.clear();
       dev.cadence.shaders.cadence.packcheck.PackCheck.beforeFrame(this);
@@ -599,10 +631,48 @@ public final class ShaderRuntime implements AutoCloseable {
     boolean blockEntity =
         FeatureDrawContext.currentDrawTag().kind() == FeatureDrawContext.Kind.BLOCK_ENTITY;
     Variant key = new Variant(original, hand, shadow, blockEntity);
-    return geometry.computeIfAbsent(
-        key,
-        variant -> {
-          SceneProgram selection = SceneProgram.select(original, hand, shadow, blockEntity);
+    PackPipeline made = geometry.get(key);
+    if (made == null) {
+      made = compileVariant(key);
+      geometry.put(key, made);
+    }
+    return made;
+  }
+
+  /** Cadence: the pack pipeline for one of the game's pipelines (any thread: see prewarmPipelines). */
+  private PackPipeline compileVariant(Variant variant) {
+    if (SESSION_VARIANTS.size() < 512 && SESSION_VARIANTS.add(variant)) PipelineMemory.changed();
+    Adapted adapted = adapt(programs, variant);
+    boolean hand = variant.hand();
+    int depthTarget = hand && !adapted.selection().name().equals("gbuffers_hand_water") ? 1 : 0;
+    return PackPipeline.compile(
+        device(),
+        adapted.source(),
+        adapted.translated(),
+        variant.original(),
+        targets,
+        false,
+        variant.shadow(),
+        depthTarget,
+        adapted.selection().stage(),
+        adapted.alphaTest().reference());
+  }
+
+  private record Adapted(
+      SceneProgram selection,
+      PackPrograms.Source source,
+      dev.cadence.shaders.compile.TranslatedProgram translated,
+      AlphaTestPolicy alphaTest) {}
+
+  /**
+   * Cadence: which pack program draws one of the game's pipelines, translated for its vertex layout and alpha test. Needs
+   * only the programs, so the warm-up thread runs it for the pipelines this session has seen (the translations then come
+   * from the cache when the pipelines are compiled).
+   */
+  private static Adapted adapt(PackPrograms programs, Variant variant) {
+    RenderPipeline original = variant.original();
+    boolean hand = variant.hand(), shadow = variant.shadow();
+          SceneProgram selection = SceneProgram.select(original, hand, shadow, variant.blockEntity());
           var source = programs.resolve(selection.name());
           // -Dcadence.shaders.logPipelines=true: which pack program each of the game's pipelines draws with
           if (Boolean.getBoolean("cadence.shaders.logPipelines"))
@@ -644,68 +714,106 @@ public final class ShaderRuntime implements AutoCloseable {
                     + source.name(),
                 failure);
           }
-          int depthTarget = hand && !selection.name().equals("gbuffers_hand_water") ? 1 : 0;
-          return PackPipeline.compile(
-              device(),
-              source,
-              translated,
-              original,
-              targets,
-              false,
-              shadow,
-              depthTarget,
-              selection.stage(),
-              alphaTest.reference());
-        });
+    return new Adapted(selection, source, translated, alphaTest);
   }
 
   private PackPipeline screenPipeline(PackPrograms.Source source) {
-    return screens.computeIfAbsent(
-        source.name(),
-        name -> {
-          PackPipeline dense =
-              PackPipeline.compile(
-                  device(),
-                  source,
-                  source.translated(),
-                  null,
-                  targets,
-                  name.equals("final"),
-                  false,
-                  0,
-                  0,
-                  0);
-          if (SPARSE_PROJECTION) {
-            var candidate =
-                MatrixUniformSpecialization.apply(
-                    source.translated(), MatrixUniformSpecialization.PROJECTION_INVERSE);
-            if (candidate.applied()) {
-              try {
-                sparseScreens.put(
-                    dense,
-                    PackPipeline.compile(
-                        device(),
-                        source,
-                        candidate.program(),
-                        null,
-                        targets,
-                        name.equals("final"),
-                        false,
-                        0,
-                        0,
-                        0));
-              } catch (RuntimeException failure) {
-                LoggerFactory.getLogger("cadence_shaders")
-                    .warn(
-                        "Sparse projection variant {} unavailable; retaining dense shader",
-                        name,
-                        failure);
-              }
-            }
-          }
-          return dense;
-        });
+    PackPipeline made = screens.get(source.name());
+    if (made == null) {
+      PackPipeline[] pair = compileScreen(source);
+      made = pair[0];
+      screens.put(source.name(), made);
+      if (pair[1] != null) sparseScreens.put(made, pair[1]);
+    }
+    return made;
   }
+
+  /** Cadence: a screen program's pipeline and its sparse-projection variant (or null); any thread. */
+  private PackPipeline[] compileScreen(PackPrograms.Source source) {
+    String name = source.name();
+    PackPipeline dense =
+        PackPipeline.compile(device(), source, source.translated(), null, targets, name.equals("final"), false, 0, 0, 0);
+    PackPipeline sparse = null;
+    if (SPARSE_PROJECTION) {
+      var candidate =
+          MatrixUniformSpecialization.apply(
+              source.translated(), MatrixUniformSpecialization.PROJECTION_INVERSE);
+      if (candidate.applied()) {
+        try {
+          sparse =
+              PackPipeline.compile(
+                  device(), source, candidate.program(), null, targets, name.equals("final"), false, 0, 0, 0);
+        } catch (RuntimeException failure) {
+          LoggerFactory.getLogger("cadence_shaders")
+              .warn("Sparse projection variant {} unavailable; retaining dense shader", name, failure);
+        }
+      }
+    }
+    return new PackPipeline[] {dense, sparse};
+  }
+
+  /**
+   * Cadence: the game pipelines (with their hand, shadow and block-entity flags) a pack has drawn with in this session. A
+   * pack loaded later (another pack, or the same one with changed settings) has its versions of them compiled up front, in
+   * parallel (prewarmPipelines), instead of one after another as its first frames meet them.
+   */
+  private static final java.util.Set<Variant> SESSION_VARIANTS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+  /** -Dcadence.shaders.compileThreads=N: threads compiling a pack's pipelines at once (1: one at a time, as before). */
+  private static final int COMPILE_THREADS =
+      Integer.getInteger("cadence.shaders.compileThreads", Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)));
+
+  /**
+   * Cadence: every screen program's pipeline and the game pipelines this session has seen (SESSION_VARIANTS), compiled on
+   * COMPILE_THREADS threads at once; the render thread waits for all of them. Metal compiles each library in its own
+   * service, so they overlap: a settings change the shader caches hadn't seen paused the game 1.7-2.1 s for ~30 pipelines
+   * built one by one. Anything that fails here is left for its first use, which reports it as before.
+   */
+  private void prewarmPipelines() {
+    PipelineMemory.load(SESSION_VARIANTS);
+    java.util.Map<String, PackPrograms.Source> screenSources = new java.util.LinkedHashMap<>();
+    for (String phase : new String[] {"setup", "begin", "prepare", "deferred", "composite", "shadowcomp"})
+      for (var step : programs.steps(phase))
+        if (!step.compute() && !screens.containsKey(step.source().name())) screenSources.putIfAbsent(step.source().name(), step.source());
+    PackPrograms.Source fin = programs.find("final");
+    if (fin != null && !screens.containsKey(fin.name())) screenSources.putIfAbsent(fin.name(), fin);
+    java.util.List<Variant> variants = new java.util.ArrayList<>();
+    for (Variant v : SESSION_VARIANTS) if (!geometry.containsKey(v)) variants.add(v);
+    if (COMPILE_THREADS <= 1 || screenSources.size() + variants.size() < 2) return;
+    var pool = java.util.concurrent.Executors.newFixedThreadPool(
+        COMPILE_THREADS, Thread.ofPlatform().daemon().name("cadence-pipeline-compile-", 0).factory());
+    try {
+      Map<String, java.util.concurrent.Future<PackPipeline[]>> screenJobs = new java.util.LinkedHashMap<>();
+      Map<Variant, java.util.concurrent.Future<PackPipeline>> variantJobs = new java.util.LinkedHashMap<>();
+      // geometry first: there are more of them and they're the slower ones
+      for (Variant v : variants) variantJobs.put(v, pool.submit(() -> compileVariant(v)));
+      for (var e : screenSources.entrySet()) screenJobs.put(e.getKey(), pool.submit(() -> compileScreen(e.getValue())));
+      for (var e : variantJobs.entrySet()) {
+        PackPipeline made = joinQuietly(e.getValue());
+        if (made != null) geometry.putIfAbsent(e.getKey(), made);
+      }
+      for (var e : screenJobs.entrySet()) {
+        PackPipeline[] pair = joinQuietly(e.getValue());
+        if (pair != null && screens.putIfAbsent(e.getKey(), pair[0]) == null && pair[1] != null)
+          sparseScreens.put(pair[0], pair[1]);
+      }
+    } finally {
+      pool.shutdown();
+    }
+  }
+
+  private static <T> T joinQuietly(java.util.concurrent.Future<T> future) {
+    try {
+      return future.get();
+    } catch (java.util.concurrent.ExecutionException failure) {
+      LoggerFactory.getLogger("cadence_shaders").debug("Pipeline compiled ahead failed; left for its first use", failure.getCause());
+      return null;
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+      return null;
+    }
+  }
+
 
   public long sparseProjectionPasses() {
     return sparseProjectionPasses;
@@ -1339,6 +1447,7 @@ public final class ShaderRuntime implements AutoCloseable {
   @Override
   public void close() {
     closedRuntime = true;
+    PipelineMemory.maybeSave(SESSION_VARIANTS, true);
     if (warm != null) {
       warm.thenAccept(PackPrograms::close);
       warm = null;
@@ -1360,7 +1469,7 @@ public final class ShaderRuntime implements AutoCloseable {
     if (profiler != null) profiler.close();
   }
 
-  private record Variant(
+  record Variant(
       RenderPipeline original, boolean hand, boolean shadow, boolean blockEntity) {}
 
   private record UniformKey(PackPipeline pipeline, FeatureDrawContext.DrawTag tag) {

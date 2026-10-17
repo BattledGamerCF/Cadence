@@ -137,6 +137,21 @@ public final class CadenceSelfTest {
 					// "join=WORLD": open a singleplayer world from the title screen (after "leave")
 					String world = step.substring(5);
 					mc.execute(() -> mc.createWorldOpenFlows().openWorld(world, () -> {}));
+				} else if (lower.startsWith("lan=")) {
+					// "lan=PORT": this world opened to LAN on PORT (cheats on, no account check: the dev accounts can't sign in) for a
+					// second client (tools/cadence-guest.sh) to join as another player
+					int port = Integer.parseInt(lower.substring(4));
+					var host = mc.getSingleplayerServer();
+					if (host == null) LOGGER.info("[selftest] lan: no integrated server");
+					else mc.execute(() -> {
+						host.setUsesAuthentication(false);
+						boolean ok = host.publishServer(net.minecraft.server.MinecraftServer.MultiplayerScope.LAN, true, port);
+						LOGGER.info("[selftest] lan: published on port {}: {}", port, ok);
+					});
+				} else if (lower.equals("players")) {
+					// "players": who this client sees in the world (multiplayer checks)
+					mc.execute(() -> LOGGER.info("[selftest] players: {} (server here: {})", mc.level == null ? "no level"
+						: mc.level.players().stream().map(p -> p.getName().getString()).toList(), mc.getSingleplayerServer() != null));
 				} else if (lower.equals("leave")) {
 					// "leave": save and quit to the title screen (what's left in memory after a world is the next steps' business)
 					mc.execute(mc::disconnectWithSavingScreen);
@@ -178,6 +193,11 @@ public final class CadenceSelfTest {
 						mc.options.guiScale().set(n);
 						mc.resizeGui();
 					});
+				} else if (lower.equals("pipestats")) {
+					var P = dev.cadence.shaders.runtime.PackPipeline.class;
+					LOGGER.info("[selftest] pack pipelines: screen {} in {} ms, geometry {} in {} ms",
+						dev.cadence.shaders.runtime.PackPipeline.STAT_SCREEN_N.getAndSet(0), dev.cadence.shaders.runtime.PackPipeline.STAT_SCREEN_NS.getAndSet(0) / 1_000_000,
+						dev.cadence.shaders.runtime.PackPipeline.STAT_GEOM_N.getAndSet(0), dev.cadence.shaders.runtime.PackPipeline.STAT_GEOM_NS.getAndSet(0) / 1_000_000);
 				} else if (lower.startsWith("click=")) {
 					// "click=TEXT": the open screen's first button whose label starts with TEXT pressed (as a mouse click)
 					String want = step.substring(6).strip();
