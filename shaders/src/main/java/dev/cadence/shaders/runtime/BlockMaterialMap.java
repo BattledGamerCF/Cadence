@@ -26,6 +26,7 @@ public final class BlockMaterialMap implements ToIntFunction<BlockState> {
   // Cadence: the chunk workers' per-block lookup without boxing or the unmodifiable wrapper (1.6% of CPU while loading).
   private final it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap<BlockState> blockIds;
   private final Map<Item, Integer> items;
+  private final Map<String, Integer> trims;
   private final Map<EntityType<?>, Integer> entities;
 
   public BlockMaterialMap(MaterialMappings mappings) throws ShaderPackException {
@@ -53,6 +54,13 @@ public final class BlockMaterialMap implements ToIntFunction<BlockState> {
     blockIds.defaultReturnValue(-1);
     blockIds.trim();
     items = Collections.unmodifiableMap(itemIds);
+    Map<String, Integer> trimIds = new HashMap<>();
+    for (String material : new String[] {"amethyst", "copper", "diamond", "emerald", "gold", "iron", "lapis", "netherite",
+        "quartz", "redstone", "resin"}) {
+      int id = mappings.itemId("trim_" + material);
+      if (id != -1) trimIds.put(material, id);
+    }
+    trims = Map.copyOf(trimIds);
     entities = Collections.unmodifiableMap(entityIds);
   }
 
@@ -90,6 +98,11 @@ public final class BlockMaterialMap implements ToIntFunction<BlockState> {
 
   public int itemId(ItemStack stack) {
     return stack.isEmpty() ? -1 : itemId(stack.getItem());
+  }
+
+  /** Cadence: an armour trim material's id (item.properties lists them as trim_&lt;material&gt;, as Iris reads them). */
+  public int trimId(String material) {
+    return trims.getOrDefault(material, -1);
   }
 
   public int itemId(Item item) {

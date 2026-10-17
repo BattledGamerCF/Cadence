@@ -33,7 +33,8 @@
     "FeatureGroupTagMixin",
     "FeaturePreparedGroupTagMixin",
     "ItemRenderedIdMixin",
-    "ItemRenderedIdResolverMixin"
+    "ItemRenderedIdResolverMixin",
+    "ArmorRenderedIdMixin"
   ],
   "injectors": {
     "defaultRequire": 1

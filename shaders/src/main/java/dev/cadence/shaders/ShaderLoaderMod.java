@@ -104,6 +104,7 @@ public final class ShaderLoaderMod implements ClientModInitializer {
   public static void install(Prepared prepared) {
     BlockMaterialMap materials = prepared.materials();
     prepared.runtime().uniforms().setItemIdResolver(materials::itemId);
+    prepared.runtime().uniforms().setTrimIdResolver(materials::trimId);
     TerrainShaderGeometry.configure(
         materials, prepared.separateAo(), materials.allBlockIdsFitSigned16());
     FeatureDrawContext.configure(materials::entityTypeId, materials);

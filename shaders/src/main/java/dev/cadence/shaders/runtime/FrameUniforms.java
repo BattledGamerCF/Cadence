@@ -643,6 +643,17 @@ public final class FrameUniforms {
     matrix("sl_ShadowModelViewProjection", new Matrix4f(shadowProjection).mul(shadowModelView));
   }
 
+  private ToIntFunction<String> trimIds = material -> -1;
+
+  /** Cadence: the pack id of an armour trim material (item.properties trim_&lt;material&gt;), -1 if it has none. */
+  public int trimId(String material) {
+    return trimIds.applyAsInt(material);
+  }
+
+  public void setTrimIdResolver(ToIntFunction<String> resolver) {
+    trimIds = Objects.requireNonNull(resolver);
+  }
+
   /** Cadence: an item's pack id (item.properties), -1 if it has none. */
   public int itemId(ItemStack stack) {
     return itemIds.applyAsInt(stack);

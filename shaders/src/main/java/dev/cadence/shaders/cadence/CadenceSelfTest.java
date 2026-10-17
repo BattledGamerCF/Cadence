@@ -401,6 +401,30 @@ public final class CadenceSelfTest {
 					String command = step.substring(4).replace("@me", mc.getUser().getName());
 					var cmdServer = mc.getSingleplayerServer();
 					if (cmdServer != null) cmdServer.execute(() -> cmdServer.getCommands().performPrefixedCommand(cmdServer.createCommandSourceStack().withSuppressedOutput(), command));
+				} else if (lower.startsWith("cmds=")) {
+					// "cmds=FILE": every line of FILE (relative to the game folder) as a server command, in order (commands with commas)
+					var cmdServer = mc.getSingleplayerServer();
+					java.util.List<String> lines;
+					try {
+						lines = java.nio.file.Files.readAllLines(java.nio.file.Path.of(step.substring(5)));
+					} catch (java.io.IOException e) {
+						LOGGER.info("[selftest] cmds: can't read {}: {}", step.substring(5), e.toString());
+						lines = java.util.List.of();
+					}
+					if (cmdServer != null)
+						for (String line : lines) {
+							String command = line.strip().replace("@me", mc.getUser().getName());
+							if (command.isEmpty() || command.startsWith("#")) continue;
+							cmdServer.execute(() -> cmdServer.getCommands().performPrefixedCommand(cmdServer.createCommandSourceStack(), command));
+						}
+				} else if (lower.startsWith("camera=")) {
+					// "camera=first|back|front": the camera view (F5)
+					var type = switch (lower.substring(7)) {
+						case "back" -> net.minecraft.client.CameraType.THIRD_PERSON_BACK;
+						case "front" -> net.minecraft.client.CameraType.THIRD_PERSON_FRONT;
+						default -> net.minecraft.client.CameraType.FIRST_PERSON;
+					};
+					mc.execute(() -> mc.options.setCameraType(type));
 				} else if (lower.startsWith("genarea=")) {
 					// "genarea=CX:CZ:R": force-load the (2R)x(2R) chunks around chunk CX,CZ (new terrain on the world snapshot),
 					// time until every one is a full chunk, then release them. Measures world generation alone.
