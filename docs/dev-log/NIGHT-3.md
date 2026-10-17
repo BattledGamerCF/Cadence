@@ -110,3 +110,11 @@ Changes:
   twice by the own renderer's occlusion work) 1.84 ms of fragment and 0.40 ms of vertex work; the own renderer's culling
   compute (cull 0.14, depth pyramid 0.17, occlusion test 0.09) 0.40 ms. Earlier nights' A/B runs already cover these
   stages; without per-draw timing nothing new stood out, so the pass ends here.
+
+## Part 3: bug pass
+
+| Test | Found | Fixed |
+|---|---|---|
+| Switches asked for while one prepares (a test delay, -Dcadence.switchTestDelay=MS, makes each take 3-5 s): BSL then Off, Complementary then BSL, Off-BSL-Off | **"BSL, then Off" quickly left BSL on**: Off was compared with the active pack (still off while BSL prepared) and skipped | Requests compare with the latest requested pack (ShaderSwitcher.target); the button label, Shader Pack Settings and reload follow it. Now every case ends on the last choice |
+| A pack chosen just before leaving the world; rejoining | Installed at the title screen, the world loads with it | - |
+| A switch during a teleport to the Nether, F3+T during a switch, a frame failure with a switch pending, a damaged pack-pipelines.txt | Nothing broken (the bad lines are skipped and the file rewritten) | - |

@@ -345,7 +345,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			LoggerFactory.getLogger("cadence_shaders").warn("Shader Pack Settings: can't save {}: {}", file, e.toString());
 		}
 		ShaderToggle.saveProfile(this.session.packName, this.session.profile);
-		if (this.session.packName.equals(ShaderSwitcher.active())) ShaderSwitcher.reload();
+		if (this.session.packName.equals(ShaderSwitcher.target())) ShaderSwitcher.reload();
 	}
 
 	static Map<String, String> readOwn(String packName) {

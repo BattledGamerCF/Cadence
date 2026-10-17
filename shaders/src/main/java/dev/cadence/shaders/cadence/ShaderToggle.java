@@ -145,7 +145,7 @@ public final class ShaderToggle {
 	private static Component label(String pack) {
 		Component base = Component.literal("Shaders: " + display(pack));
 		if (CadencePackGate.hooksApplied()) {
-			if (pack.equals(ShaderSwitcher.active())) return base;
+			if (pack.equals(ShaderSwitcher.target())) return base;
 			return base.copy().append(Component.literal("  (on close)").withStyle(ChatFormatting.YELLOW));
 		}
 		if (pack.isEmpty()) return base;
@@ -168,13 +168,13 @@ public final class ShaderToggle {
 			dev.cadence.shaders.cadence.system.Notices.post("Restart Minecraft to turn on " + display(chosen),
 				"This session started without shaders and uses Cadence's faster terrain.");
 		if (chosen == null || !CadencePackGate.hooksApplied()) return;
-		if (!chosen.equals(ShaderSwitcher.active())) ShaderSwitcher.apply(chosen);
+		if (!chosen.equals(ShaderSwitcher.target())) ShaderSwitcher.apply(chosen);
 		else if (profileChanged && !chosen.isEmpty()) ShaderSwitcher.reload(); // same pack, new quality: reload it
 	}
 
 	/** The pack button. */
 	public static Button packButton() {
-		pending = CadencePackGate.hooksApplied() ? ShaderSwitcher.active() : saved();
+		pending = CadencePackGate.hooksApplied() ? ShaderSwitcher.target() : saved();
 		Button[] self = new Button[1];
 		boolean none = choices().size() <= 1;
 		self[0] = Button.builder(none ? NONE_LABEL : label(pending), b -> {

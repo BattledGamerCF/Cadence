@@ -29,6 +29,17 @@ public final class ShaderSwitcher {
 		return active;
 	}
 
+	/**
+	 * Cadence: the pack the latest switch asked for ("" for off): active() once that switch is installed. A switch prepares
+	 * off the render thread, so "BSL, then Off" quickly compared Off with the active pack (still off while BSL prepared),
+	 * skipped it, and BSL went on. Requests compare against this instead.
+	 */
+	private static volatile String requested = active;
+
+	public static String target() {
+		return requested;
+	}
+
 	private static volatile boolean failing;
 	private static volatile Runnable pendingOff;
 
@@ -47,6 +58,8 @@ public final class ShaderSwitcher {
 			try {
 				ShaderLoaderMod.deactivate();
 				active = "";
+				requested = "";
+				generation.incrementAndGet(); // (a switch still preparing was asked for before the failure: dropped too)
 				reload(mc, MODE);
 				Throwable cause = failure;
 				while (cause.getCause() != null) cause = cause.getCause();
@@ -78,7 +91,7 @@ public final class ShaderSwitcher {
 
 	/** Reloads the active pack (its options or quality profile changed). */
 	public static void reload() {
-		String pack = active;
+		String pack = requested;
 		if (!pack.isEmpty()) apply(pack, MODE, true);
 	}
 
@@ -91,8 +104,9 @@ public final class ShaderSwitcher {
 	private static final java.util.concurrent.atomic.AtomicInteger generation = new java.util.concurrent.atomic.AtomicInteger();
 
 	private static void apply(String pack, String mode, boolean force) {
-		if (!CadencePackGate.hooksApplied() || (!force && pack.equals(active))) return;
+		if (!CadencePackGate.hooksApplied() || (!force && pack.equals(requested))) return;
 		Minecraft mc = Minecraft.getInstance();
+		requested = pack;
 		int ticket = generation.incrementAndGet();
 		if (pack.isEmpty()) {
 			mc.execute(() -> finish(mc, ticket, pack, mode, null, null, System.nanoTime()));
@@ -110,6 +124,9 @@ public final class ShaderSwitcher {
 				ShaderLoaderConfig config = ShaderLoaderConfig.load(loader.getGameDir(), loader.getConfigDir());
 				if (config.pack() == null) throw new IllegalStateException("no pack saved in the config");
 				prepared = ShaderLoaderMod.prepare(config);
+				// -Dcadence.switchTestDelay=MS (tests): a slow preparation, so switches asked for meanwhile overlap it
+				long delay = Long.getLong("cadence.switchTestDelay", 0);
+				if (delay > 0) Thread.sleep(delay);
 				if (generation.get() == ticket) prepared.runtime().awaitWarm();
 			} catch (Exception | LinkageError e) {
 				failure = e instanceof Exception x ? x : new RuntimeException(e);
@@ -151,6 +168,7 @@ public final class ShaderSwitcher {
 					// already off
 				}
 				active = "";
+				requested = "";
 				tell(mc, Component.literal("Couldn't load shader pack " + ShaderToggle.display(pack) + ": " + e.getMessage()
 					+ " — shaders are off.").withStyle(ChatFormatting.RED));
 			}
