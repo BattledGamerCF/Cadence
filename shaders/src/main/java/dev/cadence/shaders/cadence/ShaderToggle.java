@@ -342,11 +342,11 @@ public final class ShaderToggle {
 				else RenderScale.set(SCALES[i + 1]);
 			}
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How sharp the world is drawn. Menus, hotbar and text always stay sharp.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How sharp the world is drawn. Menus, the hotbar, chat and the names above players always stay sharp.",
 			"Auto|sharp whenever your Mac keeps up, lower only when needed (recommended)",
 			"100%|always full sharpness",
-			"85% to 50%|faster and cooler, softer",
-			"#With shaders this is the biggest fps setting.")).build();
+			"85% to 50%|faster and cooler, softer (50% with Fast: crisp, like a non-Retina screen)",
+			"#The biggest fps setting, with or without shaders.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(scaleLabel()));
 		return self[0];
 	}
@@ -358,9 +358,9 @@ public final class ShaderToggle {
 			RenderScale.setUpscaler((RenderScale.upscaler() + 1) % 3);
 			CadenceSettings.refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("When Resolution is below 100%, how the picture is sharpened back:",
-			"Apple|sharpest edges, Apple's MetalFX (recommended)",
+			"Apple|sharpest edges, Apple's MetalFX (recommended with shaders)",
 			"Smooth|a little softer, very even",
-			"Fast|softest, cheapest")).build();
+			"Fast|cheapest, the most fps; at 50% each pixel stays crisp")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(upscalerLabel()));
 		return self[0];
 	}

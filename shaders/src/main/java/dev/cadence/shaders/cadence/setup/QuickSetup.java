@@ -151,6 +151,8 @@ public final class QuickSetup {
 		else if (mac.memoryGB() <= 16) rd = Math.min(rd, 24);
 		if (cpu < 0.8) rd = Math.max(8, rd - 2);
 		int rdNow = mc.options.renderDistance().get();
+		// the Max FPS goal never asks for a longer view (more terrain is fewer frames); it only lowers one that's too far
+		if (goal == Goal.MAX_FPS) rd = Math.min(rd, rdNow);
 		final int rdTo = rd;
 		if (rdNow != rd)
 			out.add(new Change("Render Distance", rdNow + " chunks", rd + " chunks", rd > rdNow ? "your Mac can show more" : "smoother",
@@ -162,17 +164,22 @@ public final class QuickSetup {
 			out.add(new Change("Max Framerate", fpsNow >= 260 ? "Unlimited" : fpsNow + " fps", fpsTo >= 260 ? "Unlimited" : fpsTo + " fps",
 				fpsTo >= 260 ? "as many frames as your Mac makes" : "matches your screen", () -> mc.options.framerateLimit().set(fpsTo)));
 		// the preset first: Max Quality turns cooling off, so the cooling line below must agree with it
-		CadenceSettings.Preset preset = goal == Goal.MAX_FPS || mac.fanless() || tier <= 3 ? CadenceSettings.Preset.BALANCED
-			: CadenceSettings.Preset.QUALITY;
+		// (the Max FPS goal: the Max FPS preset, the world at half resolution; it's listed before Apply like every change)
+		CadenceSettings.Preset preset = goal == Goal.MAX_FPS ? CadenceSettings.Preset.MAX_FPS
+			: mac.fanless() || tier <= 3 ? CadenceSettings.Preset.BALANCED : CadenceSettings.Preset.QUALITY;
 		if (CadenceSettings.current() != preset)
 			out.add(new Change("Performance", CadenceSettings.current().label(), preset.label(),
-				preset == CadenceSettings.Preset.BALANCED ? "sharp, eases off when needed" : "full quality", () -> CadenceSettings.apply(preset)));
-		HeatControl.Cooling cooling = preset == CadenceSettings.Preset.QUALITY ? HeatControl.Cooling.OFF
+				switch (preset) {
+					case BALANCED -> "sharp, eases off when needed";
+					case MAX_FPS -> "half-resolution world (crisp), the most fps";
+					default -> "full quality";
+				}, () -> CadenceSettings.apply(preset)));
+		HeatControl.Cooling cooling = preset == CadenceSettings.Preset.QUALITY || preset == CadenceSettings.Preset.MAX_FPS ? HeatControl.Cooling.OFF
 			: goal == Goal.MAX_FPS ? HeatControl.Cooling.PERFORMANCE : HeatControl.Cooling.BALANCED;
 		if (HeatControl.cooling() != cooling)
 			out.add(new Change("Cooling", HeatControl.cooling().label, cooling.label,
 				cooling == HeatControl.Cooling.PERFORMANCE ? (mac.fanless() ? "full speed until macOS slows it" : "lets the fans work")
-					: cooling == HeatControl.Cooling.OFF ? "full quality" : "steady and cool", () -> HeatControl.setCooling(cooling)));
+					: cooling == HeatControl.Cooling.OFF ? (preset == CadenceSettings.Preset.MAX_FPS ? "no limits" : "full quality") : "steady and cool", () -> HeatControl.setCooling(cooling)));
 		boolean smart = mac.fanless() || tier <= 2;
 		if (smart != SmartLeaves.enabled())
 			out.add(new Change("Leaves", SmartLeaves.enabled() ? "Smart" : "Detailed", smart ? "Smart" : "Detailed",

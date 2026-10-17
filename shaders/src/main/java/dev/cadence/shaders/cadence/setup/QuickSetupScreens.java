@@ -17,7 +17,7 @@ public final class QuickSetupScreens {
 	public static Screen offer(Screen parent) {
 		QuickSetup.Mac mac = QuickSetup.detect();
 		String name = mac.product().isEmpty() ? "Mac" : mac.product();
-		return new ConfirmScreen(yes -> {
+		return new CadenceConfirmScreen(yes -> {
 			if (yes) Minecraft.getInstance().gui.setScreen(goal(parent));
 			else {
 				QuickSetup.done(mac);
@@ -32,7 +32,7 @@ public final class QuickSetupScreens {
 
 	/** What matters more: steady and cool, or every frame the Mac can make. */
 	public static Screen goal(Screen parent) {
-		return new ConfirmScreen(smooth -> start(parent, smooth ? QuickSetup.Goal.SMOOTH : QuickSetup.Goal.MAX_FPS),
+		return new CadenceConfirmScreen(smooth -> start(parent, smooth ? QuickSetup.Goal.SMOOTH : QuickSetup.Goal.MAX_FPS),
 			Component.literal("What matters more to you?"),
 			Component.literal("Smooth & Cool: the frame rate matches your screen, your Mac stays cooler and quieter, and the game "
 				+ "stays steady for long sessions.\nMax FPS: as many frames as your Mac can make; it runs warmer"
@@ -61,7 +61,7 @@ public final class QuickSetupScreens {
 		if (!r.measured()) msg.append(Component.literal("\n(Your Mac was warm, so Cadence used its built-in profile.)").withStyle(ChatFormatting.GRAY));
 		if (r.changes().isEmpty()) {
 			msg.append(Component.literal("\n\nYour settings already suit this Mac."));
-			return new ConfirmScreen(ok -> {
+			return new CadenceConfirmScreen(ok -> {
 				QuickSetup.done(r.mac());
 				mc.gui.setScreen(parent);
 			}, Component.literal("Cadence is set up"), msg, Component.literal("Done"), Component.literal("Back"));
@@ -70,10 +70,10 @@ public final class QuickSetupScreens {
 		for (QuickSetup.Change c : r.changes())
 			msg.append(Component.literal("\n" + c.what() + ": " + c.from() + " → ").append(Component.literal(c.to()).withStyle(ChatFormatting.GREEN))
 				.append(Component.literal("  " + c.why()).withStyle(ChatFormatting.GRAY)));
-		return new ConfirmScreen(apply -> {
+		return new CadenceConfirmScreen(apply -> {
 			if (apply) QuickSetup.apply(r);
 			else QuickSetup.done(r.mac());
 			mc.gui.setScreen(parent);
-		}, Component.literal("Recommended for your Mac"), msg, Component.literal("Apply"), Component.literal("Keep My Settings"));
+		}, Component.literal("Recommended for your Mac"), msg, Component.literal("Apply"), Component.literal("Keep My Settings"), 460);
 	}
 }
