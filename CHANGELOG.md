@@ -13,6 +13,14 @@ Smoother:
   combination never used before: 1.7-2.1 s of frozen game before, now 0.3-0.7 s (once; after that it's cached).
 - A small GPU saving with packs (BSL about 0.7 ms a frame): a pass is no longer interrupted to clear a buffer it reads.
 
+Faster without shaders:
+- **Up to 11% more fps outdoors**: Cadence's terrain renderer now measures, every few seconds, whether its hidden-terrain
+  check is worth it in the current view, and skips it where little is hidden (open land, the ocean, high up). It keeps it
+  underground and in caves, where it still pays.
+- **New Performance preset: Max FPS.** The world at half resolution (each pixel a sharp 2x2 block, like a non-Retina
+  screen; the HUD and text stay sharp), the cheapest upscale and no cooling limit: about 60% more fps without shaders.
+- Buffer clears are skipped when everything is drawn over anyway, now without shaders too.
+
 Looks right:
 - **Items glow and shine as the pack intends** (Complementary, Complementary Unbound, Pegasus, I Like Vanilla): held,
   dropped and framed items, worn armour and armour trims now tell the pack what they are, as Iris does. A held lava

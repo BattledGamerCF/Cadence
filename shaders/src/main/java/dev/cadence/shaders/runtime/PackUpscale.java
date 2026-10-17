@@ -92,6 +92,8 @@ public final class PackUpscale implements AutoCloseable {
       """;
 
   private final boolean fast;
+  /** Cadence: the Fast upscaler's nearest-texel sampler, for an exact whole-number ratio (50% World Resolution: crisp 2x2 pixels). */
+  private final GpuSampler exact;
 
   public PackUpscale(GpuDevice device, GpuFormat format, float sharpen) {
     this(device, format, sharpen, false);
@@ -105,6 +107,9 @@ public final class PackUpscale implements AutoCloseable {
         device.createSampler(
             AddressMode.CLAMP_TO_EDGE, AddressMode.CLAMP_TO_EDGE, filter, filter, 1,
             OptionalDouble.of(0));
+    exact = fast
+        ? device.createSampler(AddressMode.CLAMP_TO_EDGE, AddressMode.CLAMP_TO_EDGE, FilterMode.NEAREST, FilterMode.NEAREST, 1, OptionalDouble.of(0))
+        : null;
     String fragment = fast ? FAST_FRAGMENT : FRAGMENT_TEMPLATE.replace("%SHARPEN%", String.format(java.util.Locale.ROOT, "%.3f", sharpen));
     var description =
         RenderPipeline.builder()
@@ -151,7 +156,11 @@ public final class PackUpscale implements AutoCloseable {
         RenderPassDescriptor.builder(() -> "Cadence render-scale upscale").withColorAttachment(destination).build();
     try (var pass = device.createCommandEncoder().createRenderPass(descriptor)) {
       pass.setPipeline(pipeline);
-      pass.setUniform("Source", source, sampler);
+      // Cadence: Fast at an exact whole-number ratio (50% on any window: each world pixel a 2x2 block) samples the nearest texel:
+      // as sharp as a screen of that resolution, where bilinear blurred every edge
+      int sw = source.getWidth(0), sh = source.getHeight(0), dw = destination.getWidth(0), dh = destination.getHeight(0);
+      boolean whole = exact != null && dw % sw == 0 && dh % sh == 0 && dw / sw == dh / sh && dw / sw >= 2;
+      pass.setUniform("Source", source, whole ? exact : sampler);
       pass.draw(3, 1, 0, 0);
     }
   }
@@ -159,5 +168,6 @@ public final class PackUpscale implements AutoCloseable {
   @Override
   public void close() {
     sampler.close();
+    if (exact != null) exact.close();
   }
 }

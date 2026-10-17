@@ -97,7 +97,9 @@ final class MetalEncoder implements CommandEncoderBackend {
 	 * level's main pass loses its overlap with the previous frame (~0.6-1 ms of GPU on the base chips on those frames). Exact: every
 	 * texture still reads its clear wherever it is read.
 	 */
-	static volatile boolean LAZY_CLEARS = Boolean.getBoolean("cadence.metal.lazyClears");
+	// Cadence: on by default (packs: ~1.6-1.75 ms less GPU a frame with BSL; no pack: -0.07 ms at full resolution, -0.31 ms with
+	// World Resolution below 100%, where the window-size target's clear was paid and then drawn over). -Dcadence.metal.lazyClears=false: off.
+	static volatile boolean LAZY_CLEARS = !"false".equals(System.getProperty("cadence.metal.lazyClears"));
 	static final boolean CLEAR_ALL_MIPS = Boolean.getBoolean("cadence.metal.clearAllMips");
 	private long[] passColors = new long[8];
 	private int passColorCount, passWidth, passHeight;

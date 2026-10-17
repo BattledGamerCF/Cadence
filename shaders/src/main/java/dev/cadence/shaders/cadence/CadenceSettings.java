@@ -17,7 +17,7 @@ import net.minecraft.network.chat.Component;
  */
 public final class CadenceSettings {
 	public enum Preset {
-		BATTERY("Battery Saver"), BALANCED("Recommended"), QUALITY("Max Quality"), CUSTOM("Custom");
+		BATTERY("Battery Saver"), BALANCED("Recommended"), QUALITY("Max Quality"), MAX_FPS("Max FPS"), CUSTOM("Custom");
 
 		final String label;
 
@@ -44,6 +44,7 @@ public final class CadenceSettings {
 		if (auto && heat && shadows == 2 && up == RenderScale.UPSCALE_APPLE && RenderScale.autoTarget() <= 45) return Preset.BATTERY;
 		if (auto && heat && shadows == 2 && up == RenderScale.UPSCALE_APPLE && RenderScale.autoTarget() == 60) return Preset.BALANCED;
 		if (!auto && RenderScale.get() >= 0.995f && !heat && shadows == 1) return Preset.QUALITY;
+		if (!auto && Math.abs(RenderScale.get() - 0.5f) < 0.005f && !heat && shadows == 2 && up == RenderScale.UPSCALE_FAST) return Preset.MAX_FPS;
 		return Preset.CUSTOM;
 	}
 
@@ -69,6 +70,16 @@ public final class CadenceSettings {
 				HeatControl.setEnabled(false);
 				setShadows(1);
 			}
+			// Cadence: as many frames as the Mac can make. The world at half the window's resolution, each of its pixels a sharp
+			// 2x2 block (as a screen of that resolution shows it; the HUD and text stay full resolution), with the cheapest
+			// upscale (MetalFX's costs ~1-2 ms at Retina size, as much as a whole frame without shaders) and no cooling cap.
+			// M2 Air, no shaders: frame 7.4 -> 4.7 ms under load (in-run A/B).
+			case MAX_FPS -> {
+				RenderScale.set(0.5f);
+				HeatControl.setEnabled(false);
+				setShadows(2);
+				RenderScale.setUpscaler(RenderScale.UPSCALE_FAST);
+			}
 			case CUSTOM -> {
 			}
 		}
@@ -79,9 +90,34 @@ public final class CadenceSettings {
 		ShaderToggle.saveKey("shadowRate", Integer.toString(rate));
 	}
 
-	/** After any change: every Cadence button's label follows. */
+	/** After any change: every Cadence button's label follows, and the status rows above them. */
 	static void refreshAll() {
 		for (Runnable r : refreshers) r.run();
+		List<net.minecraft.client.gui.components.AbstractWidget> rows = statusRows;
+		if (rows.isEmpty() || statusFont == null) return;
+		List<Component> parts = new ArrayList<>();
+		for (Component line : status()) parts.addAll(wrap(line, statusWidth, statusFont));
+		// as many rows as were built: a longer status joins its tail into the last row (reopening the screen lays it out anew)
+		for (int i = 0; i < rows.size(); i++) {
+			Component text = i < parts.size() ? parts.get(i) : Component.empty();
+			if (i == rows.size() - 1 && parts.size() > rows.size()) {
+				net.minecraft.network.chat.MutableComponent joined = parts.get(i).copy();
+				for (int j = i + 1; j < parts.size(); j++) joined.append(" ").append(parts.get(j));
+				text = joined;
+			}
+			rows.get(i).setMessage(text);
+		}
+	}
+
+	private static List<net.minecraft.client.gui.components.AbstractWidget> statusRows = List.of();
+	private static int statusWidth;
+	private static net.minecraft.client.gui.Font statusFont;
+
+	/** Video Settings, as it builds: the status rows (their widgets), for refreshAll. */
+	public static void statusRows(List<net.minecraft.client.gui.components.AbstractWidget> rows, int width, net.minecraft.client.gui.Font font) {
+		statusRows = List.copyOf(rows);
+		statusWidth = width;
+		statusFont = font;
 	}
 
 	/** From the render thread's frame code: refresh the labels (a check's progress). */
@@ -105,7 +141,8 @@ public final class CadenceSettings {
 			Preset next = switch (now) {
 				case BATTERY -> Preset.BALANCED;
 				case BALANCED -> Preset.QUALITY;
-				case QUALITY, CUSTOM -> Preset.BATTERY;
+				case QUALITY -> Preset.MAX_FPS;
+				case MAX_FPS, CUSTOM -> Preset.BATTERY;
 			};
 			apply(next);
 			refreshAll();
@@ -113,6 +150,7 @@ public final class CadenceSettings {
 			"Battery Saver|coolest and quietest, aims for 40 fps",
 			"Recommended|smooth 60 fps, sharp whenever it can be",
 			"Max Quality|always full sharpness; the Mac may run hot",
+			"Max FPS|the world at half resolution (crisp, like a non-Retina screen), no limits",
 			"Custom|you changed something by hand",
 			"#Tip: Max Framerate 60 (120 on ProMotion) saves heat.")).build();
 		onRefresh(() -> self[0].setMessage(presetLabel()));

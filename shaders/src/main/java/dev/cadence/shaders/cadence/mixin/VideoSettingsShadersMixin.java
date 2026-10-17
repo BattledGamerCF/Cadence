@@ -29,8 +29,17 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addHeader(Component.literal("Cadence"));
 		// what Cadence tunes on its own (always one line), then anything it is easing right now (heat, memory, Auto resolution)
 		int wrap = Math.max(120, Math.min(this.list.getRowWidth(), this.width - 24));
+		int before = this.list.children().size();
 		for (Component line : dev.cadence.shaders.cadence.CadenceSettings.status())
 			for (Component part : dev.cadence.shaders.cadence.CadenceSettings.wrap(line, wrap, this.font)) this.list.addHeader(part);
+		// (the status rows follow the buttons: a preset or setting changed on this screen shows in them at once)
+		java.util.List<net.minecraft.client.gui.components.AbstractWidget> statusRows = new java.util.ArrayList<>();
+		java.util.List<? extends net.minecraft.client.gui.components.events.GuiEventListener> entries = this.list.children();
+		for (int i = before; i < entries.size(); i++)
+			if (entries.get(i) instanceof net.minecraft.client.gui.components.events.ContainerEventHandler entry)
+				for (var child : entry.children())
+					if (child instanceof net.minecraft.client.gui.components.AbstractWidget w) statusRows.add(w);
+		dev.cadence.shaders.cadence.CadenceSettings.statusRows(statusRows, wrap, this.font);
 		Screen self = this;
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.presetButton(),
 			net.minecraft.client.gui.components.Button.builder(Component.literal("Quick Setup..."),
