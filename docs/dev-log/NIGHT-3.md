@@ -120,6 +120,8 @@ Changes:
 | A switch during a teleport to the Nether, F3+T during a switch, a frame failure with a switch pending, a damaged pack-pipelines.txt | Nothing broken (the bad lines are skipped and the file rewritten) | - |
 | Item materials beyond items (Complementary at night, third person) | Worn armour and its trims had no `currentRenderedItemId` (Iris gives armour its item id and trims trim_<material>) | Armour pieces and trims tagged too: with Complementary's Glowing Armor Trims on, the gold and emerald trims now glow (off: plain); the held blaze rod glows in third person too |
 | Switching through Video Settings (cycle the Shaders button, close, reopen at once while the pack prepares) | The button already shows the pack being prepared, without a stale "(on close)" | - |
+| 20-minute flight with BSL at render distance 12 (new terrain all the way) | No errors; Metal memory levels at 1.0-1.07 GB, the Java heap after collections stays at 560-600 MB (no growth) | - |
+| Code review of tonight's changes | The pack-off cleanup ran just after the own renderer came back (a new mesh could in principle be swept up); the sampled-clear flush applied the camera passes' textures at the shadow pass too | Cleanup before the flag flips; the flush keeps camera and shadow passes apart: BSL now -0.69 ms a frame (33.5 -> 32.8 ms) instead of -0.31 |
 | All 12 packs in a row; 16 quick switches | No errors, pictures right; Metal memory back to 333-334 MB at every Off | - |
 | Thunderstorm, enchanted sword, map, item frame, banner, sign, mobs, third person, underwater (four renderers), the End (BSL, Complementary, off) | Nothing broken | - |
 

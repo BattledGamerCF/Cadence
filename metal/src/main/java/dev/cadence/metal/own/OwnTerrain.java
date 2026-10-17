@@ -509,10 +509,17 @@ public final class OwnTerrain {
 	/** ShaderLoaderMod, on the render thread (or before any frame), when a pack is activated or deactivated. */
 	public static void packActive(boolean on) {
 		boolean was = packActive;
-		packActive = on;
-		if (instance == null || was == on) return;  // (every switch deactivates first: off -> off must leave our live meshes alone)
-		if (on) instance.disposeAll();
-		else instance.dropStale();
+		if (instance == null || was == on) {  // (every switch deactivates first: off -> off must leave our live meshes alone)
+			packActive = on;
+			return;
+		}
+		if (on) {
+			packActive = true;
+			instance.disposeAll();
+		} else {
+			instance.dropStale();  // before get() returns us again: nothing new of ours can be among what it drops
+			packActive = false;
+		}
 	}
 
 	/**

@@ -11,7 +11,7 @@ Smoother:
 - **Changing a pack's settings pauses much less**: the pack's shaders are compiled several at a time, and Cadence
   remembers which ones packs need, so even the first pack after launching gets them ready ahead of time. A settings
   combination never used before: 1.7-2.1 s of frozen game before, now 0.3-0.7 s (once; after that it's cached).
-- A small GPU saving with packs (BSL about 0.3 ms a frame): a pass is no longer interrupted to clear a buffer it reads.
+- A small GPU saving with packs (BSL about 0.7 ms a frame): a pass is no longer interrupted to clear a buffer it reads.
 
 Looks right:
 - **Items glow and shine as the pack intends** (Complementary, Complementary Unbound, Pegasus, I Like Vanilla): held,

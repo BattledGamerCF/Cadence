@@ -995,7 +995,7 @@ public final class ShaderRuntime implements AutoCloseable {
                 pipeline.shadow(),
                 pipeline.depth(),
                 pipeline.depthTarget());
-    if (FLUSH_SAMPLED_CLEARS && !pipeline.fullscreen()) flushSceneSampledClears(descriptor);
+    if (FLUSH_SAMPLED_CLEARS && !pipeline.fullscreen()) flushSceneSampledClears(descriptor, pipeline.shadow());
     raw = true;
     try {
       if (discardMask != 0) {
@@ -1009,8 +1009,12 @@ public final class ShaderRuntime implements AutoCloseable {
     }
   }
 
-  /** Cadence: the textures the pack's geometry programs sample (kind:index), over the pipelines compiled so far. */
-  private java.util.List<PackPipeline.SamplerBinding> sceneSamplers = java.util.List.of();
+  /**
+   * Cadence: the textures the pack's geometry programs sample (kind:index), over the pipelines compiled so far: [0] the
+   * camera passes', [1] the shadow pass's.
+   */
+  @SuppressWarnings("unchecked")
+  private final java.util.List<PackPipeline.SamplerBinding>[] sceneSamplers = new java.util.List[] {java.util.List.of(), java.util.List.of()};
   private int sceneSamplersFor = -1;
 
   /**
@@ -1018,22 +1022,26 @@ public final class ShaderRuntime implements AutoCloseable {
    * clear split the pass at that draw (BSL's and Complementary's sun and moon: every frame). Those clears are written now,
    * before the pass opens; the pass's own attachments keep theirs (merged into the pass's load action).
    */
-  private void flushSceneSampledClears(RenderPassDescriptor descriptor) {
+  private void flushSceneSampledClears(RenderPassDescriptor descriptor, boolean shadowPass) {
     if (sceneSamplersFor != geometry.size()) {
-      Map<String, PackPipeline.SamplerBinding> union = new java.util.LinkedHashMap<>();
-      for (PackPipeline p : geometry.values())
-        for (var sampler : p.samplerBindings())
-          if (textures.custom(p.source().name(), sampler.name()) == null)
-            union.putIfAbsent(sampler.kind() + ":" + sampler.index(), sampler);
-      sceneSamplers = java.util.List.copyOf(union.values());
+      for (int k = 0; k < 2; k++) {
+        Map<String, PackPipeline.SamplerBinding> union = new java.util.LinkedHashMap<>();
+        for (PackPipeline p : geometry.values())
+          if (p.shadow() == (k == 1))
+            for (var sampler : p.samplerBindings())
+              if (textures.custom(p.source().name(), sampler.name()) == null)
+                union.putIfAbsent(sampler.kind() + ":" + sampler.index(), sampler);
+        sceneSamplers[k] = java.util.List.copyOf(union.values());
+      }
       sceneSamplersFor = geometry.size();
     }
-    if (sceneSamplers.isEmpty()) return;
+    var sampled = sceneSamplers[shadowPass ? 1 : 0];
+    if (sampled.isEmpty()) return;
     java.util.Set<GpuTexture> attached = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
     for (var attachment : descriptor.colorAttachments())
       if (attachment != null) attached.add(attachment.textureView().texture());
     if (descriptor.depthAttachment() != null) attached.add(descriptor.depthAttachment().textureView().texture());
-    for (var sampler : sceneSamplers) {
+    for (var sampler : sampled) {
       PackTexture target =
           switch (sampler.kind()) {
             case COLOR -> targets.color(sampler.index());
