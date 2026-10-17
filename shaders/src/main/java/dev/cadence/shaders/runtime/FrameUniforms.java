@@ -643,7 +643,17 @@ public final class FrameUniforms {
     matrix("sl_ShadowModelViewProjection", new Matrix4f(shadowProjection).mul(shadowModelView));
   }
 
+  /** Cadence: an item's pack id (item.properties), -1 if it has none. */
+  public int itemId(ItemStack stack) {
+    return itemIds.applyAsInt(stack);
+  }
+
   public void setDrawState(int stage, float alphaTestRef, int entityId, int blockEntityId) {
+    setDrawState(stage, alphaTestRef, entityId, blockEntityId, 0);
+  }
+
+  public void setDrawState(int stage, float alphaTestRef, int entityId, int blockEntityId, int itemId) {
+    put("currentRenderedItemId", itemId);
     put("renderStage", stage);
     put("alphaTestRef", alphaTestRef);
     put("entityId", entityId);
@@ -704,7 +714,7 @@ public final class FrameUniforms {
       : java.util.Set.of("frameCounter", "worldTime", "worldDay", "moonPhase", "isEyeInWater", "heldItemId", "heldItemId2",
           "heldBlockLightValue", "heldBlockLightValue2", "fogMode", "fogShape", "hideGUI", "biome", "biome_category",
           "biome_precipitation", "heightLimit", "bedrockLevel", "logicalHeightLimit", "renderStage", "entityId",
-          "blockEntityId", "currentColorSpace");
+          "blockEntityId", "currentColorSpace", "currentRenderedItemId");
   private static final java.util.Set<String> REPORTED_WRONG_TYPE = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
   private void wrongType(UniformLayout layout, UniformLayout.Field field, ByteBuffer target) {

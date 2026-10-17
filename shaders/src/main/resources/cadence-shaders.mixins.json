@@ -31,7 +31,9 @@
     "FeatureSubmitTagMixin",
     "FeatureTranslucentSubmitTagMixin",
     "FeatureGroupTagMixin",
-    "FeaturePreparedGroupTagMixin"
+    "FeaturePreparedGroupTagMixin",
+    "ItemRenderedIdMixin",
+    "ItemRenderedIdResolverMixin"
   ],
   "injectors": {
     "defaultRequire": 1

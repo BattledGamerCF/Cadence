@@ -1063,7 +1063,8 @@ public final class ShaderRuntime implements AutoCloseable {
                     pipeline.renderStage(),
                     pipeline.alphaTestRef(),
                     tag.entityId(),
-                    tag.blockEntityId());
+                    tag.blockEntityId(),
+                    tag.itemId());
                 uniforms.setEntityColor(tag.red(), tag.green(), tag.blue(), tag.alpha());
                 try (var allocation =
                     device()

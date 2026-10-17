@@ -137,6 +137,10 @@ public final class CadenceSelfTest {
 					// "join=WORLD": open a singleplayer world from the title screen (after "leave")
 					String world = step.substring(5);
 					mc.execute(() -> mc.createWorldOpenFlows().openWorld(world, () -> {}));
+				} else if (lower.startsWith("feature=")) {
+					// "feature=NAME:on|off": one of the A/B features (abSet) set for the following steps (picture comparisons)
+					String[] f = lower.substring(8).split(":");
+					abSet(mc, f[0], f.length < 2 || f[1].equals("on") || f[1].equals("true"));
 				} else if (lower.startsWith("lan=")) {
 					// "lan=PORT": this world opened to LAN on PORT (cheats on, no account check: the dev accounts can't sign in) for a
 					// second client (tools/cadence-guest.sh) to join as another player
@@ -653,6 +657,7 @@ public final class CadenceSelfTest {
 				case "lazyclears" -> dev.cadence.metal.FrameHints.lazyClears(on);
 				case "modelwrite" -> dev.cadence.metal.cpu.Cpu.modelWrite = on;
 				case "rgssskip" -> dev.cadence.metal.own.OwnTerrain.rgssSkip(on);
+				case "itemids" -> dev.cadence.shaders.geometry.FeatureDrawContext.ITEM_IDS = on;
 				case "flushsampled" -> dev.cadence.shaders.runtime.ShaderRuntime.FLUSH_SAMPLED_CLEARS = on;
 				case "fsdiscard" -> dev.cadence.shaders.runtime.ShaderRuntime.setDiscardFullscreenLoads(on);
 				default -> {

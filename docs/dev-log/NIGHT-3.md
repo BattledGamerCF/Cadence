@@ -65,3 +65,20 @@ next rebuild). packActive now acts only on a real change.
   switched BSL and Complementary on and off while connected, with correct pictures and no errors; the host switched BSL on
   and off with the guest in the world; leaving and the host quitting were clean.
 - Not tested: a dedicated server (running one needs its EULA accepted, which is the player's call).
+
+### Leftovers
+
+- **The deferred clear that split a pass every frame.** Not deferred1: the trace (-Dcadence.metal.traceSplits=N) put it at
+  the sun and moon draws, whose sky program samples a colour buffer nothing had drawn yet that frame (Complementary's
+  colortex6, BSL's colortex4). The pack layer clears what a pass reads before opening it, but with lazy clears that clear
+  was only noted, so the first binding inside the pass split it (end, clear, reopen loading every attachment). Now the
+  sampled textures' clears are written before the pass opens (screen passes: that program's; scene passes: every geometry
+  program's, minus the pass's own attachments). No splits left; in-run A/B at a fixed full resolution: BSL -0.31 ms a
+  frame (33.1 -> 32.8 ms, twice), Complementary -0.09 ms (noise). Pictures unchanged.
+- **Uniforms the census found unsupplied.** `currentRenderedItemId` was the one that mattered: Complementary, Unbound,
+  Pegasus and I Like Vanilla give items their materials with it (with Complementary's default integrated PBR, a held lava
+  bucket and blaze rod glow, armour trims and metals shine). Now an item's draws carry its item.properties id (in hand,
+  dropped, in frames, worn): the held lava bucket and blaze rod went from plain to glowing (+16-25% brightness over the
+  hands), as under Iris. The others: `isNether` (Sildur's 2.02) and `sunElevation` (Sildur's 1.541, its definition is
+  commented out in the pack) are declared and never used, so zero is what Iris gives too; the `dh*` uniforms are Distant
+  Horizons'; `velocity`, `focolortex5` and `Moon_Weather_properties` are pack-side leftovers no loader supplies.
