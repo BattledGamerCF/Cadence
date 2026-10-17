@@ -2079,6 +2079,7 @@ public final class OwnTerrain {
 		if (!MetalBridge.inRenderPass(this.encoder)) return false;
 		if (NO_FADE) fadeMs = 0;
 		this.beginFrame();
+		if (PROBE_MS <= 0) OwnAdaptive.frame();
 		String mode = PROBE_MS > 0 ? this.probe() : "draw";
 		if (mode.startsWith("x-")) {
 			// (translucent probe modes: the opaque terrain as "draw")

@@ -129,6 +129,7 @@ final class Native {
 	private static final MethodHandle PRE_BLIT_BUFFER = fn("mc_pre_blit_buffer", true, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PRE_FILL = fn("mc_pre_fill", true, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle RENDER_RESUME = fn("mc_render_resume", false, null, JAVA_LONG, JAVA_LONG);
+	private static final MethodHandle RENDER_SPLIT = fn("mc_render_split", false, null, JAVA_LONG);
 	private static final MethodHandle R_DRAW = fn("mc_r_draw", true, null, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT);
 	private static final MethodHandle R_DRAW_INDEXED = fn("mc_r_draw_indexed", true, null, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT);
 	private static final MethodHandle R_MULTI_DRAW_INDEXED = fn("mc_r_multi_draw_indexed", true, null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT);
@@ -287,6 +288,7 @@ final class Native {
 	static long gpuAddress(long buffer) { try { return (long) GPU_ADDRESS.invokeExact(buffer); } catch (Throwable t) { throw rethrow(t); } }
 	static void preBlitBuffer(long enc, long src, long srcOffset, long dst, long dstOffset, long size) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitBuffer(true, src, srcOffset, dst, dstOffset, size); try { PRE_BLIT_BUFFER.invokeExact(enc, src, srcOffset, dst, dstOffset, size); } catch (Throwable t) { throw rethrow(t); } }
 	static void preFill(long enc, long buffer, long offset, long length, int value) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.fill(true, buffer, offset, length, value); try { PRE_FILL.invokeExact(enc, buffer, offset, length, value); } catch (Throwable t) { throw rethrow(t); } }
+	static void renderSplit(long enc) { try { RENDER_SPLIT.invokeExact(enc); } catch (Throwable t) { throw rethrow(t); } }
 	static void renderResume(long enc, long compute) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.unsupported("renderResume"); try { RENDER_RESUME.invokeExact(enc, compute); } catch (Throwable t) { throw rethrow(t); } }
 	static void draw(long enc, int count, int instances, int first, int firstInstance) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.draw("draw", count, instances, first, firstInstance, 0); try { R_DRAW.invokeExact(enc, count, instances, first, firstInstance); } catch (Throwable t) { throw rethrow(t); } }
 	static void drawIndexed(long enc, int count, int instances, int firstIndex, int baseVertex, int firstInstance) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.draw("drawi", count, instances, firstIndex, baseVertex, firstInstance); try { R_DRAW_INDEXED.invokeExact(enc, count, instances, firstIndex, baseVertex, firstInstance); } catch (Throwable t) { throw rethrow(t); } }

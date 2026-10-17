@@ -417,6 +417,14 @@ public final class CadenceSelfTest {
 							if (command.isEmpty() || command.startsWith("#")) continue;
 							cmdServer.execute(() -> cmdServer.getCommands().performPrefixedCommand(cmdServer.createCommandSourceStack(), command));
 						}
+				} else if (lower.startsWith("clouds=")) {
+					// "clouds=fancy|fast|off": the Clouds video option
+					var status = switch (lower.substring(7)) {
+						case "fast" -> net.minecraft.client.CloudStatus.FAST;
+						case "off" -> net.minecraft.client.CloudStatus.OFF;
+						default -> net.minecraft.client.CloudStatus.FANCY;
+					};
+					mc.execute(() -> mc.options.cloudStatus().set(status));
 				} else if (lower.startsWith("camera=")) {
 					// "camera=first|back|front": the camera view (F5)
 					var type = switch (lower.substring(7)) {

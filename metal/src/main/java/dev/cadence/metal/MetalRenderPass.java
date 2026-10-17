@@ -93,6 +93,10 @@ final class MetalRenderPass implements RenderPassBackend {
 			this.dirtyUpTo = p.uniforms.size();
 			return;
 		}
+		if (MetalEncoder.PROFILE_SPLIT && p != this.pipeline) {
+			this.encoder.profileSplit(p.name);
+			this.restoreAfterSplit();
+		}
 		boolean terrain = p.pulled != 0 && this.hasDepth, record = terrain && this.encoder.terrain.split;
 		if (terrain) this.encoder.terrain.terrainPixels = (long) this.areaWidth * this.areaHeight;
 		this.flushTerrain(record);

@@ -1517,9 +1517,8 @@ id<MTLComputeCommandEncoder> mc_render_suspend(Enc *enc) {
 	return mc_profiled_compute(enc, cmd(enc), MTLDispatchTypeConcurrent);
 }
 
-void mc_render_resume(Enc *enc, id<MTLComputeCommandEncoder> compute) {
-	[compute endEncoding];
-	[compute release];
+// Reopens the pass on enc's attachments with their contents loaded (no state but the viewport and winding).
+static void reopenLoaded(Enc *enc) {
 	@autoreleasepool {
 		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
 		for (int i = 0; i < enc->colorCount; i++) {
@@ -1535,6 +1534,20 @@ void mc_render_resume(Enc *enc, id<MTLComputeCommandEncoder> compute) {
 		}
 		openRender(enc, rp);
 	}
+}
+
+void mc_render_resume(Enc *enc, id<MTLComputeCommandEncoder> compute) {
+	[compute endEncoding];
+	[compute release];
+	reopenLoaded(enc);
+}
+
+// Profiling only (-Dcadence.metal.profileSplit): the open pass ended and reopened at once, so the draws after it get their own
+// GPU timestamps (each reopen costs a store and a load of every attachment: the times are for comparing, not absolute).
+void mc_render_split(Enc *enc) {
+	if (!enc->render) return;
+	endRender(enc);
+	reopenLoaded(enc);
 }
 
 void mc_r_pipeline(Enc *enc, id<MTLRenderPipelineState> pso, id<MTLDepthStencilState> depth, int cull, int wireframe,

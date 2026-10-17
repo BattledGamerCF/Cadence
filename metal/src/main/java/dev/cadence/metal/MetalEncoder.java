@@ -50,8 +50,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 		PASS_TEST_MODE = pt.length > 1 ? Integer.parseInt(pt[1].trim()) : 0;
 	}
 	private boolean passTestPending;
-	private String[] encLabels = new String[128];
-	private long[][] encStats = new long[128][4];  // per group: draws, texture binds, first binds this submit, cold binds
+	private String[] encLabels = new String[512];
+	private long[][] encStats = new long[512][4];  // per group: draws, texture binds, first binds this submit, cold binds
 	private int encGroupOpen = -1;
 
 	boolean encLogOn() {
@@ -68,7 +68,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 	}
 	/** Above this, an upload is cheaper as an async GPU blit than as a memcpy on the render thread. */
 	private static final long CPU_COPY_MAX = 256 << 10;
-	private static final int PROFILE_FRAMES = 100, PROFILE_ENCODERS = 64;
+	private static final int PROFILE_FRAMES = 100, PROFILE_ENCODERS = 256;
 	private static final boolean GPU_TIMES = Boolean.getBoolean("cadence.metal.gpuTimes");
 	/**
 	 * -Dcadence.metal.presentQueue=true (idea: ByteV0rtex, noahdunnagan/mcopt#2): present from a second command queue, so the frame's
@@ -183,9 +183,9 @@ final class MetalEncoder implements CommandEncoderBackend {
 			try (MemoryStack stack = MemoryStack.stackPush()) {
 				long count = stack.ncalloc(4, 1, 4);
 				if (ENC_LOG || TRACE_SUBMIT >= 0) {
-					long names = stack.ncalloc(1, 128 * 64, 1);
-					Native.profileLabels(this.enc, names, 64, 128);
-					for (int g = 0; g < 128; g++) {
+					long names = stack.ncalloc(1, 512 * 64, 1);
+					Native.profileLabels(this.enc, names, 64, 512);
+					for (int g = 0; g < 512; g++) {
 						String native_ = MemoryUtil.memASCII(names + g * 64L);
 						if (native_.isEmpty()) continue;
 						// native kind and label; the game's pass label where the native one is empty
@@ -238,8 +238,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 		this.encoderIndex = 0;
 		if (PASS_TEST_N > 0 && profiled(this.submitIndex) && this.submitIndex % 20 == 0) this.passTestPending = true;
 		if (ENC_LOG) {
-			this.encLabels = new String[128];
-			this.encStats = new long[128][4];
+			this.encLabels = new String[512];
+			this.encStats = new long[512][4];
 			this.encGroupOpen = -1;
 		}
 		if (profiled(this.submitIndex) && !Native.profileBegin(this.enc, 512)) System.out.println("cadence-metal trace: no GPU timestamps on this device");
@@ -275,6 +275,31 @@ final class MetalEncoder implements CommandEncoderBackend {
 	}
 
 	/** GPU timestamps cover the traced submit and the PROFILE_FRAMES - 1 after it; one frame alone is too noisy to compare shader variants. */
+	/** -Dcadence.metal.profileSplit=true (with -Dcadence.metal.trace=N): profiled frames split the pass at every pipeline change. */
+	static final boolean PROFILE_SPLIT = Boolean.getBoolean("cadence.metal.profileSplit");
+
+	/** MetalRenderPass.setPipeline, profiled frames with PROFILE_SPLIT: a new render encoder (own timestamps) for the next draws. */
+	/** Profiling (PROFILE_SPLIT): the open pass split here, with a label of its own (the own terrain's draws, which set no pipeline). */
+	static void profileMark(String label) {
+		if (!PROFILE_SPLIT) return;
+		var device = com.mojang.blaze3d.systems.RenderSystem.getDevice();
+		if (!(((com.mojang.renderpearl.frontend.FrontendCommandEncoder) device.createCommandEncoder()).backend() instanceof MetalEncoder e)) return;
+		if (e.currentPass != null && e.profileSplit(label)) e.currentPass.restoreAfterSplit();
+	}
+
+	boolean profileSplit(String pipeline) {
+		if (!PROFILE_SPLIT || !profiled(this.submitIndex) || this.encGroupOpen < 0) return false;
+		Native.renderSplit(this.enc);
+		int c = Native.profileCount(this.enc);
+		if (c >= 4 && c / 4 - 1 < this.encLabels.length) {
+			String pass = this.encGroupOpen < this.encLabels.length && this.encLabels[this.encGroupOpen] != null
+				? this.encLabels[this.encGroupOpen].split(" / ")[0] : "?";
+			this.encLabels[c / 4 - 1] = pass + " / " + pipeline;
+			this.encGroupOpen = c / 4 - 1;
+		}
+		return true;
+	}
+
 	private static boolean profiled(long submit) {
 		return ENC_LOG || TRACE_SUBMIT >= 0 && submit >= TRACE_SUBMIT && submit < TRACE_SUBMIT + PROFILE_FRAMES;
 	}
@@ -307,7 +332,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 		double[] avg = Arrays.stream(this.profileSums).map(v -> v / kept).toArray();
 		System.out.printf("cadence-metal gpu: submits %d-%d took %.0f us on the GPU on average (%d of them shaped like the traced one)%n", TRACE_SUBMIT,
 			TRACE_SUBMIT + PROFILE_FRAMES - 1, avg[0], kept);
-		for (int e = 0; e < PROFILE_ENCODERS && avg[1 + 2 * e] + avg[2 + 2 * e] > 0; e++) {
+		for (int e = 0; e < PROFILE_ENCODERS; e++) {
+			if (avg[1 + 2 * e] + avg[2 + 2 * e] <= 0) continue;
 			double[] at = new double[4];
 			for (int k = 0; k < 4; k++) at[k] = this.profileAtN[4 * e + k] > 0 ? this.profileAt[4 * e + k] / this.profileAtN[4 * e + k] : -1;
 			System.out.printf("cadence-metal gpu: #%d vertex %6.0f us, fragment %6.0f us; at vertex %.0f-%.0f, fragment %.0f-%.0f us  %s%n", e, avg[1 + 2 * e], avg[2 + 2 * e],
@@ -433,6 +459,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 				Native.cpuFlags(dev.cadence.metal.cpu.Cpu.nativeFlags((dev.cadence.metal.cpu.Ab.frame & 1) == 1));
 				dev.cadence.metal.cpu.Cpu.PASS_TIMER.begin();
 			}
+			if (PROFILE_SPLIT) this.profileSplit("pass '" + descriptor.label().get() + "' begins" + (clearDepth ? " (depth clear)" : ""));
 			int continued = Native.renderBegin(this.enc, colorCount, colorHandles, clears, depthHandle, clearDepth ? 1 : 0, (float) depthValue, width, height);
 			if (dev.cadence.metal.cpu.Cpu.PASS_AB) dev.cadence.metal.cpu.Cpu.PASS_TIMER.end();
 			this.passLazy = lazy && colorCount <= this.passColors.length;
@@ -498,7 +525,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 	public void submitRenderPass() {
 		if (this.currentPass == null) throw new IllegalStateException("No render pass to submit");
 		this.currentPass.end();
-		if (ENC_LOG && this.encGroupOpen >= 0 && this.encGroupOpen < 128) this.encStats[this.encGroupOpen][0] += this.currentPass.draws;
+		if (ENC_LOG && this.encGroupOpen >= 0 && this.encGroupOpen < 512) this.encStats[this.encGroupOpen][0] += this.currentPass.draws;
 		this.trace("  end, draws:", this.currentPass.draws, "triangles:", this.currentPass.indices / 3);
 		this.currentPass = null;
 	}
