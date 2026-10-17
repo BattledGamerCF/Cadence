@@ -79,8 +79,12 @@ public final class WorldScale {
 		active = true;
 	}
 
-	/** GameRenderer.renderLevel RETURN: real targets back, the scaled world upscaled into the main one. */
-	public static void end(Object gameRenderer) {
+	/**
+	 * LevelRenderer.render, as its features' frame data closes (LevelRendererWorldScaleMixin): real targets back, the scaled
+	 * world upscaled into the main one, the world's text drawn on it at full resolution (CrispText). The hand is drawn after
+	 * this, into the full-size targets.
+	 */
+	public static void finishWorld(Object gameRenderer) {
 		if (!active) return;
 		active = false;
 		var targets = (Targets) gameRenderer;
@@ -95,8 +99,18 @@ public final class WorldScale {
 			}
 			upscale.run(RenderSystem.getDevice(), worldView, destination);
 		}
+		// Cadence (CrispText): the world's text, held back from the scaled pass, at full resolution on top
+		if (savedMain.getDepthTexture() != null && world.getDepthTexture() != null)
+			CrispText.drawDeferred(world.getDepthTextureView(), destination, savedMain.getDepthTextureView());
+		else CrispText.drop();
 		savedMain = null;
 		savedHand = null;
+	}
+
+	/** GameRenderer.renderLevel RETURN: finishWorld if the level renderer didn't (it always does unless it failed part way). */
+	public static void end(Object gameRenderer) {
+		finishWorld(gameRenderer);
+		CrispText.drop();
 	}
 
 	private static void allocate(RenderTarget main, int w, int h) {
@@ -127,6 +141,7 @@ public final class WorldScale {
 
 	/** Cadence (WorldClosed): the scaled targets go with the world. */
 	public static void releaseWorld() {
+		CrispText.drop();
 		release();
 	}
 
