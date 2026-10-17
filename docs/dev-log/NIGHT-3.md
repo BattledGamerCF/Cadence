@@ -105,3 +105,8 @@ Changes:
 - The game-pipeline translations the warm-up does ahead of a pack's first frame now run on parallel compilers (as the
   pack's own programs already did): a settings change never compiled before has its pack ready 25% sooner in the
   background (1.8 -> 1.1-1.4 s), still ~30 ms of render-thread work.
+- No-shader GPU frame by encoder (`-Dcadence.metal.trace=20000`, 100 frames averaged; times include the counters'
+  overhead, 3.3 ms against 2.1 ms unprofiled): the main render pass (sky, terrain, entities, translucent, hand, GUI, split
+  twice by the own renderer's occlusion work) 1.84 ms of fragment and 0.40 ms of vertex work; the own renderer's culling
+  compute (cull 0.14, depth pyramid 0.17, occlusion test 0.09) 0.40 ms. Earlier nights' A/B runs already cover these
+  stages; without per-draw timing nothing new stood out, so the pass ends here.
