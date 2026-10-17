@@ -38,3 +38,17 @@ tile, so full-screen draws look far more expensive than they are; use it to find
    - 50% Fast against 100%, interleaved under load: 7.4 -> 4.7 ms a frame (+58% fps); without load 460 -> ~590 fps
      (the rest is fixed work: GUI, the own renderer's culling, the CPU's ~1 ms a frame).
 4. Video Settings' status line now follows the buttons (it showed "Auto resolution" after Max FPS set 50%).
+
+## Afterwards: crisp world text and a UI check
+
+- **CrispText**: with World Resolution below 100% (the player runs a fixed 67% with MetalFX), name tags and holograms were
+  drawn into the smaller world image and stretched back up, so small text smeared ("HIDDEN BEHIND WALL" came out
+  half-cut and garbled at 67% MetalFX). Text groups are now held back from the scaled pass (WorldTextDeferMixin) and
+  drawn into the full-size image after the upscale, against the world's depth scaled up (nearest texel), with the world's
+  projection and fog put back for them. The scaled world is finished when the level's features close their frame data
+  (LevelRendererWorldScaleMixin), so the hand now draws after it, at full resolution. Picture at 67% with the change:
+  identical text to 100%. `-Dcadence.crispText=false` turns it off.
+- **UI check** (GUI scales 2, 3 and 4): Quick Setup's confirm screens had no backdrop with Menu Background Blur at 0 (the
+  player's setting), so their text sat on the sky; CadenceConfirmScreen adds a dark veil and keeps text to a readable width
+  (wider for the change list). The Max FPS goal now recommends the Max FPS preset and never a longer render distance.
+  Video Settings, its tooltips and Shader Pack Settings were clean; tooltips updated for the new findings.

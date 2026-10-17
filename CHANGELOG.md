@@ -21,6 +21,15 @@ Faster without shaders:
   screen; the HUD and text stay sharp), the cheapest upscale and no cooling limit: about 60% more fps without shaders.
 - Buffer clears are skipped when everything is drawn over anyway, now without shaders too.
 
+Clearer:
+- **Names above players and server holograms stay sharp** when World Resolution is below 100% (Auto, Max FPS, or a set
+  percentage). They used to be drawn with the smaller world and stretched back up, which smeared the small text on servers
+  like Hypixel; now they're drawn at full resolution on top, still hidden behind walls as before. Your hand and held item
+  are now drawn at full resolution too.
+- **Quick Setup is readable over the world**: a dark backdrop behind its text (with Menu Background Blur at 0 the text sat
+  straight on the sky), and shorter lines. Choosing "Max FPS" there now recommends the Max FPS preset and never a longer
+  render distance.
+
 Looks right:
 - **Items glow and shine as the pack intends** (Complementary, Complementary Unbound, Pegasus, I Like Vanilla): held,
   dropped and framed items, worn armour and armour trims now tell the pack what they are, as Iris does. A held lava
