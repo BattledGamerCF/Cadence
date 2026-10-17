@@ -119,3 +119,12 @@ Changes:
 | A pack chosen just before leaving the world; rejoining | Installed at the title screen, the world loads with it | - |
 | A switch during a teleport to the Nether, F3+T during a switch, a frame failure with a switch pending, a damaged pack-pipelines.txt | Nothing broken (the bad lines are skipped and the file rewritten) | - |
 | Item materials beyond items (Complementary at night, third person) | Worn armour and its trims had no `currentRenderedItemId` (Iris gives armour its item id and trims trim_<material>) | Armour pieces and trims tagged too: with Complementary's Glowing Armor Trims on, the gold and emerald trims now glow (off: plain); the held blaze rod glows in third person too |
+| Switching through Video Settings (cycle the Shaders button, close, reopen at once while the pack prepares) | The button already shows the pack being prepared, without a stale "(on close)" | - |
+| All 12 packs in a row; 16 quick switches | No errors, pictures right; Metal memory back to 333-334 MB at every Off | - |
+| Thunderstorm, enchanted sword, map, item frame, banner, sign, mobs, third person, underwater (four renderers), the End (BSL, Complementary, off) | Nothing broken | - |
+
+New self-test steps tonight: `lan=PORT`, `players`, `pipestats`, `feature=NAME:on|off`, `cmds=FILE` (commands with
+commas, one per line), `camera=first|back|front`; tools/cadence-guest.sh (a second client for multiplayer tests);
+`-Dcadence.switchTestDelay=MS`, `-Dcadence.metal.traceSplits=N`.
+
+Release: 0.4.0-beta.3 / shaders 0.3.2 (dist/cadence-0.4.0-beta.3.jar).

@@ -5,7 +5,7 @@ plugins {
 // The shader-pack loader, adapted from minecraft-metal-renderer's Shader Loader (MIT; see LICENSE-MIT-shader-loader and
 // UPSTREAM_COMMIT). An optional second mod: it needs Cadence's Metal backend (the `metal` module) at runtime.
 base.archivesName = 'cadence-shaders'
-version = '0.3.1-cadence.1'
+version = '0.3.2-cadence.1'
 
 dependencies {
 	minecraft "com.mojang:minecraft:${minecraft_version}"

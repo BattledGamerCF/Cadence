@@ -2,6 +2,30 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.3 / shaders 0.3.2 (2026-10-16)
+
+Smoother:
+- **Turning a shader pack on no longer pauses the game.** The pack is read and prepared in the background while the
+  current picture keeps drawing, then switched in between two frames: about half a second of frozen game before, now
+  no frame over 0.15 s (measured with BSL and Complementary).
+- **Changing a pack's settings pauses much less**: the pack's shaders are compiled several at a time, and Cadence
+  remembers which ones packs need, so even the first pack after launching gets them ready ahead of time. A settings
+  combination never used before: 1.7-2.1 s of frozen game before, now 0.3-0.7 s (once; after that it's cached).
+- A small GPU saving with packs (BSL about 0.3 ms a frame): a pass is no longer interrupted to clear a buffer it reads.
+
+Looks right:
+- **Items glow and shine as the pack intends** (Complementary, Complementary Unbound, Pegasus, I Like Vanilla): held,
+  dropped and framed items, worn armour and armour trims now tell the pack what they are, as Iris does. A held lava
+  bucket or blaze rod glows, metal armour shines, and trims glow with the pack's Glowing Armor Trims option.
+
+Fixed:
+- Choosing a pack and then Off (or another pack) quickly could leave the first pack on.
+- After a shader pack had been on, a piece of terrain from before it could show for a moment when it was turned off.
+- A pack that fails to load no longer leaves the terrain empty until it reloads.
+
+Tested: two players on a LAN world (the guest switching packs while connected), all 12 test packs, and quick switching
+(16 switches: memory back to the same level every time).
+
 ## 0.4.0-beta.2 / shaders 0.3.1 (2026-10-16)
 
 Faster:
