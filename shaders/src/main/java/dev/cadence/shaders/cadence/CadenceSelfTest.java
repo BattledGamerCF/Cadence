@@ -417,6 +417,16 @@ public final class CadenceSelfTest {
 							if (command.isEmpty() || command.startsWith("#")) continue;
 							cmdServer.execute(() -> cmdServer.getCommands().performPrefixedCommand(cmdServer.createCommandSourceStack(), command));
 						}
+				} else if (lower.startsWith("transparency=")) {
+					// "transparency=on|off": the Improved Transparency video option (vanilla's OIT path)
+					boolean t = lower.endsWith("on");
+					mc.execute(() -> {
+						mc.options.improvedTransparency().set(t);
+						mc.levelExtractor.allChanged();
+					});
+				} else if (lower.startsWith("maxfps=")) {
+					int f = Integer.parseInt(lower.substring(7));
+					mc.execute(() -> mc.options.framerateLimit().set(f));
 				} else if (lower.startsWith("clouds=")) {
 					// "clouds=fancy|fast|off": the Clouds video option
 					var status = switch (lower.substring(7)) {
@@ -689,6 +699,8 @@ public final class CadenceSelfTest {
 				case "lazyclears" -> dev.cadence.metal.FrameHints.lazyClears(on);
 				case "modelwrite" -> dev.cadence.metal.cpu.Cpu.modelWrite = on;
 				case "rgssskip" -> dev.cadence.metal.own.OwnTerrain.rgssSkip(on);
+				case "s67apple" -> { RenderScale.applyUpscaler("metalfx"); RenderScale.applyValue(on ? "0.67" : "1.0"); }
+				case "s67fast" -> { RenderScale.applyUpscaler("fast"); RenderScale.applyValue(on ? "0.67" : "1.0"); }
 				case "halfres" -> { RenderScale.applyUpscaler("fast"); RenderScale.applyValue(on ? "0.5" : "1.0"); }
 				case "crisptext" -> CrispText.ON = on;
 				case "itemids" -> dev.cadence.shaders.geometry.FeatureDrawContext.ITEM_IDS = on;

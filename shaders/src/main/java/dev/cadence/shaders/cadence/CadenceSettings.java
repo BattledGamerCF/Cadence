@@ -150,7 +150,7 @@ public final class CadenceSettings {
 			"Battery Saver|coolest and quietest, aims for 40 fps",
 			"Recommended|smooth 60 fps, sharp whenever it can be",
 			"Max Quality|always full sharpness; the Mac may run hot",
-			"Max FPS|half-resolution world (crisp), no limits",
+			"Max FPS|half-resolution world (crisp), no limits; for shaders and a busy Mac",
 			"Custom|you changed something by hand",
 			"#Tip: Max Framerate 60 (120 on ProMotion) saves heat.")).build();
 		onRefresh(() -> self[0].setMessage(presetLabel()));

@@ -79,7 +79,9 @@ public final class PackUpscale implements AutoCloseable {
   private final GpuSampler sampler;
   private final float sharpen;
 
-  // Cadence: "Fast" upscaler, one bilinear tap per pixel (a fraction of the bicubic's cost at full Retina size)
+  // Cadence: "Fast" upscaler, one texture tap per pixel. Sharp bilinear: each world texel stays a solid block and only the
+  // pixel-wide seam between two texels is blended (Minecraft is pixel art; plain bilinear blurred every edge, MetalFX costs
+  // 1-2 ms at Retina size). At a whole-number ratio (50%) the seams vanish and it is exactly nearest-texel.
   private static final String FAST_FRAGMENT =
       """
       #version 450
@@ -87,13 +89,18 @@ public final class PackUpscale implements AutoCloseable {
       layout(location=0) out vec4 color;
       uniform sampler2D Source;
       void main() {
-        color = vec4(texture(Source, uv).rgb, 1.0);
+        vec2 size = vec2(textureSize(Source, 0));
+        vec2 texel = uv * size;
+        vec2 scale = max(vec2(1.0), 1.0 / max(fwidth(texel), vec2(1e-4)));
+        vec2 base = floor(texel);
+        vec2 centre = fract(texel) - 0.5;
+        vec2 range = 0.5 - 0.5 / scale;
+        vec2 f = (centre - clamp(centre, -range, range)) * scale + 0.5;
+        color = vec4(texture(Source, (base + f) / size).rgb, 1.0);
       }
       """;
 
   private final boolean fast;
-  /** Cadence: the Fast upscaler's nearest-texel sampler, for an exact whole-number ratio (50% World Resolution: crisp 2x2 pixels). */
-  private final GpuSampler exact;
 
   public PackUpscale(GpuDevice device, GpuFormat format, float sharpen) {
     this(device, format, sharpen, false);
@@ -107,9 +114,6 @@ public final class PackUpscale implements AutoCloseable {
         device.createSampler(
             AddressMode.CLAMP_TO_EDGE, AddressMode.CLAMP_TO_EDGE, filter, filter, 1,
             OptionalDouble.of(0));
-    exact = fast
-        ? device.createSampler(AddressMode.CLAMP_TO_EDGE, AddressMode.CLAMP_TO_EDGE, FilterMode.NEAREST, FilterMode.NEAREST, 1, OptionalDouble.of(0))
-        : null;
     String fragment = fast ? FAST_FRAGMENT : FRAGMENT_TEMPLATE.replace("%SHARPEN%", String.format(java.util.Locale.ROOT, "%.3f", sharpen));
     var description =
         RenderPipeline.builder()
@@ -117,7 +121,7 @@ public final class PackUpscale implements AutoCloseable {
                 Identifier.fromNamespaceAndPath(
                     "cadence_shaders",
                     "cadence_upscale/" + format.name().toLowerCase(java.util.Locale.ROOT)
-                        + (fast ? "_fast" : "_" + Math.round(sharpen * 100))))
+                        + (fast ? "_sharpbilinear" : "_" + Math.round(sharpen * 100))))
             .withVertexShader(Identifier.fromNamespaceAndPath("cadence_shaders", "cadence_upscale"))
             .withFragmentShader(Identifier.fromNamespaceAndPath("cadence_shaders", "cadence_upscale"))
             .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
@@ -156,11 +160,7 @@ public final class PackUpscale implements AutoCloseable {
         RenderPassDescriptor.builder(() -> "Cadence render-scale upscale").withColorAttachment(destination).build();
     try (var pass = device.createCommandEncoder().createRenderPass(descriptor)) {
       pass.setPipeline(pipeline);
-      // Cadence: Fast at an exact whole-number ratio (50% on any window: each world pixel a 2x2 block) samples the nearest texel:
-      // as sharp as a screen of that resolution, where bilinear blurred every edge
-      int sw = source.getWidth(0), sh = source.getHeight(0), dw = destination.getWidth(0), dh = destination.getHeight(0);
-      boolean whole = exact != null && dw % sw == 0 && dh % sh == 0 && dw / sw == dh / sh && dw / sw >= 2;
-      pass.setUniform("Source", source, whole ? exact : sampler);
+      pass.setUniform("Source", source, sampler);
       pass.draw(3, 1, 0, 0);
     }
   }
@@ -168,6 +168,5 @@ public final class PackUpscale implements AutoCloseable {
   @Override
   public void close() {
     sampler.close();
-    if (exact != null) exact.close();
   }
 }

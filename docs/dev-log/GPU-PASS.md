@@ -52,3 +52,24 @@ tile, so full-screen draws look far more expensive than they are; use it to find
   player's setting), so their text sat on the sky; CadenceConfirmScreen adds a dark veil and keeps text to a readable width
   (wider for the change list). The Max FPS goal now recommends the Max FPS preset and never a longer render distance.
   Video Settings, its tooltips and Shader Pack Settings were clean; tooltips updated for the new findings.
+
+## Final beta: bug pass and a second optimization round (afternoon)
+
+Bug pass (the Mac idle): the player's own settings (67% with MetalFX, render distance 12) with holograms, Improved
+Transparency on and off, window resizes, rapid resolution changes, a glowing mob, a 60 fps cap, shaders on and off, leave
+and rejoin, spectating a creeper (vanilla's post effect), the Nether and the End, fullscreen and GUI-scale toggles, Max FPS
+with Complementary, and a 10-minute soak with 320 mobs (Metal memory 349-356 MB throughout, the heap not growing). Found:
+- Improved Transparency draws text in its own stages: CrispText now holds back only the ordinary passes' text.
+- The self-tuning occlusion step decided on noise when the game ran at a few fps (minimised): no verdict then.
+- Resolution's button now steps down from any value.
+
+**Correction to the numbers above.** With the Mac idle (no browser sharing the GPU), the no-shader frame is limited by the
+terrain's geometry, not its pixels: interleaved, 100% 1.89 ms, 50% 1.83, 67% with MetalFX 3.25, 67% Fast 2.09. The
+terrain itself is ~1.45 of the ~2.1 ms (probe skip mode), and it barely shrinks with fewer pixels. The +58% for 50% was
+measured while a browser shared the GPU; it holds only when something else is using the GPU, and with shaders.
+- **Auto resolution stays at 100% without a pack** (it lowered resolution chasing fps it could not gain, adding the
+  upscale's cost and blur). A fixed percentage is still the player's choice; the tooltip says 100% is best without shaders.
+- **Fast is now sharp bilinear**: every world texel a solid block, only the seam between two blended (Minecraft is pixel
+  art); exactly nearest at 50%. One texture tap, like plain bilinear, crisper than MetalFX on block edges.
+- The next big no-shader gain would be fewer triangles (merging coplanar block faces); that's a mesher and shader change
+  too large for the last beta.

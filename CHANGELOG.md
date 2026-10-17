@@ -18,7 +18,10 @@ Faster without shaders:
   check is worth it in the current view, and skips it where little is hidden (open land, the ocean, high up). It keeps it
   underground and in caves, where it still pays.
 - **New Performance preset: Max FPS.** The world at half resolution (each pixel a sharp 2x2 block, like a non-Retina
-  screen; the HUD and text stay sharp), the cheapest upscale and no cooling limit: about 60% more fps without shaders.
+  screen; the HUD and text stay sharp), the cheapest upscale and no cooling limit. The gain is large with shaders or when
+  another app is using the GPU; without shaders on an idle Mac, terrain shape rather than pixels sets the speed.
+- **Auto resolution stays at 100% without shaders**: lowering it there only added blur and the upscale's cost.
+- **Sharpening: Fast is now "sharp bilinear"**: block edges stay crisp (each texel a solid block), as cheap as before.
 - Buffer clears are skipped when everything is drawn over anyway, now without shaders too.
 
 Clearer:

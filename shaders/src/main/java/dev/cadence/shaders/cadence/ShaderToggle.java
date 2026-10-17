@@ -335,18 +335,20 @@ public final class ShaderToggle {
 			if (RenderScale.isAuto()) {
 				RenderScale.set(SCALES[0]);
 			} else {
+				// the next step down from the current value (a value between steps, e.g. 67% from an older version or a config
+				// edit, went up to the second step before)
 				float now = RenderScale.get();
-				int i = 0;
-				for (int k = 0; k < SCALES.length; k++) if (Math.abs(SCALES[k] - now) < 0.01f) i = k;
-				if (i == SCALES.length - 1) RenderScale.setAuto();
-				else RenderScale.set(SCALES[i + 1]);
+				float next = -1;
+				for (float v : SCALES) if (v < now - 0.01f) { next = v; break; }
+				if (next < 0) RenderScale.setAuto();
+				else RenderScale.set(next);
 			}
 			CadenceSettings.refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How sharp the world is drawn. Menus, the hotbar, chat and the names above players always stay sharp.",
 			"Auto|sharp whenever your Mac keeps up, lower only when needed (recommended)",
 			"100%|always full sharpness",
-			"85% to 50%|faster and cooler, softer (50% with Fast: crisp, like a non-Retina screen)",
-			"#The biggest fps setting, with or without shaders.")).build();
+			"85% to 50%|faster and cooler with shaders, softer (50% with Fast: crisp, like a non-Retina screen)",
+			"#With shaders: the biggest fps setting. Without shaders the terrain's shape, not its pixels, sets the speed: 100% is best.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(scaleLabel()));
 		return self[0];
 	}
@@ -360,7 +362,7 @@ public final class ShaderToggle {
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("When Resolution is below 100%, how the picture is sharpened back:",
 			"Apple|sharpest edges, Apple's MetalFX (recommended with shaders)",
 			"Smooth|a little softer, very even",
-			"Fast|cheapest, the most fps; at 50% each pixel stays crisp")).build();
+			"Fast|cheapest, the most fps; crisp pixel edges (at 50% exactly sharp)")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(upscalerLabel()));
 		return self[0];
 	}

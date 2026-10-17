@@ -316,6 +316,10 @@ public final class RenderScale {
 		}
 		// the heat/memory ceiling only with a pack: without one a lower scale costs more than it saves (measured)
 		if (dev.cadence.shaders.runtime.ShaderRuntime.get() != null) next = Math.min(next, ceiling);
+		// Cadence: without a pack Auto stays at full size. That frame is limited by terrain geometry, not pixels (M2 Air, render
+		// distance 12, idle Mac, in-run A/B: 100% 1.89 ms, 50% 1.83, 67% with MetalFX 3.25, 67% Fast 2.09): a lower scale only
+		// added the upscale's cost and blur, and Auto, seeing no gain, kept lowering it. A fixed scale is still the player's.
+		else next = MAX;
 		next = Math.round(next * 100f) / 100f;
 		if (next != scale) {
 			boolean down = next < scale;

@@ -28,7 +28,8 @@ public abstract class WorldTextDeferMixin {
       FeatureRendererMap renderers,
       List<SubmitNode> submits,
       Operation<Void> original) {
-    if (featureType == TextFeatureRenderer.TYPE && CrispText.deferring()) {
+    // (only the ordinary passes: an Improved Transparency stage's draws are made for its own targets, so they stay put)
+    if (featureType == TextFeatureRenderer.TYPE && stage == null && CrispText.deferring()) {
       CrispText.defer(later -> original.call(context, stage, later, renderers, submits));
       return;
     }
