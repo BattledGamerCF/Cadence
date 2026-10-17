@@ -82,3 +82,26 @@ next rebuild). packActive now acts only on a real change.
   hands), as under Iris. The others: `isNether` (Sildur's 2.02) and `sunElevation` (Sildur's 1.541, its definition is
   commented out in the pack) are declared and never used, so zero is what Iris gives too; the `dh*` uniforms are Distant
   Horizons'; `velocity`, `focolortex5` and `Moon_Weather_properties` are pack-side leftovers no loader supplies.
+
+## Part 2: optimization pass
+
+Where the time goes now (M2 Air, 1470x920 window = 2940x1686 pixels):
+
+- **No shaders, render distance 12** (the player's usual setting): 470 fps standing, 330 flying. jstack samples of the
+  render thread: 82% of its time is waiting for the GPU (`MetalEncoder.retire` -> `cmdWait`, the frames-in-flight limit);
+  its own work is ~0.4 ms of the 2.1 ms frame. The own renderer's GPU compute (`-Dcadence.own.gputime=true`) is 0.17 ms
+  of it. The CPU isn't what limits this case.
+- **Busy scene (320 mobs)**: 37% GPU wait; the largest CPU item is the game's entity model building (ModelPart, ~15%),
+  which already runs Cadence's indexed path.
+- **BSL at full resolution, looking over water**, measured by switching one program off at a time (in-run, each against
+  its own neighbouring baseline; base 33-44 ms as the Mac warmed): gbuffers_water 9.4 ms (its screen-space reflections),
+  deferred 7.1, composite5 3.5, composite 3.4, deferred1 3.1, skybasic 2.6, composite7 2.6, shadow 1.3, terrain 0.8;
+  the other composites and clouds under 1 ms. These are the pack's own effects, and they scale with resolution, which
+  Auto resolution already trades; nothing loader-side stood out.
+
+Changes:
+
+- The deferred clear that split a pass every frame (above): BSL -0.31 ms.
+- The game-pipeline translations the warm-up does ahead of a pack's first frame now run on parallel compilers (as the
+  pack's own programs already did): a settings change never compiled before has its pack ready 25% sooner in the
+  background (1.8 -> 1.1-1.4 s), still ~30 ms of render-thread work.

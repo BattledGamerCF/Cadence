@@ -138,12 +138,9 @@ public final class ShaderRuntime implements AutoCloseable {
           // the game pipelines packs drew with (this session, and earlier ones: PipelineMemory), translated for this pack now
           // (prewarmPipelines compiles them)
           PipelineMemory.load(SESSION_VARIANTS);
-          for (Variant v : SESSION_VARIANTS)
-            try {
-              adapt(made, v);
-            } catch (RuntimeException failure) {
-              // left for its first use, which reports it
-            }
+          java.util.List<java.util.function.Consumer<ShaderCompatibilityCompiler>> tasks = new java.util.ArrayList<>();
+          for (Variant v : SESSION_VARIANTS) tasks.add(with -> adapt(made, with, v)); // (one that fails: left for its first use)
+          made.withCompilers(tasks);
           future.complete(made);
         } catch (Throwable failure) {
           future.completeExceptionally(failure);
@@ -670,6 +667,11 @@ public final class ShaderRuntime implements AutoCloseable {
    * from the cache when the pipelines are compiled).
    */
   private static Adapted adapt(PackPrograms programs, Variant variant) {
+    return adapt(programs, null, variant);
+  }
+
+  /** (with: another compiler set up as the pack's, from PackPrograms.withCompilers; null: the pack's own) */
+  private static Adapted adapt(PackPrograms programs, ShaderCompatibilityCompiler with, Variant variant) {
     RenderPipeline original = variant.original();
     boolean hand = variant.hand(), shadow = variant.shadow();
           SceneProgram selection = SceneProgram.select(original, hand, shadow, variant.blockEntity());
@@ -699,8 +701,9 @@ public final class ShaderRuntime implements AutoCloseable {
                         programs.properties.get("alphaTest." + source.name(), ""),
                         defaultTest);
             translated =
-                programs.geometry(
-                    source, MinecraftVertexAdapter.adapter(original, shadow, hand), alphaTest);
+                with == null
+                    ? programs.geometry(source, MinecraftVertexAdapter.adapter(original, shadow, hand), alphaTest)
+                    : programs.geometry(with, source, MinecraftVertexAdapter.adapter(original, shadow, hand), alphaTest);
             if (waterMask) translated = MinecraftVertexAdapter.waterMaskProgram(translated);
             translated =
                 dev.cadence.shaders.compile.MinecraftTextureAdapter.adapt(original, translated);

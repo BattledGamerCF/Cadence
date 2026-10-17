@@ -366,6 +366,39 @@ public final class PackPrograms implements AutoCloseable {
     return results;
   }
 
+  /**
+   * Cadence: tasks run on worker threads, each worker with its own shader compiler set up as this pack's (as translateAll),
+   * waiting for all; a task that throws is skipped (its own first use reports it). For translations ahead of use
+   * (ShaderRuntime's warm-up of the game pipelines packs drew with): one compiler did them one at a time.
+   */
+  public void withCompilers(List<java.util.function.Consumer<ShaderCompatibilityCompiler>> tasks) {
+    if (tasks.isEmpty()) return;
+    int workers = !PARALLEL ? 1 : Math.min(tasks.size(), Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
+    java.util.concurrent.atomic.AtomicInteger next = new java.util.concurrent.atomic.AtomicInteger();
+    Runnable work = () -> {
+      try (var own = new ShaderCompatibilityCompiler(shadowComparison)) {
+        own.storageContext(storageContext);
+        for (int j; (j = next.getAndIncrement()) < tasks.size(); ) {
+          try {
+            tasks.get(j).accept(own);
+          } catch (RuntimeException failure) {
+            // reported at first use
+          }
+        }
+      }
+    };
+    Thread[] threads = new Thread[workers];
+    for (int w = 0; w < workers; w++) threads[w] = Thread.ofPlatform().name("cadence-pack-translate-" + w).start(work);
+    for (Thread t : threads) {
+      try {
+        t.join();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return;
+      }
+    }
+  }
+
   private static Object translate(ShaderCompatibilityCompiler compiler, Job job) {
     try {
       if (job.compute()) return compiler.translateCompute(job.vertex(), job.program().identifier());
@@ -511,7 +544,16 @@ public final class PackPrograms implements AutoCloseable {
       Source source,
       ShaderCompatibilityCompiler.VertexAdapter adapter,
       dev.cadence.shaders.pack.AlphaTestPolicy alphaTest) {
-    return compiler.translate(
+    return geometry(compiler, source, adapter, alphaTest);
+  }
+
+  /** Cadence: as above, with another compiler set up as this pack's (withCompilers): the same result and cache entry. */
+  public TranslatedProgram geometry(
+      ShaderCompatibilityCompiler with,
+      Source source,
+      ShaderCompatibilityCompiler.VertexAdapter adapter,
+      dev.cadence.shaders.pack.AlphaTestPolicy alphaTest) {
+    return with.translate(
         source.vertex(),
         source.fragment(),
         directory + "/" + source.name(),
