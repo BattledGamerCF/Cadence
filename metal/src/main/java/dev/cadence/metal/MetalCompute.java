@@ -139,6 +139,16 @@ public final class MetalCompute {
 		}
 	}
 
+	/**
+	 * Cadence: texture's deferred clear (lazyClears) written now. For a pack pass about to sample it: met at a binding inside the
+	 * open pass, the clear split the pass (end, clear, reopen loading every attachment again) - Complementary's deferred1, every
+	 * frame. No-op off Metal or with nothing pending.
+	 */
+	public static void flushClear(com.mojang.renderpearl.api.textures.GpuTexture texture) {
+		MetalEncoder e = encoder();
+		if (e != null && texture instanceof MetalTexture t) e.flushClear(t);
+	}
+
 	public static void generateMipmaps(long texture) {
 		try {
 			GENERATE_MIPS.invokeExact(encoder().enc, texture);

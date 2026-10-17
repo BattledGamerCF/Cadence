@@ -951,6 +951,9 @@ public final class ShaderRuntime implements AutoCloseable {
     }
   }
 
+  /** -Dcadence.shaders.flushSampledClears=false: a sampled texture's deferred clear is left to split the pass (A/B). */
+  public static boolean FLUSH_SAMPLED_CLEARS = !"false".equals(System.getProperty("cadence.shaders.flushSampledClears"));
+
   public RenderPass open(PackPipeline pipeline) {
     return open(pipeline, 0);
   }
@@ -967,7 +970,11 @@ public final class ShaderRuntime implements AutoCloseable {
             case SHADOW_DEPTH -> targets.shadowDepth(sampler.index());
             default -> null;
           };
-      if (target != null) targets.ensureDefined(target);
+      if (target != null) {
+        targets.ensureDefined(target);
+        // Cadence: with lazy clears that clear is only noted; written now, before the pass opens, not by splitting it
+        if (FLUSH_SAMPLED_CLEARS) dev.cadence.metal.MetalCompute.flushClear(target.texture);
+      }
     }
     prepareFeedback(pipeline);
     RenderPassDescriptor descriptor =
@@ -985,6 +992,7 @@ public final class ShaderRuntime implements AutoCloseable {
                 pipeline.shadow(),
                 pipeline.depth(),
                 pipeline.depthTarget());
+    if (FLUSH_SAMPLED_CLEARS && !pipeline.fullscreen()) flushSceneSampledClears(descriptor);
     raw = true;
     try {
       if (discardMask != 0) {
@@ -995,6 +1003,43 @@ public final class ShaderRuntime implements AutoCloseable {
       return device().createCommandEncoder().createRenderPass(descriptor);
     } finally {
       raw = false;
+    }
+  }
+
+  /** Cadence: the textures the pack's geometry programs sample (kind:index), over the pipelines compiled so far. */
+  private java.util.List<PackPipeline.SamplerBinding> sceneSamplers = java.util.List.of();
+  private int sceneSamplersFor = -1;
+
+  /**
+   * Cadence: a scene pass draws many programs in one native pass; a texture one of them samples that still has a deferred
+   * clear split the pass at that draw (BSL's and Complementary's sun and moon: every frame). Those clears are written now,
+   * before the pass opens; the pass's own attachments keep theirs (merged into the pass's load action).
+   */
+  private void flushSceneSampledClears(RenderPassDescriptor descriptor) {
+    if (sceneSamplersFor != geometry.size()) {
+      Map<String, PackPipeline.SamplerBinding> union = new java.util.LinkedHashMap<>();
+      for (PackPipeline p : geometry.values())
+        for (var sampler : p.samplerBindings())
+          if (textures.custom(p.source().name(), sampler.name()) == null)
+            union.putIfAbsent(sampler.kind() + ":" + sampler.index(), sampler);
+      sceneSamplers = java.util.List.copyOf(union.values());
+      sceneSamplersFor = geometry.size();
+    }
+    if (sceneSamplers.isEmpty()) return;
+    java.util.Set<GpuTexture> attached = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+    for (var attachment : descriptor.colorAttachments())
+      if (attachment != null) attached.add(attachment.textureView().texture());
+    if (descriptor.depthAttachment() != null) attached.add(descriptor.depthAttachment().textureView().texture());
+    for (var sampler : sceneSamplers) {
+      PackTexture target =
+          switch (sampler.kind()) {
+            case COLOR -> targets.color(sampler.index());
+            case DEPTH -> targets.depth(sampler.index());
+            case SHADOW_COLOR -> targets.shadowColor(sampler.index());
+            case SHADOW_DEPTH -> targets.shadowDepth(sampler.index());
+            default -> null;
+          };
+      if (target != null && !attached.contains(target.texture)) dev.cadence.metal.MetalCompute.flushClear(target.texture);
     }
   }
 

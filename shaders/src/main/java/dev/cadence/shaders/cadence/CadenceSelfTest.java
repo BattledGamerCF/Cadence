@@ -653,6 +653,7 @@ public final class CadenceSelfTest {
 				case "lazyclears" -> dev.cadence.metal.FrameHints.lazyClears(on);
 				case "modelwrite" -> dev.cadence.metal.cpu.Cpu.modelWrite = on;
 				case "rgssskip" -> dev.cadence.metal.own.OwnTerrain.rgssSkip(on);
+				case "flushsampled" -> dev.cadence.shaders.runtime.ShaderRuntime.FLUSH_SAMPLED_CLEARS = on;
 				case "fsdiscard" -> dev.cadence.shaders.runtime.ShaderRuntime.setDiscardFullscreenLoads(on);
 				default -> {
 					// "skip-PROGRAM": ON = that pack program draws nothing (its GPU cost, measured interleaved: thermal drift cancels)

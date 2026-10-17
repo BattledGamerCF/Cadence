@@ -540,6 +540,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 	 * lazyClears: t (pending a clear) is about to be sampled inside the open pass: split the pass around writing the clear, then reopen
 	 * the pass's attachments with load and restore its state. Without an open pass (or a pass opened the old way) it's flushClear.
 	 */
+	private static final int TRACE_SPLITS = Integer.getInteger("cadence.metal.traceSplits", 0);
+
 	void flushClearInPass(MetalTexture t) {
 		if (!t.hasPendingClear()) return;
 		if (this.currentPass == null || !this.passLazy) {
@@ -555,6 +557,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 		}
 		this.currentPass.restoreAfterSplit();
 		this.lazySplits++;
+		// -Dcadence.metal.traceSplits=N: where the first N splits come from (diagnostics)
+		if (this.lazySplits <= TRACE_SPLITS) new Throwable("cadence-metal: lazy clear split " + this.lazySplits + " (" + t.getLabel() + ")").printStackTrace(System.out);
 		long now = System.nanoTime();
 		if (FrameHints.LOG_STATS && now - this.lazySplitLog > 10_000_000_000L) {
 			System.out.println("cadence-metal: lazy clears split a pass " + this.lazySplits + " times so far (" + t.getLabel() + ")");
