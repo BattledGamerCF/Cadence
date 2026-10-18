@@ -27,12 +27,13 @@ switches its renderer off for it.
 
 The jar is a mod, not an app: double-clicking it only shows these install steps.
 
-Shader packs: put OptiFine/Iris shader packs (.zip) in the shaderpacks folder next to mods, then Options > Video
-Settings > Shaders. They run natively on Metal (no OpenGL); the first time you turn a pack on it is translated, which
-takes a few seconds, then it's cached. Tested: BSL, Complementary Reimagined and Unbound, Bliss, MakeUp UltraFast,
-Sildur's Vibrant and Enhanced Default, I Like Vanilla, Insanity, VanillaEX, Pegasus (very heavy). Resolution "Auto"
-lowers the pack's render resolution to hold your frame rate. If a pack can't run, Cadence turns shaders off and says
-why in chat.
+Shader packs: Options > Video Settings > Shaders... (or press O in game) lists the packs in the shaderpacks folder
+next to mods; drop OptiFine/Iris shader pack .zip files onto that list to add them, click one to turn it on. K turns
+shaders off and back on. They run natively on Metal (no OpenGL); the first time you turn a pack on it is translated,
+which takes a few seconds, then it's cached. 23 of 25 tested packs work, among them BSL, Complementary, Bliss, Photon,
+Solas, Sildur's, MakeUp UltraFast, Mellow, Kappa and Pegasus (very heavy); the list says which ones were tested and how
+heavy each is. Resolution "Auto" lowers the pack's render resolution to hold your frame rate. If a pack can't run,
+Cadence turns shaders off and says why, in chat and next to the pack in the list.
 
 For the most fps: Options > Video Settings, VSync off and Max Framerate Unlimited.
 Shows an fps counter in the top-left corner (hidden with F1 or F3; fn + F1 or fn + F3 on a Mac keyboard).

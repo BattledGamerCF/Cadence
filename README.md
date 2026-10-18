@@ -34,8 +34,9 @@ Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
 1. Install Fabric for Minecraft 26.3 (https://fabricmc.net/use/installer/), or make a 26.3 Fabric instance in Prism or
    CurseForge.
 2. Download `cadence-<version>.jar` from the Releases page (or Modrinth) and put it in your `mods` folder.
-3. For shaders, put shader pack `.zip` files in the `shaderpacks` folder and choose one in
-   **Options > Video Settings (Cadence: Shaders)**.
+3. For shaders, open **Options > Video Settings > Shaders...** (or press **O** in game) and drop shader pack `.zip`
+   files onto the list, or put them in the `shaderpacks` folder. Click a pack to turn it on; **K** turns shaders off
+   and back on.
 4. Start the game. To check that Cadence is running, press F3 (fn + F3): the bottom right says `Metal 3 (Cadence)`.
 
 Cadence replaces Sodium and Iris, so remove them from the `mods` folder. Lithium isn't needed either (if it's installed,
@@ -44,10 +45,18 @@ your other mods need it.
 
 ## Shader packs
 
-These 12 packs have been tested and render correctly (day, night, rain, underwater, Nether and End):
+23 of the 25 packs tested work. These 12 render correctly by day, at night, in rain, underwater, and in the Nether and End:
 
 BSL 10.1.8 · Complementary Reimagined and Unbound 5.9.3 · Bliss 2.1.2 · MakeUp UltraFast 9.5g · I Like Vanilla 1.3.3b ·
 Insanity 1.650 · Sildur's Vibrant 1.541 and 2.02 · Sildur's Enhanced Default 1.20 · VanillaEX 1.2.0 · Pegasus 0.3.7
+
+These 11 load in every dimension and look right in the overworld by day (tested 2026-10-18):
+
+Photon 1.3b · Solas 3.8 · Kappa 5.3 · Nostalgia 5.1 · AstraLex 93.0 · Super Duper Vanilla 1.3.8 · Mellow 3.4.1a ·
+Miniature 2.19 · Vanilla Plus 3.3 · Potato Shaders 1.0d · Noble 1.9.9 (its shaded sides are darker than intended)
+
+Shrimple and Rethinking Voxels don't run: they need geometry or tessellation shaders, which Metal doesn't have. The
+Shader Packs list shows, for each pack, whether it's been tested and how heavy it is (Light, Medium, Heavy).
 
 Most hold 60 fps with Auto resolution on an M2 MacBook Air. Pegasus is very heavy: its **Medium** preset looks
 almost the same and is about 40% faster. Shader packs aren't included with Cadence; download them from their authors.
@@ -55,10 +64,11 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 
 ## Settings
 
-- **In game:** everything is in **Options > Video Settings**, at the top: the status line, Performance preset and
-  Quick Setup under **Cadence**; Cooling, background frame rate, resolution, sharpening, leaves and messages under
-  **Cadence: Performance**; the shader pack, its profile, shadows and **Shader Pack Settings** (the pack's own options,
-  on its own pages, as in Iris) under **Cadence: Shaders**.
+- **In game:** everything is in **Options > Video Settings**, at the top: the status lines, then **Shaders...** (the
+  Shader Packs list, with the pack's profile) and **Shader Pack Settings...** (the pack's own options, on its own pages,
+  as in Iris, with Apply), then the Performance preset and Quick Setup; resolution, sharpening, Retina, leaves, cooling,
+  background frame rate and messages under **Cadence: Performance**; shadows under **Cadence: Shader Speed**.
+- **Keys:** **O** opens Shader Packs, **K** turns shaders off and back on (Controls > Key Binds > Miscellaneous).
 - **Shader pack options** are kept per pack in `shaderpacks/<pack>.txt`, the same file Iris uses.
 - **Config files:** `config/cadence.properties` and `config/cadence-shaders.properties` in your Minecraft folder.
   Set `profile=none` in `cadence.properties` to turn off Cadence's performance profile.
