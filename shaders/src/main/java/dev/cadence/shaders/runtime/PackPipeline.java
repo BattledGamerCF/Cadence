@@ -326,8 +326,16 @@ public record PackPipeline(
         alphaTestRef,
         primarySampler,
         samplerBindings,
-        samplerBindings.stream().map(SamplerBinding::name).filter(n -> reads(translated, shaderName(samplerBindings, n)))
-            .collect(java.util.stream.Collectors.toUnmodifiableSet()));
+        readSet(translated, samplerBindings));
+  }
+
+  private static java.util.Set<String> readSet(TranslatedProgram translated, java.util.List<SamplerBinding> samplerBindings) {
+    var out = samplerBindings.stream().map(SamplerBinding::name).filter(n -> reads(translated, shaderName(samplerBindings, n)))
+        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    if (Boolean.getBoolean("cadence.shaders.logReads"))
+      org.slf4j.LoggerFactory.getLogger("cadence_shaders").info("reads {}: {} of {}", translated.label(), new java.util.TreeSet<>(out),
+          samplerBindings.stream().map(SamplerBinding::name).sorted().toList());
+    return out;
   }
 
   private static String shaderName(java.util.List<SamplerBinding> bindings, String name) {
