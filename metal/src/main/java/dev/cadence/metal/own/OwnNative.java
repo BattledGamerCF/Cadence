@@ -118,7 +118,11 @@ final class OwnNative {
 				LIVE_BYTES.addAndGet(size);
 				if (LOG_BUFFERS >= 0 && size >= LOG_BUFFERS << 20) {
 					StackTraceElement[] st = new Throwable().getStackTrace();
-					StackTraceElement at = st.length > 2 ? st[2].getClassName().endsWith("OwnNative") && st.length > 3 ? st[3] : st[2] : null;
+					StringBuilder at = new StringBuilder();
+					for (int i = 1, n = 0; i < st.length && n < 2; i++) {
+						if (st[i].getClassName().endsWith("OwnNative")) continue;
+						at.append(n++ == 0 ? "" : " <- ").append(st[i].getClassName().substring(st[i].getClassName().lastIndexOf('.') + 1)).append(':').append(st[i].getLineNumber());
+					}
 					System.out.println(String.format(java.util.Locale.ROOT, "cadence-own buffer %.1f MB (%s) at %s, live %.1f MB", size / 1048576.0,
 						kind == 0 ? "private" : "shared", at, LIVE_BYTES.get() / 1048576.0));
 				}

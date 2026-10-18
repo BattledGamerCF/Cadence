@@ -37,19 +37,17 @@ import java.util.stream.Stream;
  * (it holds the account token) is never logged, only the options added. Open files are marked close-on-exec first so the new
  * process doesn't inherit them. Off: -Dcadence.jvmDefaults=false, or cadence.jvmDefaults=false in config/cadence.properties.
  * Measured (docs/dev-log/DAY2.md): G1 + HeapTrim used ~870 MB less than ZGC on the same route; compact object headers ~23 MB less heap.
- * -XX:-ClassUnloadingWithConcurrentMark (docs/dev-log/DAY-10-18.md): flying over new terrain G1 runs a marking cycle every
- * 2-3 s, and each ended in a Remark pause of 11 ms on average, up to 25 ms (a visible hitch), 19 of them "G1 Complete
- * Cleaning": unloading classes means walking all the game's compiled code. The game hardly ever unloads a class, so they are
- * left to a full collection: Remark 1.0 ms on average, 1.9 at most. -XX:MetaspaceSize=256m: the game's class metadata grows
- * to ~170 MB while it loads, and each threshold on the way triggered a collection (full ones without class unloading at
- * marking: four of 15-29 ms in the first seconds); the threshold only decides when to collect, it reserves nothing.
+ * -XX:MetaspaceSize=256m: the game's class metadata grows to ~170 MB while it loads, and each threshold on the way triggered a
+ * collection; the threshold only decides when to collect, it reserves nothing. Tried and withdrawn (docs/dev-log/DAY-10-18.md):
+ * -XX:-ClassUnloadingWithConcurrentMark made G1's Remark pauses ~1 ms instead of up to 25 ms while flying, but G1 frees
+ * replaced JIT code only while unloading classes: the code cache grew 35 -> 100 MB in 4 minutes and kept growing.
  */
 public final class JvmDefaults {
 	/** What the restarted process was given, from its environment ("" when it wasn't restarted). */
 	private static final String ENV = "CADENCE_JVM_DEFAULTS";
 	private static final String[] GCS = {"UseG1GC", "UseZGC", "UseShenandoahGC", "UseParallelGC", "UseSerialGC", "UseEpsilonGC"};
 	static final List<String> DEFAULTS = List.of("-XX:+UseG1GC", "-XX:+UseCompactObjectHeaders", "-XX:+DisableExplicitGC",
-		"-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:-ClassUnloadingWithConcurrentMark", "-XX:MetaspaceSize=256m",
+		"-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:MetaspaceSize=256m",
 		"-Dfile.encoding=UTF-8", "-Dlog4j2.formatMsgNoLookups=true");
 	private static boolean ran;
 	private static String summary = "";

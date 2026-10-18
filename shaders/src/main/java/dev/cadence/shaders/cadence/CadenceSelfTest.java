@@ -485,6 +485,64 @@ public final class CadenceSelfTest {
 						default -> net.minecraft.client.CloudStatus.FANCY;
 					};
 					mc.execute(() -> mc.options.cloudStatus().set(status));
+				} else if (lower.equals("jit")) {
+					// "jit" (measurement): the code cache's heaps and metaspace, used / committed
+					StringBuilder pools = new StringBuilder();
+					for (var pool : java.lang.management.ManagementFactory.getMemoryPoolMXBeans()) {
+						String n = pool.getName();
+						if (!n.contains("CodeHeap") && !n.contains("Metaspace") && !n.contains("Code")) continue;
+						var u = pool.getUsage();
+						pools.append(String.format(Locale.ROOT, " | %s %.1f/%.1f MB", n, u.getUsed() / 1048576.0, u.getCommitted() / 1048576.0));
+					}
+					var comp = java.lang.management.ManagementFactory.getCompilationMXBean();
+					LOGGER.info("[selftest] jit{} | compile time {} s", pools, comp == null ? -1 : comp.getTotalCompilationTime() / 1000);
+				} else if (lower.equals("spritemem")) {
+					// "spritemem" (measurement): the CPU copies of every atlas sprite's pixels (originalImage + byMipLevel), static vs animated
+					mc.execute(() -> {
+						try {
+							var byPath = net.minecraft.client.renderer.texture.TextureManager.class.getDeclaredField("byPath");
+							byPath.setAccessible(true);
+							var orig = net.minecraft.client.renderer.texture.SpriteContents.class.getDeclaredField("originalImage");
+							var mips = net.minecraft.client.renderer.texture.SpriteContents.class.getDeclaredField("byMipLevel");
+							var size = com.mojang.blaze3d.platform.NativeImage.class.getDeclaredField("size");
+							orig.setAccessible(true);
+							mips.setAccessible(true);
+							size.setAccessible(true);
+							var byName = net.minecraft.client.renderer.texture.TextureAtlas.class.getDeclaredField("texturesByName");
+							byName.setAccessible(true);
+							java.util.Map<?, ?> textures = (java.util.Map<?, ?>) byPath.get(mc.getTextureManager());
+							long staticBytes = 0, animBytes = 0, staticPixels = 0;
+							int staticN = 0, animN = 0;
+							for (var e : textures.entrySet()) {
+								if (!(e.getValue() instanceof net.minecraft.client.renderer.texture.TextureAtlas atlas)) continue;
+								long atlasBytes = 0;
+								var seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Object, Boolean>());
+								java.util.Map<?, ?> sprites = (java.util.Map<?, ?>) byName.get(atlas);
+								for (Object sprite : sprites.values()) {
+									var c = ((net.minecraft.client.renderer.texture.TextureAtlasSprite) sprite).contents();
+									long b = 0;
+									var o = (com.mojang.blaze3d.platform.NativeImage) orig.get(c);
+									if (o != null && seen.add(o)) b += size.getLong(o);
+									var m = (com.mojang.blaze3d.platform.NativeImage[]) mips.get(c);
+									if (m != null) for (var im : m) if (im != null && seen.add(im)) b += size.getLong(im);
+									atlasBytes += b;
+									if (c.isAnimated()) {
+										animBytes += b;
+										animN++;
+									} else {
+										staticBytes += b;
+										staticN++;
+										staticPixels += (long) c.width() * c.height();
+									}
+								}
+								LOGGER.info("[selftest] spritemem {}: {} sprites, {} KB", e.getKey(), sprites.size(), atlasBytes >> 10);
+							}
+							LOGGER.info("[selftest] spritemem: static {} sprites {} KB ({} px), animated {} sprites {} KB", staticN, staticBytes >> 10,
+								staticPixels, animN, animBytes >> 10);
+						} catch (ReflectiveOperationException | RuntimeException ex) {
+							LOGGER.info("[selftest] spritemem failed: {}", ex.toString());
+						}
+					});
 				} else if (lower.startsWith("dynlights=")) {
 					// "dynlights=off|held|all": Dynamic Lights (not saved)
 					var m = switch (lower.substring(10)) {
