@@ -917,13 +917,24 @@ public final class ShaderRuntime implements AutoCloseable {
     return !pipeline.fullscreen() && !pipeline.shadow() && pipeline.depth() && pipeline.depthTarget() == index;
   }
 
+  /**
+   * Cadence: a feedback copy for this sampler only when the program's code samples it (PackPipeline.reads): a declared,
+   * unused sampler of a buffer the program draws into needs no copy (Complementary at 2940 x 1686: about 3 ms a frame of
+   * copies). -Dcadence.shaders.feedbackReads=false: every declared one, as before.
+   */
+  public static volatile boolean FEEDBACK_READS = !"false".equals(System.getProperty("cadence.shaders.feedbackReads"));
+
+  private static boolean copies(PackPipeline pipeline, PackPipeline.SamplerBinding sampler) {
+    return !FEEDBACK_READS || pipeline.readsSampler(sampler);
+  }
+
   /** Cadence: the feedback copies this program reads (made outside a pass: before it opens). */
   private void prepareFeedback(PackPipeline pipeline) {
     for (var sampler : pipeline.samplerBindings()) {
       if (textures.custom(pipeline.source().name(), sampler.name()) != null) continue;
-      if (sampler.kind() == PackPipeline.SamplerKind.COLOR && colorFeedback(pipeline, sampler.index()))
+      if (sampler.kind() == PackPipeline.SamplerKind.COLOR && colorFeedback(pipeline, sampler.index()) && copies(pipeline, sampler))
         targets.colorFeedback(sampler.index());
-      else if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index()))
+      else if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index()) && copies(pipeline, sampler))
         targets.depthFeedback(sampler.index());
       else if (sampler.kind() == PackPipeline.SamplerKind.SHADOW_COLOR && shadowColorFeedback(pipeline, sampler.index()))
         targets.copyShadowColorFeedback(sampler.index());
@@ -941,9 +952,9 @@ public final class ShaderRuntime implements AutoCloseable {
   public boolean requiresReadPreparation(PackPipeline pipeline) {
     for (var sampler : pipeline.samplerBindings()) {
       if (textures.custom(pipeline.source().name(), sampler.name()) != null) continue;
-      if (sampler.kind() == PackPipeline.SamplerKind.COLOR && colorFeedback(pipeline, sampler.index())
+      if (sampler.kind() == PackPipeline.SamplerKind.COLOR && colorFeedback(pipeline, sampler.index()) && copies(pipeline, sampler)
           && !targets.colorFeedbackReady(sampler.index())) return true;
-      if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index())
+      if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index()) && copies(pipeline, sampler)
           && !targets.depthFeedbackReady(sampler.index())) return true;
       if (sampler.kind() == PackPipeline.SamplerKind.SHADOW_COLOR && shadowColorFeedback(pipeline, sampler.index())) return true;
       boolean needed =
@@ -1187,14 +1198,14 @@ public final class ShaderRuntime implements AutoCloseable {
       switch (sampler.kind()) {
         case COLOR -> {
           texture =
-              colorFeedback(pipeline, sampler.index())
+              colorFeedback(pipeline, sampler.index()) && copies(pipeline, sampler)
                   ? targets.colorFeedback(sampler.index())
-                  : targets.color(sampler.index());
+                  : targets.color(sampler.index());  // (or a sampler the code never reads: the buffer itself, no copy)
           if (!mipSampled(pipeline, sampler.index())) filter = textures.linearBaseLevel();
         }
         case DEPTH -> {
           texture =
-              depthFeedback(pipeline, sampler.index())
+              depthFeedback(pipeline, sampler.index()) && copies(pipeline, sampler)
                   ? targets.depthFeedback(sampler.index())
                   : targets.depth(sampler.index());
           filter = textures.nearest;

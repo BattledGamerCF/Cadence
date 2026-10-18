@@ -27,7 +27,8 @@ public record PackPipeline(
     int renderStage,
     float alphaTestRef,
     String primarySampler,
-    java.util.List<SamplerBinding> samplerBindings)
+    java.util.List<SamplerBinding> samplerBindings,
+    java.util.Set<String> readSamplers)
     implements AutoCloseable {
 
   public enum SamplerKind {
@@ -324,7 +325,35 @@ public record PackPipeline(
         renderStage,
         alphaTestRef,
         primarySampler,
-        samplerBindings);
+        samplerBindings,
+        samplerBindings.stream().map(SamplerBinding::name).filter(n -> reads(translated, shaderName(samplerBindings, n)))
+            .collect(java.util.stream.Collectors.toUnmodifiableSet()));
+  }
+
+  private static String shaderName(java.util.List<SamplerBinding> bindings, String name) {
+    for (SamplerBinding b : bindings) if (b.name().equals(name)) return b.shaderName();
+    return name;
+  }
+
+  /** Cadence: whether this program's code samples the named sampler (not only declares it: see reads). */
+  public boolean readsSampler(SamplerBinding sampler) {
+    return readSamplers.contains(sampler.name());
+  }
+
+  /**
+   * Cadence: whether the program's code uses this sampler beyond declaring it. Packs declare every buffer in shared
+   * includes: Complementary's world programs declare colortex0, 3, 4 and 6 (and depthtex0) while drawing into them, which
+   * cost a full-size copy of each per phase (ShaderRuntime.prepareFeedback) though most never read them.
+   */
+  static boolean reads(TranslatedProgram translated, String name) {
+    java.util.regex.Pattern token = java.util.regex.Pattern.compile("\\b" + java.util.regex.Pattern.quote(name) + "\\b");
+    java.util.regex.Pattern declaration =
+        java.util.regex.Pattern.compile("\\buniform\\s+\\w+\\s+" + java.util.regex.Pattern.quote(name) + "\\s*;");
+    for (String source : new String[] {translated.vertexSource(), translated.fragmentSource()}) {
+      if (source == null) continue;
+      if (token.matcher(source).results().count() > declaration.matcher(source).results().count()) return true;
+    }
+    return false;
   }
 
   @Override

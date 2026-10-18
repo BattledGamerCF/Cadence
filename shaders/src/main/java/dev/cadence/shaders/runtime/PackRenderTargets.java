@@ -469,9 +469,13 @@ public final class PackRenderTargets implements AutoCloseable {
   private final PackTexture[] depthFeedback = new PackTexture[3];
   private final boolean[] depthFeedbackFresh = new boolean[3];
 
+  /** Measurement only (self-test ab=nofeedback): feedback reads take the buffer itself, no copy (pictures may be wrong). */
+  public static volatile boolean SKIP_FEEDBACK_COPIES;
+
   /** The copy of color buffer index a program writing it reads, current for this phase. Outside an open pass only. */
   public PackTexture colorFeedback(int index) {
     PackTexture source = color(index);
+    if (SKIP_FEEDBACK_COPIES) return source;
     PackTexture copy = colorFeedback.get(index);
     int w = source.texture.getWidth(0), h = source.texture.getHeight(0);
     if (copy == null || copy.texture.getWidth(0) != w || copy.texture.getHeight(0) != h) {
@@ -509,6 +513,7 @@ public final class PackRenderTargets implements AutoCloseable {
 
   /** The copy of depth buffer index a program with that depth attachment reads, current for this phase. */
   public PackTexture depthFeedback(int index) {
+    if (SKIP_FEEDBACK_COPIES) return depths[index];
     if (depthFeedback[index] == null) depthFeedback[index] = allocate("depthtex" + index + " feedback", GpuFormat.D32_FLOAT, width, height, 1);
     if (!depthFeedbackFresh[index]) {
       depthFeedbackFresh[index] = true;

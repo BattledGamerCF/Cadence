@@ -757,6 +757,8 @@ public final class CadenceSelfTest {
 				case "itemids" -> dev.cadence.shaders.geometry.FeatureDrawContext.ITEM_IDS = on;
 				case "flushsampled" -> dev.cadence.shaders.runtime.ShaderRuntime.FLUSH_SAMPLED_CLEARS = on;
 				case "fsdiscard" -> dev.cadence.shaders.runtime.ShaderRuntime.setDiscardFullscreenLoads(on);
+				case "nofeedback" -> dev.cadence.shaders.runtime.PackRenderTargets.SKIP_FEEDBACK_COPIES = on;
+				case "feedbackreads" -> dev.cadence.shaders.runtime.ShaderRuntime.FEEDBACK_READS = on;
 				default -> {
 					// "skip-PROGRAM": ON = that pack program draws nothing (its GPU cost, measured interleaved: thermal drift cancels)
 					if (feature.startsWith("drop-")) dev.cadence.metal.FrameHints.dropPipeline = on ? feature.substring(5) : null;
