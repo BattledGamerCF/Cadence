@@ -38,6 +38,8 @@ public final class WorldScale {
 	}
 
 	private static final Vector4f CLEAR = new Vector4f(0, 0, 0, 0);
+	/** -Dcadence.worldScale.merge=false: the upscale pass without the full-size depth (its own pass; A/B "scalemerge"). */
+	public static volatile boolean MERGE = !"false".equals(System.getProperty("cadence.worldScale.merge"));
 	private static TextureTarget world, hand;
 	private static GpuTextureView worldView;
 	private static PackUpscale upscale;
@@ -97,7 +99,10 @@ public final class WorldScale {
 				if (upscale != null) upscale.close();
 				upscale = new PackUpscale(RenderSystem.getDevice(), savedMain.getColorTexture().getFormat(), sharpen, fast);
 			}
-			upscale.run(RenderSystem.getDevice(), worldView, destination);
+			// the full-size depth goes into the same pass, cleared: the hand (which clears it again), the world's text (which
+			// writes all of it) and the HUD then continue this pass instead of loading the full-size image back from memory
+			GpuTextureView depth = MERGE && savedMain.getDepthTexture() != null ? savedMain.getDepthTextureView() : null;
+			upscale.run(RenderSystem.getDevice(), worldView, destination, depth);
 		}
 		// Cadence (CrispText): the world's text, held back from the scaled pass, at full resolution on top
 		if (savedMain.getDepthTexture() != null && world.getDepthTexture() != null)

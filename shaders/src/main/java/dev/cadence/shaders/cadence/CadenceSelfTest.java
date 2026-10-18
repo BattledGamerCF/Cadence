@@ -737,6 +737,7 @@ public final class CadenceSelfTest {
 				case "s67fast" -> { RenderScale.applyUpscaler("fast"); RenderScale.applyValue(on ? "0.67" : "1.0"); }
 				case "halfres" -> { RenderScale.applyUpscaler("fast"); RenderScale.applyValue(on ? "0.5" : "1.0"); }
 				case "crisptext" -> CrispText.ON = on;
+				case "scalemerge" -> WorldScale.MERGE = on;
 				case "itemids" -> dev.cadence.shaders.geometry.FeatureDrawContext.ITEM_IDS = on;
 				case "flushsampled" -> dev.cadence.shaders.runtime.ShaderRuntime.FLUSH_SAMPLED_CLEARS = on;
 				case "fsdiscard" -> dev.cadence.shaders.runtime.ShaderRuntime.setDiscardFullscreenLoads(on);

@@ -18,6 +18,7 @@ import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import org.jspecify.annotations.Nullable;
 import net.minecraft.resources.Identifier;
 
 /**
@@ -156,8 +157,18 @@ public final class PackUpscale implements AutoCloseable {
 
   /** Draws {@code source} (the pack's reduced-size output) over all of {@code destination}. */
   public void run(GpuDevice device, GpuTextureView source, GpuTextureView destination) {
-    var descriptor =
-        RenderPassDescriptor.builder(() -> "Cadence render-scale upscale").withColorAttachment(destination).build();
+    run(device, source, destination, null);
+  }
+
+  /**
+   * Cadence (WorldScale): with {@code clearDepth}, that depth target is attached too and cleared to 0 (vanilla's clear), so
+   * the passes that follow on the same targets (the hand, the world's text, the HUD) continue this pass instead of storing
+   * the full-size image and loading it back.
+   */
+  public void run(GpuDevice device, GpuTextureView source, GpuTextureView destination, @Nullable GpuTextureView clearDepth) {
+    var builder = RenderPassDescriptor.builder(() -> "Cadence render-scale upscale").withColorAttachment(destination);
+    if (clearDepth != null) builder.withDepthAttachment(clearDepth, OptionalDouble.of(0));
+    var descriptor = builder.build();
     try (var pass = device.createCommandEncoder().createRenderPass(descriptor)) {
       pass.setPipeline(pipeline);
       pass.setUniform("Source", source, sampler);

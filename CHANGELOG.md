@@ -24,6 +24,8 @@ Faster without shaders:
   1,170 fps; BSL at render distance 8, 30 -> 88 fps).
 - **New Performance preset: Max FPS**: Retina off, World Resolution 100%, the cheapest upscale and no cooling limit.
 - **Auto resolution stays at 100% without shaders**: lowering it there only added blur and the upscale's cost.
+- A World Resolution below 100% with the Fast or Sharp upscale is about 10% faster without shaders: the upscaled image
+  stays on the GPU chip for the hand and HUD instead of being written out and read back (50%: 1.70 -> 1.54 ms a frame).
 - **Sharpening: Fast is now "sharp bilinear"**: block edges stay crisp (each texel a solid block), as cheap as before.
 - Buffer clears are skipped when everything is drawn over anyway, now without shaders too.
 
