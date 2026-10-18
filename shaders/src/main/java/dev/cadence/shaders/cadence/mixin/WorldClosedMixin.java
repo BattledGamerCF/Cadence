@@ -14,5 +14,6 @@ public abstract class WorldClosedMixin {
 	@Inject(method = "updateLevelInEngines(Lnet/minecraft/client/multiplayer/ClientLevel;Z)V", at = @At("TAIL"))
 	private void cadence$worldClosed(ClientLevel level, boolean stopSound, CallbackInfo ci) {
 		if (level == null) WorldClosed.run();
+		if (level == null) dev.cadence.shaders.cadence.PanoramaTexture.worldClosed();
 	}
 }

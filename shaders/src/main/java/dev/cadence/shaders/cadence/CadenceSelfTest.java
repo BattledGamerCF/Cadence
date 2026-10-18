@@ -769,6 +769,8 @@ public final class CadenceSelfTest {
 				case "nofeedback" -> dev.cadence.shaders.runtime.PackRenderTargets.SKIP_FEEDBACK_COPIES = on;
 				case "feedbackreads" -> dev.cadence.shaders.runtime.ShaderRuntime.FEEDBACK_READS = on;
 				case "dynlights" -> DynamicLights.setForTest(on ? DynamicLights.Mode.ALL : DynamicLights.Mode.OFF);
+				case "finaldepth" -> dev.cadence.metal.MetalBridge.bandwidthTest(on ? 1 : 0);
+				case "present2" -> dev.cadence.metal.MetalBridge.bandwidthTest(on ? 2 : 0);
 				default -> {
 					// "skip-PROGRAM": ON = that pack program draws nothing (its GPU cost, measured interleaved: thermal drift cancels)
 					if (feature.startsWith("drop-")) dev.cadence.metal.FrameHints.dropPipeline = on ? feature.substring(5) : null;

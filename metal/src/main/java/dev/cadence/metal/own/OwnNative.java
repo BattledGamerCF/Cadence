@@ -106,6 +106,9 @@ final class OwnNative {
 		return buffer(ctx, size, shared ? 1 : 0);
 	}
 
+	/** Measurement: -Dcadence.own.logBuffers=MB logs every buffer of at least MB megabytes as it is made, with its caller. */
+	private static final long LOG_BUFFERS = Long.getLong("cadence.own.logBuffers", -1);
+
 	/** kind: 0 private tracked, 1 shared untracked, 2 shared tracked. */
 	static long buffer(long ctx, long size, int kind) {
 		try {
@@ -113,6 +116,12 @@ final class OwnNative {
 			if (b != 0) {
 				LIVE.put(b, size);
 				LIVE_BYTES.addAndGet(size);
+				if (LOG_BUFFERS >= 0 && size >= LOG_BUFFERS << 20) {
+					StackTraceElement[] st = new Throwable().getStackTrace();
+					StackTraceElement at = st.length > 2 ? st[2].getClassName().endsWith("OwnNative") && st.length > 3 ? st[3] : st[2] : null;
+					System.out.println(String.format(java.util.Locale.ROOT, "cadence-own buffer %.1f MB (%s) at %s, live %.1f MB", size / 1048576.0,
+						kind == 0 ? "private" : "shared", at, LIVE_BYTES.get() / 1048576.0));
+				}
 			}
 			return b;
 		} catch (Throwable t) {

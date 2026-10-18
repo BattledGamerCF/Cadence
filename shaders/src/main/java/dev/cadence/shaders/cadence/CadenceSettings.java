@@ -232,6 +232,10 @@ public final class CadenceSettings {
 		if (DynamicLights.LAMB) {
 			self[0].active = false;
 			self[0].setTooltip(Tips.of("LambDynamicLights is installed and lights moving light sources itself; Cadence's own stay off."));
+		} else if (!dev.cadence.metal.own.OwnTerrain.FLAG) {
+			self[0].setTooltip(Tips.of("Light from torches and other light sources that move.",
+				"#They need Cadence's terrain renderer, which is off this session (the game started with a shader pack on, or another "
+					+ "mod needs vanilla's). Start the game with shaders off to use them."));
 		}
 		return self[0];
 	}

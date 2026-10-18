@@ -64,6 +64,7 @@ final class Native {
 	private static final MethodHandle BUFFER_LENGTH = fn("mc_buffer_length", true, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PROFILE_BEGIN = fn("mc_profile_begin", false, JAVA_INT, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle RP_LOG = fn("mc_set_rp_log", false, null, JAVA_INT);
+	private static final MethodHandle BW_FLAGS = fn("mc_bw_flags", false, null, JAVA_INT);
 	private static final MethodHandle PROFILE_END = fn("mc_profile_end", false, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PROFILE_READ = fn("mc_profile_read", false, null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG);
 	private static final MethodHandle PROFILE_READ_ABS = fn("mc_profile_read_abs", false, null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG);
@@ -228,6 +229,8 @@ final class Native {
 	static long bufferLength(long buffer) { try { return (long) BUFFER_LENGTH.invokeExact(buffer); } catch (Throwable t) { throw rethrow(t); } }
 	/** Measurement: log every render encoder's load / store actions (the traced submit only). */
 	static void rpLog(boolean on) { try { RP_LOG.invokeExact(on ? 1 : 0); } catch (Throwable t) { throw rethrow(t); } }
+	/** Measurement only (mcmetal.m bwFlags): 1 the frame's last encoder stores no depth, 2 the present drawn twice. */
+	static void bwFlags(int f) { try { BW_FLAGS.invokeExact(f); } catch (Throwable t) { throw rethrow(t); } }
 	static boolean profileBegin(long enc, int maxEncoders) { try { return (int) PROFILE_BEGIN.invokeExact(enc, maxEncoders) != 0; } catch (Throwable t) { throw rethrow(t); } }
 	static long profileEnd(long enc, long countOut) { try { return (long) PROFILE_END.invokeExact(enc, countOut); } catch (Throwable t) { throw rethrow(t); } }
 	static void profileRead(long ctx, long samples, int count, long out) { try { PROFILE_READ.invokeExact(ctx, samples, count, out); } catch (Throwable t) { throw rethrow(t); } }

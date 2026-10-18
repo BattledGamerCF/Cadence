@@ -38,15 +38,23 @@ public final class CadenceMessages {
 		launchFailure = message;
 	}
 
-	/** ClientPacketListener.handleLogin (joining a world or a server; not a dimension change), render thread. */
-	public static void joined() {
+	/** The connection the join line was last shown on: a server network logs you in again at every lobby or game switch. */
+	private static java.lang.ref.WeakReference<Object> shownOn = new java.lang.ref.WeakReference<>(null);
+
+	/**
+	 * ClientPacketListener.handleLogin (joining a world or a server; not a dimension change), render thread. connection: the
+	 * network connection it came on; the join line is shown once per connection (a server network sends a login packet at every
+	 * switch between its lobbies and games: it was repeated each time).
+	 */
+	public static void joined(Object connection) {
 		String failure = launchFailure;
 		if (failure != null) {
 			launchFailure = null;
 			// (always shown, even with Cadence messages off: it explains why shaders are missing)
 			say(Component.literal("Cadence: " + failure).withStyle(net.minecraft.ChatFormatting.RED));
 		}
-		if (!enabled) return;
+		if (!enabled || connection != null && shownOn.get() == connection) return;
+		shownOn = new java.lang.ref.WeakReference<>(connection);
 		say(joinLine());
 	}
 

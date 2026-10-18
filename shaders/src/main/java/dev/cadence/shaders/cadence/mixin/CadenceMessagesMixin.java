@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class CadenceMessagesMixin {
 	@Inject(method = "handleLogin", at = @At("RETURN"))
 	private void cadence$joined(ClientboundLoginPacket packet, CallbackInfo ci) {
-		CadenceMessages.joined();
+		CadenceMessages.joined(((ClientPacketListener) (Object) this).getConnection());
 	}
 
 	@Inject(method = "sendCommand", at = @At("HEAD"), cancellable = true)

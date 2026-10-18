@@ -1865,9 +1865,15 @@ id<CAMetalDrawable> mc_layer_next(CAMetalLayer *layer) {
 	}
 }
 
+// Measurement only (-Dcadence.metal.bwAb, the self-test's ab=finaldepth / ab=present2): bit 0 the frame's last render encoder
+// stores no depth (don't care; the next frame clears it), bit 1 the present draw done twice (its cost, by difference).
+static int bwFlags;
+void mc_bw_flags(int f) { bwFlags = f; }
+
 // Draws src into the drawable (flipped back to top-down) and schedules the present on the current command buffer.
 void mc_present(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src) {
 	endBlit(enc);
+	if ((bwFlags & 1) && enc->render && enc->depth) enc->dead |= DEAD_DEPTH;
 	endRender(enc);
 	@autoreleasepool {
 		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -1880,6 +1886,14 @@ void mc_present(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src) {
 		[r setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
 		[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 		[r endEncoding];
+		if (bwFlags & 2) {
+			id<MTLRenderCommandEncoder> r2 = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
+			[r2 setRenderPipelineState:enc->ctx->present];
+			[r2 setFragmentTexture:src atIndex:0];
+			[r2 setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
+			[r2 drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+			[r2 endEncoding];
+		}
 		double encodedAt = CACurrentMediaTime();
 		[cmd(enc) addCompletedHandler:^(id<MTLCommandBuffer> b) { gpuLatency += (CACurrentMediaTime() - encodedAt - gpuLatency) * 0.1; }];
 		paceWatch(drawable);

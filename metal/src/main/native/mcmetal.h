@@ -77,6 +77,7 @@ void mc_pre_end_encoders(Enc *enc);
 id<MTLComputeCommandEncoder> mc_render_suspend(Enc *enc);
 id<MTLBlitCommandEncoder> mc_blit(Enc *enc);  // the frame's blit encoder, ending any open render encoder (shaderpack runtime)
 void mc_set_rp_log(int on);
+void mc_bw_flags(int f);
 id<MTLCommandBuffer> mc_frame_cmd(Enc *enc);  // the frame's command buffer with no encoder open (native shading pipeline)
 void mc_render_resume(Enc *enc, id<MTLComputeCommandEncoder> compute);
 void mc_render_split(Enc *enc);

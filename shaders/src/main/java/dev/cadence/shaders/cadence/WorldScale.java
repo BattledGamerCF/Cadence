@@ -10,12 +10,12 @@ import org.joml.Vector4f;
 import org.slf4j.LoggerFactory;
 
 /**
- * Cadence: World Resolution without a shader pack. The world and your hand are drawn into smaller targets (RenderScale's
+ * Cadence: World Resolution without a shader pack. The world is drawn into a smaller target (RenderScale's
  * scale of the window), then sharpened back up to full size (MetalFX or Cadence's filter, the Upscaler setting) before the
  * HUD, menus, chat and text are drawn at full resolution on top. At 100% nothing changes (vanilla's own targets).
  *
- * <p>How: for the duration of GameRenderer.renderLevel (the world, then the hand) the game renderer's main target and its
- * hand-depth target are swapped for scaled ones; vanilla sizes everything it draws the world into from the main target,
+ * <p>How: while LevelRenderer.render draws the world, the game renderer's main target is swapped for a scaled one (the hand
+ * comes after, at full size); vanilla sizes everything it draws the world into from the main target,
  * so the level renderer's own targets follow. The glowing-outline target follows the main target's size (OutlineTarget; its
  * blit stretches it).
  * After renderLevel the real targets come back and the scaled image is upscaled into the main one, so the outline blit,
@@ -40,7 +40,7 @@ public final class WorldScale {
 	private static final Vector4f CLEAR = new Vector4f(0, 0, 0, 0);
 	/** -Dcadence.worldScale.merge=false: the upscale pass without the full-size depth (its own pass; A/B "scalemerge"). */
 	public static volatile boolean MERGE = !"false".equals(System.getProperty("cadence.worldScale.merge"));
-	private static TextureTarget world, hand;
+	private static TextureTarget world;
 	private static GpuTextureView worldView;
 	private static PackUpscale upscale;
 	private static RenderTarget savedMain, savedHand;
@@ -77,7 +77,9 @@ public final class WorldScale {
 		encoder.clearColorAndDepthTextures(world.getColorTexture(), CLEAR, world.getDepthTexture(), 0.0);
 		savedMain = main;
 		savedHand = targets.cadence$hudDepth();
-		targets.cadence$setTargets(world, hand);
+		// (the hand-depth target stays vanilla's: the hand is drawn after finishWorld, into the full-size targets; a scaled one
+		// here was never drawn into)
+		targets.cadence$setTargets(world, savedHand);
 		active = true;
 	}
 
@@ -121,7 +123,6 @@ public final class WorldScale {
 	private static void allocate(RenderTarget main, int w, int h) {
 		release();
 		world = new TextureTarget("Cadence world", w, h, main.getColorTexture().getFormat(), main.getDepthTexture().getFormat());
-		hand = new TextureTarget("Cadence hand depth", w, h, null, main.getDepthTexture().getFormat());
 		worldView = RenderSystem.getDevice().createTextureView(world.getColorTexture());
 		if (!logged || System.getProperty("cadence.selftest") != null) {
 			logged = true;
@@ -138,10 +139,8 @@ public final class WorldScale {
 	private static void release() {
 		if (worldView != null) worldView.close();
 		if (world != null) world.destroyBuffers();
-		if (hand != null) hand.destroyBuffers();
 		worldView = null;
 		world = null;
-		hand = null;
 	}
 
 	/** Cadence (WorldClosed): the scaled targets go with the world. */

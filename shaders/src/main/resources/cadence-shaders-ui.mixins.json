@@ -21,7 +21,7 @@
     "SectionTaskAccessor",
     "MinecraftDisconnectMixin",
     "ChunkHeapSizeMixin",
-    "EntityCullMixin", "DynamicLightsExtractMixin", "DynamicLightsEntityMixin", "DynamicLightsBlockEntityMixin", "DynamicLightsParticleMixin",
+    "EntityCullMixin", "DynamicLightsExtractMixin", "GameRendererHudTargetMixin", "GamePanoramaAccess", "GuiPanoramaAccess", "CubeMapLocationAccess", "PanoramaMixin", "DynamicLightsEntityMixin", "DynamicLightsBlockEntityMixin", "DynamicLightsParticleMixin",
     "EntityRendererCullInvoker",
     "ParticleCullMixin",
     "ParticleMoveMixin",

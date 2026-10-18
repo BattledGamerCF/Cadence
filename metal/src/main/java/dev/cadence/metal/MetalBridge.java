@@ -270,4 +270,9 @@ public final class MetalBridge {
 	public static void release(long handle) {
 		Native.release(handle);
 	}
+
+	/** Measurement only (the self-test's ab=finaldepth / ab=present2): see mcmetal.m bwFlags. Render thread. */
+	public static void bandwidthTest(int flags) {
+		Native.bwFlags(flags);
+	}
 }
