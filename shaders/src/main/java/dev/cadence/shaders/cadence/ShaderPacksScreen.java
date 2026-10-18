@@ -272,7 +272,7 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 			if (hovered && !line.equals(detail.getString())) g.setTooltipForNextFrame(detail, mouseX, mouseY);
 			else if (hovered && !this.pack.isEmpty()) {
 				PackCatalog.Known k = PackCatalog.lookup(this.pack);
-				if (k != null && ShaderSwitcher.failure(this.pack) == null)
+				if (k != null && k.runs() && ShaderSwitcher.failure(this.pack) == null)
 					g.setTooltipForNextFrame(Component.literal(k.weight().label + ": " + k.weight().hint + "."), mouseX, mouseY);
 			}
 		}
@@ -285,6 +285,7 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 			if (failure != null) return Component.literal("Couldn't load: " + failure).withStyle(ChatFormatting.RED);
 			PackCatalog.Known k = PackCatalog.lookup(this.pack);
 			if (k == null) return Component.literal("Not tested with Cadence yet").withStyle(ChatFormatting.GRAY);
+			if (!k.runs()) return Component.literal("Doesn't run with Cadence: " + k.note()).withStyle(ChatFormatting.GOLD);
 			return Component.literal("Tested with Cadence · " + k.weight().label + (k.note().isEmpty() ? "" : " · " + k.note()))
 				.withStyle(ChatFormatting.GRAY);
 		}

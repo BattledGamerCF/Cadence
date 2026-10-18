@@ -23,7 +23,12 @@ public final class PackCatalog {
 		}
 	}
 
-	public record Known(String key, Weight weight, String note) {}
+	/** {@code weight} null: tested and known not to run (the note says why). */
+	public record Known(String key, Weight weight, String note) {
+		public boolean runs() {
+			return this.weight != null;
+		}
+	}
 
 	private static final List<Known> KNOWN = List.of(
 		new Known("bsl", Weight.MEDIUM, ""),
@@ -48,7 +53,9 @@ public final class PackCatalog {
 		new Known("vanillaplus", Weight.MEDIUM, ""),
 		new Known("potato", Weight.MEDIUM, ""),
 		new Known("mellow", Weight.LIGHT, ""),
-		new Known("miniature", Weight.LIGHT, ""));
+		new Known("miniature", Weight.LIGHT, ""),
+		new Known("shrimple", null, "it needs geometry shaders, which Metal doesn't have"),
+		new Known("rethinkingvoxels", null, "it needs geometry and tessellation shaders, which Metal doesn't have"));
 
 	private PackCatalog() {
 	}
