@@ -50,7 +50,8 @@ final class MetalSurface implements GpuSurfaceBackend {
 		boolean vsync = config.presentMode() == GpuSurface.PresentMode.FIFO;
 		this.paced = !vsync && PACE;
 		if (PACE_ADAPT) Native.paceAdapt(this.paced ? 1 : 0);
-		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || PACE_SYNC && this.paced ? 1 : 0) | DRAWABLES << 8);
+		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || PACE_SYNC && this.paced ? 1 : 0) | DRAWABLES << 8
+			| (Retina.on() ? 0 : 1 << 16));
 	}
 
 	@Override

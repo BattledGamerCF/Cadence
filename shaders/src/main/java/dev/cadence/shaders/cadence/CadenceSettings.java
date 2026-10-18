@@ -44,7 +44,8 @@ public final class CadenceSettings {
 		if (auto && heat && shadows == 2 && up == RenderScale.UPSCALE_APPLE && RenderScale.autoTarget() <= 45) return Preset.BATTERY;
 		if (auto && heat && shadows == 2 && up == RenderScale.UPSCALE_APPLE && RenderScale.autoTarget() == 60) return Preset.BALANCED;
 		if (!auto && RenderScale.get() >= 0.995f && !heat && shadows == 1) return Preset.QUALITY;
-		if (!auto && Math.abs(RenderScale.get() - 0.5f) < 0.005f && !heat && shadows == 2 && up == RenderScale.UPSCALE_FAST) return Preset.MAX_FPS;
+		if (!auto && RenderScale.get() >= 0.995f && !heat && shadows == 2 && up == RenderScale.UPSCALE_FAST && !ShaderToggle.retinaConfigured())
+			return Preset.MAX_FPS;
 		return Preset.CUSTOM;
 	}
 
@@ -70,12 +71,13 @@ public final class CadenceSettings {
 				HeatControl.setEnabled(false);
 				setShadows(1);
 			}
-			// Cadence: as many frames as the Mac can make. The world at half the window's resolution, each of its pixels a sharp
-			// 2x2 block (as a screen of that resolution shows it; the HUD and text stay full resolution), with the cheapest
-			// upscale (MetalFX's costs ~1-2 ms at Retina size, as much as a whole frame without shaders) and no cooling cap.
-			// M2 Air, no shaders: frame 7.4 -> 4.7 ms under load (in-run A/B).
+			// Cadence: as many frames as the Mac can make. Retina off (the game at the screen's point size, a quarter of the pixels,
+			// each a crisp 2x2 block; at the next launch): M2 Air, no shaders, 530 -> 1,170 fps. The world at full size of that
+			// (with fewer pixels a lower world scale only adds the upscale), the cheapest upscale for a shader pack's own
+			// scaling, shadows every 2nd frame, no cooling cap.
 			case MAX_FPS -> {
-				RenderScale.set(0.5f);
+				ShaderToggle.setRetina(false);
+				RenderScale.set(1.0f);
 				HeatControl.setEnabled(false);
 				setShadows(2);
 				RenderScale.setUpscaler(RenderScale.UPSCALE_FAST);
@@ -150,7 +152,7 @@ public final class CadenceSettings {
 			"Battery Saver|coolest and quietest, aims for 40 fps",
 			"Recommended|smooth 60 fps, sharp whenever it can be",
 			"Max Quality|always full sharpness; the Mac may run hot",
-			"Max FPS|half-resolution world (crisp), no limits; for shaders and a busy Mac",
+			"Max FPS|Retina off (crisp 2x2 pixels, about twice the fps; next launch), no limits",
 			"Custom|you changed something by hand",
 			"#Tip: Max Framerate 60 (120 on ProMotion) saves heat.")).build();
 		onRefresh(() -> self[0].setMessage(presetLabel()));

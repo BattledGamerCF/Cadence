@@ -353,6 +353,36 @@ public final class ShaderToggle {
 		return self[0];
 	}
 
+	/** Cadence: Retina as configured for the next launch (retina= in this file; the window is made with it at startup). */
+	public static boolean retinaConfigured() {
+		return !"false".equalsIgnoreCase(configValue("retina", "true"));
+	}
+
+	public static void setRetina(boolean on) {
+		saveKey("retina", Boolean.toString(on));
+	}
+
+	private static Component retinaLabel() {
+		boolean want = retinaConfigured(), now = dev.cadence.metal.Retina.on();
+		Component base = Component.literal("Retina: " + (want ? "On" : "Off"));
+		return want == now ? base : base.copy().append(Component.literal("  (restart)").withStyle(ChatFormatting.YELLOW));
+	}
+
+	/** Retina: the window at the display's full resolution, or at its point size (a quarter of the pixels). Next launch. */
+	public static Button retinaButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(retinaLabel(), b -> {
+			setRetina(!retinaConfigured());
+			CadenceSettings.refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How many pixels the game draws on a Retina display.",
+			"On|every pixel of your display, the sharpest picture",
+			"Off|the game drawn at your screen's point size, each pixel a crisp 2x2 block (like a non-Retina Mac): "
+				+ "about twice the fps (M2 Air, no shaders: 530 -> 1,170)",
+			"#Takes effect when you restart Minecraft.")).build();
+		CadenceSettings.onRefresh(() -> self[0].setMessage(retinaLabel()));
+		return self[0];
+	}
+
 	/** Sharpening: how a world drawn below 100% is brought back up to full size. Live. */
 	public static Button upscalerButton() {
 		Button[] self = new Button[1];

@@ -171,7 +171,7 @@ public final class QuickSetup {
 			out.add(new Change("Performance", CadenceSettings.current().label(), preset.label(),
 				switch (preset) {
 					case BALANCED -> "sharp, eases off when needed";
-					case MAX_FPS -> "half-resolution world (crisp), the most fps";
+					case MAX_FPS -> "Retina off, about twice the fps (next launch)";
 					default -> "full quality";
 				}, () -> CadenceSettings.apply(preset)));
 		HeatControl.Cooling cooling = preset == CadenceSettings.Preset.QUALITY || preset == CadenceSettings.Preset.MAX_FPS ? HeatControl.Cooling.OFF

@@ -1751,6 +1751,9 @@ void mc_layer_configure(Ctx *ctx, CAMetalLayer *layer, int width, int height, in
 	layer.displaySyncEnabled = (vsync & 1) != 0;
 	int drawables = (vsync >> 8) & 0xff;
 	layer.maximumDrawableCount = drawables == 2 || drawables == 3 ? drawables : 3;
+	// bit 16 (Cadence, Retina off): the layer scaled up to the display's pixels by nearest texel (each game pixel a crisp 2x2
+	// block, as on a non-Retina screen) instead of the default linear blur
+	layer.magnificationFilter = (vsync & (1 << 16)) ? kCAFilterNearest : kCAFilterLinear;
 }
 
 // ---- present pacing ----

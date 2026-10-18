@@ -26,6 +26,8 @@ public final class MetalBackend implements GpuBackend {
 
 	@Override
 	public long createWindow(@Nullable String title, int width, int height, long flags) {
+		// Cadence (Retina): Retina off draws the game at the screen's point size, a quarter of the pixels, and macOS scales it up
+		if (!Retina.on()) flags &= ~SDLVideo.SDL_WINDOW_HIGH_PIXEL_DENSITY;
 		return SDLVideo.SDL_CreateWindow(title, width, height, SDLVideo.SDL_WINDOW_METAL | flags);
 	}
 

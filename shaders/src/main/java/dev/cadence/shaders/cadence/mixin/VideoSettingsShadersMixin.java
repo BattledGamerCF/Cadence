@@ -52,6 +52,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.backgroundButton());
 		this.list.addSmall(ShaderToggle.scaleButton(), ShaderToggle.upscalerButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.leavesButton(), dev.cadence.shaders.cadence.CadenceSettings.messagesButton());
+		this.list.addSmall(java.util.List.of(ShaderToggle.retinaButton()));
 		this.list.addHeader(Component.literal("Cadence: Shaders"));
 		net.minecraft.client.gui.components.Button settings = net.minecraft.client.gui.components.Button.builder(
 				Component.literal("Shader Pack Settings..."), b -> {
