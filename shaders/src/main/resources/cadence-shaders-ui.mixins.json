@@ -21,7 +21,7 @@
     "SectionTaskAccessor",
     "MinecraftDisconnectMixin",
     "ChunkHeapSizeMixin",
-    "EntityCullMixin",
+    "EntityCullMixin", "DynamicLightsExtractMixin", "DynamicLightsEntityMixin", "DynamicLightsBlockEntityMixin", "DynamicLightsParticleMixin",
     "EntityRendererCullInvoker",
     "ParticleCullMixin",
     "ParticleMoveMixin",

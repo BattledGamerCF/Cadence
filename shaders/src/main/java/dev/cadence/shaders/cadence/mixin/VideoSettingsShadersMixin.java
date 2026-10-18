@@ -67,7 +67,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addSmall(ShaderToggle.scaleButton(), ShaderToggle.upscalerButton());
 		this.list.addSmall(ShaderToggle.retinaButton(), dev.cadence.shaders.cadence.CadenceSettings.leavesButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.backgroundButton());
-		this.list.addSmall(java.util.List.of(dev.cadence.shaders.cadence.CadenceSettings.messagesButton()));
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.dynamicLightsButton(), dev.cadence.shaders.cadence.CadenceSettings.messagesButton());
 		this.list.addHeader(Component.literal("Cadence: Shader Speed"));
 		this.list.addSmall(ShaderToggle.shadowRateButton(), dev.cadence.shaders.cadence.CadenceSettings.packCheckButton());
 	}

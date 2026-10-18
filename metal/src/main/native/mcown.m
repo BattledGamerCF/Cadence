@@ -746,7 +746,7 @@ int mco_draw(Own *w, Enc *enc, int cutout, const void *frame, int frameLength, i
 		pso = ownPipeline(w, enc, cutout, err, errCap);
 	}
 	if (vgElig) w->vgStat[!vgArgs ? 5 : vgArgs == w->a1sGBuf && w->a1sGOut == (void *) args ? 4 : (id) args == w->uoccBArgs ? 3 : 2]++;
-	uint8_t fbuf[256];
+	uint8_t fbuf[512];  // (DrawFrame: 368 bytes with its dynamic lights)
 	if (!pso && (cutout & (1 << 12))) {
 		// (a table draw without its F_QFLAT pipeline: the list's class draw instead, never the table under a plain vertex stage)
 		cutout &= ~(1 << 12);

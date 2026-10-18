@@ -90,7 +90,25 @@ struct DrawFrame {
 	int fadeMs;
 	int clipOnCpu;        // 1: clip below is ProjMat * ModelViewMat, multiplied once on the CPU (-Dcadence.own.cpuClip)
 	float4x4 clip;
+	int lightCount;       // dynamic light sources (DynamicLightList): xyz relative to the camera, w the light level
+	int lightPad0, lightPad1, lightPad2;
+	float4 lightBounds;   // a sphere around everything they reach: centre (camera-relative), radius squared
+	float4 lights[16];
 };
+
+// Cadence: the brightest dynamic light at p (camera-relative): a source's level minus its distance in blocks, as a placed light
+// falls off, through walls (as LambDynamicLights); 0 with none. Most vertices are outside every source's reach: one test against
+// the bounding sphere skips the loop for them, and a source out of reach skips its square root.
+static float dynamicLight(constant DrawFrame &df, float3 p) {
+	if (distance_squared(p, df.lightBounds.xyz) >= df.lightBounds.w) return 0.0;
+	float best = 0.0;
+	for (int i = 0; i < df.lightCount; i++) {
+		float4 l = df.lights[i];
+		float d2 = distance_squared(p, l.xyz);
+		if (d2 < l.w * l.w) best = max(best, l.w - sqrt(d2));
+	}
+	return min(best, 15.0);
+}
 
 // vanilla's std140 uniform blocks
 struct Projection { float4x4 ProjMat; };
@@ -1880,7 +1898,9 @@ static VOut ownShade(Vtx v, int3 origin, int uploadMs, constant DrawFrame &df, c
 		return o;
 	}
 	o.sphericalVertexDistance = length(pos);
-	float2 luv = clamp(float2(int2(v.uv2)) / 256.0 + 0.5 / 16.0, float2(0.5 / 16.0), float2(15.5 / 16.0));
+	float2 lc = float2(int2(v.uv2));
+	if (df.lightCount > 0) lc.x = max(lc.x, dynamicLight(df, pos) * 16.0);
+	float2 luv = clamp(lc / 256.0 + 0.5 / 16.0, float2(0.5 / 16.0), float2(15.5 / 16.0));
 	putColor(o, VS_MODE == 1 ? float4(v.color) / 255.0 : float4(v.color) / 255.0 * lightmap.sample(lightSampler, luv, level(0.0)));
 	o.texCoord0 = float2(v.uv0);
 #ifdef OWN_TPROBE

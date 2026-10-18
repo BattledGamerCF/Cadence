@@ -217,6 +217,25 @@ public final class CadenceSettings {
 		return Component.literal("Leaves: " + (dev.cadence.shaders.cadence.mesh.SmartLeaves.enabled() ? "Smart" : "Detailed"));
 	}
 
+	/** Dynamic Lights (DynamicLights): Off, Held Items, All. */
+	public static Button dynamicLightsButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(dynamicLightsLabel(), b -> {
+			DynamicLights.cycle();
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Light from torches and other light sources that move, as a placed one would give.",
+			"Held Items|a torch, lantern or glowstone in anyone's hand lights the world around them",
+			"All|also dropped light items, burning mobs, blazes, fireballs, lit TNT, glowing items in frames",
+			"Off|as vanilla",
+			"#Lit on the GPU, nothing rebuilt: under 0.1 ms a frame even with 16 lights. With a shader pack on, the pack's own held-item light applies instead.")).build();
+		onRefresh(() -> self[0].setMessage(dynamicLightsLabel()));
+		return self[0];
+	}
+
+	private static Component dynamicLightsLabel() {
+		return Component.literal("Dynamic Lights: " + DynamicLights.mode().label);
+	}
+
 	/** Cadence Messages (CadenceMessages): the join line and the corner notices. */
 	public static Button messagesButton() {
 		Button[] self = new Button[1];

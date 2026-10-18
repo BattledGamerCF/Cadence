@@ -485,6 +485,14 @@ public final class CadenceSelfTest {
 						default -> net.minecraft.client.CloudStatus.FANCY;
 					};
 					mc.execute(() -> mc.options.cloudStatus().set(status));
+				} else if (lower.startsWith("dynlights=")) {
+					// "dynlights=off|held|all": Dynamic Lights (not saved)
+					var m = switch (lower.substring(10)) {
+						case "held" -> DynamicLights.Mode.HELD;
+						case "all" -> DynamicLights.Mode.ALL;
+						default -> DynamicLights.Mode.OFF;
+					};
+					mc.execute(() -> DynamicLights.setForTest(m));
 				} else if (lower.startsWith("camera=")) {
 					// "camera=first|back|front": the camera view (F5)
 					var type = switch (lower.substring(7)) {
@@ -759,6 +767,7 @@ public final class CadenceSelfTest {
 				case "fsdiscard" -> dev.cadence.shaders.runtime.ShaderRuntime.setDiscardFullscreenLoads(on);
 				case "nofeedback" -> dev.cadence.shaders.runtime.PackRenderTargets.SKIP_FEEDBACK_COPIES = on;
 				case "feedbackreads" -> dev.cadence.shaders.runtime.ShaderRuntime.FEEDBACK_READS = on;
+				case "dynlights" -> DynamicLights.setForTest(on ? DynamicLights.Mode.ALL : DynamicLights.Mode.OFF);
 				default -> {
 					// "skip-PROGRAM": ON = that pack program draws nothing (its GPU cost, measured interleaved: thermal drift cancels)
 					if (feature.startsWith("drop-")) dev.cadence.metal.FrameHints.dropPipeline = on ? feature.substring(5) : null;

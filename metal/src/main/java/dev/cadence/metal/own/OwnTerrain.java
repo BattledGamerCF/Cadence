@@ -214,7 +214,7 @@ public final class OwnTerrain {
 	/** Bytes of one quad in the arena. */
 	static final int ARENA_QUAD = COMPACT ? 64 : QUAD_BYTES;
 	private static final int CULL_FRAME_BYTES = 144, BUCKETS = 7;
-	static final int DRAW_FRAME_BYTES = 80;
+	static final int DRAW_FRAME_BYTES = DynamicLightList.OFFSET + DynamicLightList.BYTES;  // (terrain.metal's DrawFrame)
 
 	private static @Nullable OwnTerrain instance;
 	private static boolean failed;
@@ -2223,6 +2223,10 @@ public final class OwnTerrain {
 				MemoryUtil.memPutInt(d + 12, 1);
 				clip.getToAddress(d + 16);
 			}
+			if (DynamicLightList.count() > 0) {
+				var cam = Minecraft.getInstance().gameRenderer.mainCamera().position();
+				DynamicLightList.write(d, cam.x, cam.y, cam.z);
+			}
 			long arena = this.arenaBuffer;
 			boolean draw = !mode.equals("skip") && !mode.equals("skipall"), fragSplit = false;
 			if (prefilter) {
@@ -2867,6 +2871,10 @@ public final class OwnTerrain {
 			if (CPU_CLIP) {
 				MemoryUtil.memPutInt(d + 12, 1);
 				clip.getToAddress(d + 16);
+			}
+			if (DynamicLightList.count() > 0) {
+				var cam = Minecraft.getInstance().gameRenderer.mainCamera().position();
+				DynamicLightList.write(d, cam.x, cam.y, cam.z);
 			}
 			// (tprobe 8: the translucent draw with the frag variants' half colour and lean varyings: K_HALF 1 << 18, K_LEAN 1 << 19; thalf:
 			// half on both parts, lean on the second)
