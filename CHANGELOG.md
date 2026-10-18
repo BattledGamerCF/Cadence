@@ -2,6 +2,14 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased
+
+- **Core tiers on M5 Pro / Max and M6** (Super + Performance (+ Efficiency) cores): Cadence reads the chip's tiers, and where
+  there is a middle Performance tier the chunk-building workers are marked lower priority, so macOS keeps them on the
+  Performance and Efficiency cores and the few Super cores stay free for the render thread and the game logic. Chips with
+  two tiers in the old sense (M1-M4, the base M5) are unchanged. Not yet measured on that hardware;
+  `-Dcadence.workerQos=default` turns it off. The startup log names the layout ("CPU cores: ...").
+
 ## 0.4.0-beta.6 / shaders 0.3.5 (2026-10-18)
 
 Less memory:

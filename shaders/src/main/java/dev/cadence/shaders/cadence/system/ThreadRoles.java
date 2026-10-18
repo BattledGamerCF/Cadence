@@ -6,8 +6,12 @@ import dev.cadence.metal.MacSystem;
  * Cadence: tells macOS how urgent each of the game's threads is (QoS classes). Apple Silicon has fast (performance) and
  * efficient cores, and macOS uses a thread's QoS to choose between them and to order contended threads: the render thread
  * is marked user-interactive (it decides frame times), the integrated server user-initiated, and chunk-building workers
- * as -Dcadence.workerQos says (default: left as Java starts them; options: interactive, initiated, utility). Nothing in
- * the game's work changes, only the scheduling hints. -Dcadence.threadRoles=false: none set.
+ * as -Dcadence.workerQos says (options: interactive, initiated, utility, background). Default: left as Java starts them,
+ * except on chips with a middle core tier (CoreLayout: the M6's 2 Super + 4 Performance + 6 Efficiency, the M5 Pro / Max's
+ * Super + Performance), where workers are utility: macOS can't be told which core runs a thread, only how urgent it is, and
+ * there the chunk building's bursts then settle on the Performance and Efficiency cores instead of competing for the few
+ * Super cores with the render thread and the game logic. Nothing in the game's work changes, only the scheduling hints.
+ * -Dcadence.threadRoles=false: none set.
  */
 public final class ThreadRoles {
 	private static final boolean ENABLED = !"false".equals(System.getProperty("cadence.threadRoles"));
@@ -16,7 +20,8 @@ public final class ThreadRoles {
 		case "initiated" -> MacSystem.QOS_USER_INITIATED;
 		case "utility" -> MacSystem.QOS_UTILITY;
 		case "background" -> MacSystem.QOS_BACKGROUND;
-		default -> 0;
+		case "default" -> 0;
+		default -> CoreLayout.hasMiddleTier() ? MacSystem.QOS_UTILITY : 0;
 	};
 	private static final ThreadLocal<Boolean> SET = new ThreadLocal<>();
 
@@ -24,7 +29,16 @@ public final class ThreadRoles {
 	}
 
 	public static void renderThread() {
-		if (ENABLED) MacSystem.setQos(MacSystem.QOS_USER_INTERACTIVE);
+		if (!ENABLED) return;
+		MacSystem.setQos(MacSystem.QOS_USER_INTERACTIVE);
+		org.slf4j.LoggerFactory.getLogger("cadence").info("CPU cores: {}; render thread interactive, game logic initiated, chunk workers {}",
+			CoreLayout.describe(), switch (WORKER) {
+				case MacSystem.QOS_USER_INTERACTIVE -> "interactive";
+				case MacSystem.QOS_USER_INITIATED -> "initiated";
+				case MacSystem.QOS_UTILITY -> "utility" + (CoreLayout.hasMiddleTier() ? " (middle core tier)" : "");
+				case MacSystem.QOS_BACKGROUND -> "background";
+				default -> "as Java starts them";
+			});
 	}
 
 	public static void serverThread() {

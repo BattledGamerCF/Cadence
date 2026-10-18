@@ -56,7 +56,10 @@ public final class QuickSetup {
 			gen = Integer.parseInt(m.group(1));
 			variant = m.group(2) == null ? "" : m.group(2).substring(0, 1).toUpperCase(Locale.ROOT) + m.group(2).substring(1).toLowerCase(Locale.ROOT);
 		}
-		int p = (int) MacSystem.sysLong("hw.perflevel0.physicalcpu"), e = (int) MacSystem.sysLong("hw.perflevel1.physicalcpu");
+		// (fast = every tier but efficiency: Super + Performance on an M6; the old perflevel0/1 read took the M6's middle tier for efficiency)
+		int e = dev.cadence.shaders.cadence.system.CoreLayout.efficiency(), p = 0;
+		for (var t : dev.cadence.shaders.cadence.system.CoreLayout.tiers()) p += t.cores();
+		p -= e;
 		long mem = MacSystem.sysLong("hw.memsize");
 		int gpu = MacSystem.gpuCores();
 		if (gpu <= 0) gpu = switch (variant) {
