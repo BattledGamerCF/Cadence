@@ -536,6 +536,28 @@ final class MetalEncoder implements CommandEncoderBackend {
 		return this.currentPass != null;
 	}
 
+	/** Cadence: one pair of uniform arrays kept between passes (MetalRenderPass.pending / bound), cleared. */
+	private Object @Nullable [] spareA, spareB;
+
+	Object[] uniformArray() {
+		Object[] a = this.spareA;
+		if (a != null) {
+			this.spareA = null;
+			return a;
+		}
+		a = this.spareB;
+		if (a != null) {
+			this.spareB = null;
+			return a;
+		}
+		return new Object[MetalRenderPass.MAX_UNIFORMS];
+	}
+
+	void returnUniformArrays(Object[] a, Object[] b) {
+		this.spareA = a;
+		this.spareB = b;
+	}
+
 	/** Far terrain (dev.cadence.metal.lod): the open pass's pipeline state again after its own draw; false when no pass is open. */
 	boolean reapplyPipeline() {
 		if (this.currentPass == null) return false;

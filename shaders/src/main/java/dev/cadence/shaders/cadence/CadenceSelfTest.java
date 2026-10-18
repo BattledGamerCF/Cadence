@@ -606,19 +606,20 @@ public final class CadenceSelfTest {
 						spin.start();
 					}
 				} else if (lower.startsWith("glide=")) {
-					// "glide=S" or "glide=S:D": the player moves east D (0.5) blocks per tick for S seconds (runs on while the step
-					// is observed)
+					// "glide=S", "glide=S:D" or "glide=S:D:Y": the player moves east D (0.5) blocks per tick for S seconds (runs on while
+					// the step is observed); with Y, held at height Y (a flight over the terrain; the player doesn't fly by itself)
 					String[] g = lower.substring(6).split(":");
 					int seconds = Integer.parseInt(g[0]);
-					String perTick = g.length > 1 ? g[1] : "0.5";
+					String perTick = g.length > 1 ? g[1] : "0.5", height = g.length > 2 ? g[2] : "~";
 					var glideServer = mc.getSingleplayerServer();
 					if (glideServer != null) {
 						Thread glide = new Thread(() -> {
 							long end = System.nanoTime() + seconds * 1_000_000_000L, nextSample = System.nanoTime() + 1_000_000_000L;
 							int samples = 0, sum = 0, min = Integer.MAX_VALUE;
 							while (System.nanoTime() < end) {
-								glideServer.execute(() -> glideServer.getCommands().performPrefixedCommand(glideServer.createCommandSourceStack(),
-									"execute as " + mc.getUser().getName() + " at @s run tp @s ~" + perTick + " ~ ~"));
+								// (output suppressed: a chat line per tick was most of the render thread's garbage while gliding)
+								glideServer.execute(() -> glideServer.getCommands().performPrefixedCommand(glideServer.createCommandSourceStack().withSuppressedOutput(),
+									"execute as " + mc.getUser().getName() + " at @s run tp @s ~" + perTick + " " + height + " ~"));
 								sleep(50);
 								if (System.nanoTime() >= nextSample) {
 									nextSample += 1_000_000_000L;

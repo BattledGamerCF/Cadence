@@ -200,6 +200,11 @@ public final class FeatureDrawContext {
     record(submit, tag);
   }
 
+  /** Cadence: no submit of this frame has a tag (no shader pack drawing): every submit is NONE. */
+  public static boolean untagged() {
+    return submitTags.isEmpty();
+  }
+
   static void record(SubmitNode submit, DrawTag tag) {
     submitTags.put(submit, tag);
   }

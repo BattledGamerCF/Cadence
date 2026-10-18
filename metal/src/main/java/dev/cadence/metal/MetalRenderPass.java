@@ -29,20 +29,22 @@ import org.lwjgl.system.MemoryUtil;
  */
 final class MetalRenderPass implements RenderPassBackend {
 	/** Cadence: a shader pack's pass can have buffers (up to PUSH_CONSTANTS_INDEX) plus textures (Metal has 128 slots). */
-	private static final int MAX_UNIFORMS = MetalConst.PUSH_CONSTANTS_INDEX + 128;
+	static final int MAX_UNIFORMS = MetalConst.PUSH_CONSTANTS_INDEX + 128;
 
 	private final MetalEncoder encoder;
 	private final long enc;
 	private final int areaX, areaY, areaWidth, areaHeight;
 	private @Nullable MetalPipeline pipeline;
-	private final Object[] pending = new Object[MAX_UNIFORMS];
-	private final Object[] bound = new Object[MAX_UNIFORMS];
+	// Cadence: the encoder's (MetalEncoder.uniformArrays), cleared and handed to the next pass when this one ends: a pass is
+	// opened many times a frame, and these were most of what each one allocated
+	private final Object[] pending;
+	private final Object[] bound;
 	private int dirtyUpTo;
 	/** Metal draw calls issued, multi-draws counted per element, and indices drawn (terrain multi-draws only counted while tracing); for the trace. */
 	int draws;
 	long indices;
 	/** Texel buffers need an MTLTexture view per (buffer, range); build each once per pass. */
-	private final Map<GpuBufferSlice, Long> texelViews = new HashMap<>();
+	private @Nullable Map<GpuBufferSlice, Long> texelViews;  // (made by the first texel buffer bound; most passes have none)
 	/** Last vertex buffer in slot 0, for MetalTerrain and MetalProbe. */
 	private @Nullable GpuBufferSlice vertexBuffer0;
 	/** Set while the current pipeline is Sodium terrain with a pulled twin: its draws go to MetalTerrain, not the encoder. */
@@ -65,6 +67,8 @@ final class MetalRenderPass implements RenderPassBackend {
 	MetalRenderPass(MetalEncoder encoder, boolean hasDepth, int x, int y, int width, int height, @Nullable PassDelegate delegate) {
 		this.encoder = encoder;
 		this.enc = encoder.enc;
+		this.pending = encoder.uniformArray();
+		this.bound = encoder.uniformArray();
 		this.hasDepth = hasDepth;
 		this.delegate = delegate;
 		this.areaX = x;
@@ -131,6 +135,9 @@ final class MetalRenderPass implements RenderPassBackend {
 	void end() {
 		this.flushTerrain(false);
 		if (this.delegate != null) this.delegate.end(this.enc);
+		Arrays.fill(this.pending, null);
+		Arrays.fill(this.bound, null);
+		this.encoder.returnUniformArrays(this.pending, this.bound);
 	}
 
 	/** With a delegate: false when this draw must not be encoded (pipeline not taken over, or the delegate says so). */
@@ -313,7 +320,7 @@ final class MetalRenderPass implements RenderPassBackend {
 				GpuBufferSlice slice = (GpuBufferSlice) value;
 				var format = Objects.requireNonNull(uniform.gpuFormat());
 				long view = TexelViews.ON && TexelViews.active ? TexelViews.get(this.encoder, slice, MetalConst.pixelFormat(format), format.blockSize()) // opt-in
-					: this.texelViews.computeIfAbsent(slice, s -> {
+					: (this.texelViews != null ? this.texelViews : (this.texelViews = new HashMap<>())).computeIfAbsent(slice, s -> {
 					long handle = Native.textureBuffer(this.encoder.ctx, this.encoder.use(s.buffer()).handle, MetalConst.pixelFormat(format), s.offset(),
 						s.length(), format.blockSize());
 					this.encoder.releaseLater(handle);

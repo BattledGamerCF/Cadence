@@ -33,6 +33,13 @@ public abstract class FeatureGroupTagMixin {
       Collection<SubmitNode> submits,
       boolean strictlyOrdered,
       Operation<Void> original) {
+    // Cadence: nothing tagged (no shader pack drawing): one group, as vanilla, without partitioning (a map and lists per
+    // feature group per frame, ~1-2% of the render thread's garbage in a busy scene)
+    if (FeatureDrawContext.untagged()) {
+      shaders$incomingTag = FeatureDrawContext.NONE;
+      original.call(type, submits, strictlyOrdered);
+      return;
+    }
     for (var group : FeatureDrawContext.partition(submits, strictlyOrdered)) {
       shaders$incomingTag = FeatureDrawContext.tag(group.getFirst());
       original.call(type, group, strictlyOrdered);

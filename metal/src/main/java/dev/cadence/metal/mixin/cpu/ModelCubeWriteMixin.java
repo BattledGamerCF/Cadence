@@ -30,6 +30,7 @@ import org.spongepowered.asm.mixin.Shadow;
 @Mixin(ModelPart.Cube.class)
 abstract class ModelCubeWriteMixin {
 	@Shadow @Final public ModelPart.Polygon[] polygons;
+	@org.spongepowered.asm.mixin.Unique private static final Vector3f CADENCE_SCRATCH = new Vector3f();
 
 	/**
 	 * @author Cadence
@@ -38,7 +39,8 @@ abstract class ModelCubeWriteMixin {
 	@Overwrite
 	public void compile(PoseStack.Pose pose, VertexConsumer builder, int lightCoords, int overlayCoords, int color) {
 		Matrix4f matrix = pose.pose();
-		Vector3f scratch = new Vector3f();
+		// (one scratch vector on the render thread: a new one per cube was ~5% of its garbage in a crowded scene)
+		Vector3f scratch = com.mojang.blaze3d.systems.RenderSystem.isOnRenderThread() ? CADENCE_SCRATCH : new Vector3f();
 		if (Cpu.modelWrite && builder instanceof BufferBuilder bb && cadence$fast((ModelBufferBuilderAccessor) bb)) {
 			ModelBufferBuilderAccessor b = (ModelBufferBuilderAccessor) bb;
 			int size = b.cadence$vertexSize();
