@@ -17,9 +17,12 @@ Faster without shaders:
 - **Up to 11% more fps outdoors**: Cadence's terrain renderer now measures, every few seconds, whether its hidden-terrain
   check is worth it in the current view, and skips it where little is hidden (open land, the ocean, high up). It keeps it
   underground and in caves, where it still pays.
-- **New Performance preset: Max FPS.** The world at half resolution (each pixel a sharp 2x2 block, like a non-Retina
-  screen; the HUD and text stay sharp), the cheapest upscale and no cooling limit. The gain is large with shaders or when
-  another app is using the GPU; without shaders on an idle Mac, terrain shape rather than pixels sets the speed.
+- **New option: Retina** (Video Settings, Cadence: Performance; takes effect at the next launch). Off, the game draws at
+  your screen's point size, a quarter of the pixels, and macOS shows each one as a sharp 2x2 block, like a non-Retina
+  Mac. Menus and the HUD keep their size (the GUI scale is halved to match). **About twice the fps without shaders and
+  three times with shaders** (M2 Air, a 1470x920 window, launches alternated: no shaders at render distance 12, 530 ->
+  1,170 fps; BSL at render distance 8, 30 -> 88 fps).
+- **New Performance preset: Max FPS**: Retina off, World Resolution 100%, the cheapest upscale and no cooling limit.
 - **Auto resolution stays at 100% without shaders**: lowering it there only added blur and the upscale's cost.
 - **Sharpening: Fast is now "sharp bilinear"**: block edges stay crisp (each texel a solid block), as cheap as before.
 - Buffer clears are skipped when everything is drawn over anyway, now without shaders too.
@@ -37,6 +40,15 @@ Looks right:
 - **Items glow and shine as the pack intends** (Complementary, Complementary Unbound, Pegasus, I Like Vanilla): held,
   dropped and framed items, worn armour and armour trims now tell the pack what they are, as Iris does. A held lava
   bucket or blaze rod glows, metal armour shines, and trims glow with the pack's Glowing Armor Trims option.
+
+Works with more mods (tested together: AppleSkin, JEI, Essential, Mod Menu, Lithium, Xaero's Minimap, Jade, Entity
+Culling, Continuity, ImmediatelyFast, Zoomify, Dynamic FPS; details in docs/COMPATIBILITY.md):
+- **Essential loads next to Cadence.** It didn't before: Cadence's startup preload ran during Fabric's pre-launch step, the
+  moment Essential sets up its own mixins, and got in its way. The preload now waits when another mod has a pre-launch step.
+- **Mod Menu**: Cadence's entry has a settings button (it opens Video Settings), and Cadence HUD and Cadence Shaders are
+  listed under Cadence, with its icon.
+- The compatibility line in Video Settings names a mod once (Dynamic FPS was listed twice, as "Dynamic FPS" and its
+  "Common" module).
 
 Fixed:
 - Choosing a pack and then Off (or another pack) quickly could leave the first pack on.

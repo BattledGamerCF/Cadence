@@ -101,6 +101,16 @@ public final class CompatLayers {
 		return List.copyOf(LAYERS.values());
 	}
 
+	/** The name players know a mod by: a module nested in another mod's jar ("Dynamic FPS · Common") goes by that mod's. */
+	private static String displayName(ModContainer mod) {
+		String name = mod.getMetadata().getName();
+		for (var outer = mod.getContainingMod(); outer.isPresent(); outer = outer.get().getContainingMod()) {
+			String outerName = outer.get().getMetadata().getName();
+			if (name.startsWith(outerName)) name = outerName;
+		}
+		return name;
+	}
+
 	/** Profile.apply, before any flag is read. Never throws: a failure leaves Cadence as it was, with a log line. */
 	public static synchronized void apply() {
 		if (ran) return;
@@ -110,7 +120,7 @@ public final class CompatLayers {
 			List<Hook> ours = new ArrayList<>(), theirs = new ArrayList<>();
 			for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
 				String id = mod.getMetadata().getId();
-				NAMES.put(id, mod.getMetadata().getName());
+				NAMES.put(id, displayName(mod));
 				if (id.startsWith("cadence")) read(mod, ours);
 				else if (!known(id)) read(mod, theirs);
 			}

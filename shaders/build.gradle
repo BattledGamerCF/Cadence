@@ -7,6 +7,14 @@ plugins {
 base.archivesName = 'cadence-shaders'
 version = '0.3.2-cadence.1'
 
+repositories {
+	// Mod Menu's API (compile only): Cadence's settings button in its mod list
+	maven {
+		url = 'https://maven.terraformersmc.com/releases/'
+		content { includeGroup 'com.terraformersmc' }
+	}
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${loader_version}"
@@ -14,6 +22,8 @@ dependencies {
 	compileOnly project(':metal')
 	// Its Indigo mixins target Fabric API's renderer when present: compile only, never bundled.
 	compileOnly "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+	// Mod Menu's settings-button API (ModMenuSettings), used only when Mod Menu is installed: compile only, never bundled.
+	compileOnly('com.terraformersmc:modmenu:21.0.0') { transitive = false }
 }
 
 processResources {

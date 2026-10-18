@@ -157,8 +157,40 @@ public final class CadenceSelfTest {
 					mc.execute(() -> LOGGER.info("[selftest] players: {} (server here: {})", mc.level == null ? "no level"
 						: mc.level.players().stream().map(p -> p.getName().getString()).toList(), mc.getSingleplayerServer() != null));
 				} else if (lower.equals("leave")) {
-					// "leave": save and quit to the title screen (what's left in memory after a world is the next steps' business)
-					mc.execute(mc::disconnectWithSavingScreen);
+					// "leave": save and quit to the title screen, as the pause menu's button does (what's left in memory after a
+					// world is the next steps' business)
+					mc.execute(() -> mc.disconnectFromWorld(net.minecraft.client.multiplayer.ClientLevel.DEFAULT_QUIT_MESSAGE));
+				} else if (lower.startsWith("key=")) {
+					// "key=NAME:down|up": the key binding named NAME (or else the first whose name contains it; for example
+					// "zoomify.key.zoom") held or let go, as if its key were (other mods' key bindings in compatibility tests)
+					String[] k = lower.substring(4).split(":");
+					boolean down = k.length < 2 || k[1].equals("down");
+					mc.execute(() -> {
+						net.minecraft.client.KeyMapping found = null;
+						for (var mapping : mc.options.keyMappings) {
+							String name = mapping.getName().toLowerCase(java.util.Locale.ROOT);
+							if (name.equals(k[0])) { found = mapping; break; }
+							if (found == null && name.contains(k[0])) found = mapping;
+						}
+						if (found == null) { LOGGER.info("[selftest] key {}: no such key binding", k[0]); return; }
+						found.setDown(down);
+						LOGGER.info("[selftest] key {} {}", found.getName(), down ? "down" : "up");
+					});
+				} else if (lower.startsWith("modmenu=")) {
+					// "modmenu=MODID": the screen Mod Menu's settings button opens for that mod (through Mod Menu's own lookup), or
+					// "none" in the log when it has none
+					String id = lower.substring(8);
+					mc.execute(() -> {
+						try {
+							Class<?> modMenu = Class.forName("com.terraformersmc.modmenu.ModMenu");
+							Object screen = modMenu.getMethod("getConfigScreen", String.class, net.minecraft.client.gui.screens.Screen.class)
+								.invoke(null, id, mc.gui.screen());
+							LOGGER.info("[selftest] modmenu {}: {}", id, screen == null ? "none" : screen.getClass().getSimpleName());
+							if (screen != null) mc.gui.setScreen((net.minecraft.client.gui.screens.Screen) screen);
+						} catch (ReflectiveOperationException e) {
+							LOGGER.info("[selftest] modmenu {}: no Mod Menu ({})", id, e.toString());
+						}
+					});
 				} else if (lower.equals("packcheck")) {
 					// "packcheck": Video Settings opened (the game pauses), then the pack check runs; the next steps wait it out
 					mc.execute(() -> {
@@ -179,6 +211,8 @@ public final class CadenceSelfTest {
 						int n = Integer.parseInt(lower.substring(17));
 						mc.execute(() -> PackSettingsScreen.pressOption(mc.gui.screen(), n));
 					} else if (lower.endsWith("packclose")) mc.execute(() -> mc.gui.screen().onClose());
+					else if (lower.endsWith("pause")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.PauseScreen(true)));
+					else if (lower.endsWith("inventory")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player)));
 					else if (lower.endsWith("offer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(null)));
 					else if (lower.endsWith("goal")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.goal(null)));
 					else if (lower.endsWith("setupmax")) {

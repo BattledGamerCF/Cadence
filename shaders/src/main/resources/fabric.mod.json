@@ -16,11 +16,20 @@
     "issues": "https://github.com/BattledGamerCF/Cadence/issues"
   },
   "description": "Runs shader packs (such as BSL) on Cadence's native Metal renderer. Based on the Shader Loader from minecraft-metal-renderer by Kausik Velaga (MIT).",
+  "icon": "assets/cadence_shaders/icon.png",
+  "custom": {
+    "modmenu": {
+      "parent": "cadence"
+    }
+  },
   "environment": "client",
   "entrypoints": {
     "client": [
       "dev.cadence.shaders.ShaderLoaderMod",
       "dev.cadence.sceneoptimizer.SceneOptimizerMod"
+    ],
+    "modmenu": [
+      "dev.cadence.shaders.cadence.ModMenuSettings"
     ]
   },
   "mixins": [

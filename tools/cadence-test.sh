@@ -6,7 +6,7 @@
 # starts tools/cadence-guard.sh, runs the game from metal/run joining the world "tester", then copies the log and
 # screenshots into metal/run/results/<time>/ and prints the [selftest]/[probe]/GUARD lines.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RUN=$ROOT/metal/run
+RUN=${CADENCE_RUN:-$ROOT/metal/run}  # CADENCE_RUN=dir: another game folder (mod compatibility runs: metal/run-compat)
 JAVA="${JAVA:-$(/usr/libexec/java_home -v 25 2>/dev/null)/bin/java}"
 PLAN="$1"; SETTLE="${2:-30}"; HEAP="${3:-1280}"; MAXMIN="${4:-12}"; WAITH="${5:-4}"
 ts() { date '+%H:%M:%S'; }
@@ -55,7 +55,7 @@ sleep 3
 # (--checksum: a world file the run rewrote can keep its size and time; quick-check rsync left those behind)
 # default: metal/run/world-snapshots/tester (a clean copy of the world, kept outside temp folders that get cleaned up);
 # CADENCE_WORLD_SNAPSHOT=none keeps whatever the world is now
-[ -z "$CADENCE_WORLD_SNAPSHOT" ] && [ -d "$RUN/world-snapshots/tester" ] && CADENCE_WORLD_SNAPSHOT="$RUN/world-snapshots/tester"
+[ -z "$CADENCE_WORLD_SNAPSHOT" ] && [ -d "$ROOT/metal/run/world-snapshots/tester" ] && CADENCE_WORLD_SNAPSHOT="$ROOT/metal/run/world-snapshots/tester"
 [ "$CADENCE_WORLD_SNAPSHOT" = none ] && CADENCE_WORLD_SNAPSHOT=
 if [ -n "$CADENCE_WORLD_SNAPSHOT" ] && [ ! -d "$CADENCE_WORLD_SNAPSHOT" ]; then echo "$(ts) NOT STARTED: world snapshot $CADENCE_WORLD_SNAPSHOT is missing"; exit 7; fi
 if [ -n "$CADENCE_WORLD_SNAPSHOT" ]; then rsync -a --checksum --delete "$CADENCE_WORLD_SNAPSHOT/" "$RUN/saves/tester/" && echo "$(ts) world restored from snapshot"; fi
@@ -67,7 +67,7 @@ rm -f "$RUN/screenshots/selftest-"*.png
 echo "$(ts) START window=${CADENCE_W:-960}x${CADENCE_H:-540} rd=${CADENCE_RD:-6} coexist=$COEXIST extra=[$CADENCE_EXTRA_JVM] plan=$PLAN settle=$SETTLE heap=${HEAP}M limit=${MAXMIN}min free=${f}%"
 # the dev run loads the shaders module from run/mods: always the jar just built
 J=$(ls -t "$ROOT"/shaders/build/libs/cadence-shaders-*.jar 2>/dev/null | grep -v sources | head -1)
-[ -n "$J" ] && [ "$J" -nt "$RUN/mods/cadence-shaders.jar" ] && cp "$J" "$RUN/mods/cadence-shaders.jar" && echo "$(ts) mods/cadence-shaders.jar updated from $(basename "$J")"
+[ -z "$CADENCE_CLASSPATH" ] && [ -n "$J" ] && [ "$J" -nt "$RUN/mods/cadence-shaders.jar" ] && cp "$J" "$RUN/mods/cadence-shaders.jar" && echo "$(ts) mods/cadence-shaders.jar updated from $(basename "$J")"
 cd "$RUN"
 # the shader config as it was: restored after the run even if the game crashes (the self-test restores it only on a clean exit)
 CFG_BACKUP=$(mktemp); cp config/cadence-shaders.properties "$CFG_BACKUP" 2>/dev/null
@@ -86,10 +86,10 @@ sed -i '' -E "s/^enableVsync:(true|false)$/enableVsync:${CADENCE_VSYNC:-false}/"
 # would hold every measurement at ~15 fps and freeze the GPU reading
 # CADENCE_ENV: extra environment for the game only (e.g. MallocStackLogging=lite for malloc_history)
 nice -n 5 env ${CADENCE_ENV} "$JAVA" -XstartOnFirstThread -Xms256m -Xmx${HEAP}m ${CADENCE_GC:--XX:+UseG1GC} --enable-native-access=ALL-UNNAMED \
-  -Dfabric.dli.config=$ROOT/.gradle/loom-cache/projects/metal/launch.cfg -Dfabric.dli.env=client \
+  -Dfabric.dli.config=${CADENCE_DLI_CONFIG:-$ROOT/.gradle/loom-cache/projects/metal/launch.cfg} -Dfabric.dli.env=client \
   -Dfabric.dli.main=net.fabricmc.loader.impl.launch.knot.KnotClient \
   -Dcadence.selftest="$PLAN" -Dcadence.selftest.settle=$SETTLE -Dcadence.backgroundFps=false $CADENCE_EXTRA_JVM \
-  -cp "$(cat $ROOT/metal/build/cadence-run/classpath.txt)" net.fabricmc.devlaunchinjector.Main \
+  -cp "$(cat ${CADENCE_CLASSPATH:-$ROOT/metal/build/cadence-run/classpath.txt})" net.fabricmc.devlaunchinjector.Main \
   --width ${CADENCE_W:-960} --height ${CADENCE_H:-540} --quickPlaySingleplayer tester --username CadenceTest > "$OUT/stdout.log" 2>&1 &
 GPID=$!
 sleep 3

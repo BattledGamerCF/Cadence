@@ -32,6 +32,39 @@ public final class Preload implements PreLaunchEntrypoint {
 	public void onPreLaunch() {
 		PlatformCheck.run();
 		if (!ENABLED) return;
+		// Cadence: another mod's pre-launch step may still add mixin configs (Essential's loader does, and needs MixinExtras not
+		// yet initialized): classes loaded now would apply mixins, MixinExtras' included, before it runs, and do so on other
+		// threads while it selects its configs ("The MixinExtras service has already been selected", "Attempted to pop plugin
+		// but the stack is empty": Essential didn't load). With such a mod present the preload waits for the client entrypoint,
+		// after every pre-launch step (PreloadLater).
+		if (otherPreLaunch()) {
+			deferred = true;
+			return;
+		}
+		start();
+	}
+
+	private static volatile boolean deferred;
+
+	/** PreloadLater (client entrypoint): the deferred preload, once every mod's pre-launch step is done. */
+	static void startDeferred() {
+		if (deferred) {
+			deferred = false;
+			start();
+		}
+	}
+
+	private static boolean otherPreLaunch() {
+		try {
+			for (var c : net.fabricmc.loader.api.FabricLoader.getInstance().getEntrypointContainers("preLaunch", PreLaunchEntrypoint.class))
+				if (!c.getProvider().getMetadata().getId().equals("cadence")) return true;
+		} catch (RuntimeException e) {
+			return true;  // (unknown: the safe side)
+		}
+		return false;
+	}
+
+	private static void start() {
 		List<String> names = new ArrayList<>();
 		try (InputStream in = Preload.class.getResourceAsStream("/cadence/metal/preload.txt.gz")) {
 			if (in == null) return;

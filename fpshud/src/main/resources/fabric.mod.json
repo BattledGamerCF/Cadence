@@ -5,6 +5,8 @@
 	"name": "Cadence HUD",
 	"description": "Shows the frame rate in the top-left corner. Part of Cadence, a fork of mcopt by Noah Dunnagan.",
 	"license": "Apache-2.0",
+	"icon": "assets/cadence_hud/icon.png",
+	"custom": { "modmenu": { "parent": "cadence" } },
 	"authors": ["Cadence authors"],
 	"contributors": ["Noah Dunnagan (mcopt)"],
 	"contact": { "homepage": "https://github.com/BattledGamerCF/Cadence", "sources": "https://github.com/BattledGamerCF/Cadence", "issues": "https://github.com/BattledGamerCF/Cadence/issues" },
