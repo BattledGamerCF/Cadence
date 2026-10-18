@@ -19,11 +19,9 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 
 /**
- * Cadence: the "Shaders" row in Video Settings. One button cycles Off -> each pack in shaderpacks/ (ZIPs and folders) and
- * saves the choice to config/cadence-shaders.properties (other keys there are kept); a second opens shaderpacks/.
- *
- * <p>A change applies on the next launch: a selected pack changes every chunk mesh's vertex layout and Cadence's terrain
- * hand-off at startup (CadencePackGate, dev.cadence.metal.Profile), so it can't be swapped in a running game. The button says so.
+ * Cadence: the shader settings behind Video Settings: the chosen pack (saved to config/cadence-shaders.properties, other keys
+ * there kept; picked in ShaderPacksScreen and switched live by ShaderSwitcher), each pack's quality profile, World
+ * Resolution, Sharpening, Retina and Shadow Updates.
  */
 public final class ShaderToggle {
 	private static final String OFF = "";
@@ -58,9 +56,9 @@ public final class ShaderToggle {
 		return p;
 	}
 
-	/** The pack picked in Video Settings (not applied yet), or else the saved one; "" for off (Shader Pack Settings). */
+	/** The pack chosen in Shader Packs (saved, maybe still turning on); "" for off. */
 	public static String selectedPack() {
-		return pending != null ? pending : saved();
+		return saved();
 	}
 
 	public static Path packsDirectory() {
@@ -124,8 +122,8 @@ public final class ShaderToggle {
 		try {
 			Files.createDirectories(cfg.getParent());
 			try (Writer w = Files.newBufferedWriter(cfg, StandardCharsets.UTF_8)) {
-				p.store(w, "Cadence shaders (Video Settings, Cadence: Shaders). pack= empty is off. liveSwitching=false: Cadence's faster terrain when"
-					+ " shaders are off at launch, but turning them on then needs a restart.");
+				p.store(w, "Cadence (Video Settings > Shaders...). pack= empty is off. shaderSwitching=restart: packs turn on only after a"
+					+ " restart (the default switches them live).");
 			}
 		} catch (IOException e) {
 			System.out.println("[cadence-shaders] can't save " + cfg + ": " + e);
@@ -139,65 +137,26 @@ public final class ShaderToggle {
 		return name.replace('_', ' ');
 	}
 
-	/** The choice shown on the button; applied when Video Settings closes (applyPending), so clicking through packs is free. */
-	private static String pending;
-
-	private static Component label(String pack) {
-		Component base = Component.literal("Shaders: " + display(pack));
-		if (CadencePackGate.hooksApplied()) {
-			if (pack.equals(ShaderSwitcher.target())) return base;
-			return base.copy().append(Component.literal("  (on close)").withStyle(ChatFormatting.YELLOW));
-		}
-		if (pack.isEmpty()) return base;
-		return base.copy().append(Component.literal("  (restart)").withStyle(ChatFormatting.YELLOW));
+	/**
+	 * Shader Packs: {@code pack} chosen ("" for off). Saved, and switched to right away when this launch can switch live;
+	 * otherwise (Shader Switching set to Restart in the config) it turns on at the next launch.
+	 */
+	public static void choose(String pack) {
+		save(pack);
+		if (CadencePackGate.hooksApplied()) ShaderSwitcher.apply(pack);
 	}
 
-	private static final Tooltip TOOLTIP = Tips.of("Realistic light, shadows and water, at a cost in speed.",
-		"#Click to pick a pack or Off; it switches when you leave this screen.",
-		"#Add packs: put their .zip files in the Shader Packs folder.");
-	private static final Tooltip TOOLTIP_RESTART = Tips.of("Click to pick a pack or Off.",
-		"#It turns on after a restart (Shader Switching is set to Restart in your config).");
-
-	/** Video Settings closed: switch to the chosen pack now (live), if it differs from the one in use. */
-	public static void applyPending() {
-		String chosen = pending;
-		boolean profileChanged = pendingProfile != null && !pendingProfile.equals(profileAtOpen);
-		pending = null;
-		pendingProfile = null;
-		if (chosen != null && !CadencePackGate.hooksApplied() && !chosen.isEmpty() && !chosen.equals(CadencePackGate.selectedPack()))
-			dev.cadence.shaders.cadence.system.Notices.post("Restart Minecraft to turn on " + display(chosen),
-				"This session started without shaders and uses Cadence's faster terrain.");
-		if (chosen == null || !CadencePackGate.hooksApplied()) return;
-		if (!chosen.equals(ShaderSwitcher.target())) ShaderSwitcher.apply(chosen);
-		else if (profileChanged && !chosen.isEmpty()) ShaderSwitcher.reload(); // same pack, new quality: reload it
-	}
-
-	/** The pack button. */
-	public static Button packButton() {
-		pending = CadencePackGate.hooksApplied() ? ShaderSwitcher.target() : saved();
-		Button[] self = new Button[1];
+	/** Video Settings' Shaders button: the pack in use, and the Shader Packs list behind it. */
+	public static Button packsButton(net.minecraft.client.gui.screens.Screen parent) {
+		String pack = CadencePackGate.hooksApplied() ? ShaderSwitcher.target() : saved();
 		boolean none = choices().size() <= 1;
-		self[0] = Button.builder(none ? NONE_LABEL : label(pending), b -> {
-			List<String> list = choices();
-			if (list.size() <= 1) {
-				// no packs installed: nothing to cycle through, so say so and open the folder they go in
-				openPacksFolder();
-				self[0].setMessage(NONE_LABEL);
-				return;
-			}
-			int i = list.indexOf(pending);
-			pending = list.get((i + 1) % list.size());
-			save(pending);
-			self[0].setMessage(label(pending));
-			self[0].setTooltip(CadencePackGate.hooksApplied() ? TOOLTIP : TOOLTIP_RESTART);
-		}).width(Button.DEFAULT_WIDTH).tooltip(none ? TOOLTIP_NONE
-			: CadencePackGate.hooksApplied() ? TOOLTIP : TOOLTIP_RESTART).build();
-		return self[0];
+		Component label = Component.literal("Shaders: " + (none && pack.isEmpty() ? "Add Packs" : display(pack)) + "...");
+		return Button.builder(label, b -> net.minecraft.client.Minecraft.getInstance().gui.setScreen(new ShaderPacksScreen(parent)))
+			.width(Button.DEFAULT_WIDTH)
+			.tooltip(none ? Tips.of("No shader packs installed yet.",
+					"#Open this, then drop a pack's .zip file on the window (BSL, Complementary...), or put it in the folder.")
+				: Tips.of("Realistic light, shadows and water, at a cost in speed.", "#Pick a pack or Off from the list.")).build();
 	}
-
-	private static final Component NONE_LABEL = Component.literal("Shaders: None Installed").withStyle(ChatFormatting.GRAY);
-	private static final Tooltip TOOLTIP_NONE = Tips.of("No shader packs installed yet.",
-		"#Click to open the shaderpacks folder, put a pack's .zip in it (BSL, Complementary...), then pick it here.");
 
 	/** Opens shaderpacks/ in Finder, creating it if missing. */
 	static void openPacksFolder() {
@@ -209,53 +168,6 @@ public final class ShaderToggle {
 			System.out.println("[cadence-shaders] can't open " + dir + ": " + e);
 		}
 	}
-
-	/** The saved shader-switching mode: auto (default), instant or restart (old liveSwitching=false: restart). */
-	private static String switchingSaved() {
-		Properties p = load();
-		String m = p.getProperty("shaderSwitching");
-		if (m == null) return "false".equalsIgnoreCase(p.getProperty("liveSwitching", "true").strip()) ? "restart" : "auto";
-		m = m.strip().toLowerCase(Locale.ROOT);
-		return m.equals("instant") || m.equals("restart") ? m : "auto";
-	}
-
-	private static Component liveLabel(String mode) {
-		String word = switch (mode) {
-			case "instant" -> "Instant";
-			case "restart" -> "Restart";
-			default -> "Auto";
-		};
-		Component base = Component.literal("Shader Switching: " + word);
-		boolean live = dev.cadence.metal.Profile.liveSwitching(mode, null, !saved().isEmpty());
-		if (live == CadencePackGate.liveSwitchingAtLaunch()) return base;
-		return base.copy().append(Component.literal("  (restart)").withStyle(ChatFormatting.YELLOW));
-	}
-
-	/**
-	 * Auto (default): a game started without shaders uses Cadence's own, faster terrain (30-70% more fps measured), and
-	 * turning shaders on then needs a restart; started with a pack, packs switch instantly. Instant: always switchable, never
-	 * the faster terrain. Restart: the faster terrain whenever shaders are off at launch, and no instant switching.
-	 */
-	public static Button liveButton() {
-		String[] mode = {switchingSaved()};
-		Button[] self = new Button[1];
-		self[0] = Button.builder(liveLabel(mode[0]), b -> {
-			mode[0] = switch (mode[0]) {
-				case "auto" -> "instant";
-				case "instant" -> "restart";
-				default -> "auto";
-			};
-			saveKey("shaderSwitching", mode[0]);
-			self[0].setMessage(liveLabel(mode[0]));
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("When a chosen shader pack turns on.",
-			"Auto|right away, and Cadence's faster terrain returns when shaders are off",
-			"Restart|only after a restart")).build();
-		return self[0];
-	}
-
-	/** The quality profile shown on the button; "" = the pack's own default. Applied with the pack when the screen closes. */
-	private static String pendingProfile;
-	private static String profileAtOpen;
 
 	/** The profiles a pack defines (profile.NAME= in shaders/shaders.properties), in file order. */
 	static List<String> profiles(String pack) {
@@ -290,35 +202,6 @@ public final class ShaderToggle {
 			// no profiles to offer
 		}
 		return out;
-	}
-
-	private static Component profileLabel(String profile) {
-		return Component.literal("Shader Profile: " + (profile.isEmpty() ? "Default" : profile.charAt(0)
-			+ profile.substring(1).toLowerCase(Locale.ROOT).replace('_', ' ')));
-	}
-
-	/** Cycles the selected pack's quality profiles (pack default first). Applied, with a live reload, when the screen closes. */
-	public static Button qualityButton() {
-		profileAtOpen = profileFor(selectedPack());
-		if (!profileAtOpen.isEmpty() && !profiles(selectedPack()).contains(profileAtOpen)) profileAtOpen = "";  // (not this pack's)
-		pendingProfile = profileAtOpen;
-		Button[] self = new Button[1];
-		self[0] = Button.builder(profileLabel(pendingProfile), b -> {
-			String pack = pending != null ? pending : saved();
-			List<String> list = new ArrayList<>();
-			list.add("");
-			list.addAll(profiles(pack));
-			// (the pack may have changed since the screen opened: start from that pack's own profile)
-			String now = profileFor(pack);
-			int i = list.indexOf(list.contains(pendingProfile) ? pendingProfile : now);
-			pendingProfile = list.get((i + 1) % list.size());
-			saveProfile(pack, pendingProfile);
-			self[0].setMessage(profileLabel(pendingProfile));
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The pack's own quality presets.",
-			"Lower|much faster: simpler shadows and lighting",
-			"Higher|nicer, slower",
-			"#Applies when you leave this screen.")).build();
-		return self[0];
 	}
 
 	private static final float[] SCALES = {1.0f, 0.85f, 0.75f, 0.67f, 0.5f};
@@ -423,18 +306,5 @@ public final class ShaderToggle {
 			case RenderScale.UPSCALE_FAST -> "Fast";
 			default -> "Apple";
 		});
-	}
-
-	/** Opens shaderpacks/ in Finder (created if missing). */
-	public static Button folderButton() {
-		return Button.builder(Component.literal("Shader Packs Folder..."), b -> {
-			Path dir = packsDir();
-			try {
-				Files.createDirectories(dir);
-				new ProcessBuilder("open", dir.toAbsolutePath().toString()).start();
-			} catch (IOException e) {
-				System.out.println("[cadence-shaders] can't open " + dir + ": " + e);
-			}
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Opens the shaderpacks folder in Finder.")).build();
 	}
 }

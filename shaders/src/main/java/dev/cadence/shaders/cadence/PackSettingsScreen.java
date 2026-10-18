@@ -112,7 +112,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		if (this.top) {
 			int wrap = Math.max(120, Math.min(this.list.getRowWidth(), this.width - 24));
 			for (Component line : CadenceSettings.wrap(Component.literal(
-				"Click for the next value, shift-click for the previous. Changes apply when you leave.").withStyle(ChatFormatting.GRAY), wrap, this.font))
+				"Click: next value · Shift-click: previous · Apply to see it").withStyle(ChatFormatting.GRAY), wrap, this.font))
 				this.list.addHeader(line);
 		}
 		String layout = this.session.props.get(this.screenKey);
@@ -155,17 +155,22 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		else this.list.addSmall(left, right);
 	}
 
-	/** Bottom row: Reset to Defaults (first page only) and Done, as vanilla's option screens. */
+	/** Bottom row: Reset to Defaults (first page only), Apply (the pack reloads now, the screen stays) and Done. */
 	@Override
 	protected void addFooter() {
 		var row = this.layout.addToFooter(net.minecraft.client.gui.layouts.LinearLayout.horizontal().spacing(8));
+		int w = this.top ? 120 : 150;
 		if (this.top) row.addChild(Button.builder(Component.literal("Reset to Defaults"), b -> {
 			this.session.own.clear();
 			this.session.profile = "";
 			this.session.changed();
 			this.rebuildWidgets();
-		}).width(150).tooltip(Tooltip.create(Component.literal("Every option back to the pack author's defaults, and no profile."))).build());
-		row.addChild(Button.builder(net.minecraft.network.chat.CommonComponents.GUI_DONE, b -> this.onClose()).width(150).build());
+		}).width(w).tooltip(Tooltip.create(Component.literal("Every option back to the pack author's defaults, and no profile."))).build());
+		row.addChild(Button.builder(Component.literal("Apply"), b -> {
+			if (this.session.changed) this.apply();
+		}).width(w).tooltip(Tips.of("Saves these settings and reloads the pack now, so you can see them.",
+			"#Done does the same as you leave.")).build());
+		row.addChild(Button.builder(net.minecraft.network.chat.CommonComponents.GUI_DONE, b -> this.onClose()).width(w).build());
 	}
 
 	private AbstractWidget pageButton(String page) {
@@ -330,6 +335,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 
 	/** Saves the pack's own settings and its profile, and reloads the pack if it is the one running. */
 	private void apply() {
+		this.session.changed = false;
 		Path file = ShaderToggle.packsDirectory().resolve(Path.of(this.session.packName).getFileName().toString() + ".txt");
 		try {
 			if (this.session.own.isEmpty()) Files.deleteIfExists(file);

@@ -202,6 +202,8 @@ public final class CadenceSelfTest {
 					// "screen=video": open Video Settings (its screenshot shows the Cadence rows); "screen=close": close it
 					boolean open = lower.endsWith("video");
 					if (lower.endsWith("packsettings")) mc.execute(() -> mc.gui.setScreen(PackSettingsScreen.open(null)));
+					else if (lower.endsWith("=packs")) mc.execute(() -> mc.gui.setScreen(new ShaderPacksScreen(
+						new net.minecraft.client.gui.screens.options.VideoSettingsScreen(null, mc, mc.options))));
 					else if (lower.startsWith("screen=packpage:")) {
 						// "screen=packpage:N": the open settings page's Nth page button (1 = first) pressed
 						int n = Integer.parseInt(lower.substring(16));
@@ -224,6 +226,14 @@ public final class CadenceSelfTest {
 						mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.results(r, null)));
 					} else mc.execute(() -> mc.gui.setScreen(open
 						? new net.minecraft.client.gui.screens.options.VideoSettingsScreen(null, mc, mc.options) : null));
+				} else if (lower.startsWith("packpick=")) {
+					// "packpick=NAME": in the open Shader Packs list, the first pack whose name starts with NAME ("off" for Off) clicked
+					String name = lower.substring(9);
+					mc.execute(() -> LOGGER.info("[selftest] packpick {}: {}", name, ShaderPacksScreen.pick(mc.gui.screen(), name)));
+				} else if (lower.startsWith("drop=")) {
+					// "drop=PATH": PATH dropped on the open screen's window, as Finder would (a path relative to the game folder)
+					java.nio.file.Path path = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir().resolve(step.substring(5));
+					mc.execute(() -> { if (mc.gui.screen() != null) mc.gui.screen().onFilesDrop(java.util.List.of(path)); });
 				} else if (lower.startsWith("guiscale=")) {
 					// "guiscale=N": GUI Scale N (0 = Auto), the window re-laid out as the option does
 					int n = Integer.parseInt(lower.substring(9));

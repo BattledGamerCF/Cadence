@@ -97,6 +97,13 @@ public final class CompatLayers {
 		return summary;
 	}
 
+	/** The other mods Cadence makes room for (a step aside or a report), by name, for the settings screen. */
+	public static synchronized List<String> mods() {
+		Set<String> mods = new LinkedHashSet<>();
+		for (Layer l : LAYERS.values()) mods.addAll(l.mods);
+		return List.copyOf(mods);
+	}
+
 	public static synchronized List<Layer> layers() {
 		return List.copyOf(LAYERS.values());
 	}

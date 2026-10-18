@@ -252,7 +252,7 @@ public final class CadenceSettings {
 			? dev.cadence.shaders.cadence.system.BackgroundFps.FPS + " fps" : "Normal"));
 	}
 
-	/** Check Pack for Speed-ups (PackCheck): the label says what is known about the pack in use. */
+	/** Faster Shadows (PackCheck): the label says what is known about the pack in use; a click tests it when that's unknown. */
 	public static Button packCheckButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(packCheckLabel(), b -> {
@@ -260,27 +260,30 @@ public final class CadenceSettings {
 			if (dev.cadence.shaders.runtime.ShaderRuntime.get() == null) return;
 			dev.cadence.shaders.cadence.packcheck.PackCheck.start(CadenceSettings::refreshAll);
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Tests if this pack can use Cadence's faster shadows (often 10-25% more fps).",
-			"#Compares the picture with it on and off; keeps it only if identical.",
-			"#About 10 seconds, game paused. Needs the pack on in a world.")).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Shaders only: Cadence's faster shadow drawing (often 10-25% more fps).",
+			"On|this pack uses it",
+			"Test|click to check whether this pack can: the picture is compared with it on and off, and it's kept only if identical"
+				+ " (about 10 seconds, game paused)",
+			"Not Safe|this pack's picture changes with it, so it stays off",
+			"#Needs a shader pack on, in a world.")).build();
 		onRefresh(() -> self[0].setMessage(packCheckLabel()));
 		return self[0];
 	}
 
 	private static Component packCheckLabel() {
 		if (dev.cadence.shaders.cadence.packcheck.PackCheck.running())
-			return Component.literal("Checking pack...").withStyle(ChatFormatting.YELLOW);
+			return Component.literal("Faster Shadows: Testing").withStyle(ChatFormatting.YELLOW);
 		var runtime = dev.cadence.shaders.runtime.ShaderRuntime.get();
 		if (runtime == null || runtime.programs() == null)
-			return Component.literal(net.minecraft.client.Minecraft.getInstance().level == null ? "Pack Speed-ups: No World" : "Pack Speed-ups: No Pack")
+			return Component.literal(net.minecraft.client.Minecraft.getInstance().level == null ? "Faster Shadows: No World" : "Faster Shadows: No Pack")
 				.withStyle(ChatFormatting.GRAY);
-		if (runtime.programs().shadowCullingEligibility.eligible()) return Component.literal("Pack Speed-ups: Built In");
+		if (runtime.programs().shadowCullingEligibility.eligible()) return Component.literal("Faster Shadows: On");
 		var saved = dev.cadence.shaders.cadence.packcheck.PackCheck.savedResult();
-		if (saved == null) return Component.literal("Pack Speed-ups: Check Now");
+		if (saved == null) return Component.literal("Faster Shadows: Test");
 		return switch (saved) {
-			case SAFE -> Component.literal("Pack Speed-ups: On (checked)").withStyle(ChatFormatting.GREEN);
-			case UNSAFE -> Component.literal("Pack Speed-ups: Not Safe").withStyle(ChatFormatting.GRAY);
-			case INCONCLUSIVE -> Component.literal("Pack Speed-ups: Can't Tell").withStyle(ChatFormatting.GRAY);
+			case SAFE -> Component.literal("Faster Shadows: On").withStyle(ChatFormatting.GREEN);
+			case UNSAFE -> Component.literal("Faster Shadows: Not Safe").withStyle(ChatFormatting.GRAY);
+			case INCONCLUSIVE -> Component.literal("Faster Shadows: Unsure").withStyle(ChatFormatting.GRAY);
 		};
 	}
 
@@ -315,23 +318,18 @@ public final class CadenceSettings {
 	/** What Cadence is changing on its own right now, one short line each (a gray "nothing" line when nothing). */
 	public static List<Component> status() {
 		List<Component> lines = new ArrayList<>();
-		// always one line: Cadence tunes the game on its own by default, and says so
+		// always one short line: Cadence tunes the game on its own by default, and says so (each button shows its own setting)
 		List<String> auto = new ArrayList<>();
-		if (RenderScale.isAuto()) auto.add("Auto resolution");
-		if (HeatControl.enabled()) auto.add("Cooling " + HeatControl.cooling().label);
+		if (RenderScale.isAuto()) auto.add("resolution");
+		if (HeatControl.enabled()) auto.add("cooling");
 		if (dev.cadence.shaders.cadence.system.BackgroundFps.enabled()) auto.add("background fps");
-		String mac = ShaderToggle.configValue("setupMac", "");
-		if (!mac.isEmpty()) auto.add("set up for " + mac);
-		lines.add(Component.literal(auto.isEmpty() ? "Cadence: automatic tuning off (your settings as set)"
-			: "Cadence tunes automatically: " + String.join(" · ", auto)).withStyle(ChatFormatting.GREEN));
-		if (RenderScale.isAuto() && RenderScale.get() < 0.995f)
-			lines.add(Component.literal("Auto: world drawn at " + Math.round(RenderScale.get() * 100) + "% to keep it smooth")
-				.withStyle(ChatFormatting.GRAY));
+		lines.add(auto.isEmpty() ? Component.literal("Automatic tuning off: your settings as set").withStyle(ChatFormatting.GRAY)
+			: Component.literal("Tuned automatically: " + String.join(" · ", auto)).withStyle(ChatFormatting.GREEN));
 		if (HeatControl.level() > 0) lines.add(Component.literal(HeatControl.shortDescribe()).withStyle(ChatFormatting.YELLOW));
 		if (MemoryGuard.level() > 0) lines.add(Component.literal(MemoryGuard.shortDescribe()).withStyle(ChatFormatting.YELLOW));
-		// other mods that hook what Cadence replaces: those areas run vanilla's code for them (CompatLayers)
-		String compat = dev.cadence.metal.compat.CompatLayers.summary();
-		if (!compat.isEmpty()) lines.add(Component.literal(compat).withStyle(ChatFormatting.AQUA));
+		// other mods that hook what Cadence replaces: those areas run vanilla's code for them (CompatLayers; the log has the detail)
+		List<String> mods = dev.cadence.metal.compat.CompatLayers.mods();
+		if (!mods.isEmpty()) lines.add(Component.literal("Works alongside: " + String.join(" · ", mods)).withStyle(ChatFormatting.AQUA));
 		return lines;
 	}
 }

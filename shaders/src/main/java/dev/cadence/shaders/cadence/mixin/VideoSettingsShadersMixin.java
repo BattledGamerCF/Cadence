@@ -41,19 +41,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 					if (child instanceof net.minecraft.client.gui.components.AbstractWidget w) statusRows.add(w);
 		dev.cadence.shaders.cadence.CadenceSettings.statusRows(statusRows, wrap, this.font);
 		Screen self = this;
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.presetButton(),
-			net.minecraft.client.gui.components.Button.builder(Component.literal("Quick Setup..."),
-				b -> this.minecraft.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(self)))
-			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
-			.tooltip(dev.cadence.shaders.cadence.Tips.of("Tests your Mac (about 15 seconds) and recommends settings.",
-				"#Nothing changes until you press Apply."))
-			.build());
-		this.list.addHeader(Component.literal("Cadence: Performance"));
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.backgroundButton());
-		this.list.addSmall(ShaderToggle.scaleButton(), ShaderToggle.upscalerButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.leavesButton(), dev.cadence.shaders.cadence.CadenceSettings.messagesButton());
-		this.list.addSmall(java.util.List.of(ShaderToggle.retinaButton()));
-		this.list.addHeader(Component.literal("Cadence: Shaders"));
+		// shaders first: the pack in use (the list behind it) and its settings
 		net.minecraft.client.gui.components.Button settings = net.minecraft.client.gui.components.Button.builder(
 				Component.literal("Shader Pack Settings..."), b -> {
 					Screen next = dev.cadence.shaders.cadence.PackSettingsScreen.open(self);
@@ -62,20 +50,45 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 						"Its files couldn't be read (see the log). The pack itself may still work.");
 				})
 			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
-			.tooltip(dev.cadence.shaders.cadence.Tips.of("The chosen pack's own options (sun, clouds, water, shadows...), on its own pages.",
-				"#Changes apply when you leave."))
+			.tooltip(dev.cadence.shaders.cadence.Tips.of("The chosen pack's own options (sun, clouds, water, shadows...), on its own pages."))
 			.build();
 		settings.active = !ShaderToggle.selectedPack().isEmpty();
 		if (!settings.active) settings.setTooltip(dev.cadence.shaders.cadence.Tips.of("Pick a shader pack first (the Shaders button)."));
-		this.list.addSmall(ShaderToggle.packButton(), settings);
-		this.list.addSmall(ShaderToggle.qualityButton(), ShaderToggle.shadowRateButton());
-		// (Shader Switching is gone from the menu: packs switch in game and Cadence's faster terrain returns when they're off)
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.packCheckButton(), ShaderToggle.folderButton());
+		this.list.addSmall(ShaderToggle.packsButton(self), settings);
+		String mac = ShaderToggle.configValue("setupMac", "");
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.presetButton(),
+			net.minecraft.client.gui.components.Button.builder(Component.literal("Quick Setup..."),
+				b -> this.minecraft.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(self)))
+			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
+			.tooltip(dev.cadence.shaders.cadence.Tips.of("Tests your Mac (about 15 seconds) and recommends settings.",
+				"#Nothing changes until you press Apply." + (mac.isEmpty() ? "" : " Last set up for: " + mac + ".")))
+			.build());
+		this.list.addHeader(Component.literal("Cadence: Performance"));
+		this.list.addSmall(ShaderToggle.scaleButton(), ShaderToggle.upscalerButton());
+		this.list.addSmall(ShaderToggle.retinaButton(), dev.cadence.shaders.cadence.CadenceSettings.leavesButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.backgroundButton());
+		this.list.addSmall(java.util.List.of(dev.cadence.shaders.cadence.CadenceSettings.messagesButton()));
+		this.list.addHeader(Component.literal("Cadence: Shader Speed"));
+		this.list.addSmall(ShaderToggle.shadowRateButton(), dev.cadence.shaders.cadence.CadenceSettings.packCheckButton());
+	}
+
+	/**
+	 * Vanilla's Graphics API choice: Cadence draws with Metal whatever it says (OpenGL and Vulkan are only fallbacks), so the
+	 * button is greyed out with a note instead of offering a choice that does nothing.
+	 */
+	@Inject(method = "addOptions", at = @At("TAIL"))
+	private void cadence$graphicsApi(CallbackInfo ci) {
+		if (this.list == null || !Boolean.parseBoolean(System.getProperty("cadence.metal", "true"))) return;
+		var api = this.list.findOption(this.options.preferredGraphicsBackend());
+		if (api == null) return;
+		api.active = false;
+		api.setMessage(Component.literal("Graphics API: Metal"));
+		api.setTooltip(dev.cadence.shaders.cadence.Tips.of("Cadence always draws with Apple's Metal.",
+			"#This setting only matters without Cadence installed."));
 	}
 
 	@Inject(method = "removed", at = @At("HEAD"))
-	private void cadence$applyShaders(CallbackInfo ci) {
+	private void cadence$leaving(CallbackInfo ci) {
 		dev.cadence.shaders.cadence.packcheck.PackCheck.cancel();
-		ShaderToggle.applyPending();
 	}
 }

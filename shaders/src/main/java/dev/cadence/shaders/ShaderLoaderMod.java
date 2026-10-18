@@ -56,11 +56,13 @@ public final class ShaderLoaderMod implements ClientModInitializer {
           "Cannot initialize {}; shader-pack rendering was not enabled.", context, failure);
       // Cadence: a pack that can't load must never stop the game (this threw out of Fabric's client entrypoint, which
       // fails the launch): the game starts without shaders and the player is told why when they join a world
+      if (selected != null)
+        dev.cadence.shaders.cadence.ShaderSwitcher.launchFailed(selected.getFileName().toString(), failure);
       dev.cadence.shaders.cadence.system.CadenceMessages.launchFailure(
           (selected == null ? "Cadence Shaders' settings" : "Shader pack "
               + dev.cadence.shaders.cadence.ShaderToggle.display(selected.getFileName().toString()))
               + " couldn't load (" + (failure instanceof java.nio.file.NoSuchFileException ? "its file is missing from the shaderpacks folder"
-                  : failure.getMessage()) + "), so shaders are off. Pick another pack or Off in Video Settings.");
+                  : failure.getMessage()) + "), so shaders are off. Pick another pack or Off in Video Settings > Shader Packs.");
     }
   }
 

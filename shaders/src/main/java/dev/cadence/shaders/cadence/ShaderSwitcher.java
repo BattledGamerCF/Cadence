@@ -40,6 +40,26 @@ public final class ShaderSwitcher {
 		return requested;
 	}
 
+	/** Cadence (ShaderPacksScreen): why each pack that failed this session failed, shown next to it in the list. */
+	private static final java.util.Map<String, String> failures = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/** Why {@code pack} failed to load or draw this session, or null. */
+	public static String failure(String pack) {
+		return failures.get(pack);
+	}
+
+	/** ShaderLoaderMod: the pack selected at launch couldn't load. */
+	public static void launchFailed(String pack, Throwable failure) {
+		failures.put(pack, failure instanceof java.nio.file.NoSuchFileException ? "its file is missing" : reason(failure));
+	}
+
+	private static String reason(Throwable failure) {
+		Throwable cause = failure;
+		while (cause.getCause() != null) cause = cause.getCause();
+		String why = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+		return why.length() > 160 ? why.substring(0, 160) + "..." : why;
+	}
+
 	private static volatile boolean failing;
 	private static volatile Runnable pendingOff;
 
@@ -61,10 +81,8 @@ public final class ShaderSwitcher {
 				requested = "";
 				generation.incrementAndGet(); // (a switch still preparing was asked for before the failure: dropped too)
 				reload(mc, MODE);
-				Throwable cause = failure;
-				while (cause.getCause() != null) cause = cause.getCause();
-				String why = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
-				if (why.length() > 160) why = why.substring(0, 160) + "...";
+				String why = reason(failure);
+				failures.put(pack, why);
 				tell(mc, Component.literal("Shader pack " + ShaderToggle.display(pack) + " stopped: " + why + " — shaders are off.")
 					.withStyle(ChatFormatting.RED));
 			} finally {
@@ -156,6 +174,7 @@ public final class ShaderSwitcher {
 				if (prepared != null) {
 					ShaderLoaderMod.install(prepared);
 					active = pack;
+					failures.remove(pack);
 				}
 				LOGGER.info("Shaders switched to {} in {} ms ({} ms on the render thread; chunks rebuilding)",
 					pack.isEmpty() ? "off" : pack, (System.nanoTime() - t0) / 1_000_000, (System.nanoTime() - installStart) / 1_000_000);
@@ -169,6 +188,7 @@ public final class ShaderSwitcher {
 				}
 				active = "";
 				requested = "";
+				failures.put(pack, reason(e));
 				tell(mc, Component.literal("Couldn't load shader pack " + ShaderToggle.display(pack) + ": " + e.getMessage()
 					+ " — shaders are off.").withStyle(ChatFormatting.RED));
 			}
