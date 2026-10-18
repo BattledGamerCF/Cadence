@@ -2,6 +2,25 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.6 / shaders 0.3.5 (2026-10-18)
+
+Less memory:
+- **43 MB less GPU memory while you play** (in a world, 2940 x 1686 window: textures 123 -> 80 MB). Vanilla's depth target
+  for the hand in post-effect views (spectating a creeper, spider or enderman) is now only full size while one is on; the
+  rest of the time the hand draws into the main depth anyway. The title screen's panorama (24 MB) is let go 10 seconds into
+  a world and loaded again when you leave it.
+- **Another 8.5 MB at World Resolution 67%**: a scaled hand-depth target that nothing drew into since the hand moved to full
+  resolution is gone.
+- **Fixed in beta.5: Java's compiled code kept growing.** Beta.5 turned off class unloading during the garbage collector's
+  marking (it made its pauses shorter), but Java frees replaced compiled code only while unloading classes: the code cache grew
+  from 35 to 100 MB in 4 minutes and kept growing. Back to Java's default. Beta.5's shorter "Remark" pauses go with it.
+
+Fixed:
+- **The "Cadence: optimizing your game automatically" line repeated** on server networks (Hypixel-style lobbies log you in
+  again at every switch): it now shows once per connection.
+- Dynamic Lights' tooltip says when they can't work this session (the game started with a shader pack on: Cadence's terrain
+  renderer is off until a restart without one).
+
 ## 0.4.0-beta.5 / shaders 0.3.4 (2026-10-18)
 
 New:
