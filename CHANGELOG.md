@@ -2,6 +2,27 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.5 / shaders 0.3.4 (2026-10-18)
+
+New:
+- **Dynamic Lights** (Video Settings, Cadence: Performance; off by default): a torch, lantern, glowstone or lava bucket in
+  anyone's hand lights the world around them, as if placed there. **All** also lights up dropped light items, burning
+  mobs and arrows, blazes, magma cubes, fireballs, lit TNT, glowing items in item frames, falling light blocks and an
+  enderman carrying one. Torches and other fire go out under water. The light is added on the GPU by Cadence's terrain
+  renderer, so a moving light rebuilds nothing (LambDynamicLights rebuilds the chunks around each light): 16 lights at
+  once cost 0.07 ms a frame. With a shader pack on, the pack's own held-item light applies instead (most packs have one);
+  with LambDynamicLights installed, Cadence's step aside.
+
+Smoother:
+- **Fewer hitches while exploring.** Flying over new terrain, Java's garbage collector paused the game for up to 25 ms
+  every 2-3 seconds (its "Remark" step, which went through all the game's compiled code to unload classes the game never
+  unloads). Cadence's Java defaults now leave that to rare full collections: those pauses are about 1 ms (11 ms on average
+  before). Metaspace starts at 256 MB, so loading no longer triggers collections either. Applied automatically at launch,
+  as Cadence's other Java defaults are; your own Java arguments still win.
+- **16% less garbage on the render thread in crowded scenes** (about 320 mobs: 355 -> 298 KB a frame), so the collector
+  pauses less often: render passes reuse their arrays, model parts without children and rotated parts allocate nothing,
+  and Cadence's chunk mesher no longer boxes every light lookup.
+
 ## 0.4.0-beta.4 / shaders 0.3.3 (2026-10-18)
 
 Easier:

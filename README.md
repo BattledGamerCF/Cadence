@@ -67,7 +67,7 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 - **In game:** everything is in **Options > Video Settings**, at the top: the status lines, then **Shaders...** (the
   Shader Packs list, with the pack's profile) and **Shader Pack Settings...** (the pack's own options, on its own pages,
   as in Iris, with Apply), then the Performance preset and Quick Setup; resolution, sharpening, Retina, leaves, cooling,
-  background frame rate and messages under **Cadence: Performance**; shadows under **Cadence: Shader Speed**.
+  background frame rate, dynamic lights and messages under **Cadence: Performance**; shadows under **Cadence: Shader Speed**.
 - **Keys:** **O** opens Shader Packs, **K** turns shaders off and back on (Controls > Key Binds > Miscellaneous).
 - **Shader pack options** are kept per pack in `shaderpacks/<pack>.txt`, the same file Iris uses.
 - **Config files:** `config/cadence.properties` and `config/cadence-shaders.properties` in your Minecraft folder.
