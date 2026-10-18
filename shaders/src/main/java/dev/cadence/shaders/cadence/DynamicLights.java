@@ -87,9 +87,12 @@ public final class DynamicLights {
 		mode = m;
 	}
 
-	/** Whether they can draw now: on, Cadence's terrain renderer in use, and no shader pack. */
+	/** LambDynamicLights does this its own way (chunk rebuilds): with it installed, Cadence's step aside. */
+	public static final boolean LAMB = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("lambdynlights");
+
+	/** Whether they can draw now: on, Cadence's terrain renderer in use, no shader pack, no LambDynamicLights. */
 	public static boolean available() {
-		return dev.cadence.metal.own.OwnTerrain.FLAG && dev.cadence.shaders.runtime.ShaderRuntime.get() == null;
+		return !LAMB && dev.cadence.metal.own.OwnTerrain.FLAG && dev.cadence.shaders.runtime.ShaderRuntime.get() == null;
 	}
 
 	/** LevelExtractor.extract HEAD: this frame's sources. */

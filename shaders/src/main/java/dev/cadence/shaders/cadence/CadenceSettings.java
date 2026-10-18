@@ -229,11 +229,15 @@ public final class CadenceSettings {
 			"Off|as vanilla",
 			"#Lit on the GPU, nothing rebuilt: under 0.1 ms a frame even with 16 lights. With a shader pack on, the pack's own held-item light applies instead.")).build();
 		onRefresh(() -> self[0].setMessage(dynamicLightsLabel()));
+		if (DynamicLights.LAMB) {
+			self[0].active = false;
+			self[0].setTooltip(Tips.of("LambDynamicLights is installed and lights moving light sources itself; Cadence's own stay off."));
+		}
 		return self[0];
 	}
 
 	private static Component dynamicLightsLabel() {
-		return Component.literal("Dynamic Lights: " + DynamicLights.mode().label);
+		return Component.literal("Dynamic Lights: " + (DynamicLights.LAMB ? "LambDynamicLights" : DynamicLights.mode().label));
 	}
 
 	/** Cadence Messages (CadenceMessages): the join line and the corner notices. */
