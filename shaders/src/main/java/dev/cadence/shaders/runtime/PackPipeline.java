@@ -54,6 +54,10 @@ public record PackPipeline(
       SamplerBinding binding = of(sampler);
       if (fullscreen && binding.kind() == SamplerKind.ALBEDO)
         return new SamplerBinding(binding.name(), binding.shaderName(), SamplerKind.COLOR, 0, binding.comparison());
+      // Cadence: in a world program, gcolor is texture unit 0, the block texture, as OptiFine binds samplers by unit (RRe36's
+      // Nostalgia and Vanilla Plus read their albedo through it; as colortex0 every block was one flat colour)
+      if (!fullscreen && binding.name().equals("gcolor"))
+        return new SamplerBinding(binding.name(), binding.shaderName(), SamplerKind.ALBEDO, 0, binding.comparison());
       return binding;
     }
 

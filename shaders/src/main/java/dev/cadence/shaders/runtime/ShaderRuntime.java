@@ -1327,6 +1327,17 @@ public final class ShaderRuntime implements AutoCloseable {
 
   /** The native object behind one of a program's set-1 resources now (0: none). */
   long storageHandle(dev.cadence.shaders.compile.TranslatedProgram.Storage r) {
+    return storageHandle(null, r);
+  }
+
+  /** (program: the program's name, for a raw 3D custom texture of its stage; null for none) */
+  long storageHandle(String program, dev.cadence.shaders.compile.TranslatedProgram.Storage r) {
+    // Cadence: a raw 3D custom texture standing in for this sampler in the program's stage (Photon's
+    // texture.deferred.depthtex0 = scattering.dat TEXTURE_3D ...): a sampler3D reaches the shader as a set-1 resource
+    if (program != null && textures != null && r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED) {
+      PackTexture volume = textures.volume(program, r.name());
+      if (volume != null) return dev.cadence.metal.MetalBridge.textureHandle(volume.texture);
+    }
     if (storage == null) return 0;
     if (r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER) return storage.bufferHandle(r.bufferIndex());
     if (storage.hasImage(r.name())) return storage.imageHandle(r.name());
@@ -1343,20 +1354,32 @@ public final class ShaderRuntime implements AutoCloseable {
 
   /** A program's set-1 resources for the Metal backend (MetalStorage). */
   java.util.List<dev.cadence.metal.MetalStorage.Slot> storageSlots(dev.cadence.shaders.compile.TranslatedProgram translated) {
+    String program = programName(translated.label());
     java.util.List<dev.cadence.metal.MetalStorage.Slot> slots = new java.util.ArrayList<>();
     for (var r : translated.storage()) {
       if (r.binding() >= dev.cadence.metal.MetalStorage.MAX_BINDINGS)
         throw new UnsupportedOperationException(translated.label() + " has more than " + dev.cadence.metal.MetalStorage.MAX_BINDINGS
             + " images and buffer objects");
+      // (a raw 3D custom texture is filtered as its .mcmeta asks: Photon's cloud noise linear and repeating, its LUT clamped)
+      boolean[] volume = textures == null || r.kind() != dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED
+          ? null : textures.volumeFiltering(program, r.name());
       slots.add(
           new dev.cadence.metal.MetalStorage.Slot(
               r.binding(),
               r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER,
               r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED,
-              r.type().startsWith("i") || r.type().startsWith("u"),
-              () -> storageHandle(r)));
+              volume != null ? volume[0] : r.type().startsWith("i") || r.type().startsWith("u"),
+              volume != null && volume[1],
+              () -> storageHandle(program, r)));
     }
     return slots;
+  }
+
+  /** The program name in a translation label ("world0/deferred1", "pack/world0/gbuffers_terrain/early_alpha_demote"). */
+  private static String programName(String label) {
+    String l = label.endsWith("/early_alpha_demote") ? label.substring(0, label.length() - "/early_alpha_demote".length()) : label;
+    int slash = l.lastIndexOf('/');
+    return l.substring(slash + 1).replace(" (Cadence)", "");
   }
 
   private void runCompute(PackPrograms.Source source) {
@@ -1376,7 +1399,7 @@ public final class ShaderRuntime implements AutoCloseable {
       if (translated.uniforms().byteSize() > 0) pass.bytes(0, data);
       for (int i = 0; i < textures.length; i++) pass.texture(i, textures[i]);
       for (var r : translated.storage()) {
-        long h = storageHandle(r);
+        long h = storageHandle(source.name(), r);
         if (h == 0) continue;
         if (r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER)
           pass.buffer(dev.cadence.metal.MetalStorage.BUFFER_BASE + r.binding(), h);

@@ -162,7 +162,10 @@ public final class PackTextures implements AutoCloseable {
           // with the texture's own shape (sampler3D for TEXTURE_3D), as Iris renames exactly those declarations
           RawTexture raw = raw(pack, path);
           custom.put(name + "@" + raw.samplerType(), raw.texture());
-          customSamplers.put(raw.texture(), mcmetaSampler(pack, path.split("\\s+")[0]));
+          String file = path.split("\\s+")[0];
+          customSamplers.put(raw.texture(), mcmetaSampler(pack, file));
+          boolean[] meta = mcmetaFlags(pack, file);  // {blur, clamp}
+          volumeFlags.put(raw.texture(), new boolean[] {!meta[0], !meta[1]});
           continue;
         }
         PackTexture loaded = image(pack, path);
@@ -178,6 +181,8 @@ public final class PackTextures implements AutoCloseable {
         custom.put(property.getKey().substring(8), loaded);
         customSamplers.put(loaded, mcmetaSampler(pack, path));
       }
+      if (Boolean.getBoolean("cadence.shaders.logCustom"))
+        org.slf4j.LoggerFactory.getLogger("cadence_shaders").info("custom textures: {}", new java.util.TreeSet<>(custom.keySet()));
       PackTexture suppliedNoise = custom.get("noise");
       noise = suppliedNoise == null ? generatedNoise() : suppliedNoise;
     } catch (IOException | RuntimeException failure) {
@@ -299,8 +304,15 @@ public final class PackTextures implements AutoCloseable {
     String declared = samplerTypes.getOrDefault(program, Map.of()).get(sampler);
     if (declared != null) {
       PackTexture raw = custom.get(group(program) + "." + sampler + "@" + declared);
-      if (raw != null) return raw;
-    }
+      if (raw != null) {
+        if (Boolean.getBoolean("cadence.shaders.logCustom"))
+          org.slf4j.LoggerFactory.getLogger("cadence_shaders").info("raw texture for {}.{} ({})", program, sampler, declared);
+        return raw;
+      }
+      if (Boolean.getBoolean("cadence.shaders.logCustom"))
+        org.slf4j.LoggerFactory.getLogger("cadence_shaders").info("declared {} for {}.{}", declared, program, sampler);
+    } else if (Boolean.getBoolean("cadence.shaders.logCustom"))
+      org.slf4j.LoggerFactory.getLogger("cadence_shaders").info("no declared type for {}.{}", program, sampler);
     if (sampler.matches("colortex[0-9]+|gcolor|gdepth|gnormal|composite|gaux[1-4]")) {
       var written = writtenBefore.get(program);
       try {
@@ -310,6 +322,19 @@ public final class PackTextures implements AutoCloseable {
       }
     }
     return custom.get(group(program) + "." + sampler);
+  }
+
+  /** Cadence: {nearest, repeat} for the raw 3D texture standing in for sampler in this program's stage (its .mcmeta), or null. */
+  public boolean[] volumeFiltering(String program, String sampler) {
+    PackTexture v = volume(program, sampler);
+    return v == null ? null : volumeFlags.get(v);
+  }
+
+  private final Map<PackTexture, boolean[]> volumeFlags = new java.util.IdentityHashMap<>();
+
+  /** Cadence: the raw 3D texture standing in for sampler in this program's stage, or null. */
+  public PackTexture volume(String program, String sampler) {
+    return custom.get(group(program) + "." + sampler + "@sampler3D");
   }
 
   /** The custom-texture stage a program belongs to (texture.STAGE.SAMPLER). */
@@ -428,6 +453,24 @@ public final class PackTextures implements AutoCloseable {
   private final Map<PackTexture, GpuSampler> customSamplers = new java.util.IdentityHashMap<>();
   private final Map<Integer, GpuSampler> mcmetaSamplers = new HashMap<>();
 
+  /** {blur, clamp} from a custom texture's .mcmeta (false, false without one). */
+  private static boolean[] mcmetaFlags(ShaderPack pack, String path) {
+    boolean blur = false, clamp = false;
+    String meta = (path.startsWith("/") ? path.substring(1) : path) + ".mcmeta";
+    try {
+      if (pack.contains(meta)) {
+        String text = pack.text(meta);
+        java.util.regex.Matcher b = java.util.regex.Pattern.compile("\"blur\"\\s*:\\s*(true|false)").matcher(text);
+        java.util.regex.Matcher c = java.util.regex.Pattern.compile("\"clamp\"\\s*:\\s*(true|false)").matcher(text);
+        if (b.find()) blur = b.group(1).equals("true");
+        if (c.find()) clamp = c.group(1).equals("true");
+      }
+    } catch (Exception e) {
+      // unreadable metadata: the defaults
+    }
+    return new boolean[] {blur, clamp};
+  }
+
   private GpuSampler mcmetaSampler(ShaderPack pack, String path) {
     boolean blur = false, clamp = false;
     String meta = (path.startsWith("/") ? path.substring(1) : path) + ".mcmeta";
@@ -504,6 +547,7 @@ public final class PackTextures implements AutoCloseable {
     custom.clear();
     customLookups.clear();
     customSamplers.clear();
+    volumeFlags.clear();
     for (GpuSampler sampler : mcmetaSamplers.values()) sampler.close();
     mcmetaSamplers.clear();
   }

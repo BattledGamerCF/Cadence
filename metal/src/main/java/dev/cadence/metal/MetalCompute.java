@@ -291,7 +291,7 @@ public final class MetalCompute {
 			b.stage(model).desc_set(1).binding(s.binding()).msl_buffer(MetalStorage.BUFFER_BASE + s.binding())
 				.msl_texture(MetalStorage.TEXTURE_BASE + s.binding()).msl_sampler(0);
 			spvc_compiler_msl_add_resource_binding(compiler, b);
-			if (s.sampled()) constexpr(stack, compiler, 1, s.binding(), new SamplerState(s.nearest(), false, false, false));
+			if (s.sampled()) constexpr(stack, compiler, 1, s.binding(), new SamplerState(s.nearest(), s.repeat(), false, false));
 		}
 	}
 

@@ -416,7 +416,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 			}
 			if (storage != null) // Cadence: the pack's set-1 resources (kinds and filters, not handles)
 				for (MetalStorage.Slot s : storage)
-					md.update((s.binding() + (s.buffer() ? "b" : "t") + (s.sampled() ? "s" : "") + (s.nearest() ? "n" : "") + ";").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+					md.update((s.binding() + (s.buffer() ? "b" : "t") + (s.sampled() ? "s" : "") + (s.nearest() ? "n" : "") + (s.repeat() ? "r" : "") + ";").getBytes(java.nio.charset.StandardCharsets.UTF_8));
 			if (constexpr != null) // Cadence: the sampler states compiled in (their settings, not their handles)
 				for (MetalSampler c : constexpr) md.update(String.valueOf(c == null ? "-" : constexprKey(c)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 			md.update(module.spv().duplicate());
