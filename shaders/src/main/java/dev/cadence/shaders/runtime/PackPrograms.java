@@ -169,8 +169,12 @@ public final class PackPrograms implements AutoCloseable {
           continue;
         }
         if (program.paths().size() - (program.paths().containsKey(ShaderStage.COMPUTE) ? 1 : 0) != 2) {
+          // Cadence: said in words a player can act on (the pack list shows it): Metal has no geometry or tessellation stages
+          var stages = program.paths().keySet();
+          String what = stages.contains(ShaderStage.GEOMETRY) && (stages.contains(ShaderStage.TESS_CONTROL) || stages.contains(ShaderStage.TESS_EVALUATION))
+              ? "geometry and tessellation shaders" : stages.contains(ShaderStage.GEOMETRY) ? "geometry shaders" : "tessellation shaders";
           refuse(new UnsupportedOperationException(
-              "Additional shader stage in " + program.identifier() + " " + program.paths().keySet()));
+              "it needs " + what + ", which Metal doesn't have (" + program.identifier() + ")"));
           continue;
         }
         String vertex = pack.source(program.paths().get(ShaderStage.VERTEX), options, environment);

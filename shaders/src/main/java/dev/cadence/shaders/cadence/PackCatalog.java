@@ -36,7 +36,19 @@ public final class PackCatalog {
 		new Known("insanity", Weight.LIGHT, "a dark horror look, as intended"),
 		new Known("vanillaex", Weight.LIGHT, ""),
 		new Known("bliss", Weight.HEAVY, ""),
-		new Known("pegasus", Weight.HEAVY, ""));
+		new Known("pegasus", Weight.HEAVY, ""),
+		// (tested 2026-10-18)
+		new Known("photon", Weight.HEAVY, ""),
+		new Known("solas", Weight.HEAVY, ""),
+		new Known("kappa", Weight.HEAVY, ""),
+		new Known("nostalgia", Weight.HEAVY, ""),
+		new Known("astralex", Weight.HEAVY, ""),
+		new Known("noble", Weight.HEAVY, "shaded sides darker than intended"),
+		new Known("superdupervanilla", Weight.MEDIUM, ""),
+		new Known("vanillaplus", Weight.MEDIUM, ""),
+		new Known("potato", Weight.MEDIUM, ""),
+		new Known("mellow", Weight.LIGHT, ""),
+		new Known("miniature", Weight.LIGHT, ""));
 
 	private PackCatalog() {
 	}

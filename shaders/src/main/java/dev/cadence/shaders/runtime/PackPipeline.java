@@ -192,18 +192,24 @@ public record PackPipeline(
     for (int slot = 0; slot < translated.drawBuffers().size(); slot++) {
       int target = translated.drawBuffers().get(slot);
       if (target < 0 || shadow && !targets.shadowColorAttached(target, slot)) builder.withUnusedColorTargetState(slot);
-      else
+      else {
+        var format =
+            finalPass
+                ? com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM
+                : shadow
+                    ? targets.shadowColor(target).texture.getFormat()
+                    : targets.format(target);
+        // Cadence: an integer buffer (Noble's RGBA32UI material data) is never blended, as OpenGL ignores blending for
+        // integer formats (Metal refuses it)
+        boolean integer = format.name().endsWith("_UINT") || format.name().endsWith("_SINT");
         builder.withColorTargetState(
             slot,
             new ColorTargetState(
                 // Cadence: blend.<program>[.<buffer>] from shaders.properties (PackBlend)
-                finalPass ? Optional.empty() : PackBlend.resolve(source.name(), target, shadow, fullscreen ? Optional.empty() : blend),
-                finalPass
-                    ? com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM
-                    : shadow
-                        ? targets.shadowColor(target).texture.getFormat()
-                        : targets.format(target),
+                finalPass || integer ? Optional.empty() : PackBlend.resolve(source.name(), target, shadow, fullscreen ? Optional.empty() : blend),
+                format,
                 ColorTargetState.WRITE_ALL));
+      }
     }
     boolean depth = original != null && original.getDepthStencilState() != null;
     if (depth) {

@@ -274,15 +274,16 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     List<TranslatedProgram.Attribute> attributes = new ArrayList<>();
     // Cadence: GLSL 1.30+ in/out declarations (Complementary, I Like Vanilla) become the legacy forms below
     List<String[]> modernOutputs = new ArrayList<>();
+    Map<Integer, String> integerOutputs = new HashMap<>();  // (location -> uvec4 / ivec4)
     // Cadence: images, buffer objects and set-1 samplers out first (StorageScan): one binding per name for both stages
     StorageScan storage = new StorageScan();
     String vertexBody =
         declarations(
-            modernInOut(storage.extract(v.source()), true, null), true, uniforms, samplers, varyings, varyingQualifiers,
+            modernInOut(storage.extract(arraysOnNames(v.source())), true, null), true, uniforms, samplers, varyings, varyingQualifiers,
             attributes);
     String fragmentBody =
         declarations(
-            modernInOut(storage.extract(f.source()), false, modernOutputs), false, uniforms, samplers, varyings,
+            modernInOut(storage.extract(arraysOnNames(f.source())), false, modernOutputs), false, uniforms, samplers, varyings,
             varyingQualifiers, attributes);
     // Cadence: OpenGL's fixed-function fog. gl_Fog (the fog parameters) becomes uniforms the game fills from its own fog;
     // gl_FogFragCoord (the fog distance the vertex stage writes and the fragment stage reads) becomes a plain varying.
@@ -465,15 +466,20 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       for (String[] out : modernOutputs) { // {location, type, name}
         int index = Integer.parseInt(out[0]);
         if (index >= 8) throw unsupported(label, "more than eight simultaneous color outputs");
-        if (!out[1].matches("float|vec[234]")) throw unsupported(label, "fragment output type " + out[1]);
+        if (!out[1].matches("float|vec[234]|u?int|[iu]vec[234]")) throw unsupported(label, "fragment output type " + out[1]);
         outputCount = Math.max(outputCount, index + 1);
         globals.append(out[1]).append(' ').append(out[2]).append(";\n");
+        // Cadence: an integer output (Noble's `out uvec4 dataOut` into an RGBA32UI buffer) stays integer, widened the same way
+        String four = out[1].startsWith("u") ? "uvec4" : out[1].startsWith("i") ? "ivec4" : "vec4";
+        if (!four.equals("vec4")) integerOutputs.put(index, four);
+        String zero = four.equals("uvec4") ? "0u" : four.equals("ivec4") ? "0" : "0.0";
+        String one = four.equals("uvec4") ? "1u" : four.equals("ivec4") ? "1" : "1.0";
         String value =
             switch (out[1]) {
-              case "vec4" -> out[2];
-              case "vec3" -> "vec4(" + out[2] + ", 1.0)";
-              case "vec2" -> "vec4(" + out[2] + ", 0.0, 1.0)";
-              default -> "vec4(" + out[2] + ", 0.0, 0.0, 1.0)";
+              case "vec4", "uvec4", "ivec4" -> out[2];
+              case "vec3", "uvec3", "ivec3" -> four + "(" + out[2] + ", " + one + ")";
+              case "vec2", "uvec2", "ivec2" -> four + "(" + out[2] + ", " + zero + ", " + one + ")";
+              default -> four + "(" + out[2] + ", " + zero + ", " + zero + ", " + one + ")";
             };
         copies.append("sl_FragData").append(index).append(" = ").append(value).append(";\n");
       }
@@ -493,8 +499,9 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     // with DRAWBUFFERS:0): those become plain variables nothing reads.
     int boundOutputs = Math.min(outputCount, drawBuffers.size());
     boolean alphaDemoted = false;
-    // Cadence: a program that writes no colour (VanillaEX's clouds only discard) has nothing to alpha test
-    if (alphaTest.enabled() && outputCount > 0) {
+    // Cadence: a program that writes no colour (VanillaEX's clouds only discard) has nothing to alpha test, nor one whose
+    // first output is an integer (no alpha to test)
+    if (alphaTest.enabled() && outputCount > 0 && !integerOutputs.containsKey(0)) {
       merge(uniforms, "alphaTestRef", new UniformLayout.Declaration("float", 0));
       if (earlyAlphaDemote) {
         var demotion = EarlyAlphaDemotion.apply(fragmentBody, alphaTest);
@@ -661,10 +668,12 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       if (i < boundOutputs)
         fout.append("layout(location=")
             .append(i)
-            .append(") out vec4 sl_FragData")
+            .append(") out ")
+            .append(integerOutputs.getOrDefault(i, "vec4"))
+            .append(" sl_FragData")
             .append(i)
             .append(";\n");
-      else fout.append("vec4 sl_FragData").append(i).append(";\n");
+      else fout.append(integerOutputs.getOrDefault(i, "vec4")).append(" sl_FragData").append(i).append(";\n");
     vertexBody = modernize(vertexBody, samplers);
     fragmentBody = modernize(fragmentBody, samplers);
     Matcher main = MAIN.matcher(vertexBody);
@@ -828,6 +837,15 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
           "(?m)^[ \\t]*(?:layout\\s*\\(([^)]*)\\)\\s*)?((?:(?:flat|smooth|noperspective|centroid)\\s+)*)(in|out)\\s+"
               + "(?:(?:lowp|mediump|highp)\\s+)?(\\w+)\\s+([^;{}()=]+);");
   private static final Pattern LOCATION = Pattern.compile("\\blocation\\s*=\\s*(\\d+)");
+  private static final Pattern ARRAY_ON_TYPE =
+      Pattern.compile(
+          "(?m)^([ \\t]*(?:layout\\s*\\([^)]*\\)\\s*)?(?:(?:flat|smooth|noperspective|centroid|uniform|varying|in|out|attribute|highp|mediump|lowp)\\s+)+)"
+              + "(\\w+)\\s*\\[\\s*(\\w+)\\s*\\]\\s+(\\w+)\\s*;");
+
+  /** Cadence: `flat out vec3[9] sky;` (the array on the type, Noble) as `flat out vec3 sky[9];`, the form read below. */
+  static String arraysOnNames(String source) {
+    return ARRAY_ON_TYPE.matcher(source).replaceAll("$1$2 $4[$3];");
+  }
 
   /**
    * Cadence: global in/out declarations as the legacy storage the rest of the translator reads: a vertex stage's inputs are
@@ -882,6 +900,10 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       Pattern.compile(
           "(?m)^[ \\t]*((?:(?:layout\\s*\\([^)]*\\)|readonly|writeonly|coherent|volatile|restrict|uniform|highp|mediump|lowp)\\s*)+?)"
               + "([iu]?image(?:2D|3D|2DArray))\\s+(\\w+)\\s*;");
+  private static final Pattern IMAGE_DECLARATIONS =
+      Pattern.compile(
+          "(?m)^[ \\t]*((?:(?:layout\\s*\\([^)]*\\)|readonly|writeonly|coherent|volatile|restrict|uniform|highp|mediump|lowp)\\s*)+?)"
+              + "([iu]?image(?:2D|3D|2DArray))\\s+(\\w+(?:\\s*,\\s*\\w+)+)\\s*;");
   private static final Pattern SET1_SAMPLER =
       Pattern.compile(
           "(?m)^[ \\t]*(?:layout\\s*\\([^)]*\\)\\s*)?uniform\\s+(?:(?:lowp|mediump|highp)\\s+)?([iu]?sampler(?:2D|3D|2DArray))\\s+(\\w+)\\s*;");
@@ -917,6 +939,18 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
         blocks.appendReplacement(out, "");
       }
       blocks.appendTail(out);
+      source = out.toString();
+      // Cadence: several images in one declaration (Solas: `writeonly uniform image3D floodfill_img, floodfill_img_copy;`)
+      // become one declaration each, the form the scan below reads
+      Matcher several = IMAGE_DECLARATIONS.matcher(source);
+      out = new StringBuffer();
+      while (several.find()) {
+        StringBuilder each = new StringBuilder();
+        for (String name : several.group(3).split(","))
+          each.append(several.group(1)).append(several.group(2)).append(' ').append(name.strip()).append(";\n");
+        several.appendReplacement(out, Matcher.quoteReplacement(each.toString()));
+      }
+      several.appendTail(out);
       source = out.toString();
       Matcher images = IMAGE_DECLARATION.matcher(source);
       out = new StringBuffer();
