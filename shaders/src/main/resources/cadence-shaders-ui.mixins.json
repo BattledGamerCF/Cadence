@@ -5,6 +5,8 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "VideoSettingsShadersMixin",
+    "OptionsShaderKeysMixin",
+    "MinecraftShaderKeysMixin",
     "CadenceMessagesMixin",
     "QuickSetupOfferMixin",
     "MeshStateCacheMixin",

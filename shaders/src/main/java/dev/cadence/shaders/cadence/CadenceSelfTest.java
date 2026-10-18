@@ -173,6 +173,12 @@ public final class CadenceSelfTest {
 							if (found == null && name.contains(k[0])) found = mapping;
 						}
 						if (found == null) { LOGGER.info("[selftest] key {}: no such key binding", k[0]); return; }
+						if (k.length > 1 && k[1].equals("press")) {
+							// "key=NAME:press": one press, as tapping the key bound to it
+							net.minecraft.client.KeyMapping.click(com.mojang.blaze3d.platform.InputConstants.getKey(found.saveString()));
+							LOGGER.info("[selftest] key {} pressed", found.getName());
+							return;
+						}
 						found.setDown(down);
 						LOGGER.info("[selftest] key {} {}", found.getName(), down ? "down" : "up");
 					});

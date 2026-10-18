@@ -155,7 +155,8 @@ public final class ShaderToggle {
 			.width(Button.DEFAULT_WIDTH)
 			.tooltip(none ? Tips.of("No shader packs installed yet.",
 					"#Open this, then drop a pack's .zip file on the window (BSL, Complementary...), or put it in the folder.")
-				: Tips.of("Realistic light, shadows and water, at a cost in speed.", "#Pick a pack or Off from the list.")).build();
+				: Tips.of("Realistic light, shadows and water, at a cost in speed.", "#Pick a pack or Off from the list.",
+					"#In game: O opens this list, K turns shaders off and back on (Controls > Miscellaneous).")).build();
 	}
 
 	/** Opens shaderpacks/ in Finder, creating it if missing. */
