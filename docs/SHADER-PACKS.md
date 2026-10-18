@@ -165,10 +165,82 @@ Research: research/GLITCHES.md and research/PERF2.md (Haiku agents; mostly reaso
 - `-Dcadence.metal.trace=N`: frame N's render passes with attachments and load/store actions (this found nothing wrong in
   the passes, which pointed at the clear value).
 
+## 10-18: thirteen more packs (0.3.3)
+
+Picked for compatibility, not looks: the most-downloaded Iris packs on Modrinth that the 12 above don't cover, old and new
+(Potato Shaders is from 2023, Solas and Noble from this autumn), small and huge (Miniature 44 KB, Noble 17 MB). Downloaded
+from Modrinth, checked against its SHA-512 hashes, into `metal/run/shaderpacks` (AstraLex renamed: its file name is
+full of `§` colour codes). Every pack: offline census, then a self-test sweep (day, the same view), pictures checked.
+
+**11 of 13 load and look right; 23 of the 25 tested packs now work.** GPU time is at a fixed 50% World Resolution
+(`-Dcadence.shaders.renderScale=0.5`, 1470x843 pixels; anchors in the same runs: VanillaEX 3.8 ms, BSL 13.0, Bliss
+18.5). The fanless Air slows after about two minutes of full load, so a pack measured late in a sweep reads high (Vanilla
+Plus: 31 ms late in one, 12.4 ms in a short one); those are marked.
+
+| Pack | Version | Result | GPU ms at 50% | Weight shown | What it needed |
+|---|---|---|---|---|---|
+| Photon | 1.3b | correct (sky, clouds, weather) | 21.2 | Heavy | 3D textures bound (sky was black, then sepia), struct varyings, shared vec3 arrays split |
+| Solas | 3.8 | correct | 21.4 | Heavy | several `image3D`s in one declaration |
+| Kappa | 5.3 | correct | 38.2 (late) | Heavy | nothing pack-specific |
+| Nostalgia | 5.1 | correct | 21.4 (late) | Heavy | `gcolor` is the block texture in world programs (blocks were flat colours) |
+| AstraLex | 93.0 | correct | 26.1 (late) | Heavy | SNORM mip formats |
+| Noble | 1.9.9 | loads; **shaded sides darker than intended** | 32.3 (late) | Heavy | integer colour outputs, `type[N] name` varyings |
+| Super Duper Vanilla | 1.3.8 | correct | 9.6 | Medium | nothing pack-specific |
+| Mellow | 3.4.1a | correct | 4.8 | Light | names clashing with vertex inputs (`Normal`, `Color`), R3_G3_B2, `minecraft:` textures, Voxy's sampler |
+| Miniature | 2.19 | correct | 8.5, 7.9 | Light | defines before a leading `#if`, a vanilla program for draws it has no program for |
+| Vanilla Plus | 3.3 | correct | 12.5, 12.4 | Medium | `gcolor` (as Nostalgia) |
+| Potato Shaders | 1.0d | correct | 13.3 (late) | Medium | nothing pack-specific |
+| Shrimple | 0.12 | **not supported**: geometry shaders | | | |
+| Rethinking Voxels | r0.1-beta9 | **not supported**: geometry and tessellation shaders | | | |
+
+Shrimple and Rethinking Voxels are refused with that reason in plain words in the pack list ("it needs geometry shaders,
+which Metal doesn't have"). Metal has no geometry stage; emulating one (a compute pass writing the expanded vertices) is
+possible but large, and these are the only two of 25 that need it.
+
+What changed, for every pack:
+- **Raw and 3D custom textures** (`texture.STAGE.NAME = file TEXTURE_3D RGBA8 ...`): uploaded through a new 3D Metal
+  texture (MetalVolume) and keyed by the sampler type the program declares, as Iris does. `sampler3D` uniforms bind
+  through set 1 (storage), so they were never bound before: Photon's sky lookup read black. Filtering and repeat follow
+  the file's `.mcmeta`. `minecraft:` paths read the game's own resources.
+- `flip.PASS.BUFFER` directives, `shadowcomp` passes over the shadow map, and a constant declared twice keeps the later
+  value (as Iris).
+- **Translation**: struct varyings flattened into plain varyings (Metal can't pass a struct between stages as GLSL does);
+  `shared vec3` arrays split into three float arrays when Metal's 16-byte float3 would push a compute pass over Apple's
+  32 KB of threadgroup memory (Photon's sky harmonics: 36 KB -> 27 KB); identifiers named like Metal built-ins
+  (`length_squared`, `powr`, ...) or the adapter's vertex inputs renamed; `type[N] name` declarations; several images in
+  one declaration; uniform defaults written `- 123`; integer colour outputs (never blended, no alpha test).
+- `gcolor` means the block texture (unit 0) in world programs, as in OptiFine; it is colortex0 only in screen passes.
+- A pack with no program for a draw type and nothing to fall back to gets a built-in vanilla program (texture x colour x
+  lightmap) instead of failing.
+- Samplers that belong to other mods (Voxy's `vxDepthTexTrans`, ...) bind a neutral texture (white for depth, else
+  black), logged once.
+- Colour formats: R3_G3_B2, RGB4, RGB5, RGBA2, RGBA4, RGB5_A1 (as RGBA8), RGB12/RGBA12 (as RGBA16); mipmaps for SNORM
+  and 16-bit formats.
+- Census: shadow samplers are checked as hardware comparisons (`textureLod`/`textureGather` on them were false blockers).
+
+Open: Noble's shaded sides are darker than in its screenshots (suspect: its sky-illuminance storage buffer, written in
+a compute pass; the binding covers both stages). Listed in the pack catalog, so the pack list says so.
+
+### GPU pass (same day)
+
+Kept: **feedback copies only for samplers a program's code reads.** When a world program samples a buffer it also
+draws into, Cadence copies the buffer first (Metal can't read and write the same image in a pass). Complementary declares
+colortex0/3/4/6 and depthtex0 in its world programs and reads few of them: 12 copies a frame, now 2. Complementary
+Reimagined at 2940x1686: **44 -> 41 ms** (-2.6 and -2.8 ms in two in-run A/Bs, `ab=feedbackreads`); BSL +0.04 ms and
+Photon +0.05 ms (no unread declarations there); pictures alike for Complementary, BSL, Photon, Bliss, and the
+11-pack sweep. `-Dcadence.shaders.logReads=true` lists each program's read samplers.
+
+Measured and dropped:
+- Flushing pass clears a pack never relies on (learned per frame): +0.10 / +0.18 ms, slower.
+- Relaxed math for shadow vertex shaders: about 2%, inside the noise.
+- The same read analysis for the per-frame decisions (shadowtex1 copy, depthtex2 copy, shadow-colour attachment, hand
+  depth merge): no gain where measured (Complementary does read shadowtex1) and AstraLex turned almost white, so a use
+  the analysis can't see feeds one of those decisions. Not kept.
+
 ## Not supported yet
 
-1D images, fragment shadowcomp passes, geometry/tessellation stages (none of these packs use them), Distant Horizons
-programs (dh_*). A cold first load of a big pack translates for 2-7 s (cached afterwards: 0.1-0.4 s).
+1D images, geometry/tessellation stages (Shrimple and Rethinking Voxels need them), Distant Horizons programs (dh_*). A
+cold first load of a big pack translates for 2-7 s (cached afterwards: 0.1-0.4 s).
 
 `colorimgN` / `shadowcolorimgN` (programs storing straight into colour targets) work: those targets, and only those, are
 made with shader-write usage. None of the 12 packs uses them; `metal/run/shaderpacks/zz-CadenceTest-colorimg` is a

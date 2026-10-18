@@ -2,6 +2,40 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.4 / shaders 0.3.3 (2026-10-18)
+
+Easier:
+- **A Shader Packs screen** (Video Settings > Shaders..., or press **O** in game): every pack in your shaderpacks folder
+  in one list. Click a pack to turn it on; click Off to turn shaders off. Under each name: whether it has been tested
+  with Cadence and how heavy it is (Light, Medium, Heavy), or why it couldn't load this session. Drop .zip files onto
+  the window to add packs (the first one turns on). Profile, Pack Settings and Open Packs Folder are at the bottom. This
+  replaces the button that cycled through packs one at a time, and the separate Live, Quality and Folder buttons.
+- **Keys as in Iris**: **O** opens Shader Packs, **K** turns shaders off and back on to the same pack. Change them in
+  Controls > Key Binds > Miscellaneous.
+- **Video Settings in a clearer order**: shaders first (Shaders..., Shader Pack Settings...), then Performance and Quick
+  Setup, then Cadence's own options in two groups, "Cadence: Performance" and "Cadence: Shader Speed". The status lines
+  at the top are shorter: what Cadence is tuning by itself right now, the Mac's heat and memory, and the mods it's working
+  alongside.
+- **Pack Settings has an Apply button**: see a change without leaving the screen. Reset is at the top, and a line says
+  how values change (click: next value, Shift-click: previous).
+- **The shadow speed-up is now called Faster Shadows**, with plain states (On, Testing, Not Safe, Unsure, ...).
+- **Graphics API is greyed out and reads Metal**: Cadence always draws with Metal, so choosing another did nothing.
+
+More shader packs work: **23 of the 25 tested packs** (the 12 before, plus 11 of 13 new ones):
+- Now working: **Photon, Solas, Kappa, Nostalgia, AstraLex, Super Duper Vanilla, Mellow, Miniature, Vanilla Plus,
+  Potato Shaders**, and **Noble** (its shaded sides are darker than intended; the pack list says so).
+- Not supported: **Shrimple** and **Rethinking Voxels**. They need geometry or tessellation shaders, which Metal doesn't
+  have; the pack list now says that in plain words.
+- The fixes behind these help any pack: 3D textures (Photon's sky and clouds were black), struct and array varyings,
+  large compute shared memory, names that clash with Metal's built-ins, `gcolor` in world programs (blocks drawn as flat
+  colours in Nostalgia and Vanilla Plus), integer colour outputs, flip directives, shadowcomp passes, textures from the
+  game's own resources, other mods' samplers, and more old colour formats.
+
+Faster:
+- **Complementary Reimagined about 6% faster** (44 -> 41 ms a frame at full Retina size, M2 Air; the same picture): a
+  buffer a pass draws into is copied first only if the pass actually reads it, not just declares it. 12 copies a frame
+  became 2. BSL and Photon are unchanged.
+
 ## 0.4.0-beta.3 / shaders 0.3.2 (2026-10-16)
 
 Smoother:
