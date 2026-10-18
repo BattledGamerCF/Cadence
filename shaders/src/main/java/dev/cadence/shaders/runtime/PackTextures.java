@@ -416,6 +416,11 @@ public final class PackTextures implements AutoCloseable {
     int srcComponents = r.srcComponents();
     GpuFormat format = r.format();
     String path = r.path();
+    // (sizes from the pack: within Metal's limits, 2048 per side for a 3D texture, 16384 for 2D, and 256 MB in all)
+    int limit = dims == 3 ? 2048 : 16384;
+    if (w < 1 || h < 1 || d < 1 || w > limit || h > limit || d > limit || (long) w * h * d * components * bytes > 256L << 20)
+      throw new UnsupportedOperationException("Raw texture " + path + " is " + w + "x" + h + (dims == 3 ? "x" + d : "")
+          + ", beyond what Metal can make (" + limit + " per side, 256 MB)");
     byte[] data = fileBytes(pack, path);
     long texels = (long) w * h * d;
     if (data.length < texels * srcComponents * bytes)

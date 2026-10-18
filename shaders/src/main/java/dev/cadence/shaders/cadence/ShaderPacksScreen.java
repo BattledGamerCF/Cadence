@@ -170,12 +170,16 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 			.withStyle(ChatFormatting.GREEN));
 	}
 
-	/** A folder with a shaders folder, or a .zip with one anywhere inside (some packs are zipped inside a folder). */
+	/** A zip's shaders folder at its top or one folder down (some packs are zipped inside a folder); a resource pack's
+	 * assets/minecraft/shaders/ is deeper, so a resource pack dropped here by mistake is refused; macOS's __MACOSX copies don't count. */
+	private static final java.util.regex.Pattern PACK_ROOT = java.util.regex.Pattern.compile("^(?!__MACOSX/)([^/]+/)?shaders/");
+
+	/** A folder with a shaders folder, or a .zip with one at its top or one folder down. */
 	static boolean isPack(Path p) {
 		if (Files.isDirectory(p)) return Files.isDirectory(p.resolve("shaders"));
 		if (!p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip")) return false;
 		try (var zip = new java.util.zip.ZipFile(p.toFile())) {
-			return zip.stream().anyMatch(e -> e.getName().startsWith("shaders/") || e.getName().contains("/shaders/"));
+			return zip.stream().anyMatch(e -> PACK_ROOT.matcher(e.getName().replace('\\', '/')).find());
 		} catch (IOException e) {
 			return false;
 		}

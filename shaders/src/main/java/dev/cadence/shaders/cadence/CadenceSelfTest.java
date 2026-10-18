@@ -485,6 +485,18 @@ public final class CadenceSelfTest {
 						default -> net.minecraft.client.CloudStatus.FANCY;
 					};
 					mc.execute(() -> mc.options.cloudStatus().set(status));
+				} else if (lower.startsWith("hud=")) {
+					// "hud=off|on": vanilla's F1 (HUD and hand hidden; gallery screenshots)
+					boolean hide = lower.endsWith("off");
+					mc.execute(() -> {
+						try {
+							var f = net.minecraft.client.gui.Hud.class.getDeclaredField("isHidden");
+							f.setAccessible(true);
+							f.setBoolean(mc.gui.hud, hide);
+						} catch (ReflectiveOperationException e) {
+							LOGGER.info("[selftest] hud: {}", e.toString());
+						}
+					});
 				} else if (lower.equals("jit")) {
 					// "jit" (measurement): the code cache's heaps and metaspace, used / committed
 					StringBuilder pools = new StringBuilder();

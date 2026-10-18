@@ -37,8 +37,18 @@ public final class ShaderKeys {
 				ShaderToggle.choose("");
 			} else {
 				String last = ShaderToggle.configValue("lastPack", "").strip();
-				if (last.isEmpty() || !ShaderToggle.choices().contains(last)) mc.gui.setScreen(new ShaderPacksScreen(null));
-				else ShaderToggle.choose(last);
+				if (last.isEmpty() || !ShaderToggle.choices().contains(last)) {
+					mc.gui.setScreen(new ShaderPacksScreen(null));
+					continue;
+				}
+				ShaderToggle.choose(last);
+			}
+			// (without live switching this session the choice is only saved: say so, or K would seem to do nothing)
+			if (!dev.cadence.shaders.CadencePackGate.hooksApplied() && mc.player != null) {
+				String pack = ShaderToggle.selectedPack();
+				mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal("Shaders: "
+					+ (pack.isEmpty() ? "Off" : ShaderToggle.display(pack)) + " from the next start (this session can't switch packs live)")
+					.withStyle(net.minecraft.ChatFormatting.GRAY));
 			}
 		}
 	}
