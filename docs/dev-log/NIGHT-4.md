@@ -65,7 +65,10 @@ vanilla clears it before the hand, and the following passes continue it.
 - MetalFX at 67% without shaders stays slower than 100% (3.25 against 1.89 ms; MetalFX itself is about 1.3 ms at this
   size). Auto already stays at 100% without a pack; the tooltip says so.
 - With Retina off the GPU frame is ~0.8 ms and the render thread still waits for it about two-thirds of the time, so the
-  CPU isn't the limit even at 1,170 fps.
+  CPU isn't the limit even at 1,170 fps. Where that 0.83 ms goes (probe, in-run): terrain drawing 0.46 ms (its solid
+  shading 0.14), the cull 0.03, every vanilla draw together 0.09 (clouds 0.04), and ~0.25 ms of fixed per-frame cost (pass
+  setup, stores, the paced present). The GPU occlusion test pays off here (off: 1.33 ms), and the adaptive check keeps it
+  on.
 
 ## Part 2: twelve mods
 
@@ -93,6 +96,15 @@ title-screen and pause-menu sidebars, screenshot toasts, no errors but the offli
   by Mod Menu only; compiled against Mod Menu's API, not bundled).
 - Cadence HUD and Cadence Shaders are listed under Cadence (Mod Menu's parent) with Cadence's icon, instead of two "?"
   entries.
+
+### Soak with all twelve
+
+A 4-minute run: the test scene (glass, mobs, chat lines, hunger), a flight over new terrain with BSL switched on and off,
+Zoomify's zoom, JEI in the inventory, leaving and rejoining, then Complementary Reimagined: no errors but the offline
+account's. The frame rate read 60 throughout because Dynamic FPS caps a window in the background (as it should). The Java
+heap rose while flying over new terrain and fell back on leaving (1,128 -> 747 MB used); the memory guard stopped the run
+after the rejoin because macOS swap had grown (other apps; the game itself was under 1 GB). Essential's pause-menu and
+title-screen sidebars also checked with Retina off: right size, crisp.
 
 ### Smaller findings
 

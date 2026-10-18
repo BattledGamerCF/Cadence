@@ -31,13 +31,14 @@ The result is logged (`[cadence] compat: ...`) and shown in Cadence's settings, 
 
 All twelve installed together with Cadence 0.4.0-beta.3 (the release jar, in a normal, non-development launch), plus
 the libraries they need (Fabric API, Fabric Language Kotlin, YACL, MezzConfig, Placeholder API). Each was checked in game:
-shaders off and BSL with Retina on, shaders off with Retina off; leaving the world and rejoining; Mod Menu.
+shaders off, BSL and Complementary Reimagined; Retina on and off; a 4-minute flight with packs switched on and off; leaving
+the world and rejoining; Mod Menu. No errors from Cadence or between the mods.
 
 | Mod | Version | Result |
 |---|---|---|
 | AppleSkin | 3.0.10 | Works: hunger and saturation preview on the HUD |
 | Just Enough Items (JEI) | 31.15.0.79 | Works: item list next to the inventory, its search box and buttons |
-| Essential | 1.5.1 | Works since this build: title-screen and pause-menu sidebars, its screenshot toasts. (Before, it failed to load next to Cadence: see below) |
+| Essential | 1.5.1 | Works since this build: title-screen and pause-menu sidebars (also with Retina off), its screenshot toasts. (Before, it failed to load next to Cadence: see below) |
 | Mod Menu | 21.0.0 | Works: Cadence's entry has a settings button (it opens Video Settings, where Cadence's options are); Cadence HUD and Cadence Shaders are listed under it |
 | Lithium | 0.26.2 | Works; Cadence Logic steps aside for it (as designed: two game-logic optimizers on the same code) |
 | Xaero's Minimap | 26.6.0 | Works: minimap and its coordinates; its world-map rendering hooks run vanilla code |
