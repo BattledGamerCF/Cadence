@@ -307,6 +307,7 @@ public final class ShaderRuntime implements AutoCloseable {
           PackPrograms.Source fin = programs.find("final");
           if (fin != null) writtenBefore.put(fin.name(), java.util.Set.copyOf(written));
           textures.setWrittenBefore(writtenBefore);
+          textures.setSamplerTypes(programs.samplerTypes());
         }
         mipmaps = new PackMipmaps(device());
         depthMerge = new PackDepthMerge(device());
@@ -732,6 +733,13 @@ public final class ShaderRuntime implements AutoCloseable {
   /** Cadence: a screen program's pipeline and its sparse-projection variant (or null); any thread. */
   private PackPipeline[] compileScreen(PackPrograms.Source source) {
     String name = source.name();
+    // Cadence: a shadow composite pass (shadowcomp) draws over the shadow map, into the shadow colour buffers (Nostalgia,
+    // Kappa and Vanilla Plus build their water caustics there); every other screen pass into the colour buffers
+    boolean shadowComposite = name.matches("shadowcomp[0-9]*");
+    if (shadowComposite) {
+      return new PackPipeline[] {
+          PackPipeline.compile(device(), source, source.translated(), null, targets, false, true, 0, 0, 0), null};
+    }
     PackPipeline dense =
         PackPipeline.compile(device(), source, source.translated(), null, targets, name.equals("final"), false, 0, 0, 0);
     PackPipeline sparse = null;
@@ -917,7 +925,17 @@ public final class ShaderRuntime implements AutoCloseable {
         targets.colorFeedback(sampler.index());
       else if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index()))
         targets.depthFeedback(sampler.index());
+      else if (sampler.kind() == PackPipeline.SamplerKind.SHADOW_COLOR && shadowColorFeedback(pipeline, sampler.index()))
+        targets.copyShadowColorFeedback(sampler.index());
     }
+  }
+
+  /**
+   * Cadence: a shadow composite pass reading a shadow colour buffer it also draws into (Nostalgia's caustics read
+   * shadowcolor0 and write it): it reads a copy taken just before it, as Iris gives it the other side of a pair.
+   */
+  private static boolean shadowColorFeedback(PackPipeline pipeline, int index) {
+    return pipeline.shadow() && pipeline.fullscreen() && pipeline.translated().drawBuffers().contains(index);
   }
 
   public boolean requiresReadPreparation(PackPipeline pipeline) {
@@ -927,6 +945,7 @@ public final class ShaderRuntime implements AutoCloseable {
           && !targets.colorFeedbackReady(sampler.index())) return true;
       if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index())
           && !targets.depthFeedbackReady(sampler.index())) return true;
+      if (sampler.kind() == PackPipeline.SamplerKind.SHADOW_COLOR && shadowColorFeedback(pipeline, sampler.index())) return true;
       boolean needed =
           switch (sampler.kind()) {
             case COLOR -> targets.needsColorDefinition(sampler.index());
@@ -1154,6 +1173,8 @@ public final class ShaderRuntime implements AutoCloseable {
     return mipSampled(pipeline.source(), index);
   }
 
+  private static final java.util.Set<String> UNBOUND_LOGGED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
   private void bindTexture(
       PackPipeline pipeline,
       RenderPass pass,
@@ -1183,7 +1204,9 @@ public final class ShaderRuntime implements AutoCloseable {
           filter = textures.nearest;
         }
         case SHADOW_COLOR -> {
-          texture = targets.shadowColor(sampler.index());
+          texture = shadowColorFeedback(pipeline, sampler.index())
+              ? targets.shadowColorFeedback(sampler.index())
+              : targets.shadowColor(sampler.index());
           if (targets.shadowSpecification(sampler.index()).nearest()) filter = textures.nearest;
         }
         case NOISE -> {
@@ -1215,9 +1238,15 @@ public final class ShaderRuntime implements AutoCloseable {
               filter = textures.albedoSampler(view, blockAtlas, filter);
           } else texture = textures.white;
         }
-        case CUSTOM ->
-            throw new UnsupportedOperationException(
-                "Unbound pack sampler " + sampler.name() + " in " + pipeline.source().name());
+        case CUSTOM -> {
+          // Cadence: a sampler another mod would supply (Voxy's vxDepthTexTrans, Distant Horizons' dh*: Mellow reads them
+          // without asking whether that mod is there): its "nothing here" value, white (depth 1, the far plane) for a depth
+          // texture and black for anything else, as with the mod absent. It used to stop the pack.
+          texture = sampler.name().toLowerCase(java.util.Locale.ROOT).contains("depth") ? textures.white : textures.black;
+          if (UNBOUND_LOGGED.add(sampler.name()))
+            LoggerFactory.getLogger("cadence_shaders").info("Sampler {} (another mod's) has no data here: {}", sampler.name(),
+                texture == textures.white ? "white (far depth)" : "black");
+        }
       }
     }
     if (view == null) view = texture.sampled;
@@ -1377,9 +1406,45 @@ public final class ShaderRuntime implements AutoCloseable {
       bind(pipeline, pass, Map.of());
       pass.draw(6, 1, 0, 0); // the full-screen quad (two triangles; ShaderCompatibilityCompiler FULLSCREEN)
     }
-    if (!pipeline.source().name().equals("final"))
-      targets.flip(pipeline.translated().drawBuffers());
+    if (!pipeline.source().name().equals("final") && !pipeline.shadow())
+      targets.flip(flipsAfter(pipeline.source().name(), pipeline.translated().drawBuffers()));
     profile("pass." + pipeline.source().name() + ".end");
+  }
+
+  /**
+   * Cadence: the buffers that change sides after a screen pass: the ones it drew into, then the pack's explicit
+   * flip.PASS.BUFFER directives (Iris): true flips a buffer the pass didn't draw into (Photon flips colortex6 after
+   * composite1, so later passes read the ambient occlusion its other side still holds), false keeps a drawn one from flipping.
+   */
+  private java.util.List<Integer> flipsAfter(String pass, java.util.List<Integer> drawn) {
+    Map<Integer, Boolean> explicit = explicitFlips().get(pass);
+    if (explicit == null) return drawn;
+    java.util.LinkedHashSet<Integer> out = new java.util.LinkedHashSet<>(drawn);
+    explicit.forEach((index, flip) -> {
+      if (flip) out.add(index);
+      else out.remove(index);
+    });
+    return java.util.List.copyOf(out);
+  }
+
+  private Map<String, Map<Integer, Boolean>> explicitFlips;
+
+  private Map<String, Map<Integer, Boolean>> explicitFlips() {
+    if (explicitFlips != null) return explicitFlips;
+    Map<String, Map<Integer, Boolean>> out = new java.util.HashMap<>();
+    for (var property : properties.values().entrySet()) {
+      String[] key = property.getKey().split("\\.");
+      if (key.length != 3 || !key[0].equals("flip")) continue;
+      String value = property.getValue().strip();
+      boolean flip = value.equals("true") || value.equals("1");
+      if (!flip && !value.equals("false") && !value.equals("0")) continue;
+      try {
+        out.computeIfAbsent(key[1], k -> new java.util.HashMap<>()).put(dev.cadence.shaders.pack.ShaderDirectives.colorBufferIndex(key[2]), flip);
+      } catch (dev.cadence.shaders.pack.ShaderPackException e) {
+        // not a colour buffer: ignored, as Iris does
+      }
+    }
+    return explicitFlips = out;
   }
 
   private int fullscreenDiscardMask(PackPipeline pipeline) {

@@ -159,10 +159,7 @@ public final class PackPrograms implements AutoCloseable {
           jobs.add(new Job(program, pack.source(program.paths().get(ShaderStage.COMPUTE), options, environment), "", true, true));
           if (computeOnly || !program.paths().containsKey(ShaderStage.FRAGMENT)) continue;
         } else if (computeOnly) continue;
-        if (program.name().matches("shadowcomp[0-9]*")) {
-          refuse(new UnsupportedOperationException("Shadow composite pass " + program.identifier() + " is not run yet"));
-          continue;
-        }
+        // (shadowcomp: a full-screen pass over the shadow map after the shadow pass, ShaderRuntime.compileScreen)
         if (!validateProgramProperties(program)) continue;
         if (!program.paths().containsKey(ShaderStage.VERTEX)
             || !program.paths().containsKey(ShaderStage.FRAGMENT)) {
@@ -420,10 +417,9 @@ public final class PackPrograms implements AutoCloseable {
       return false;
     }
     for (String property : properties.values().keySet()) {
+      // (flip.PASS.BUFFER is honoured: ShaderRuntime.flipsAfter)
       if (property.equals("scale." + program.name())
-          || property.equals("scale." + program.identifier())
-          || property.startsWith("flip." + program.name() + ".")
-          || property.startsWith("flip." + program.identifier() + ".")) {
+          || property.equals("scale." + program.identifier())) {
         refuse(unsupported(program.identifier(), property));
       }
     }
@@ -460,18 +456,18 @@ public final class PackPrograms implements AutoCloseable {
     return CENTER_DEPTH.matcher(code).find();
   }
 
+  /**
+   * Cadence: a setting two programs declare differently (Nostalgia: shadowHardwareFiltering true in one, false in another)
+   * takes the later program's value, as Iris's directive holder does (each declaration it reads replaces the last); it used
+   * to refuse the pack.
+   */
   private static void merge(Map<String, String> into, Map<String, String> values)
       throws ShaderPackException {
     for (var entry : values.entrySet()) {
-      String existing = into.putIfAbsent(entry.getKey(), entry.getValue());
+      String existing = into.put(entry.getKey(), entry.getValue());
       if (existing != null && !existing.equals(entry.getValue()))
-        throw new ShaderPackException(
-            "Conflicting active pack setting "
-                + entry.getKey()
-                + ": "
-                + existing
-                + " / "
-                + entry.getValue());
+        org.slf4j.LoggerFactory.getLogger("cadence_shaders").info("Pack setting {} declared both {} and {}; using {}",
+            entry.getKey(), existing, entry.getValue(), entry.getValue());
     }
   }
 
@@ -496,6 +492,18 @@ public final class PackPrograms implements AutoCloseable {
     return sources.get(name);
   }
 
+  /** Cadence (PackTextures.setSamplerTypes): every program's samplers by name, with the GLSL type it declares them as. */
+  public Map<String, Map<String, String>> samplerTypes() {
+    Map<String, Map<String, String>> out = new HashMap<>();
+    for (Map<String, Source> group : List.of(sources, computes))
+      for (Source s : group.values()) {
+        Map<String, String> types = new HashMap<>();
+        for (var sampler : s.translated().samplers()) types.put(sampler.name(), sampler.type());
+        out.put(s.name(), types);
+      }
+    return out;
+  }
+
   public boolean readsSampler(String name) {
     return samplers.contains(name);
   }
@@ -506,12 +514,39 @@ public final class PackPrograms implements AutoCloseable {
 
   public Source resolve(String name) {
     Set<String> visited = new HashSet<>();
+    boolean shadow = name.startsWith("shadow");
     while (name != null && visited.add(name)) {
       Source source = sources.get(name);
       if (source != null) return source;
       name = FALLBACK.get(name);
     }
-    throw new UnsupportedOperationException("Pack has no applicable geometry program: " + visited);
+    if (shadow) throw new UnsupportedOperationException("Pack has no applicable shadow program: " + visited);
+    return vanillaGeometry();
+  }
+
+  private Source vanilla;
+
+  /**
+   * Cadence: geometry the pack has no program for, even down its fallback chain (Miniature has no gbuffers_basic,
+   * gbuffers_textured or gbuffers_skytextured), drawn as OptiFine and Iris draw it: the game's own look (its texture times
+   * the vertex colour and the light map) into colortex0. It used to refuse the pack. A draw without light-map coordinates
+   * (0, 0: the sun, the moon) isn't darkened.
+   */
+  private synchronized Source vanillaGeometry() {
+    if (vanilla != null) return vanilla;
+    String vertex =
+        "#version 120\nvarying vec2 texcoord;\nvarying vec2 lmcoord;\nvarying vec4 glcolor;\nvarying float lit;\n"
+            + "void main() {\n  gl_Position = ftransform();\n  texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;\n"
+            + "  lmcoord = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy;\n  lit = gl_MultiTexCoord1.x + gl_MultiTexCoord1.y > 0.0 ? 1.0 : 0.0;\n"
+            + "  glcolor = gl_Color;\n}\n";
+    String fragment =
+        "#version 120\nuniform sampler2D gtexture;\nuniform sampler2D lightmap;\nvarying vec2 texcoord;\nvarying vec2 lmcoord;\n"
+            + "varying vec4 glcolor;\nvarying float lit;\n/* DRAWBUFFERS:0 */\nvoid main() {\n"
+            + "  vec4 light = lit > 0.5 ? texture2D(lightmap, lmcoord) : vec4(1.0);\n"
+            + "  gl_FragData[0] = texture2D(gtexture, texcoord) * glcolor * light;\n}\n";
+    TranslatedProgram translated = compiler.translate(vertex, fragment, directory + "/gbuffers_basic (Cadence)");
+    vanilla = new Source("gbuffers_basic", vertex, fragment, translated, new ShaderDirectives(List.of(0), Map.of()));
+    return vanilla;
   }
 
   // Cadence: asked every frame per phase (composite, deferred, ...); the regex below compiled once per program per call

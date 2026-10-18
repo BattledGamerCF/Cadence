@@ -263,8 +263,22 @@ public record PackPipeline(
       if (e instanceof RuntimeException r) throw r;
       throw new IllegalStateException(e);
     }
-    if (compiled == null)
+    if (compiled == null) {
+      // -Dcadence.shaders.dumpFailedPipelines=DIR: the translated GLSL of a pipeline that didn't compile, for reading
+      String dump = System.getProperty("cadence.shaders.dumpFailedPipelines");
+      if (dump != null) {
+        try {
+          java.nio.file.Path dir = java.nio.file.Path.of(dump);
+          java.nio.file.Files.createDirectories(dir);
+          String base = translated.label().replaceAll("[^A-Za-z0-9_.-]", "_");
+          java.nio.file.Files.writeString(dir.resolve(base + ".vsh"), translated.vertexSource());
+          java.nio.file.Files.writeString(dir.resolve(base + ".fsh"), translated.fragmentSource());
+        } catch (java.io.IOException | RuntimeException ignored) {
+          // diagnostics only
+        }
+      }
       throw new IllegalStateException("Pack pipeline compilation failed: " + translated.label());
+    }
     String primarySampler =
         original != null
                 && original

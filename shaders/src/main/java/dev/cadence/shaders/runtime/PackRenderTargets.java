@@ -486,6 +486,27 @@ public final class PackRenderTargets implements AutoCloseable {
     return copy;
   }
 
+  private final Map<Integer, PackTexture> shadowColorFeedback = new HashMap<>();
+
+  /** Cadence: a copy of shadow colour buffer index taken now (outside an open pass), for a shadow composite pass. */
+  public void copyShadowColorFeedback(int index) {
+    PackTexture source = shadowColor(index);
+    int w = source.texture.getWidth(0), h = source.texture.getHeight(0);
+    PackTexture copy = shadowColorFeedback.get(index);
+    if (copy == null || copy.texture.getWidth(0) != w || copy.texture.getHeight(0) != h) {
+      copy = allocate("shadowcolor" + index + " feedback", source.texture.getFormat(), w, h, 1);
+      shadowColorFeedback.put(index, copy);
+    }
+    ensureDefined(source);
+    device.createCommandEncoder().copyTextureToTexture(source.texture, copy.texture, 0, 0, 0, 0, 0, w, h);
+  }
+
+  /** The copy copyShadowColorFeedback last took of shadow colour buffer index. */
+  public PackTexture shadowColorFeedback(int index) {
+    PackTexture copy = shadowColorFeedback.get(index);
+    return copy != null ? copy : shadowColor(index);
+  }
+
   /** The copy of depth buffer index a program with that depth attachment reads, current for this phase. */
   public PackTexture depthFeedback(int index) {
     if (depthFeedback[index] == null) depthFeedback[index] = allocate("depthtex" + index + " feedback", GpuFormat.D32_FLOAT, width, height, 1);

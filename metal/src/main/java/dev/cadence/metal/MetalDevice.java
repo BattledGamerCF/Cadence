@@ -120,7 +120,10 @@ final class MetalDevice implements GpuDeviceBackend {
 		if (dev.cadence.metal.own.AnimCopy.creatingAnimatedAtlas) mtlUsage |= 2;  // ShaderWrite (-Dcadence.own.int.atlasWrite)
 		if (MetalStorage.creatingWritable()) mtlUsage |= 2;  // ShaderWrite: a shader pack's colorimgN target
 		boolean cube = (usage & GpuTexture.USAGE_CUBEMAP_COMPATIBLE) != 0;
-		long handle = Native.textureNew(this.ctx, MetalConst.pixelFormat(format), width, height, layers, mips, Math.max(1, mtlUsage), cube ? 1 : 0);
+		int volumeDepth = MetalVolume.creatingDepth();  // (Cadence: a shader pack's 3D texture, made through MetalVolume)
+		long handle = volumeDepth > 0
+			? Native.textureNew(this.ctx, MetalConst.pixelFormat(format), width, height, volumeDepth, mips, Math.max(1, mtlUsage), 2)
+			: Native.textureNew(this.ctx, MetalConst.pixelFormat(format), width, height, layers, mips, Math.max(1, mtlUsage), cube ? 1 : 0);
 		if (handle == 0) throw new IllegalStateException("Couldn't create " + width + "x" + height + " " + format + " texture " + label);
 		MetalTexture texture = new MetalTexture(this.encoder, handle, usage, label == null ? "" : label, format, width, height, layers, mips);
 		texture.shaderWrite = (mtlUsage & 2) != 0;

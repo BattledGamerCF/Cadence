@@ -305,17 +305,18 @@ id<MTLBuffer> mc_buffer_private(Ctx *ctx, id<MTLBuffer> src, uint64_t size) {
 void *mc_buffer_contents(id<MTLBuffer> buffer) { return buffer.contents; }
 uint64_t mc_buffer_gpu_address(id<MTLBuffer> buffer) { return buffer.gpuAddress; }
 
-id<MTLTexture> mc_texture_new(Ctx *ctx, int format, int width, int height, int layers, int mips, int usage, int cube) {
+// kind: 0 2D, 1 cube, 2 3D (Cadence: a shader pack's volume texture; layers is its depth)
+id<MTLTexture> mc_texture_new(Ctx *ctx, int format, int width, int height, int layers, int mips, int usage, int kind) {
 	@autoreleasepool {
 		MTLTextureDescriptor *d = [[MTLTextureDescriptor new] autorelease];
-		d.textureType = cube ? MTLTextureTypeCube : MTLTextureType2D;
+		d.textureType = kind == 2 ? MTLTextureType3D : kind == 1 ? MTLTextureTypeCube : MTLTextureType2D;
 		d.pixelFormat = (MTLPixelFormat) format;
 		d.width = width;
 		d.height = height;
+		if (kind == 2) d.depth = layers;  // (cubes carry their 6 faces implicitly; arrays aren't used by the game yet)
 		d.mipmapLevelCount = mips;
 		d.usage = (MTLTextureUsage) usage;
 		d.storageMode = MTLStorageModePrivate;
-		(void) layers;  // cubes carry their 6 faces implicitly; arrays aren't used by the game yet
 		return [ctx->device newTextureWithDescriptor:d];
 	}
 }
@@ -344,6 +345,7 @@ id<MTLSamplerState> mc_sampler_new(Ctx *ctx, int addressU, int addressV, int min
 		MTLSamplerDescriptor *d = [[MTLSamplerDescriptor new] autorelease];
 		d.sAddressMode = (MTLSamplerAddressMode) addressU;
 		d.tAddressMode = (MTLSamplerAddressMode) addressV;
+		d.rAddressMode = (MTLSamplerAddressMode) addressU;  // (3D textures' depth axis, as U; 2D textures ignore it)
 		d.minFilter = (MTLSamplerMinMagFilter) minFilter;
 		d.magFilter = (MTLSamplerMinMagFilter) magFilter;
 		d.mipFilter = (MTLSamplerMipFilter) mipFilter;
@@ -360,6 +362,7 @@ id<MTLSamplerState> mc_sampler_new_compare(Ctx *ctx, int addressU, int addressV,
 		MTLSamplerDescriptor *d = [[MTLSamplerDescriptor new] autorelease];
 		d.sAddressMode = (MTLSamplerAddressMode) addressU;
 		d.tAddressMode = (MTLSamplerAddressMode) addressV;
+		d.rAddressMode = (MTLSamplerAddressMode) addressU;  // (3D textures' depth axis, as U; 2D textures ignore it)
 		d.minFilter = (MTLSamplerMinMagFilter) minFilter;
 		d.magFilter = (MTLSamplerMinMagFilter) magFilter;
 		d.mipFilter = (MTLSamplerMipFilter) mipFilter;
@@ -1152,6 +1155,13 @@ void mc_blit_buffer_to_texture(Enc *enc, id<MTLBuffer> src, uint64_t offset, int
 	id<MTLTexture> dst, int slice, int mip, int x, int y, int w, int h) {
 	[blit(enc) copyFromBuffer:src sourceOffset:offset sourceBytesPerRow:bytesPerRow sourceBytesPerImage:bytesPerImage
 		sourceSize:MTLSizeMake(w, h, 1) toTexture:dst destinationSlice:slice destinationLevel:mip destinationOrigin:MTLOriginMake(x, y, 0)];
+}
+
+// Cadence: a whole 3D texture's level 0 from a buffer (a shader pack's volume texture)
+void mc_blit_buffer_to_volume(Enc *enc, id<MTLBuffer> src, uint64_t offset, int bytesPerRow, int bytesPerImage,
+	id<MTLTexture> dst, int w, int h, int d) {
+	[blit(enc) copyFromBuffer:src sourceOffset:offset sourceBytesPerRow:bytesPerRow sourceBytesPerImage:bytesPerImage
+		sourceSize:MTLSizeMake(w, h, d) toTexture:dst destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
 }
 
 void mc_blit_texture_to_buffer(Enc *enc, id<MTLTexture> src, int mip, int x, int y, int w, int h,

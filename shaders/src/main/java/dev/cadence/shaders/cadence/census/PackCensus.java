@@ -98,10 +98,18 @@ public final class PackCensus {
         problems.add("Custom uniforms: " + e.getMessage());
       }
       for (var property : properties.values().entrySet()) {
-        if (property.getKey().startsWith("texture.") && property.getValue().contains(" "))
-          problems.add("Raw custom texture declaration: " + property.getKey() + " = " + property.getValue());
+        if (property.getKey().startsWith("texture.") && property.getValue().contains(" ")) {
+          try {
+            var raw = dev.cadence.shaders.runtime.PackTextures.parseRaw(property.getValue());
+            pack.bytes(raw.path());
+          } catch (Exception e) {
+            problems.add("Raw custom texture declaration: " + property.getKey() + " = " + property.getValue() + ": " + e.getMessage());
+          }
+        }
       }
-      try (PackPrograms programs = new PackPrograms(pack, options, dimension)) {
+      // (hardware shadow comparison, as Cadence's Metal device offers and the game uses: sampler2DShadow kept)
+      try (PackPrograms programs = new PackPrograms(pack, options, dimension,
+          dev.cadence.shaders.compile.ShaderCompatibilityCompiler.ShadowComparison.HARDWARE)) {
         try {
           var specs = programs.bufferSpecifications();
           if (DUMP != null) System.out.println("  buffers " + programs.directory + ": " + new java.util.TreeMap<>(specs));

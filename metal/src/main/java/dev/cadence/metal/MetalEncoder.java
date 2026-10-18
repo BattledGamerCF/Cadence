@@ -748,6 +748,15 @@ final class MetalEncoder implements CommandEncoderBackend {
 			((MetalTexture) destination).handle, layer, mip, x, y, width, height);
 	}
 
+	/** Cadence (MetalVolume): a 3D texture's whole level 0, depth slices one after another in {@code source}. */
+	void writeToVolume(MetalTexture destination, ByteBuffer source, int width, int height, int depth) {
+		this.trace("writeToVolume", destination, width + "x" + height + "x" + depth);
+		GpuBufferSlice staging = this.transientMemory.uploadGpu(source, 16L, GpuBuffer.USAGE_COPY_SRC);
+		int bytesPerRow = width * destination.getFormat().blockSize();
+		Native.blitBufferToVolume(this.enc, this.use(staging.buffer()).handle, staging.offset(), bytesPerRow, bytesPerRow * height,
+			destination.handle, width, height, depth);
+	}
+
 	@Override
 	public void copyBufferToTexture(GpuBufferSlice source, int sourceX, int sourceY, int sourceWidth, int sourceHeight, GpuTexture destination,
 		int destX, int destY, int copyWidth, int copyHeight, int mip, int layer) {

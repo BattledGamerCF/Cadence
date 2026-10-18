@@ -50,6 +50,10 @@ class MetalTexture extends BaseGpuTexture {
 		return Math.max(1, super.getHeight(mip));
 	}
 
+	MetalEncoder encoder() {
+		return this.encoder;
+	}
+
 	boolean hasPendingClear() {
 		return this.pendingColorClear != null || !Double.isNaN(this.pendingDepthClear);
 	}

@@ -92,10 +92,9 @@ public record ShaderDirectives(List<Integer> drawBuffers, Map<String, String> co
         continue;
       }
       String value = constant.group(2).trim();
-      String previous = constants.putIfAbsent(name, value);
-      if (previous != null && !previous.equals(value)) {
-        throw new ShaderPackException("Conflicting active shader directive " + name);
-      }
+      // Cadence: declared twice with different values in one program (Vanilla Plus: shadowcolor0Format): the later one
+      // counts, as in Iris
+      constants.put(name, value);
     }
     return new ShaderDirectives(targets == null ? List.of(0) : targets, constants);
   }

@@ -109,6 +109,8 @@ final class Native {
 	private static final MethodHandle BLIT_FILL = fn("mc_blit_fill", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle BLIT_BUFFER_TO_TEXTURE = fn("mc_blit_buffer_to_texture", false, null,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT);
+	private static final MethodHandle BLIT_BUFFER_TO_VOLUME = fn("mc_blit_buffer_to_volume", false, null,
+		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT);
 	private static final MethodHandle BLIT_TEXTURE_TO_BUFFER = fn("mc_blit_texture_to_buffer", false, null,
 		JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle BLIT_TEXTURE_TO_TEXTURE = fn("mc_blit_texture_to_texture", false, null,
@@ -268,6 +270,7 @@ final class Native {
 	static int profileCount(long enc) { try { return (int) PROFILE_COUNT.invokeExact(enc); } catch (Throwable t) { throw rethrow(t); } }
 	static void blitBuffer(long enc, long src, long srcOff, long dst, long dstOff, long size) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitBuffer(false, src, srcOff, dst, dstOff, size); try { BLIT_BUFFER.invokeExact(enc, src, srcOff, dst, dstOff, size); } catch (Throwable t) { throw rethrow(t); } }
 	static void fillBuffer(long enc, long buffer, long offset, long length, int value) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.fill(false, buffer, offset, length, value); try { BLIT_FILL.invokeExact(enc, buffer, offset, length, value); } catch (Throwable t) { throw rethrow(t); } }
+	static void blitBufferToVolume(long enc, long src, long off, int bytesPerRow, int bytesPerImage, long dst, int w, int h, int d) { try { BLIT_BUFFER_TO_VOLUME.invokeExact(enc, src, off, bytesPerRow, bytesPerImage, dst, w, h, d); } catch (Throwable t) { throw rethrow(t); } }
 	static void blitBufferToTexture(long enc, long src, long off, int bytesPerRow, int bytesPerImage, long dst, int slice, int mip, int x, int y, int w, int h) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitBufferToTexture(src, off, bytesPerRow, bytesPerImage, dst, slice, mip, x, y, w, h); try { BLIT_BUFFER_TO_TEXTURE.invokeExact(enc, src, off, bytesPerRow, bytesPerImage, dst, slice, mip, x, y, w, h); } catch (Throwable t) { throw rethrow(t); } }
 	static void blitTextureToBuffer(long enc, long src, int mip, int x, int y, int w, int h, long dst, long off, int bytesPerRow) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitTextureToBuffer(src, mip, x, y, w, h, dst, off, bytesPerRow); try { BLIT_TEXTURE_TO_BUFFER.invokeExact(enc, src, mip, x, y, w, h, dst, off, bytesPerRow); } catch (Throwable t) { throw rethrow(t); } }
 	static void blitTextureToTexture(long enc, long src, long dst, int mip, int dx, int dy, int sx, int sy, int w, int h) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitTextureToTexture(src, dst, mip, dx, dy, sx, sy, w, h); try { BLIT_TEXTURE_TO_TEXTURE.invokeExact(enc, src, dst, mip, dx, dy, sx, sy, w, h); } catch (Throwable t) { throw rethrow(t); } }

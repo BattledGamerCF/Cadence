@@ -5,6 +5,7 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
 
 import dev.cadence.shaders.pack.AlphaTestPolicy;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -67,6 +68,19 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
           "median3",
           "min3",
           "max3",
+          // Cadence: Metal math functions GLSL lacks, so a pack's own function of that name is called ambiguously in Metal
+          // (Photon: length_squared; Noble: log10)
+          "length_squared",
+          "distance_squared",
+          "log10",
+          "exp10",
+          "powr",
+          "sincos",
+          "copysign",
+          "fdim",
+          "sinpi",
+          "cospi",
+          "tanpi",
           "level",
           "gradient2d",
           "gradient3d",
@@ -307,6 +321,26 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
         vertexBody.replaceAll(
             "\\bftransform\\s*\\(\\s*\\)", "(gl_ModelViewProjectionMatrix * gl_Vertex)");
     if (adapter != null) {
+      // Cadence: the game's vertex inputs keep their own names (Position, Color, UV0, UV2, Normal); a pack identifier of the
+      // same name (Mellow's `Normal`) is renamed in both stages, or the two would be redefinitions of each other
+      Matcher inputs = Pattern.compile("\\bin\\s+\\w+\\s+(\\w+)\\s*;").matcher(adapter.declarations());
+      while (inputs.find()) {
+        String input = inputs.group(1);
+        if (token(vertexBody, input) || token(fragmentBody, input) || varyings.containsKey(input) || uniforms.containsKey(input)) {
+          String renamed = "sl_pack_" + input;
+          vertexBody = replaceToken(vertexBody, input, renamed);
+          fragmentBody = replaceToken(fragmentBody, input, renamed);
+          // (its declaration was already taken out of the code: a varying or uniform keeps its entry under the new name)
+          if (varyings.containsKey(input)) varyings.put(renamed, varyings.remove(input));
+          if (varyingQualifiers.containsKey(input)) varyingQualifiers.put(renamed, varyingQualifiers.remove(input));
+          for (String[] out : modernOutputs) if (out[2].equals(input)) out[2] = renamed;  // (Mellow's `out vec4 Color`)
+          if (uniforms.containsKey(input)) {
+            uniforms.put(renamed, uniforms.remove(input));
+            if (vertexUniforms.remove(input)) vertexUniforms.add(renamed);
+            if (fragmentUniforms.remove(input)) fragmentUniforms.add(renamed);
+          }
+        }
+      }
       adapter.uniforms().forEach((name, declaration) -> merge(uniforms, name, declaration));
       // A single token pass prevents replacement expressions from being recursively rewritten.
       // Cadence: a pack's own declared type for an input (I Like Vanilla declares mc_midTexCoord a vec2; the adapter
@@ -547,6 +581,56 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     }
     StringBuilder vout = new StringBuilder();
     StringBuilder fin = new StringBuilder();
+    // Cadence: a varying of the pack's own struct type (Photon: `flat out OverworldFogParameters fog_params;`) is declared
+    // here, above the pack's code, so its struct definition moves up with it (out of both stages' code), and the varying
+    // takes as many locations as the struct's members do.
+    Map<String, Integer> structSlots = new HashMap<>();
+    Map<String, String> structMembers = new HashMap<>();
+    for (var varying : varyings.values()) {
+      String type = varying.type();
+      if (type.matches("[ibud]?vec[234]|mat[234](x[234])?|float|int|uint|bool|double") || structSlots.containsKey(type)) continue;
+      Pattern definition = Pattern.compile("\\bstruct\\s+" + Pattern.quote(type) + "\\s*\\{([^}]*)\\}\\s*;");
+      Matcher inVertex = definition.matcher(vertexBody), inFragment = definition.matcher(fragmentBody);
+      Matcher found = inVertex.find() ? inVertex : inFragment.find() ? inFragment : null;
+      if (found == null) continue;
+      String text = found.group();
+      structSlots.put(type, structSlots(found.group(1), structSlots));
+      structMembers.put(type, found.group(1));
+      vertexBody = vertexBody.replace(text, "");
+      fragmentBody = fragmentBody.replace(text, "");
+      vout.append(text).append('\n');
+      fin.append(text).append('\n');
+    }
+    // ...and since the game's pipeline layer takes no struct in a stage's interface, each such varying becomes one varying
+    // per member: the pack's code keeps the struct as a plain global in both stages, the vertex stage copies its members
+    // out after the pack's main, the fragment stage copies them in before it.
+    StringBuilder structCopyOut = new StringBuilder(), structCopyIn = new StringBuilder();
+    for (var varying : List.copyOf(varyings.entrySet())) {
+      String members = structMembers.get(varying.getValue().type());
+      if (members == null) continue;
+      if (varying.getValue().arrayLength() > 0) throw unsupported(label, "arrays of struct varyings");
+      String name = varying.getKey(), qualifier = varyingQualifiers.getOrDefault(name, "");
+      varyings.remove(name);
+      varyingQualifiers.remove(name);
+      vout.append(varying.getValue().type()).append(' ').append(name).append(";\n");
+      fin.append(varying.getValue().type()).append(' ').append(name).append(";\n");
+      Matcher member = Pattern.compile("(\\w+)\\s+(\\w+)\\s*(?:\\[\\s*(\\d+)\\s*\\])?\\s*;")
+          .matcher(members.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("//[^\\n]*", ""));
+      while (member.find()) {
+        if (structMembers.containsKey(member.group(1))) throw unsupported(label, "nested struct varyings");
+        String flat = "sl_struct_" + name + "_" + member.group(2);
+        varyings.put(flat, new UniformLayout.Declaration(member.group(1), member.group(3) == null ? 0 : Integer.parseInt(member.group(3))));
+        varyingQualifiers.put(flat, qualifier);
+        structCopyOut.append(flat).append(" = ").append(name).append('.').append(member.group(2)).append(";\n");
+        structCopyIn.append(name).append('.').append(member.group(2)).append(" = ").append(flat).append(";\n");
+      }
+    }
+    if (structCopyIn.length() > 0) {
+      Matcher fragmentMain = MAIN.matcher(fragmentBody);
+      if (!fragmentMain.find()) throw new IllegalArgumentException("Missing fragment main in " + label);
+      fragmentBody = fragmentMain.replaceFirst("void sl_struct_fragment_main()")
+          + "\nvoid main() {\n" + structCopyIn + "sl_struct_fragment_main();\n}\n";
+    }
     int location = 0;
     for (var varying : varyings.entrySet()) {
       String suffix =
@@ -568,7 +652,9 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
           .append(interpolation)
           .append("in ")
           .append(declaration);
-      location += varyingLocations(varying.getValue());
+      location += structSlots.containsKey(varying.getValue().type())
+          ? structSlots.get(varying.getValue().type()) * Math.max(1, varying.getValue().arrayLength())
+          : varyingLocations(varying.getValue());
     }
     StringBuilder fout = new StringBuilder();
     for (int i = 0; i < outputCount; i++)
@@ -610,7 +696,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
         entry += "sl_MultiTexCoord0 = vec4(sl_uv, 0.0, 1.0);\n";
     }
     // Pack matrices and sampled depth remain OpenGL-style; rasterization expects [0, 1] NDC Z.
-    entry += "sl_pack_main();\ngl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n";
+    entry += "sl_pack_main();\n" + structCopyOut + "gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n";
     String compatibility =
         shadowComparison == ShadowComparison.HARDWARE
             ? """
@@ -914,6 +1000,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     String body =
         declarations(storage.extract(c.source()), false, uniforms, samplers, new LinkedHashMap<>(), new LinkedHashMap<>(),
             new ArrayList<>());
+    body = SharedVec3Split.apply(body);
     for (var core : IRIS_CORE.entrySet()) {
       Pattern own = Pattern.compile("\\b(?:float|int|bool|[biu]?vec[234]|mat[234](?:x[234])?)\\s+" + core.getKey() + "\\b");
       if (!own.matcher(body).find()) body = replaceToken(body, core.getKey(), "(" + core.getValue() + ")");
@@ -1037,7 +1124,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
             if (type.matches("[iu]?sampler.*")) {
               if (length > 0)
                 throw new UnsupportedOperationException("Sampler arrays: " + identifier);
-              if (!type.matches("sampler2D|sampler2DShadow|samplerCube|[iu]sampler2D"))
+              if (!type.matches("sampler2D|sampler2DShadow|samplerCube|[iu]sampler2D|sampler3D"))
                 throw new UnsupportedOperationException(
                     "Unsupported sampler type " + type + " for " + identifier);
               String previous = samplers.putIfAbsent(identifier, type);
@@ -1269,6 +1356,19 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     var previous = map.putIfAbsent(name, value);
     if (previous != null && !previous.equals(value))
       throw new IllegalArgumentException("Conflicting declarations: " + name);
+  }
+
+  /** The interface locations a struct with these members takes: one per member, a matrix's columns and an array's elements each. */
+  private static int structSlots(String members, Map<String, Integer> known) {
+    String code = members.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("//[^\\n]*", "");
+    Matcher member = Pattern.compile("(\\w+)\\s+(\\w+)\\s*(?:\\[\\s*(\\d+)\\s*\\])?\\s*;").matcher(code);
+    int slots = 0;
+    while (member.find()) {
+      String type = member.group(1);
+      int each = type.matches("mat[234].*") ? type.charAt(3) - '0' : known.getOrDefault(type, 1);
+      slots += each * (member.group(3) == null ? 1 : Integer.parseInt(member.group(3)));
+    }
+    return Math.max(1, slots);
   }
 
   private static int varyingLocations(UniformLayout.Declaration declaration) {

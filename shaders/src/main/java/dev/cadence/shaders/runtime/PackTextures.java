@@ -57,8 +57,23 @@ public final class PackTextures implements AutoCloseable {
     return out;
   }
 
+  /**
+   * Cadence: a custom texture's bytes: a file in the pack, or (as Iris allows: Mellow's and Photon's
+   * texture.deferred.depthtex2 = minecraft:textures/environment/clouds.png) a texture of the game's own resources.
+   */
+  static byte[] fileBytes(ShaderPack pack, String path) throws IOException {
+    if (!path.matches("[a-z0-9_.-]+:.+")) return pack.bytes(path);
+    var id = net.minecraft.resources.Identifier.tryParse(path);
+    if (id == null) throw new IOException("Invalid resource location " + path);
+    var resource = net.minecraft.client.Minecraft.getInstance().getResourceManager().getResource(id);
+    if (resource.isEmpty()) throw new IOException("Missing game resource " + path);
+    try (var in = resource.get().open()) {
+      return in.readAllBytes();
+    }
+  }
+
   private static Decoded decodePixels(ShaderPack pack, String path) throws IOException {
-    BufferedImage image = decodeImage(pack.bytes(path), path);
+    BufferedImage image = decodeImage(fileBytes(pack, path), path);
     int width = image.getWidth(), height = image.getHeight();
     int[] argb = image.getRGB(0, 0, width, height, null, 0, width);
     ByteBuffer pixels = ByteBuffer.allocateDirect(width * height * 4);
@@ -137,10 +152,28 @@ public final class PackTextures implements AutoCloseable {
       normal = solid("normal", 128, 128, 255, 255);
       for (var property : properties.values().entrySet()) {
         if (!property.getKey().startsWith("texture.")) continue;
-        String path = property.getValue();
-        if (path.contains(" "))
-          throw new UnsupportedOperationException(
-              "Raw custom texture declaration: " + property.getKey());
+        // Cadence: as Iris, texture.STAGE.SAMPLER; anything after the sampler name (Photon's "colortex6.1") is dropped
+        String[] key = property.getKey().substring(8).split("\\.");
+        if (key.length < 2) continue;  // (texture.noise and other single names: below)
+        String name = key[0] + "." + key[1];
+        String path = property.getValue().strip();
+        if (path.contains(" ")) {
+          // Cadence: a raw texture (Iris's RawDefinition): bound only where a program of that stage declares the sampler
+          // with the texture's own shape (sampler3D for TEXTURE_3D), as Iris renames exactly those declarations
+          RawTexture raw = raw(pack, path);
+          custom.put(name + "@" + raw.samplerType(), raw.texture());
+          customSamplers.put(raw.texture(), mcmetaSampler(pack, path.split("\\s+")[0]));
+          continue;
+        }
+        PackTexture loaded = image(pack, path);
+        custom.put(name, loaded);
+        customSamplers.put(loaded, mcmetaSampler(pack, path));
+      }
+      for (var property : properties.values().entrySet()) {
+        // texture.noise = image (the one sampler name without a stage)
+        if (!property.getKey().matches("texture\\.[^.]+")) continue;
+        String path = property.getValue().strip();
+        if (path.contains(" ")) continue;
         PackTexture loaded = image(pack, path);
         custom.put(property.getKey().substring(8), loaded);
         customSamplers.put(loaded, mcmetaSampler(pack, path));
@@ -254,7 +287,20 @@ public final class PackTextures implements AutoCloseable {
     customLookups.clear();
   }
 
+  /** Cadence: each program's samplers and the GLSL type it declares them as (raw textures bind by type). */
+  private Map<String, Map<String, String>> samplerTypes = Map.of();
+
+  public void setSamplerTypes(Map<String, Map<String, String>> types) {
+    samplerTypes = Map.copyOf(types);
+    customLookups.clear();
+  }
+
   private PackTexture findCustom(String program, String sampler) {
+    String declared = samplerTypes.getOrDefault(program, Map.of()).get(sampler);
+    if (declared != null) {
+      PackTexture raw = custom.get(group(program) + "." + sampler + "@" + declared);
+      if (raw != null) return raw;
+    }
     if (sampler.matches("colortex[0-9]+|gcolor|gdepth|gnormal|composite|gaux[1-4]")) {
       var written = writtenBefore.get(program);
       try {
@@ -263,15 +309,117 @@ public final class PackTextures implements AutoCloseable {
         // not a colour buffer name after all: the override applies
       }
     }
-    String group =
-        program.startsWith("gbuffers_")
-            ? "gbuffers"
-            : program.startsWith("deferred")
-                ? "deferred"
-                : program.startsWith("composite") || program.equals("final")
-                    ? "composite"
-                    : program.startsWith("shadow") ? "shadow" : program.replaceAll("[0-9]+$", "");
-    return custom.get(group + "." + sampler);
+    return custom.get(group(program) + "." + sampler);
+  }
+
+  /** The custom-texture stage a program belongs to (texture.STAGE.SAMPLER). */
+  private static String group(String program) {
+    if (program.startsWith("gbuffers_")) return "gbuffers";
+    if (program.startsWith("deferred")) return "deferred";
+    if (program.startsWith("composite") || program.equals("final")) return "composite";
+    if (program.startsWith("shadowcomp")) return "shadowcomp";
+    if (program.startsWith("shadow")) return "shadow";
+    return program.replaceAll("_[a-z]$", "").replaceAll("[0-9]+$", "");
+  }
+
+  /** Cadence: a raw texture made, and the sampler type that reads it. */
+  private record RawTexture(PackTexture texture, String samplerType) {}
+
+  /**
+   * Cadence: a raw texture (OptiFine/Iris: "path TEXTURE_3D RGB16F 32 64 32 RGB HALF_FLOAT"): the file's texels as written,
+   * in rows, then images. Metal has no 3-component formats, so RGB data is widened to RGBA (alpha 1). The data's component
+   * type must be the internal format's (bytes for 8-bit formats, halves for 16F, floats for 32F).
+   */
+  /** Cadence: a parsed raw texture declaration. */
+  public record RawSpec(String path, int dims, GpuFormat format, int components, int bytes, int width, int height, int depth,
+      int srcComponents, boolean bgr) {}
+
+  /** Parses a raw texture declaration, or throws UnsupportedOperationException saying what Cadence can't read. */
+  public static RawSpec parseRaw(String spec) {
+    String[] p = spec.strip().split("\\s+");
+    String type = p.length > 1 ? p[1] : "";
+    int dims = switch (type) {
+      case "TEXTURE_2D", "TEXTURE_RECTANGLE" -> 2;
+      case "TEXTURE_3D" -> 3;
+      default -> throw new UnsupportedOperationException("Raw texture type " + type + " (" + spec + ")");
+    };
+    if (p.length != 3 + dims + 2) throw new UnsupportedOperationException("Raw texture declaration " + spec);
+    String internal = p[2];
+    int w = Integer.parseInt(p[3]), h = Integer.parseInt(p[4]), d = dims == 3 ? Integer.parseInt(p[5]) : 1;
+    String pixelFormat = p[3 + dims], pixelType = p[4 + dims];
+    int srcComponents = switch (pixelFormat) {
+      case "RED", "R" -> 1;
+      case "RG" -> 2;
+      case "RGB", "BGR" -> 3;
+      case "RGBA", "BGRA" -> 4;
+      default -> throw new UnsupportedOperationException("Raw texture pixel format " + pixelFormat);
+    };
+    int componentBytes = switch (pixelType) {
+      case "UNSIGNED_BYTE" -> 1;
+      case "HALF_FLOAT" -> 2;
+      case "FLOAT" -> 4;
+      default -> throw new UnsupportedOperationException("Raw texture pixel type " + pixelType);
+    };
+    GpuFormat format;
+    int components, bytes;
+    switch (internal) {
+      case "R8" -> { format = GpuFormat.R8_UNORM; components = 1; bytes = 1; }
+      case "RG8" -> { format = GpuFormat.RG8_UNORM; components = 2; bytes = 1; }
+      case "RGB8", "RGBA8" -> { format = GpuFormat.RGBA8_UNORM; components = 4; bytes = 1; }
+      case "R16F" -> { format = GpuFormat.R16_FLOAT; components = 1; bytes = 2; }
+      case "RG16F" -> { format = GpuFormat.RG16_FLOAT; components = 2; bytes = 2; }
+      case "RGB16F", "RGBA16F" -> { format = GpuFormat.RGBA16_FLOAT; components = 4; bytes = 2; }
+      case "R32F" -> { format = GpuFormat.R32_FLOAT; components = 1; bytes = 4; }
+      case "RG32F" -> { format = GpuFormat.RG32_FLOAT; components = 2; bytes = 4; }
+      case "RGB32F", "RGBA32F" -> { format = GpuFormat.RGBA32_FLOAT; components = 4; bytes = 4; }
+      default -> throw new UnsupportedOperationException("Raw texture format " + internal);
+    }
+    if (bytes != componentBytes)
+      throw new UnsupportedOperationException("Raw texture " + internal + " from " + pixelType + " data");
+    if (w < 1 || h < 1 || d < 1 || (long) w * h * d > 16_777_216L) throw new UnsupportedOperationException("Raw texture size " + spec);
+    return new RawSpec(p[0], dims, format, components, bytes, w, h, d, srcComponents, pixelFormat.startsWith("BGR"));
+  }
+
+  /**
+   * Cadence: a raw texture (OptiFine/Iris: "path TEXTURE_3D RGB16F 32 64 32 RGB HALF_FLOAT"): the file's texels as written,
+   * in rows, then images. Metal has no 3-component formats, so RGB data is widened to RGBA (alpha 1). The data's component
+   * type must be the internal format's (bytes for 8-bit formats, halves for 16F, floats for 32F).
+   */
+  private RawTexture raw(ShaderPack pack, String spec) throws IOException {
+    RawSpec r = parseRaw(spec);
+    int dims = r.dims(), w = r.width(), h = r.height(), d = r.depth(), components = r.components(), bytes = r.bytes();
+    int srcComponents = r.srcComponents();
+    GpuFormat format = r.format();
+    String path = r.path();
+    byte[] data = fileBytes(pack, path);
+    long texels = (long) w * h * d;
+    if (data.length < texels * srcComponents * bytes)
+      throw new IOException("Raw texture " + path + " is " + data.length + " bytes, its declaration needs " + texels * srcComponents * bytes);
+    ByteBuffer out = ByteBuffer.allocateDirect((int) (texels * components * bytes)).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+    boolean swap = r.bgr();
+    byte[] one = bytes == 1 ? new byte[] {(byte) 255} : bytes == 2 ? new byte[] {0x00, 0x3C} : new byte[] {0, 0, (byte) 0x80, 0x3F};
+    for (long t = 0; t < texels; t++) {
+      int src = (int) (t * srcComponents * bytes);
+      for (int c = 0; c < components; c++) {
+        int from = swap && c < 3 ? 2 - c : c;
+        if (from < srcComponents) out.put(data, src + from * bytes, bytes);
+        else if (c == 3) out.put(one);
+        else for (int b = 0; b < bytes; b++) out.put((byte) 0);
+      }
+    }
+    out.flip();
+    if (dims == 3) {
+      GpuTexture volume = dev.cadence.metal.MetalVolume.create(device, "shader pack " + path, format, w, h, d);
+      if (volume == null) throw new UnsupportedOperationException("3D textures need Cadence's Metal renderer");
+      dev.cadence.metal.MetalVolume.upload(volume, out, w, h, d);
+      PackTexture result = new PackTexture(device, volume);
+      owned.add(result);
+      return new RawTexture(result, "sampler3D");
+    }
+    PackTexture result = new PackTexture(device, path, format, w, h, 1);
+    owned.add(result);
+    device.createCommandEncoder().writeToTexture(result.texture, out, 0, 0, 0, 0, w, h);
+    return new RawTexture(result, "sampler2D");
   }
 
   // Cadence: each custom texture's sampler, from its .mcmeta ("blur": linear, "clamp": clamped), as vanilla resource

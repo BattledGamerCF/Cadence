@@ -39,6 +39,7 @@ public final class ShaderPack {
   private static final Pattern INCLUDE =
       Pattern.compile("^\\s*#\\s*include\\s+\"([^\"]+)\"\\s*(?://.*)?$");
   private static final Pattern VERSION = Pattern.compile("(?m)^\\s*#\\s*version[^\\n]*\\n?");
+  private static final Pattern LEADING_IF = Pattern.compile("(?m)^[ \\t]*#[ \\t]*if");
   private final Path location;
   private final Map<String, byte[]> files;
   private final Set<String> directories;
@@ -422,7 +423,11 @@ public final class ShaderPack {
       if (!version.find())
         throw new ShaderPackException("Shader has no #version directive: " + path);
       int afterVersion = version.end();
-      source = source.substring(0, afterVersion) + "\n" + prelude + source.substring(afterVersion);
+      // Cadence: a file whose #version sits inside a conditional (Miniature: "#if MC_VERSION >= 1800" then "#version 120")
+      // needs the definitions before that conditional, or it reads MC_VERSION as 0 and its whole program disappears. The
+      // compiler drops every #version line and writes its own, so the top of the file is as good a place.
+      if (LEADING_IF.matcher(source.substring(0, version.start())).find()) source = prelude + source;
+      else source = source.substring(0, afterVersion) + "\n" + prelude + source.substring(afterVersion);
     }
     Map<Integer, String> sourceFiles = new TreeMap<>();
     ids.forEach((file, id) -> sourceFiles.put(id, file));
