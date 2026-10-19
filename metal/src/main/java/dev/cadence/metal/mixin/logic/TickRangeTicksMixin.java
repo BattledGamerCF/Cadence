@@ -31,6 +31,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(LevelTicks.class)
 abstract class TickRangeTicksMixin implements TickRange.Owner {
 	@Shadow @Final private Long2LongMap nextTickForContainer;
+	@Shadow @Final private LongPredicate tickCheck;
+	/** -Dcadence.logic.tickRangeVerify=true: every walk, each parked chunk asked vanilla's question anyway: it must be "no". */
+	@Unique private static final boolean CADENCE_VERIFY = Boolean.getBoolean("cadence.logic.tickRangeVerify");
+	@Unique private static long cadence$checked, cadence$wrong;
 	@Unique private ServerLevel cadence$level;
 	@Unique private final Long2LongOpenHashMap cadence$parked = new Long2LongOpenHashMap();
 	@Unique private long cadence$parkedAt;
@@ -48,6 +52,13 @@ abstract class TickRangeTicksMixin implements TickRange.Owner {
 	/** Before the walk: a moved version puts every parked entry back. */
 	@Inject(method = "sortContainersToTick", at = @At("HEAD"))
 	private void cadence$unpark(long time, CallbackInfo ci) {
+		if (CADENCE_VERIFY && this.cadence$parkedAt == TickRange.version) {
+			for (long chunk : this.cadence$parked.keySet()) {
+				if (this.tickCheck.test(chunk) && cadence$wrong++ < 5) System.out.println("cadence-logic: tickRange MISMATCH: parked chunk " + chunk + " is ticking");
+				if (++cadence$checked % 100000 == 0 || cadence$checked == 1000)
+					System.out.println("cadence-logic: tickRange verified " + cadence$checked + " parked checks, " + cadence$wrong + " mismatches");
+			}
+		}
 		if (this.cadence$parked.isEmpty() || this.cadence$parkedAt == TickRange.version) return;
 		for (Long2LongMap.Entry e : this.cadence$parked.long2LongEntrySet()) this.nextTickForContainer.put(e.getLongKey(), e.getLongValue());
 		this.cadence$parked.clear();
