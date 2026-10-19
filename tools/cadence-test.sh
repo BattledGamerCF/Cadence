@@ -14,7 +14,8 @@ free_pct() { memory_pressure | tail -1 | grep -o '[0-9]*'; }
 other_game() {  # any Minecraft that is not this dev client (prints nothing about it: its command line holds a token)
   # every java process whose full command line (ps -ww: never truncated) is a Minecraft client that isn't ours
   # (pgrep -f missed the player's game once: its command line is very long)
-  ps -A -ww -o pid=,command= 2>/dev/null | grep -E '[j]ava .*(net\.minecraft\.client\.main\.Main|KnotClient|minecraft)' \
+  # (another project's dev client, e.g. Wayfarer's, launches through Fabric's devlaunchinjector with its arguments in a file)
+  ps -A -ww -o pid=,command= 2>/dev/null | grep -E '[j]ava .*(net\.minecraft\.client\.main\.Main|KnotClient|minecraft|devlaunchinjector)' \
     | grep -v 'cadence-metal' | awk '{print $1; exit}'
 }
 # The player's own Minecraft may be open (never touched). WAITH=0: don't wait for it, run alongside with a stricter guard
