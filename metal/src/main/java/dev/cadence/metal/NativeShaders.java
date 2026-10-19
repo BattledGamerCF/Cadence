@@ -63,8 +63,8 @@ public final class NativeShaders {
 	}
 
 	/**
-	 * NativePipelineSourceMixin: the pipeline a CreateInfo was made from, kept until that CreateInfo is compiled (by identity,
-	 * weakly: one never compiled goes with it).
+	 * NativePipelineSourceMixin: the pipeline a CreateInfo was made from, kept until that CreateInfo is compiled (weakly: one never
+	 * compiled goes with it; keyed by the record's equality, and two equal CreateInfos are the same program anyway).
 	 */
 	public static void madeFrom(CreateInfo info, RenderPipeline pipeline) {
 		if (ON && info != null) synchronized (MADE_FROM) {
@@ -73,6 +73,13 @@ public final class NativeShaders {
 	}
 
 	private static final Map<CreateInfo, RenderPipeline> MADE_FROM = new java.util.WeakHashMap<>();
+	/** Native sources Metal refused this session: translated straight away at the next reload or pack switch. */
+	private static final Set<String> FAILED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+	/** MetalPipeline: this native source didn't compile or make a pipeline. */
+	static void failed(String msl) {
+		FAILED.add(msl);
+	}
 
 	private static Source find(CreateInfo info) {
 		RenderPipeline known;
@@ -101,7 +108,9 @@ public final class NativeShaders {
 		var uniforms = info.uniforms();
 		for (int i = 0; i < uniforms.size(); i++) header.append("#define NATIVE_SLOT_").append(uniforms.get(i).name()).append(' ').append(i).append('\n');
 		// (the defines first: common.metal's order-independent transparency block reads them)
-		return log(info, new Source(header + common + "\n" + body, "native " + file));
+		String msl = header + common + "\n" + body;
+		if (FAILED.contains(msl)) return log(info, new Source(null, "native " + file + " failed before"));
+		return log(info, new Source(msl, "native " + file));
 	}
 
 	private static Source log(CreateInfo info, Source s) {

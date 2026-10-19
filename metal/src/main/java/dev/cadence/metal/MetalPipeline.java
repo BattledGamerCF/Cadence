@@ -227,6 +227,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 				}
 				// a native program that doesn't compile, or whose pipeline Metal won't make: said once, translated as before
 				System.out.println("[cadence] native shaders: " + info.name() + " " + failed + ", translated instead: " + MemoryUtil.memUTF8(err));
+				NativeShaders.failed(nat.msl());
 				if (withDepth != 0) Native.release(withDepth);
 				withDepth = withoutDepth = 0;
 				if (vlib != 0) Native.release(vlib);
@@ -235,6 +236,16 @@ final class MetalPipeline implements BackendRenderPipeline {
 				isNative = false;
 				v = translate(vertex.module(), info.uniforms().size(), slots, constexpr, storage);
 				f = translate(fragment.module(), info.uniforms().size(), slots, constexpr, storage);
+				// (the same debugging hooks as the first attempt)
+				if (DUMP_DIR != null) dump(info.name(), v, f);
+				if (OVERRIDE_DIR != null) {
+					v = override(info.name() + ".vs.metal", v);
+					f = override(info.name() + ".fs.metal", f);
+				}
+				if (UNCACHED) {
+					v = new Translated("// " + UNCACHED_NONCE + "\n" + v.msl, v.entry);
+					f = new Translated("// " + UNCACHED_NONCE + "\n" + f.msl, f.entry);
+				}
 			}
 			long pulled = 0;
 			int compare = depth == null ? 7 : MetalConst.compare(depth.depthTest());
