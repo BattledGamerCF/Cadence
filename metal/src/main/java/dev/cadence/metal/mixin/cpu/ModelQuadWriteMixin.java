@@ -48,6 +48,11 @@ abstract class ModelQuadWriteMixin implements VertexConsumer {
 	public void putBakedQuad(PoseStack.Pose pose, BakedQuad quad, QuadInstance instance) {
 		if (!Cpu.modelWrite || !this.building || !this.entityFormat || this.elementsToFill != 0 || this.primitiveTopology == PrimitiveTopology.LINES
 			|| !CADENCE_LITTLE_ENDIAN || this.vertices + 4 > 16777215 || !RenderSystem.isOnRenderThread()) {
+			if (Cpu.MODEL_WRITE_VERIFY && Cpu.modelWrite && !cadence$toldFallback) {
+				cadence$toldFallback = true;
+				System.out.println("cadence-cpu: quadWrite first fallback: building " + this.building + ", entity format " + this.entityFormat
+					+ ", elementsToFill " + this.elementsToFill + ", topology " + this.primitiveTopology + ", render thread " + RenderSystem.isOnRenderThread());
+			}
 			VertexConsumer.super.putBakedQuad(pose, quad, instance);
 			return;
 		}
@@ -88,6 +93,7 @@ abstract class ModelQuadWriteMixin implements VertexConsumer {
 	}
 
 	@Unique private static long cadence$verified, cadence$mismatches;
+	@Unique private static boolean cadence$toldFallback;
 
 	/** -Dcadence.cpu.modelWriteVerify=true: the same quad through the default method into a private buffer, byte for byte. */
 	@Unique
@@ -108,7 +114,7 @@ abstract class ModelQuadWriteMixin implements VertexConsumer {
 						if (cadence$mismatches++ < 5) System.out.println("cadence-cpu: quadWrite MISMATCH at byte " + o + " of vertex " + i);
 						break;
 					}
-			if (++cadence$verified % 200000 == 0)
+			if (++cadence$verified % 200000 == 0 || cadence$verified == 1000 || cadence$verified == 10000)
 				System.out.println("cadence-cpu: quadWrite verified " + cadence$verified + " quads, " + cadence$mismatches + " mismatches");
 		}
 	}

@@ -84,7 +84,7 @@ public final class NativeShaders {
 	private static Source find(CreateInfo info) {
 		RenderPipeline known;
 		synchronized (MADE_FROM) {
-			known = MADE_FROM.remove(info);
+			known = MADE_FROM.get(info);  // (kept: the same CreateInfo can be compiled again; the weak key lets it go)
 		}
 		// (the game's own pipelines only: one of RenderPipelines' lists, as the name lookup below requires)
 		List<RenderPipeline> named = pipelines().get(info.name());

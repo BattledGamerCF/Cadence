@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased
+## 0.4.0-beta.7 / shaders 0.3.6 (2026-10-19)
 
 - **Core tiers on M5 Pro / Max and M6** (Super + Performance (+ Efficiency) cores): Cadence reads the chip's tiers, and where
   there is a middle Performance tier the chunk-building workers are marked lower priority, so macOS keeps them on the
@@ -12,7 +12,7 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
 - **Crowded scenes: less CPU per frame for mobs, items and particles.** Each cube of a mob's model now has its 8 corners
   placed once instead of 24 times (entity models 30% -> 25% of the render thread in the test scene); models textured from
   the block atlas (chests, signs, banners, shulker boxes, ...) take the same fast path; items (dropped, held, in frames) are
-  written a quad at once; Cadence's particle culling looks each section up once a frame instead of once a particle. All
+  written a quad at once (1.2 million checked, identical); Cadence's particle culling looks each section up once a frame instead of once a particle. All
   write exactly the bytes vanilla does (checked on 57 million faces with `-Dcadence.cpu.modelWriteVerify=true`).
 
 Experimental native build (`cadence-native-VERSION.jar`, from `tools/release native`; the regular jar has it off):
