@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory;
  * records what happened. Off unless -Dcadence.selftest is set; never active in normal play.
  *
  * <p>-Dcadence.selftest=STEP,STEP,... where STEP is a pack file name in shaderpacks/ (optionally "@mode", see
- * ShaderSwitcher.reload), "off", "f3a" (vanilla's reload of every chunk, as F3+A), or "scale=0.75" (RenderScale). -Dcadence.selftest.settle=SECONDS (default 30) per step. After entering the world and after each
+ * ShaderSwitcher.reload), "off", "benchmark" (the in-game Benchmark, 30 s; logs its results line), "f3a" (vanilla's reload of every chunk, as F3+A), or "scale=0.75" (RenderScale). -Dcadence.selftest.settle=SECONDS (default 30) per step. After entering the world and after each
  * step it waits, then logs FPS (min/avg/max over the last 10 s), the terrain probe, and saves screenshots/selftest-N-STEP.png.
  * Then it quits the game. Lines start with "[selftest]".
  */
@@ -356,6 +356,18 @@ public final class CadenceSelfTest {
 						mc.options.cutoutLeaves().set(cut);
 						mc.levelExtractor.allChanged();
 					});
+				} else if (lower.equals("benchmark")) {
+					// "benchmark": the in-game Benchmark (30 s, the view turning once round), its results line and setup in the log
+					var done = new java.util.concurrent.CompletableFuture<dev.cadence.shaders.cadence.benchmark.Benchmark.Result>();
+					mc.execute(() -> dev.cadence.shaders.cadence.benchmark.Benchmark.start(done::complete, reason -> done.completeExceptionally(new IllegalStateException(reason))));
+					try {
+						var r = done.get(90, java.util.concurrent.TimeUnit.SECONDS);
+						LOGGER.info("[selftest] benchmark: {}", r.line());
+						for (String line : r.setup()) LOGGER.info("[selftest] benchmark setup: {}", line.replace("|", ": "));
+					} catch (InterruptedException | java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+						mc.execute(() -> dev.cadence.shaders.cadence.benchmark.Benchmark.cancel("self-test timeout"));
+						LOGGER.info("[selftest] benchmark FAIL: {}", e.toString());
+					}
 				} else if (lower.equals("quicksetup") || lower.equals("quicksetup=apply")) {
 					// "quicksetup": Quick Setup's test and recommendations, logged; "=apply" also applies them
 					var r = dev.cadence.shaders.cadence.setup.QuickSetup.run(stage -> LOGGER.info("[selftest] quick setup: {}", stage));
