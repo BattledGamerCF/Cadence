@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased
+## 0.4.0-beta.8 / shaders 0.3.7 (2026-10-19)
 
 New:
 - **Benchmark** (Video Settings, Cadence: Performance): 30 seconds of your view turning once round, then a results card
@@ -17,6 +17,12 @@ New:
   interval instead of jittering against the display; on ProMotion displays it also tells macOS the rate to refresh at.
   Capped frame rates are unchanged; the evenness itself couldn't be measured here (this Mac's display doesn't report when
   frames reach it). `-Dcadence.framePacing=false` turns it off.
+- The Benchmark card says when a frame cap was in effect (On Battery, Cooling, Max Framerate), so a capped run isn't taken
+  for what the Mac can do.
+
+Faster:
+- **Mob and item drawing**: model and item vertices are written in pairs (the same bytes, half the stores): mob models
+  ~15% less render-thread time in a crowded scene.
 
 Cadence Logic (the integrated server; exact, each checked in game against vanilla's answer):
 - **Scheduled ticks just outside the simulation distance** (water, leaves, redstone waiting for a chunk to tick) are no
