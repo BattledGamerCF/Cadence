@@ -179,8 +179,11 @@ final class MetalPipeline implements BackendRenderPipeline {
 			int[] slots = packSlots(info);
 			MetalSampler[] constexpr = constexprSamplers(info, slots);
 			java.util.List<MetalStorage.Slot> storage = info.name().startsWith(PACK_NAMESPACE) ? MetalStorage.current() : null;
-			Translated v = translate(vertex.module(), info.uniforms().size(), slots, constexpr, storage);
-			Translated f = translate(fragment.module(), info.uniforms().size(), slots, constexpr, storage);
+			// Cadence (NativeShaders): a vanilla pipeline with a hand-written Metal program skips the translation
+			NativeShaders.Source nat = slots == null && storage == null ? NativeShaders.source(info) : null;
+			boolean isNative = nat != null && nat.ok();
+			Translated v = isNative ? new Translated(nat.msl(), "native_vs") : translate(vertex.module(), info.uniforms().size(), slots, constexpr, storage);
+			Translated f = isNative ? new Translated(nat.msl(), "native_fs") : translate(fragment.module(), info.uniforms().size(), slots, constexpr, storage);
 			if (DUMP_DIR != null) dump(info.name(), v, f);
 			if (OVERRIDE_DIR != null) {
 				v = override(info.name() + ".vs.metal", v);
@@ -197,8 +200,18 @@ final class MetalPipeline implements BackendRenderPipeline {
 				modes = new int[] {modes[0] | MSL_31, modes[1] | MSL_31};
 			}
 			vlib = library(ctx, v.msl, modes == null ? -1 : modes[0], err);
+			if (vlib != 0) flib = library(ctx, f.msl, modes == null ? -1 : modes[1], err);
+			if (isNative && (vlib == 0 || flib == 0)) {
+				// a native program that doesn't compile: said once, and this pipeline translated as before
+				System.out.println("[cadence] native shaders: " + info.name() + " didn't compile, translated instead: " + MemoryUtil.memUTF8(err));
+				if (vlib != 0) Native.release(vlib);
+				vlib = flib = 0;
+				v = translate(vertex.module(), info.uniforms().size(), slots, constexpr, storage);
+				f = translate(fragment.module(), info.uniforms().size(), slots, constexpr, storage);
+				vlib = library(ctx, v.msl, modes == null ? -1 : modes[0], err);
+				if (vlib != 0) flib = library(ctx, f.msl, modes == null ? -1 : modes[1], err);
+			}
 			if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
-			flib = library(ctx, f.msl, modes == null ? -1 : modes[1], err);
 			if (flib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
 			t2 = System.nanoTime();
 			long vname = MemoryUtil.memAddress(stack.UTF8(v.entry)), fname = MemoryUtil.memAddress(stack.UTF8(f.entry));
