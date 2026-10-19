@@ -220,6 +220,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 				}
 				if (failed == null) break;
 				if (!isNative || attempt > 0) {
+					if (withDepth != 0) Native.release(withDepth);
 					if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
 					if (fragmentLib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
 					throw new IllegalStateException(info.name() + ": " + MemoryUtil.memUTF8(err));
