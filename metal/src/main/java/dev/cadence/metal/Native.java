@@ -153,6 +153,11 @@ final class Native {
 	private static final MethodHandle PRESENT_QUEUED_ACQUIRE = fn("mc_present_queued_acquire", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PRESENT_DROPPED = fn("mc_present_dropped", false, JAVA_LONG);
 	private static final MethodHandle PACE_ADAPT = fn("mc_pace_adapt", false, null, JAVA_INT);
+	private static final MethodHandle PRESENT_MINIMUM = fn("mc_present_minimum", false, null, JAVA_DOUBLE);
+	private static final MethodHandle ON_BATTERY = fn("mc_on_battery", false, JAVA_INT);
+	private static final MethodHandle PRESENT_STATS_ON = fn("mc_present_stats_on", false, null, JAVA_INT);
+	private static final MethodHandle PRESENT_STATS_TOTAL = fn("mc_present_stats_total", false, JAVA_LONG);
+	private static final MethodHandle PRESENT_STATS_LONG = fn("mc_present_stats_long", false, JAVA_LONG);
 	private static final MethodHandle PACE_EXTRA_MS = fn("mc_pace_extra_ms", false, JAVA_DOUBLE);
 	private static final MethodHandle PACE = fn("mc_pace", false, JAVA_INT, JAVA_DOUBLE);
 	private static final MethodHandle SLEEP_PRECISE = fn("mc_sleep_precise", false, null, JAVA_LONG);
@@ -268,6 +273,11 @@ final class Native {
 	static int productName(java.lang.foreign.MemorySegment out, int cap) { try { return (int) PRODUCT_NAME.invokeExact(out, cap); } catch (Throwable t) { throw rethrow(t); } }
 	static int gpuCores() { try { return (int) GPU_CORES.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int benchGpu(java.lang.foreign.MemorySegment out) { try { return (int) BENCH_GPU.invokeExact(out); } catch (Throwable t) { throw rethrow(t); } }
+	static void presentMinimum(double seconds) { try { PRESENT_MINIMUM.invokeExact(seconds); } catch (Throwable t) { throw rethrow(t); } }
+	static void presentStatsOn(int on) { try { PRESENT_STATS_ON.invokeExact(on); } catch (Throwable t) { throw rethrow(t); } }
+	static long presentStatsTotal() { try { return (long) PRESENT_STATS_TOTAL.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static long presentStatsLong() { try { return (long) PRESENT_STATS_LONG.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static int onBattery() { try { return (int) ON_BATTERY.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int displayHz() { try { return (int) DISPLAY_HZ.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static long deviceAllocated(long ctx) { try { return (long) DEVICE_ALLOCATED.invokeExact(ctx); } catch (Throwable t) { throw rethrow(t); } }
 	static int profileCount(long enc) { try { return (int) PROFILE_COUNT.invokeExact(enc); } catch (Throwable t) { throw rethrow(t); } }

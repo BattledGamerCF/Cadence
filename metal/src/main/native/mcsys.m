@@ -5,6 +5,8 @@
 #include <pthread.h>
 #include <pthread/qos.h>
 #include <stdatomic.h>
+#include <IOKit/ps/IOPowerSources.h>
+#include <IOKit/ps/IOPSKeys.h>
 
 // NSProcessInfoThermalState: 0 nominal, 1 fair, 2 serious, 3 critical.
 int mc_thermal_state(void) {
@@ -57,6 +59,16 @@ int mc_qos_self(void) {
 }
 
 // The main screen's highest refresh rate (120 on ProMotion), 60 if unknown.
+// 1 while the Mac runs on its battery (IOKit's providing power source), 0 on AC power or without a battery.
+int mc_on_battery(void) {
+	CFTypeRef info = IOPSCopyPowerSourcesInfo();
+	if (!info) return 0;
+	CFStringRef type = IOPSGetProvidingPowerSourceType(info);
+	int battery = type && CFStringCompare(type, CFSTR(kIOPMBatteryPowerKey), 0) == kCFCompareEqualTo;
+	CFRelease(info);
+	return battery;
+}
+
 int mc_display_hz(void) {
 	@autoreleasepool {
 		NSScreen *s = [NSScreen mainScreen];

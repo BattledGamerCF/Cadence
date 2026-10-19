@@ -727,6 +727,19 @@ public final class CadenceSelfTest {
 					}
 				} else if (lower.equals("scene=busy")) {
 					BusyScene.build(mc);
+				} else if (lower.equals("presents")) {
+					// "presents": start counting how evenly frames reach the screen; "presents?" logs the count since
+					dev.cadence.metal.MacSystem.presentStatsStart();
+				} else if (lower.equals("presents?")) {
+					long[] p = dev.cadence.metal.MacSystem.presentStats();
+					LOGGER.info("[selftest] presents: {} intervals, {} longer than 1.5 refreshes ({})", p[0], p[1],
+						p[0] == 0 ? "no presented times" : String.format(java.util.Locale.ROOT, "%.2f%%", 100.0 * p[1] / p[0]));
+				} else if (lower.startsWith("battery=")) {
+					// "battery=on|off": behave as if the Mac were on its battery (BatteryMode), or as it really is
+					dev.cadence.shaders.cadence.system.BatteryMode.fakeBattery = lower.endsWith("on");
+				} else if (lower.equals("pipelines")) {
+					// "pipelines": time spent making Metal pipelines so far (translation, MSL compile, pipeline state), and cache hits
+					LOGGER.info("[selftest] pipelines: {}", new java.util.TreeMap<>(dev.cadence.metal.MetalPipeline.compileStats()));
 				} else if (lower.equals("mspt")) {
 					// "mspt": the integrated server's average tick time over its last 100 ticks (Cadence Logic measurements)
 					var host = mc.getSingleplayerServer();

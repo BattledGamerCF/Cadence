@@ -1766,13 +1766,52 @@ void mc_layer_configure(Ctx *ctx, CAMetalLayer *layer, int width, int height, in
 	layer.magnificationFilter = (vsync & (1 << 16)) ? kCAFilterNearest : kCAFilterLinear;
 }
 
+// ---- even presents under a frame cap (Cadence: FramePacing) ----
+// With a frame cap, frames are timed by the CPU's wait, which jitters against the display's refreshes: at 60 fps on a 60 Hz
+// display one frame can miss its refresh and the next catch two (a stutter). presentDrawable:afterMinimumDuration: has
+// the display show each frame at least the cap's interval, so a capped game advances one frame per interval; on a ProMotion
+// display it also tells the compositor the rate to refresh at. 0 (the default, and with no cap): plain presentDrawable.
+static _Atomic double presentMinimum;
+void mc_present_minimum(double seconds) { presentMinimum = seconds; }
+// Measurement (mc_present_stats): how evenly frames reach the screen, from their presentedTime: intervals counted, and those
+// longer than 1.5 refreshes (a refresh where the picture didn't advance: a hitch). Off unless asked for.
+static _Atomic int presentStatsOn;
+static _Atomic long presentIntervals, presentLong;
+static double presentLastShown;
+static _Atomic double refreshPeriod;
+static void startDisplayLink(void);
+static int displayLinkStarted;
+void mc_present_stats_on(int on) {
+	if (on && !displayLinkStarted) {  // (the refresh period comes from the display link, which the pacer may not have started)
+		displayLinkStarted = 1;
+		startDisplayLink();
+	}
+	presentStatsOn = on; presentIntervals = 0; presentLong = 0; presentLastShown = 0;
+}
+long mc_present_stats_total(void) { return presentIntervals; }
+long mc_present_stats_long(void) { return presentLong; }
+static void presentAt(id<MTLCommandBuffer> b, id<CAMetalDrawable> drawable) {
+	if (presentStatsOn) [drawable addPresentedHandler:^(id<MTLDrawable> d) {
+		double shown = d.presentedTime, period = refreshPeriod;
+		if (shown <= 0) return;
+		if (presentLastShown > 0 && period > 0) {
+			presentIntervals++;
+			if (shown - presentLastShown > period * 1.5) presentLong++;
+		}
+		presentLastShown = shown;
+	}];
+	double m = presentMinimum;
+	if (m > 0) [b presentDrawable:drawable afterMinimumDuration:m];
+	else [b presentDrawable:drawable];
+}
+
 // ---- present pacing ----
 // Minecraft renders far more frames than the display shows, and every present costs the copy pass in mc_present plus
 // WindowServer work. Paced, only the last frame that can still make the next refresh is presented; the others render in
 // full and are dropped before the copy, as the compositor would have dropped them. The refresh grid comes from a display
 // link on the main display (presented handlers report no presentedTime on some displays, the rig's among them). The lead
 // is the measured encode-to-GPU-done time of presented frames plus the caller's margin for the compositor's latch.
-static _Atomic double nextRefresh, refreshPeriod, gpuLatency;
+static _Atomic double nextRefresh, gpuLatency;
 static double pacedFor, lastPace, frameInterval;
 
 #pragma clang diagnostic push
@@ -1827,9 +1866,8 @@ static void paceWatch(id<CAMetalDrawable> drawable) {
 }
 
 int mc_pace(double margin) {
-	static int started;
-	if (!started) {
-		started = 1;
+	if (!displayLinkStarted) {
+		displayLinkStarted = 1;
 		startDisplayLink();
 	}
 	double now = CACurrentMediaTime(), anchor = nextRefresh, period = refreshPeriod, lead = gpuLatency + margin + paceExtra;
@@ -1897,7 +1935,7 @@ void mc_present(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src) {
 		double encodedAt = CACurrentMediaTime();
 		[cmd(enc) addCompletedHandler:^(id<MTLCommandBuffer> b) { gpuLatency += (CACurrentMediaTime() - encodedAt - gpuLatency) * 0.1; }];
 		paceWatch(drawable);
-		[cmd(enc) presentDrawable:drawable];
+		presentAt(cmd(enc), drawable);
 	}
 }
 
@@ -1979,7 +2017,7 @@ static void pqEncodePresent(id<CAMetalDrawable> drawable, int slot, uint64_t wai
 		atomic_store(&pqBusy[slot], 0);
 	}];
 	paceWatch(drawable);
-	[p presentDrawable:drawable];
+	presentAt(p, drawable);
 	[p commit];
 }
 

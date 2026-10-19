@@ -217,6 +217,25 @@ public final class CadenceSettings {
 		return Component.literal("Leaves: " + (dev.cadence.shaders.cadence.mesh.SmartLeaves.enabled() ? "Smart" : "Detailed"));
 	}
 
+	/** On Battery (system.BatteryMode): Match Display, Saver, Off. */
+	public static Button batteryButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(batteryLabel(), b -> {
+			dev.cadence.shaders.cadence.system.BatteryMode.cycle();
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How fast Minecraft draws while your Mac runs on its battery.",
+			"Match Display|at most your display's refresh rate (60, or 120 on ProMotion): nothing you can see is lost",
+			"Saver|at most 30 frames a second, for long sessions away from a charger",
+			"Off|as when plugged in",
+			"#Plugged in, nothing is capped. Unplugged, a Mac drawing hundreds of frames a second shows only its display's share and spends the rest of the battery as heat.")).build();
+		onRefresh(() -> self[0].setMessage(batteryLabel()));
+		return self[0];
+	}
+
+	private static Component batteryLabel() {
+		return Component.literal("On Battery: " + dev.cadence.shaders.cadence.system.BatteryMode.mode().label);
+	}
+
 	/** Dynamic Lights (DynamicLights): Off, Held Items, All. */
 	public static Button dynamicLightsButton() {
 		Button[] self = new Button[1];

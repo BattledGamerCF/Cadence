@@ -33,7 +33,7 @@ import static org.lwjgl.util.spvc.Spvc.*;
  * Resource slots are fixed: uniform i lives in buffer/texture/sampler slot i, push constants in slot 26, vertex
  * buffers from slot 27. Vertex Y is flipped so render targets keep the same row order as OpenGL and Vulkan.
  */
-final class MetalPipeline implements BackendRenderPipeline {
+public final class MetalPipeline implements BackendRenderPipeline {
 	// -Dcadence.metal.gpuCount[=PATH] (measurement only, mcmetal.m): pipelines are named for the per-pipeline counts
 	static final String GPU_COUNT_PATH = gpuCountPath();
 	static final boolean GPU_COUNT = GPU_COUNT_PATH != null;
@@ -165,7 +165,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 	/** Time spent creating pipelines so far, by step, for the bench's startup breakdown (read reflectively). */
 	private static long compiled, translateNs, libraryNs, stateNs;
 
-	static synchronized Map<String, Object> compileStats() {
+	public static synchronized Map<String, Object> compileStats() {
 		return Map.of("count", compiled, "translateMs", translateNs / 1e6, "libraryMs", libraryNs / 1e6, "stateMs", stateNs / 1e6, "mslCacheHits", mslHits, "mslCacheMismatches", mslMismatches);
 	}
 

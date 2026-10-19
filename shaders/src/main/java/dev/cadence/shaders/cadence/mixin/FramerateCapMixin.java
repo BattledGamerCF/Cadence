@@ -12,6 +12,9 @@ public abstract class FramerateCapMixin {
 	@ModifyReturnValue(method = "getFramerateLimit", at = @At("RETURN"))
 	private int cadence$heatCap(int limit) {
 		if (dev.cadence.shaders.cadence.setup.QuickSetup.testing) return Math.min(limit, 10);
-		return Math.min(limit, Math.min(HeatControl.fpsCap(), dev.cadence.shaders.cadence.system.BackgroundFps.fpsCap()));
+		int cap = Math.min(limit, Math.min(HeatControl.fpsCap(), Math.min(dev.cadence.shaders.cadence.system.BackgroundFps.fpsCap(),
+			dev.cadence.shaders.cadence.system.BatteryMode.fpsCap())));
+		dev.cadence.shaders.cadence.system.FramePacing.cap(cap);
+		return cap;
 	}
 }

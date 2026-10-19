@@ -70,6 +70,45 @@ public final class MacSystem {
 		}
 	}
 
+	/** Whether the Mac is running on its battery now (false on AC power, without a battery, or if it can't be read). */
+	public static boolean onBattery() {
+		try {
+			return Native.onBattery() != 0;
+		} catch (Throwable t) {
+			return false;
+		}
+	}
+
+	/**
+	 * Cadence (FramePacing): each presented frame stays on screen at least this long (0: as soon as possible). Set from the
+	 * frame cap: with one, frames advance one per interval instead of jittering against the display's refreshes.
+	 */
+	public static void presentMinimum(double seconds) {
+		try {
+			Native.presentMinimum(seconds);
+		} catch (Throwable t) {
+			// (before the Metal backend is up, or without it: nothing to pace)
+		}
+	}
+
+	/** Measurement: start counting how evenly frames reach the screen (presentedTime intervals). */
+	public static void presentStatsStart() {
+		try {
+			Native.presentStatsOn(1);
+		} catch (Throwable t) {
+			// (no Metal backend)
+		}
+	}
+
+	/** {intervals counted, of which longer than 1.5 refreshes} since presentStatsStart. */
+	public static long[] presentStats() {
+		try {
+			return new long[] {Native.presentStatsTotal(), Native.presentStatsLong()};
+		} catch (Throwable t) {
+			return new long[] {0, 0};
+		}
+	}
+
 	public static boolean lowPowerMode() {
 		try {
 			return Native.lowPower() != 0;
