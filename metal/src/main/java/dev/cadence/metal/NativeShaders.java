@@ -66,6 +66,8 @@ final class NativeShaders {
 		if (replaced != null) return log(info, new Source(null, "a shader file is replaced by " + replaced));
 		StringBuilder header = new StringBuilder("// Cadence native: ").append(file).append(" for ").append(info.name()).append('\n');
 		header.append(defines);
+		// (Cadence's RGSS shortcut, as VanillaRgss patches vanilla's include; off with -Dcadence.vanillaRgss=false or =verify)
+		if ("true".equals(System.getProperty("cadence.vanillaRgss", "true"))) header.append("#define NATIVE_RGSS_SKIP 1\n");
 		var uniforms = info.uniforms();
 		for (int i = 0; i < uniforms.size(); i++) header.append("#define NATIVE_SLOT_").append(uniforms.get(i).name()).append(' ').append(i).append('\n');
 		return log(info, new Source(header + body, "native " + file));
