@@ -48,7 +48,10 @@ public final class JvmDefaults {
 	private static final String[] GCS = {"UseG1GC", "UseZGC", "UseShenandoahGC", "UseParallelGC", "UseSerialGC", "UseEpsilonGC"};
 	static final List<String> DEFAULTS = List.of("-XX:+UseG1GC", "-XX:+UseCompactObjectHeaders", "-XX:+DisableExplicitGC",
 		"-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:MetaspaceSize=256m",
-		"-Dfile.encoding=UTF-8", "-Dlog4j2.formatMsgNoLookups=true");
+		"-Dfile.encoding=UTF-8", "-Dlog4j2.formatMsgNoLookups=true").stream()
+		// (compact object headers are a product flag from Java 25, which the game needs; on anything older the restarted
+		// Java would refuse to start, so it is left out)
+		.filter(d -> Runtime.version().feature() >= 25 || !d.contains("CompactObjectHeaders")).toList();
 	private static boolean ran;
 	private static String summary = "";
 

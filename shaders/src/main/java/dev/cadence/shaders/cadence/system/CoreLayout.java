@@ -51,7 +51,10 @@ public final class CoreLayout {
 	 * the threads that decide frame times.
 	 */
 	public static boolean hasMiddleTier() {
-		return TIERS.size() >= 3 || TIERS.size() == 2 && efficiency() == 0;
+		// (two tiers count only when the second is named Performance: a name macOS might use that we haven't seen leaves the
+		// workers as Java starts them, the behaviour before core tiers)
+		return TIERS.size() >= 3 || TIERS.size() == 2 && TIERS.get(1).name().toLowerCase(Locale.ROOT).contains("perform")
+			&& !TIERS.get(0).name().toLowerCase(Locale.ROOT).contains("perform");
 	}
 
 	public static String describe() {

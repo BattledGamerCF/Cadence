@@ -199,31 +199,41 @@ final class MetalPipeline implements BackendRenderPipeline {
 				if (modes == null) modes = new int[] {MATH_SAFE | INVARIANT, MATH_SAFE | INVARIANT};
 				modes = new int[] {modes[0] | MSL_31, modes[1] | MSL_31};
 			}
-			vlib = library(ctx, v.msl, modes == null ? -1 : modes[0], err);
-			if (vlib != 0) flib = library(ctx, f.msl, modes == null ? -1 : modes[1], err);
-			if (isNative && (vlib == 0 || flib == 0)) {
-				// a native program that doesn't compile: said once, and this pipeline translated as before
-				System.out.println("[cadence] native shaders: " + info.name() + " didn't compile, translated instead: " + MemoryUtil.memUTF8(err));
+			long withDepth = 0, withoutDepth = 0;
+			DepthStencilState depth = info.depthStencilState();
+			for (int attempt = 0; ; attempt++) {
+				// (a native program is one source with both stages: compiled once, both functions from the one library)
+				vlib = library(ctx, v.msl, modes == null ? -1 : modes[0], err);
+				if (vlib != 0 && !isNative) flib = library(ctx, f.msl, modes == null ? -1 : modes[1], err);
+				long fragmentLib = isNative ? vlib : flib;
+				String failed = vlib == 0 || fragmentLib == 0 ? "didn't compile" : null;
+				if (failed == null) {
+					t2 = System.nanoTime();
+					long vname = MemoryUtil.memAddress(stack.UTF8(v.entry)), fname = MemoryUtil.memAddress(stack.UTF8(f.entry));
+					if (GPU_COUNT) Native.gpuCountLabel(info.name());  // -Dcadence.metal.gpuCount: names the per-pipeline counts
+					withDepth = pipelineNewCounted(ctx, vlib, vname, fragmentLib, fname, describe(stack, info, true, true), err, 4096);
+					if (withDepth != 0 && depth == null) {
+						if (GPU_COUNT) Native.gpuCountLabel(info.name() + " (no depth)");
+						withoutDepth = pipelineNewCounted(ctx, vlib, vname, fragmentLib, fname, describe(stack, info, false, true), err, 4096);
+					}
+					if (withDepth == 0 || depth == null && withoutDepth == 0) failed = "made no pipeline";
+				}
+				if (failed == null) break;
+				if (!isNative || attempt > 0) {
+					if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
+					if (fragmentLib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
+					throw new IllegalStateException(info.name() + ": " + MemoryUtil.memUTF8(err));
+				}
+				// a native program that doesn't compile, or whose pipeline Metal won't make: said once, translated as before
+				System.out.println("[cadence] native shaders: " + info.name() + " " + failed + ", translated instead: " + MemoryUtil.memUTF8(err));
+				if (withDepth != 0) Native.release(withDepth);
+				withDepth = withoutDepth = 0;
 				if (vlib != 0) Native.release(vlib);
+				if (flib != 0) Native.release(flib);
 				vlib = flib = 0;
+				isNative = false;
 				v = translate(vertex.module(), info.uniforms().size(), slots, constexpr, storage);
 				f = translate(fragment.module(), info.uniforms().size(), slots, constexpr, storage);
-				vlib = library(ctx, v.msl, modes == null ? -1 : modes[0], err);
-				if (vlib != 0) flib = library(ctx, f.msl, modes == null ? -1 : modes[1], err);
-			}
-			if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
-			if (flib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
-			t2 = System.nanoTime();
-			long vname = MemoryUtil.memAddress(stack.UTF8(v.entry)), fname = MemoryUtil.memAddress(stack.UTF8(f.entry));
-			DepthStencilState depth = info.depthStencilState();
-			if (GPU_COUNT) Native.gpuCountLabel(info.name());  // -Dcadence.metal.gpuCount: names the per-pipeline counts
-			long withDepth = pipelineNewCounted(ctx, vlib, vname, flib, fname, describe(stack, info, true, true), err, 4096);
-			if (withDepth == 0) throw new IllegalStateException(info.name() + ": " + MemoryUtil.memUTF8(err));
-			long withoutDepth = 0;
-			if (depth == null) {
-				if (GPU_COUNT) Native.gpuCountLabel(info.name() + " (no depth)");
-				withoutDepth = pipelineNewCounted(ctx, vlib, vname, flib, fname, describe(stack, info, false, true), err, 4096);
-				if (withoutDepth == 0) throw new IllegalStateException(info.name() + ": " + MemoryUtil.memUTF8(err));
 			}
 			long pulled = 0;
 			int compare = depth == null ? 7 : MetalConst.compare(depth.depthTest());
