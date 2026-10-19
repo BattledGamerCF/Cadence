@@ -71,19 +71,21 @@ abstract class ModelQuadWriteMixin implements VertexConsumer {
 			int light = instance.getLightCoordsWithEmission(i, emission);
 			Vector3f p = matrix.transformPosition(quad.position(i), CADENCE_POSITION);
 			long at = base + (long) size * i;
-			MemoryUtil.memPutFloat(at, p.x());
-			MemoryUtil.memPutFloat(at + 4, p.y());
-			MemoryUtil.memPutFloat(at + 8, p.z());
-			MemoryUtil.memPutInt(at + 12, ARGB.toABGR(color));
-			MemoryUtil.memPutFloat(at + 16, UVPair.unpackU(uv));
-			MemoryUtil.memPutFloat(at + 20, UVPair.unpackV(uv));
-			MemoryUtil.memPutInt(at + 24, overlay);
-			MemoryUtil.memPutInt(at + 28, light);
-			MemoryUtil.memPutByte(at + 32, nx);
-			MemoryUtil.memPutByte(at + 33, ny);
+			// (the same bytes as four-byte writes, little-endian, in eight-byte pairs; the pad byte left alone)
+			MemoryUtil.memPutLong(at, cadence$pair(Float.floatToRawIntBits(p.x()), Float.floatToRawIntBits(p.y())));
+			MemoryUtil.memPutLong(at + 8, cadence$pair(Float.floatToRawIntBits(p.z()), ARGB.toABGR(color)));
+			MemoryUtil.memPutLong(at + 16, cadence$pair(Float.floatToRawIntBits(UVPair.unpackU(uv)), Float.floatToRawIntBits(UVPair.unpackV(uv))));
+			MemoryUtil.memPutLong(at + 24, cadence$pair(overlay, light));
+			MemoryUtil.memPutShort(at + 32, (short) ((nx & 255) | (ny & 255) << 8));
 			MemoryUtil.memPutByte(at + 34, nz);
 		}
 		if (Cpu.MODEL_WRITE_VERIFY) cadence$verify(base, size, pose, quad, instance);
+	}
+
+	/** Two four-byte values as the eight bytes they make in memory, little-endian (first at the lower address). */
+	@Unique
+	private static long cadence$pair(int first, int second) {
+		return (first & 0xFFFFFFFFL) | (long) second << 32;
 	}
 
 	/** BufferBuilder.normalIntValue: clamp to [-1, 1], times 127, to int, low byte. */

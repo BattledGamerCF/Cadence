@@ -95,24 +95,26 @@ abstract class ModelCubeWriteMixin {
 				for (int i = 0; i < count; i++) {
 					ModelPart.Vertex v = vertices[i];
 					long at = base + (long) size * i;
+					float px, py, pz;
 					if (cornerOf != null) {
 						int c = cornerOf[first + i] * 3;
-						MemoryUtil.memPutFloat(at, corners[c]);
-						MemoryUtil.memPutFloat(at + 4, corners[c + 1]);
-						MemoryUtil.memPutFloat(at + 8, corners[c + 2]);
+						px = corners[c];
+						py = corners[c + 1];
+						pz = corners[c + 2];
 					} else {
 						Vector3f p = matrix.transformPosition(v.worldX(), v.worldY(), v.worldZ(), scratch);
-						MemoryUtil.memPutFloat(at, p.x());
-						MemoryUtil.memPutFloat(at + 4, p.y());
-						MemoryUtil.memPutFloat(at + 8, p.z());
+						px = p.x();
+						py = p.y();
+						pz = p.z();
 					}
-					MemoryUtil.memPutInt(at + 12, abgr);
-					MemoryUtil.memPutFloat(at + 16, mapping == null ? v.u() : mapping.getU(v.u()));
-					MemoryUtil.memPutFloat(at + 20, mapping == null ? v.v() : mapping.getV(v.v()));
-					MemoryUtil.memPutInt(at + 24, overlayCoords);
-					MemoryUtil.memPutInt(at + 28, lightCoords);
-					MemoryUtil.memPutByte(at + 32, nx);
-					MemoryUtil.memPutByte(at + 33, ny);
+					float tu = mapping == null ? v.u() : mapping.getU(v.u()), tv = mapping == null ? v.v() : mapping.getV(v.v());
+					// (the same bytes as the four-byte writes, little-endian, as eight-byte pairs: half the stores; the pad byte
+					// after the normal is left alone, as BufferBuilder leaves it)
+					MemoryUtil.memPutLong(at, cadence$pair(Float.floatToRawIntBits(px), Float.floatToRawIntBits(py)));
+					MemoryUtil.memPutLong(at + 8, cadence$pair(Float.floatToRawIntBits(pz), abgr));
+					MemoryUtil.memPutLong(at + 16, cadence$pair(Float.floatToRawIntBits(tu), Float.floatToRawIntBits(tv)));
+					MemoryUtil.memPutLong(at + 24, cadence$pair(overlayCoords, lightCoords));
+					MemoryUtil.memPutShort(at + 32, (short) ((nx & 255) | (ny & 255) << 8));
 					MemoryUtil.memPutByte(at + 34, nz);
 				}
 				if (Cpu.MODEL_WRITE_VERIFY) cadence$verify(b, base, size, matrix, fx, fy, fz, vertices, lightCoords, overlayCoords, color, mapping);
@@ -205,6 +207,12 @@ abstract class ModelCubeWriteMixin {
 	}
 
 	private static final boolean LITTLE_ENDIAN = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
+
+	/** Two four-byte values as the eight bytes they make in memory, little-endian (first at the lower address). */
+	@org.spongepowered.asm.mixin.Unique
+	private static long cadence$pair(int first, int second) {
+		return (first & 0xFFFFFFFFL) | (long) second << 32;
+	}
 
 	/** BufferBuilder.normalIntValue: clamp to [-1, 1], times 127, to int, low byte. */
 	private static byte cadence$normal(float f) {
