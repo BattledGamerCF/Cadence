@@ -715,6 +715,11 @@ public final class CadenceSelfTest {
 					}
 				} else if (lower.equals("scene=busy")) {
 					BusyScene.build(mc);
+				} else if (lower.equals("mspt")) {
+					// "mspt": the integrated server's average tick time over its last 100 ticks (Cadence Logic measurements)
+					var server = mc.getSingleplayerServer();
+					LOGGER.info("[selftest] mspt: {}", server == null ? "no integrated server"
+						: String.format(java.util.Locale.ROOT, "%.2f ms average over the last 100 ticks", server.getAverageTickTimeNanos() / 1e6));
 				} else if (lower.startsWith("receiver=")) {
 					boolean on = lower.endsWith("on") || lower.endsWith("true");
 					mc.execute(() -> dev.cadence.shaders.runtime.ShadowRenderer.setReceiverCulling(on));

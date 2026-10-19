@@ -22,7 +22,9 @@ public final class LogicMixinPlugin implements IMixinConfigPlugin {
 		"EntitySectionStorageMixin", "entitySections",
 		"BrainMixin", "brain",
 		"SecondaryPoiSensorMixin", "villagerSensor",
-		"LevelBlockEntityTickMixin", "blockEntityTick");
+		"LevelBlockEntityTickMixin", "blockEntityTick",
+		"TickRangeTrackerMixin", "tickRange", "TickRangeChunkTicksMixin", "tickRange", "TickRangeLevelMixin", "tickRange",
+		"TickRangeTicksMixin", "tickRange");
 
 	@Override public void onLoad(String mixinPackage) { }
 	@Override public String getRefMapperConfig() { return null; }
