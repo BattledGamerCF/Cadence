@@ -66,9 +66,6 @@ public final class Cpu {
 	/** ModelCubeWriteMixin: whole-face writes of entity models (-Dcadence.cpu.modelWrite=false: vanilla per-vertex calls). */
 	public static volatile boolean modelWrite = !"false".equals(System.getProperty("cadence.cpu.modelWrite"));
 	public static final boolean MODEL_WRITE_VERIFY = Boolean.getBoolean("cadence.cpu.modelWriteVerify");
-	/** ParticleQuadWriteMixin: each quad particle's four vertices written at once (-Dcadence.cpu.particleWrite=false: vanilla's calls). */
-	public static volatile boolean particleWrite = !"false".equals(System.getProperty("cadence.cpu.particleWrite"));
-	public static final boolean PARTICLE_WRITE_VERIFY = Boolean.getBoolean("cadence.cpu.particleWriteVerify");
 	/** -Dcadence.cpu.mergeDraws=true|ab|stats: contiguous Sodium terrain ranges merged before the multi-draw (DrawMergeMixin). */
 	private static final String MERGE = System.getProperty("cadence.cpu.mergeDraws", "");
 	public static final boolean MERGE_AB = MERGE.equals("ab");

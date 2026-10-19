@@ -2,6 +2,6 @@
 	"required": true,
 	"package": "dev.cadence.metal.mixin",
 	"compatibilityLevel": "JAVA_25",
-	"client": ["FramerateLimiterMixin", "PreferredGraphicsApiMixin", "RetinaGuiScaleMixin", "AnimFramesResidentMixin", "LightmapDoubleMixin", "AtlasDoubleMixin", "AtlasDoubleAtlasAccess", "AtlasDoubleTextureAccess", "AtlasDoubleSpriteAccess", "AtlasDoubleStateAccess"],
+	"client": ["FramerateLimiterMixin", "NativePipelineSourceMixin", "PreferredGraphicsApiMixin", "RetinaGuiScaleMixin", "AnimFramesResidentMixin", "LightmapDoubleMixin", "AtlasDoubleMixin", "AtlasDoubleAtlasAccess", "AtlasDoubleTextureAccess", "AtlasDoubleSpriteAccess", "AtlasDoubleStateAccess"],
 	"injectors": { "defaultRequire": 1 }
 }

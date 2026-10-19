@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * #include, checked against the resource stack at each compile). Anything else, and every shader pack pipeline, is translated
  * as before.
  */
-final class NativeShaders {
+public final class NativeShaders {
 	static final boolean ON = Boolean.parseBoolean(System.getProperty("cadence.native",
 		NativeShaders.class.getResource("/cadence/native/ENABLED") != null ? "true" : "false"));
 	/** -Dcadence.native.log=true: which pipelines are native, and why the others aren't. */
@@ -54,7 +54,34 @@ final class NativeShaders {
 	/** The native MSL for this pipeline (both stages: native_vs, native_fs), or null with the reason it isn't native. */
 	static Source source(CreateInfo info) {
 		if (!ON) return new Source(null, "off");
-		RenderPipeline pipeline = match(info);
+		try {
+			return find(info);
+		} catch (RuntimeException e) {
+			// (whatever goes wrong here, the pipeline is translated as before: never a failed resource reload)
+			return log(info, new Source(null, "lookup failed: " + e));
+		}
+	}
+
+	/**
+	 * NativePipelineSourceMixin: the pipeline a CreateInfo was made from, kept until that CreateInfo is compiled (by identity,
+	 * weakly: one never compiled goes with it).
+	 */
+	public static void madeFrom(CreateInfo info, RenderPipeline pipeline) {
+		if (ON && info != null) synchronized (MADE_FROM) {
+			MADE_FROM.put(info, pipeline);
+		}
+	}
+
+	private static final Map<CreateInfo, RenderPipeline> MADE_FROM = new java.util.WeakHashMap<>();
+
+	private static Source find(CreateInfo info) {
+		RenderPipeline known;
+		synchronized (MADE_FROM) {
+			known = MADE_FROM.remove(info);
+		}
+		// (the game's own pipelines only: one of RenderPipelines' lists, as the name lookup below requires)
+		List<RenderPipeline> named = pipelines().get(info.name());
+		RenderPipeline pipeline = known != null ? (named != null && named.contains(known) ? known : null) : match(info);
 		if (pipeline == null) return log(info, new Source(null, "not one of the game's pipelines (or not one alone)"));
 		Identifier vs = pipeline.getShaders().get(ShaderType.VERTEX), fs = pipeline.getShaders().get(ShaderType.FRAGMENT);
 		if (vs == null || fs == null) return log(info, new Source(null, "no vertex or fragment program"));
@@ -84,32 +111,51 @@ final class NativeShaders {
 
 	/**
 	 * The game's pipeline this CreateInfo was made from. Names aren't unique (pipeline/item_cutout is the plain, the glint and
-	 * the special-glint item pipeline, each with its own defines), so among the pipelines of that name the one whose uniforms,
-	 * vertex attributes and fixed-function state are the CreateInfo's; null unless exactly one shader source fits (two that
-	 * fit with the same shaders and defines are the same program).
+	 * the special-glint item pipeline, each with its own defines). The frontend hands the backend the pipeline's fixed-function
+	 * state and vertex buffers as they are, but only the attributes and uniforms its compiled shaders use; so a candidate fits
+	 * when its state and buffers are the CreateInfo's and its uniforms include the CreateInfo's, and the one declaring the
+	 * fewest uniforms beyond them wins (the plain item pipeline over the glint one). null unless one program is left (two
+	 * that tie with the same shaders and defines are the same program).
 	 */
 	private static @Nullable RenderPipeline match(CreateInfo info) {
 		List<RenderPipeline> named = pipelines().get(info.name());
 		if (named == null) return null;
 		RenderPipeline found = null;
+		int best = Integer.MAX_VALUE;
+		boolean tied = false;
 		for (RenderPipeline p : named) {
-			if (!fits(p, info)) continue;
-			if (found != null && !(found.getShaders().equals(p.getShaders()) && found.getShaderDefines().equals(p.getShaderDefines())))
-				return null;
-			found = p;
+			int extra = extraUniforms(p, info);
+			if (extra < 0 || extra > best) continue;
+			if (extra < best) {
+				best = extra;
+				found = p;
+				tied = false;
+			} else if (!(found.getShaders().equals(p.getShaders()) && found.getShaderDefines().equals(p.getShaderDefines()))) {
+				tied = true;
+			}
 		}
-		return found;
+		return tied ? null : found;
 	}
 
-	private static boolean fits(RenderPipeline p, CreateInfo info) {
-		var uniforms = com.mojang.renderpearl.api.pipeline.BindGroupLayout.flattenUniforms(p.getBindGroupLayouts());
-		if (uniforms.size() != info.uniforms().size()) return false;
-		for (int i = 0; i < uniforms.size(); i++) if (!uniforms.get(i).name().equals(info.uniforms().get(i).name())) return false;
-		int attributes = 0;
-		for (var format : p.getVertexFormatBindings()) attributes += format.getElements().size();
-		return attributes == info.attribBindings().size() && p.isCull() == info.cull() && p.getPrimitiveTopology() == info.primitiveTopology()
-			&& p.getPolygonMode() == info.polygonMode() && java.util.Objects.equals(p.getDepthStencilState(), info.depthStencilState())
-			&& p.getColorTargetStates().equals(info.colorTargetStates()) && p.pushConstantSize() == info.pushConstantsSize();
+	/** How many uniforms p declares beyond those info's shaders use, or -1 when p can't be what info was made from. */
+	private static int extraUniforms(RenderPipeline p, CreateInfo info) {
+		if (p.isCull() != info.cull() || p.getPrimitiveTopology() != info.primitiveTopology() || p.getPolygonMode() != info.polygonMode()
+			|| !java.util.Objects.equals(p.getDepthStencilState(), info.depthStencilState()) || !p.getColorTargetStates().equals(info.colorTargetStates())
+			|| p.pushConstantSize() != info.pushConstantsSize()) return -1;
+		var formats = p.getVertexFormatBindings();
+		int buffers = 0;
+		for (int slot = 0; slot < formats.size(); slot++) {
+			var format = formats.get(slot);
+			if (format == null) continue;  // (an unused binding slot)
+			if (buffers >= info.vertexBuffers().size()) return -1;
+			var vb = info.vertexBuffers().get(buffers++);
+			if (vb.bufferSlot() != slot || vb.stride() != format.getVertexSize() || vb.stepRate() != format.getStepRate()) return -1;
+		}
+		if (buffers != info.vertexBuffers().size()) return -1;
+		Set<String> declared = new HashSet<>();
+		for (var u : com.mojang.renderpearl.api.pipeline.BindGroupLayout.flattenUniforms(p.getBindGroupLayouts())) declared.add(u.name());
+		for (var u : info.uniforms()) if (!declared.contains(u.name())) return -1;
+		return declared.size() - info.uniforms().size();
 	}
 
 	/** The game's pipelines by name (RenderPipelines' required and optional lists; a name can have several). */
