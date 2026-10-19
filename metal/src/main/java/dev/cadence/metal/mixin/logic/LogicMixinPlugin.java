@@ -24,7 +24,7 @@ public final class LogicMixinPlugin implements IMixinConfigPlugin {
 		"SecondaryPoiSensorMixin", "villagerSensor",
 		"LevelBlockEntityTickMixin", "blockEntityTick",
 		"TickRangeTrackerMixin", "tickRange", "TickRangeChunkTicksMixin", "tickRange", "TickRangeLevelMixin", "tickRange",
-		"TickRangeTicksMixin", "tickRange");
+		"TickRangeTicksMixin", "tickRange", "PathTypeCacheMixin", "pathCache");
 
 	@Override public void onLoad(String mixinPackage) { }
 	@Override public String getRefMapperConfig() { return null; }
