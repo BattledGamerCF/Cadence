@@ -27,6 +27,7 @@ public final class CpuMixinPlugin implements IMixinConfigPlugin {
 		if (name.startsWith("Leash")) return Cpu.LEASH;
 		if (name.startsWith("DrawMerge")) return Cpu.MERGE_ON;
 		if (name.startsWith("Model")) return Cpu.MODEL;
+		if (name.startsWith("ParticleQuad")) return Cpu.MODEL;  // (with the model writes: it uses their BufferBuilder accessor)
 		if (name.startsWith("EntityBox") || name.startsWith("EntityRendererBox")) return dev.cadence.metal.cpu.EntityBox.ON;
 		if (name.startsWith("Loading")) return Cpu.LOADING_FPS > 0;
 		return false;

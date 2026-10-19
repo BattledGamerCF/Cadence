@@ -827,6 +827,7 @@ public final class CadenceSelfTest {
 				case "facepacked" -> dev.cadence.shaders.cadence.facecull.FaceCull.packedGroups = on;
 				case "lazyclears" -> dev.cadence.metal.FrameHints.lazyClears(on);
 				case "modelwrite" -> dev.cadence.metal.cpu.Cpu.modelWrite = on;
+				case "particlewrite" -> dev.cadence.metal.cpu.Cpu.particleWrite = on;
 				case "rgssskip" -> dev.cadence.metal.own.OwnTerrain.rgssSkip(on);
 				case "s67apple" -> { RenderScale.applyUpscaler("metalfx"); RenderScale.applyValue(on ? "0.67" : "1.0"); }
 				case "s67fast" -> { RenderScale.applyUpscaler("fast"); RenderScale.applyValue(on ? "0.67" : "1.0"); }

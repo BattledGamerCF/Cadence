@@ -1,5 +1,6 @@
-// Cadence native: vanilla's core/entity.vsh + entity.fsh (every variant but order-independent transparency, which stays
-// translated). Same inputs (layout locations), same math, same order of operations.
+// Cadence native: vanilla's core/entity.vsh + entity.fsh (every variant).
+// native: oit (its order-independent transparency variants too: common.metal)
+// Same inputs (layout locations), same math, same order of operations.
 #if defined(PER_FACE_LIGHTING) || !defined(NO_CARDINAL_LIGHTING)
 #define NATIVE_LIT 1
 #endif
@@ -47,10 +48,10 @@ vertex EntityVaryings native_vs(EntityIn in [[stage_in]],
 #ifdef NATIVE_LIT
 	, constant Lighting &lighting [[buffer(NATIVE_SLOT_Lighting)]]
 #endif
-#ifndef NO_OVERLAY
+#if !defined(NO_OVERLAY) && !defined(OIT_ALPHA_ONLY)
 	, texture2d<float> Sampler1 [[texture(NATIVE_SLOT_Sampler1)]]
 #endif
-#ifndef EMISSIVE
+#if !defined(EMISSIVE) && !defined(OIT_ALPHA_ONLY)
 	, texture2d<float> Sampler2 [[texture(NATIVE_SLOT_Sampler2)]], sampler Sampler2Smplr [[sampler(NATIVE_SLOT_Sampler2)]]
 #endif
 	) {
@@ -67,10 +68,10 @@ vertex EntityVaryings native_vs(EntityIn in [[stage_in]],
 #else
 	out.vertexColor = minecraft_mix_light(lighting.Light0_Direction, lighting.Light1_Direction, in.Normal, in.Color);
 #endif
-#ifndef EMISSIVE
+#if !defined(EMISSIVE) && !defined(OIT_ALPHA_ONLY)
 	out.lightMapColor = sample_lightmap(Sampler2, Sampler2Smplr, in.UV2);
 #endif
-#ifndef NO_OVERLAY
+#if !defined(NO_OVERLAY) && !defined(OIT_ALPHA_ONLY)
 	out.overlayColor = Sampler1.read(uint2(in.UV1), 0);
 #endif
 	out.texCoord0 = in.UV0;
@@ -83,7 +84,7 @@ vertex EntityVaryings native_vs(EntityIn in [[stage_in]],
 	return out;
 }
 
-fragment float4 native_fs(EntityVaryings in [[stage_in]], bool frontFacing [[front_facing]],
+fragment NATIVE_FS_OUT native_fs(EntityVaryings in [[stage_in]], bool frontFacing [[front_facing]],
 	constant DynamicTransforms &transforms [[buffer(NATIVE_SLOT_DynamicTransforms)]],
 	constant Fog &fog [[buffer(NATIVE_SLOT_Fog)]],
 	texture2d<float> Sampler0 [[texture(NATIVE_SLOT_Sampler0)]], sampler Sampler0Smplr [[sampler(NATIVE_SLOT_Sampler0)]]
@@ -94,8 +95,11 @@ fragment float4 native_fs(EntityVaryings in [[stage_in]], bool frontFacing [[fro
 	, constant Globals &globals [[buffer(NATIVE_SLOT_Globals)]]
 	, texture2d<float> GlintSampler [[texture(NATIVE_SLOT_GlintSampler)]], sampler GlintSamplerSmplr [[sampler(NATIVE_SLOT_GlintSampler)]]
 #endif
-	) {
+	NATIVE_OIT_FS_PARAMS) {
 	float4 color = Sampler0.sample(Sampler0Smplr, in.texCoord0);
+#ifdef OIT_ADDITIVE
+	color.a = min(0.99f, color.a);
+#endif
 #ifdef ALPHA_CUTOUT
 	if (color.a < ALPHA_CUTOUT) discard_fragment();
 #endif
@@ -112,6 +116,9 @@ fragment float4 native_fs(EntityVaryings in [[stage_in]], bool frontFacing [[fro
 #ifdef GLINT
 	color.a = max(color.a, globals.GlintAlpha);
 #endif
+#ifdef OIT_ALPHA_ONLY
+	return NATIVE_OIT_ALPHA_ONLY(in.position, color.a);
+#else
 	// calculateFinalColor
 #ifndef NO_OVERLAY
 	color.rgb = mix(in.overlayColor.rgb, color.rgb, in.overlayColor.a);
@@ -123,5 +130,7 @@ fragment float4 native_fs(EntityVaryings in [[stage_in]], bool frontFacing [[fro
 	float4 glintColor = globals.GlintAlpha * GlintSampler.sample(GlintSamplerSmplr, in.texCoordGlint);
 	color.rgb += glintColor.rgb * glintColor.rgb;
 #endif
-	return apply_fog(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
+	NATIVE_OIT_ACCUMULATE_STEP(color, in.position);
+	return apply_fog_final(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
+#endif
 }

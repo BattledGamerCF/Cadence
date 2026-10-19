@@ -1,4 +1,5 @@
-// Cadence native: vanilla's core/rendertype_lines.vsh + .fsh (not order-independent transparency): each line segment widened
+// Cadence native: vanilla's core/rendertype_lines.vsh + .fsh: each line segment widened
+// native: oit (its order-independent transparency variants too: common.metal)
 // on screen by LineWidth pixels.
 struct LinesIn { float3 Position [[attribute(0)]]; float4 Color [[attribute(1)]]; float3 Normal [[attribute(2)]]; float LineWidth [[attribute(3)]]; };
 struct LinesVaryings { float4 position [[position]]; float sphericalVertexDistance; float cylindricalVertexDistance; float4 vertexColor; };
@@ -27,8 +28,13 @@ vertex LinesVaryings native_vs(LinesIn in [[stage_in]], uint vid [[vertex_id]],
 	return out;
 }
 
-fragment float4 native_fs(LinesVaryings in [[stage_in]], constant DynamicTransforms &transforms [[buffer(NATIVE_SLOT_DynamicTransforms)]],
-	constant Fog &fog [[buffer(NATIVE_SLOT_Fog)]]) {
+fragment NATIVE_FS_OUT native_fs(LinesVaryings in [[stage_in]], constant DynamicTransforms &transforms [[buffer(NATIVE_SLOT_DynamicTransforms)]],
+	constant Fog &fog [[buffer(NATIVE_SLOT_Fog)]] NATIVE_OIT_FS_PARAMS) {
 	float4 color = in.vertexColor * transforms.ColorModulator;
-	return apply_fog(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
+#ifdef OIT_ALPHA_ONLY
+	return NATIVE_OIT_ALPHA_ONLY(in.position, color.a);
+#else
+	NATIVE_OIT_ACCUMULATE_STEP(color, in.position);
+	return apply_fog_final(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
+#endif
 }

@@ -1,4 +1,5 @@
-// Cadence native: vanilla's core/clouds.vsh + clouds.fsh (not order-independent transparency). The faces come from the
+// Cadence native: vanilla's core/clouds.vsh + clouds.fsh. The faces come from the
+// native: oit (its order-independent transparency variants too: common.metal)
 // CloudFaces texel buffer (three ints per face: cell x, cell z, direction and flags), four vertices per face.
 struct CloudInfo { float4 CloudColor; float3 CloudOffset; float3 CellSize; };
 struct CloudVaryings { float4 position [[position]]; float vertexDistance; float4 vertexColor; };
@@ -44,8 +45,15 @@ vertex CloudVaryings native_vs(uint vid [[vertex_id]], constant Projection &proj
 	return out;
 }
 
-fragment float4 native_fs(CloudVaryings in [[stage_in]], constant Fog &fog [[buffer(NATIVE_SLOT_Fog)]]) {
+fragment NATIVE_FS_OUT native_fs(CloudVaryings in [[stage_in]], constant Fog &fog [[buffer(NATIVE_SLOT_Fog)]] NATIVE_OIT_FS_PARAMS) {
 	float4 color = in.vertexColor;
+#ifndef OIT_DEPTH_BOUNDS
 	color.a *= 1.0f - linear_fog_value(in.vertexDistance, 0.0f, fog.FogCloudsEnd);
+#endif
+#ifdef OIT_ALPHA_ONLY
+	return NATIVE_OIT_ALPHA_ONLY(in.position, color.a);
+#else
+	NATIVE_OIT_ACCUMULATE_STEP(color, in.position);
 	return color;
+#endif
 }

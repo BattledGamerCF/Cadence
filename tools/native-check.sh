@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.."
 f=$(mktemp -t native).metal
 cat metal/src/main/resources/cadence/native/common.metal "metal/src/main/resources/cadence/native/$1.metal" > "$f"
 shift
-SLOTS="NATIVE_SLOT_Projection=0 NATIVE_SLOT_DynamicTransforms=1 NATIVE_SLOT_Lighting=2 NATIVE_SLOT_Fog=3 NATIVE_SLOT_Globals=4 NATIVE_SLOT_Sampler0=5 NATIVE_SLOT_Sampler1=6 NATIVE_SLOT_Sampler2=7 NATIVE_SLOT_GlintSampler=8 NATIVE_SLOT_DissolveMaskSampler=9 NATIVE_SLOT_InSampler=10 NATIVE_SLOT_SamplerInfo=11 NATIVE_SLOT_CloudInfo=12 NATIVE_SLOT_CloudFaces=13 NATIVE_SLOT_LightmapInfo=14 NATIVE_SLOT_BlitConfig=15 NATIVE_SLOT_TerrainUniform=16 NATIVE_SLOT_ChunkSection=17 NATIVE_SLOT_SpriteAnimationInfo=18 NATIVE_SLOT_CurrentSprite=1 NATIVE_SLOT_NextSprite=2 NATIVE_SLOT_Sprite=3"
+SLOTS="NATIVE_SLOT_Projection=0 NATIVE_SLOT_DynamicTransforms=1 NATIVE_SLOT_Lighting=2 NATIVE_SLOT_Fog=3 NATIVE_SLOT_Globals=4 NATIVE_SLOT_Sampler0=5 NATIVE_SLOT_Sampler1=6 NATIVE_SLOT_Sampler2=7 NATIVE_SLOT_GlintSampler=8 NATIVE_SLOT_DissolveMaskSampler=9 NATIVE_SLOT_InSampler=10 NATIVE_SLOT_SamplerInfo=11 NATIVE_SLOT_CloudInfo=12 NATIVE_SLOT_CloudFaces=13 NATIVE_SLOT_LightmapInfo=14 NATIVE_SLOT_BlitConfig=15 NATIVE_SLOT_TerrainUniform=16 NATIVE_SLOT_ChunkSection=17 NATIVE_SLOT_SpriteAnimationInfo=18 NATIVE_SLOT_CurrentSprite=1 NATIVE_SLOT_NextSprite=2 NATIVE_SLOT_Sprite=3 NATIVE_SLOT_DepthBoundsSampler=11 NATIVE_SLOT_Coeff0=12 NATIVE_SLOT_Coeff1=13 NATIVE_SLOT_Coeff2=14 NATIVE_SLOT_Coeff3=15"
 fail=0
 for v in "$@"; do
 	out=$(build/msl-check "$f" $SLOTS $v 2>&1)

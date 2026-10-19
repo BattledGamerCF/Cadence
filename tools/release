@@ -4,7 +4,7 @@
 #   and the shader-pack loader nested through Fabric's jar-in-jar. Put it in the mods folder; this build runs without Sodium.
 # - dist/cadence-VERSION.zip: cadence-VERSION/{cadence-VERSION.jar, README.txt, LICENSE, NOTICE, CREDITS.md}, the same jar byte for
 #   byte (README.txt is packaging/RELEASE-README.txt with the version filled in).
-# Usage: tools/release
+# Usage: tools/release [native]   (native: the experimental build, dist/cadence-native-VERSION.jar, NativeShaders on by default)
 set -eu
 cd "$(dirname "$0")/.."
 die() { echo "$*" >&2; exit 1; }
@@ -18,12 +18,14 @@ fps=fpshud/build/libs/cadence-hud-$version.jar
 shaders_version=$(sed -n "s/^version = '\(.*\)'$/\1/p" shaders/build.gradle)
 shaders=shaders/build/libs/cadence-shaders-$shaders_version.jar
 [ -f "$shaders" ] || die "The build made no $shaders."
+NATIVE=""
 name=cadence-$version
+if [ "${1:-}" = native ]; then NATIVE=--native; name=cadence-native-$version; fi
 mkdir -p dist
-python3 tools/bundle.py --metal "$jar" --fps "$fps" --shaders "$shaders" --out "dist/cadence-$version.jar"
+python3 tools/bundle.py --metal "$jar" --fps "$fps" --shaders "$shaders" --out "dist/$name.jar" $NATIVE
 rm -rf "dist/$name" "dist/$name.zip"
 mkdir -p "dist/$name"
-cp "dist/cadence-$version.jar" "dist/$name/cadence-$version.jar"
+cp "dist/$name.jar" "dist/$name/$name.jar"
 cp LICENSE NOTICE CREDITS.md "dist/$name/"
 sed "s/@VERSION@/$version/g" packaging/RELEASE-README.txt > "dist/$name/README.txt"
 (cd dist && zip -qrX "$name.zip" "$name")

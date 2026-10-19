@@ -1,4 +1,5 @@
-// Cadence native: vanilla's core/position_color.vsh + position_color.fsh (not order-independent transparency).
+// Cadence native: vanilla's core/position_color.vsh + position_color.fsh.
+// native: oit (its order-independent transparency variants too: common.metal)
 struct PcIn { float3 Position [[attribute(0)]]; float4 Color [[attribute(1)]]; };
 struct PcVaryings { float4 position [[position]]; float4 vertexColor; };
 
@@ -10,8 +11,15 @@ vertex PcVaryings native_vs(PcIn in [[stage_in]], constant Projection &projectio
 	return out;
 }
 
-fragment float4 native_fs(PcVaryings in [[stage_in]], constant DynamicTransforms &transforms [[buffer(NATIVE_SLOT_DynamicTransforms)]]) {
+fragment NATIVE_FS_OUT native_fs(PcVaryings in [[stage_in]], constant DynamicTransforms &transforms [[buffer(NATIVE_SLOT_DynamicTransforms)]]
+	NATIVE_OIT_FS_PARAMS) {
 	float4 color = in.vertexColor;
 	if (color.a == 0.0f) discard_fragment();
-	return color * transforms.ColorModulator;
+	color *= transforms.ColorModulator;
+#ifdef OIT_ALPHA_ONLY
+	return NATIVE_OIT_ALPHA_ONLY(in.position, color.a);
+#else
+	NATIVE_OIT_ACCUMULATE_STEP(color, in.position);
+	return color;
+#endif
 }

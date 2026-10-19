@@ -20,16 +20,17 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Cadence (the native track; -Dcadence.native=true, the default in the experimental build): vanilla's shader programs as
- * hand-written Metal Shading Language instead of their GLSL run through SPIR-V and SPIRV-Cross. Each program is one file under
- * cadence/native/ (core/entity.metal: native_vs and native_fs) written from vanilla's GLSL, with the same #ifdef variants; it is
- * compiled with the pipeline's own defines (ShaderDefines.asSourceDirectives: the preprocessor reads GLSL's #define lines as
- * they are) and NATIVE_SLOT_<uniform> for each uniform's argument-table slot (MetalPipeline: uniform i in slot i). Vertex inputs
- * keep vanilla's layout locations.
+ * hand-written Metal Shading Language instead of their GLSL run through SPIR-V and SPIRV-Cross. Each program is common.metal
+ * and one file under cadence/native/ (core/entity.metal: native_vs and native_fs) written from vanilla's GLSL, with the same
+ * #ifdef variants; it is compiled with the pipeline's own defines (ShaderDefines.asSourceDirectives: the preprocessor reads
+ * GLSL's #define lines as they are) and NATIVE_SLOT_<uniform> for each uniform's argument-table slot (MetalPipeline: uniform i
+ * in slot i). Vertex inputs keep vanilla's layout locations.
  *
  * <p>Used only where it gives exactly what vanilla's shaders give: a pipeline of the game's own list (RenderPipelines) whose
- * vertex and fragment programs have a native file, without order-independent transparency variants (not written yet), and only
- * while no resource pack or mod replaces any shader file the program reads (its .vsh, .fsh and every #include, checked against
- * the resource stack at each compile). Anything else, and every shader pack pipeline, is translated as before.
+ * vertex and fragment programs have a native file (for an order-independent transparency variant, a file that says "native:
+ * oit"), and only while no resource pack or mod replaces any shader file the program reads (its .vsh, .fsh and every
+ * #include, checked against the resource stack at each compile). Anything else, and every shader pack pipeline, is translated
+ * as before.
  */
 final class NativeShaders {
 	static final boolean ON = Boolean.parseBoolean(System.getProperty("cadence.native",
@@ -58,10 +59,12 @@ final class NativeShaders {
 		Identifier vs = pipeline.getShaders().get(ShaderType.VERTEX), fs = pipeline.getShaders().get(ShaderType.FRAGMENT);
 		if (vs == null || fs == null) return log(info, new Source(null, "no vertex or fragment program"));
 		String defines = pipeline.getShaderDefines().asSourceDirectives();
-		if (defines.contains("OIT")) return log(info, new Source(null, "order-independent transparency variant"));
 		String file = vs.equals(fs) ? vs.getPath() : vs.getPath() + "+" + fs.getPath().substring(fs.getPath().lastIndexOf('/') + 1);
 		String body = resource("/cadence/native/" + file + ".metal");
 		if (body == null) return log(info, new Source(null, "no native " + file));
+		if (defines.contains("OIT") && !body.contains("native: oit")) return log(info, new Source(null, "order-independent transparency variant"));
+		String common = resource("/cadence/native/common.metal");
+		if (common == null) return log(info, new Source(null, "no common.metal"));
 		String replaced = replacedBy(vs, fs);
 		if (replaced != null) return log(info, new Source(null, "a shader file is replaced by " + replaced));
 		StringBuilder header = new StringBuilder("// Cadence native: ").append(file).append(" for ").append(info.name()).append('\n');
@@ -70,7 +73,8 @@ final class NativeShaders {
 		if ("true".equals(System.getProperty("cadence.vanillaRgss", "true"))) header.append("#define NATIVE_RGSS_SKIP 1\n");
 		var uniforms = info.uniforms();
 		for (int i = 0; i < uniforms.size(); i++) header.append("#define NATIVE_SLOT_").append(uniforms.get(i).name()).append(' ').append(i).append('\n');
-		return log(info, new Source(header + body, "native " + file));
+		// (the defines first: common.metal's order-independent transparency block reads them)
+		return log(info, new Source(header + common + "\n" + body, "native " + file));
 	}
 
 	private static Source log(CreateInfo info, Source s) {

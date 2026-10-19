@@ -1,5 +1,6 @@
 // Cadence native: vanilla's core/text.vsh + text.fsh (world text with fog and light; IS_GUI, IS_SEE_THROUGH, IS_GRAYSCALE;
-// not order-independent transparency).
+// order-independent transparency too).
+// native: oit (its order-independent transparency variants too: common.metal)
 #if !defined(IS_GUI) && !defined(IS_SEE_THROUGH)
 #define NATIVE_WORLD_TEXT 1
 #endif
@@ -42,11 +43,11 @@ vertex TextVaryings native_vs(TextIn in [[stage_in]], constant Projection &proje
 	return out;
 }
 
-fragment float4 native_fs(TextVaryings in [[stage_in]], constant DynamicTransforms &transforms [[buffer(NATIVE_SLOT_DynamicTransforms)]]
+fragment NATIVE_FS_OUT native_fs(TextVaryings in [[stage_in]], constant DynamicTransforms &transforms [[buffer(NATIVE_SLOT_DynamicTransforms)]]
 #ifdef NATIVE_WORLD_TEXT
 	, constant Fog &fog [[buffer(NATIVE_SLOT_Fog)]]
 #endif
-	, texture2d<float> Sampler0 [[texture(NATIVE_SLOT_Sampler0)]], sampler Sampler0Smplr [[sampler(NATIVE_SLOT_Sampler0)]]) {
+	, texture2d<float> Sampler0 [[texture(NATIVE_SLOT_Sampler0)]], sampler Sampler0Smplr [[sampler(NATIVE_SLOT_Sampler0)]] NATIVE_OIT_FS_PARAMS) {
 #ifdef IS_GRAYSCALE
 	float4 texColor = Sampler0.sample(Sampler0Smplr, in.texCoord0).rrrr;
 #else
@@ -54,8 +55,13 @@ fragment float4 native_fs(TextVaryings in [[stage_in]], constant DynamicTransfor
 #endif
 	float4 color = texColor * in.vertexColor * transforms.ColorModulator;
 	if (color.a < 0.1f) discard_fragment();
+#ifdef OIT_ALPHA_ONLY
+	return NATIVE_OIT_ALPHA_ONLY(in.position, color.a);
+#else
+	NATIVE_OIT_ACCUMULATE_STEP(color, in.position);
 #ifdef NATIVE_WORLD_TEXT
-	color = apply_fog(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
+	color = apply_fog_final(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
 #endif
 	return color;
+#endif
 }

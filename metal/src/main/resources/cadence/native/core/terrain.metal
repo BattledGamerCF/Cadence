@@ -1,6 +1,7 @@
 // Cadence native: vanilla's core/terrain.vsh + terrain.fsh with texture_sampling.glsl (used when Cadence's own terrain
-// renderer is off; not order-independent transparency). NATIVE_RGSS_SKIP: Cadence's shortcut (VanillaRgss) where RGSS's
+// renderer is off; order-independent transparency too). NATIVE_RGSS_SKIP: Cadence's shortcut (VanillaRgss) where RGSS's
 // blend is 0 and the result is the nearest sample exactly.
+// native: oit (its order-independent transparency variants too: common.metal)
 struct TerrainUniform { float4x4 ModelViewMat; int2 TextureSize; };
 #ifndef MULTIDRAW_TERRAIN
 struct ChunkSection { packed_int3 ChunkPosition; float ChunkVisibility; };
@@ -27,11 +28,14 @@ struct TerrainVaryings {
 };
 
 vertex TerrainVaryings native_vs(TerrainIn in [[stage_in]], constant Projection &projection [[buffer(NATIVE_SLOT_Projection)]],
-	constant Globals &globals [[buffer(NATIVE_SLOT_Globals)]], constant TerrainUniform &terrain [[buffer(NATIVE_SLOT_TerrainUniform)]],
+	constant Globals &globals [[buffer(NATIVE_SLOT_Globals)]], constant TerrainUniform &terrain [[buffer(NATIVE_SLOT_TerrainUniform)]]
 #ifndef MULTIDRAW_TERRAIN
-	constant ChunkSection &section [[buffer(NATIVE_SLOT_ChunkSection)]],
+	, constant ChunkSection &section [[buffer(NATIVE_SLOT_ChunkSection)]]
 #endif
-	texture2d<float> Sampler2 [[texture(NATIVE_SLOT_Sampler2)]], sampler Sampler2Smplr [[sampler(NATIVE_SLOT_Sampler2)]]) {
+#ifndef OIT_ALPHA_ONLY
+	, texture2d<float> Sampler2 [[texture(NATIVE_SLOT_Sampler2)]], sampler Sampler2Smplr [[sampler(NATIVE_SLOT_Sampler2)]]
+#endif
+	) {
 	TerrainVaryings out = {};
 #ifdef MULTIDRAW_TERRAIN
 	int3 chunkPosition = in.ChunkPosition;
@@ -44,7 +48,11 @@ vertex TerrainVaryings native_vs(TerrainIn in [[stage_in]], constant Projection 
 	out.position = native_flip((projection.ProjMat * terrain.ModelViewMat) * float4(pos, 1.0f));
 	out.sphericalVertexDistance = fog_spherical_distance(pos);
 	out.cylindricalVertexDistance = fog_cylindrical_distance(pos);
+#ifndef OIT_ALPHA_ONLY
 	out.vertexColor = in.Color * sample_lightmap(Sampler2, Sampler2Smplr, in.UV2);
+#else
+	out.vertexColor = in.Color;
+#endif
 	out.texCoord0 = in.UV0;
 	const float chunkFullyVisibleRange = 16.0f;
 	float dist = length(pos);
@@ -97,15 +105,22 @@ static inline float4 sampleRGSS(texture2d<float> source, sampler s, float2 uv, f
 	return mix(nearestColor, rgssColor, blendFactor);
 }
 
-fragment float4 native_fs(TerrainVaryings in [[stage_in]], constant Globals &globals [[buffer(NATIVE_SLOT_Globals)]],
+fragment NATIVE_FS_OUT native_fs(TerrainVaryings in [[stage_in]], constant Globals &globals [[buffer(NATIVE_SLOT_Globals)]],
 	constant TerrainUniform &terrain [[buffer(NATIVE_SLOT_TerrainUniform)]], constant Fog &fog [[buffer(NATIVE_SLOT_Fog)]],
-	texture2d<float> Sampler0 [[texture(NATIVE_SLOT_Sampler0)]], sampler Sampler0Smplr [[sampler(NATIVE_SLOT_Sampler0)]]) {
+	texture2d<float> Sampler0 [[texture(NATIVE_SLOT_Sampler0)]], sampler Sampler0Smplr [[sampler(NATIVE_SLOT_Sampler0)]] NATIVE_OIT_FS_PARAMS) {
 	float2 pixelSize = 1.0f / float2(terrain.TextureSize);
 	float4 color = (globals.UseRgss == 1 ? sampleRGSS(Sampler0, Sampler0Smplr, in.texCoord0, pixelSize)
 		: sampleNearest(Sampler0, Sampler0Smplr, in.texCoord0, pixelSize)) * in.vertexColor;
+#ifndef OIT_ALPHA_ONLY
 	color = mix(fog.FogColor * float4(1.0f, 1.0f, 1.0f, color.a), color, in.chunkVisibility);
+#endif
 #ifdef ALPHA_CUTOUT
 	if (color.a < ALPHA_CUTOUT) discard_fragment();
 #endif
-	return apply_fog(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
+#ifdef OIT_ALPHA_ONLY
+	return NATIVE_OIT_ALPHA_ONLY(in.position, color.a);
+#else
+	NATIVE_OIT_ACCUMULATE_STEP(color, in.position);
+	return apply_fog_final(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
+#endif
 }

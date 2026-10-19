@@ -1,4 +1,5 @@
-// Cadence native: vanilla's core/particle.vsh + particle.fsh (every variant but order-independent transparency).
+// Cadence native: vanilla's core/particle.vsh + particle.fsh.
+// native: oit (its order-independent transparency variants too: common.metal)
 struct ParticleIn {
 	float3 Position [[attribute(0)]];
 	float2 UV0 [[attribute(1)]];
@@ -27,11 +28,16 @@ vertex ParticleVaryings native_vs(ParticleIn in [[stage_in]],
 	return out;
 }
 
-fragment float4 native_fs(ParticleVaryings in [[stage_in]],
+fragment NATIVE_FS_OUT native_fs(ParticleVaryings in [[stage_in]],
 	constant DynamicTransforms &transforms [[buffer(NATIVE_SLOT_DynamicTransforms)]],
 	constant Fog &fog [[buffer(NATIVE_SLOT_Fog)]],
-	texture2d<float> Sampler0 [[texture(NATIVE_SLOT_Sampler0)]], sampler Sampler0Smplr [[sampler(NATIVE_SLOT_Sampler0)]]) {
+	texture2d<float> Sampler0 [[texture(NATIVE_SLOT_Sampler0)]], sampler Sampler0Smplr [[sampler(NATIVE_SLOT_Sampler0)]] NATIVE_OIT_FS_PARAMS) {
 	float4 color = Sampler0.sample(Sampler0Smplr, in.texCoord0) * in.vertexColor * transforms.ColorModulator;
 	if (color.a < 0.1f) discard_fragment();
-	return apply_fog(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
+#ifdef OIT_ALPHA_ONLY
+	return NATIVE_OIT_ALPHA_ONLY(in.position, color.a);
+#else
+	NATIVE_OIT_ACCUMULATE_STEP(color, in.position);
+	return apply_fog_final(color, in.sphericalVertexDistance, in.cylindricalVertexDistance, fog);
+#endif
 }
