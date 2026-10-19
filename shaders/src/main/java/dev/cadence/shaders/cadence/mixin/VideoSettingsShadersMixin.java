@@ -68,7 +68,8 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addSmall(ShaderToggle.retinaButton(), dev.cadence.shaders.cadence.CadenceSettings.leavesButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.backgroundButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.dynamicLightsButton(), dev.cadence.shaders.cadence.CadenceSettings.messagesButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.batteryButton(), dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.button(self));
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.batteryButton(), dev.cadence.shaders.cadence.CadenceSettings.fpsCounterButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.button(self), dev.cadence.shaders.cadence.CadenceSettings.benchmarkDetailsButton());
 		this.list.addHeader(Component.literal("Cadence: Shader Speed"));
 		this.list.addSmall(ShaderToggle.shadowRateButton(), dev.cadence.shaders.cadence.CadenceSettings.packCheckButton());
 	}

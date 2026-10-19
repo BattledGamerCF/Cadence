@@ -298,10 +298,11 @@ public final class Benchmark {
 	/** screenshots/cadence-benchmark-DATE.txt: the same figures as the card, for pasting into a forum post. */
 	private static void writeText(Minecraft mc, Result r) {
 		StringBuilder sb = new StringBuilder("Cadence benchmark, ").append(r.stamp().replace('_', ' ').replace('.', ':')).append("\n\n");
-		sb.append(String.format(Locale.ROOT, "Average: %.0f fps%n1%% low: %.0f fps%nWorst frame: %.1f ms%nGraphics (GPU) time per frame: %s%n"
+		if (CadenceSettings.benchmarkDetailed()) sb.append(String.format(Locale.ROOT, "Average: %.0f fps%n1%% low: %.0f fps%nWorst frame: %.1f ms%nGraphics (GPU) time per frame: %s%n"
 			+ "Processor (render thread) time per frame: %s%nFrames measured: %d in %.1f s%n%n", r.avgFps(), r.lowFps(), r.worstMs(),
 			r.gpuMs() < 0 ? "unknown" : String.format(Locale.ROOT, "%.2f ms", r.gpuMs()),
 			r.cpuMs() < 0 ? "unknown" : String.format(Locale.ROOT, "%.2f ms", r.cpuMs()), r.frames(), r.seconds()));
+		else sb.append(String.format(Locale.ROOT, "Average: %.0f fps%n%n", r.avgFps()));
 		for (String line : r.setup()) sb.append(line.replace("|", ": ")).append('\n');
 		try {
 			Path dir = mc.gameDirectory.toPath().resolve("screenshots");

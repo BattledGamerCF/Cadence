@@ -17,6 +17,9 @@ New:
   interval instead of jittering against the display; on ProMotion displays it also tells macOS the rate to refresh at.
   Capped frame rates are unchanged; the evenness itself couldn't be measured here (this Mac's display doesn't report when
   frames reach it). `-Dcadence.framePacing=false` turns it off.
+- **FPS Counter** (Video Settings: On / Off) turns the corner frame rate off. **Benchmark Details** (Simple, the default /
+  Detailed): Simple shows the average frame rate and what it ran on; Detailed adds the slowest 1% of frames, the worst
+  frame, and graphics and processor time per frame.
 - The Benchmark card says when a frame cap was in effect (On Battery, Cooling, Max Framerate), so a capped run isn't taken
   for what the Mac can do.
 

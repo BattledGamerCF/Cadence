@@ -217,6 +217,50 @@ public final class CadenceSettings {
 		return Component.literal("Leaves: " + (dev.cadence.shaders.cadence.mesh.SmartLeaves.enabled() ? "Smart" : "Detailed"));
 	}
 
+	// ---- FPS Counter (the Cadence HUD's "NN fps", read by it through cadence.fpsCounter) and Benchmark Details ----
+	static {
+		System.setProperty("cadence.fpsCounter", ShaderToggle.configValue("fpsCounter", "true").strip());
+	}
+	private static volatile boolean benchmarkDetailed = "detailed".equals(ShaderToggle.configValue("benchmarkDetails", "simple").strip());
+
+	/** Whether the Benchmark card shows the technical figures (1% low, worst frame, GPU and CPU time). */
+	public static boolean benchmarkDetailed() {
+		return benchmarkDetailed;
+	}
+
+	public static Button fpsCounterButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(fpsCounterLabel(), b -> {
+			boolean on = !"true".equals(System.getProperty("cadence.fpsCounter"));
+			System.setProperty("cadence.fpsCounter", Boolean.toString(on));
+			ShaderToggle.saveKey("fpsCounter", Boolean.toString(on));
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The frame rate in the top-left corner while you play.")).build();
+		onRefresh(() -> self[0].setMessage(fpsCounterLabel()));
+		return self[0];
+	}
+
+	private static Component fpsCounterLabel() {
+		return Component.literal("FPS Counter: " + ("true".equals(System.getProperty("cadence.fpsCounter")) ? "On" : "Off"));
+	}
+
+	public static Button benchmarkDetailsButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(benchmarkDetailsLabel(), b -> {
+			benchmarkDetailed = !benchmarkDetailed;
+			ShaderToggle.saveKey("benchmarkDetails", benchmarkDetailed ? "detailed" : "simple");
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("What the Benchmark's results show.",
+			"Simple|the average frame rate and what it ran on",
+			"Detailed|also the slowest 1% of frames, the worst single frame, and graphics and processor time per frame")).build();
+		onRefresh(() -> self[0].setMessage(benchmarkDetailsLabel()));
+		return self[0];
+	}
+
+	private static Component benchmarkDetailsLabel() {
+		return Component.literal("Benchmark Details: " + (benchmarkDetailed ? "Detailed" : "Simple"));
+	}
+
 	/** On Battery (system.BatteryMode): Match Display, Saver, Off. */
 	public static Button batteryButton() {
 		Button[] self = new Button[1];

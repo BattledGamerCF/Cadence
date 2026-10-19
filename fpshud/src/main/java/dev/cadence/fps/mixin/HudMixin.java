@@ -14,7 +14,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** "NN fps" in the top-left corner while playing. Hidden with the HUD (F1) and while F3 shows its own counter. */
+/**
+ * "NN fps" in the top-left corner while playing. Hidden with the HUD (F1), while F3 shows its own counter, and when the player
+ * turns it off (Video Settings, FPS Counter: the cadence.fpsCounter property, which Cadence's settings set; on unless "false").
+ */
 @Mixin(Hud.class)
 abstract class HudMixin {
 	@Shadow @Final private Minecraft minecraft;
@@ -26,7 +29,7 @@ abstract class HudMixin {
 
 	@Inject(method = "extractRenderState", at = @At("TAIL"))
 	private void cadenceFps$draw(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker, CallbackInfo ci) {
-		if (this.isHidden() || this.minecraft.getDebugOverlay().showDebugScreen() || this.minecraft.gui.screen() instanceof LevelLoadingScreen) {
+		if ("false".equals(System.getProperty("cadence.fpsCounter")) || this.isHidden() || this.minecraft.getDebugOverlay().showDebugScreen() || this.minecraft.gui.screen() instanceof LevelLoadingScreen) {
 			return;
 		}
 		int fps = this.minecraft.getFps();
