@@ -165,7 +165,7 @@ public final class Benchmark {
 		if (mc.level == null || mc.player == null || mc.player != player) return "The world was closed.";
 		if (mc.gui.screen() instanceof PauseScreen) return "Stopped: Escape was pressed.";
 		if (mc.gui.screen() != null) return "Stopped: a screen opened.";
-		if (!ignoreFocus && BackgroundFps.fpsCap() != Integer.MAX_VALUE) return "Stopped: Minecraft was not in front.";
+		if (!ignoreFocus && (BackgroundFps.fakeBackground || !mc.getWindow().isFocused())) return "Stopped: Minecraft was not in front.";
 		return null;
 	}
 
@@ -257,8 +257,19 @@ public final class Benchmark {
 			+ mc.options.renderDistance().get() + " chunks");
 		String pack = ShaderToggle.selectedPack();
 		out.add("Shader pack|" + (pack.isEmpty() ? "None" : ShaderToggle.display(pack)));
+		out.add("Frame cap|" + frameCap(mc));
 		out.add("Cadence|" + version() + " · " + CadenceSettings.current().label() + " · world at " + Math.round(RenderScale.get() * 100) + "%");
 		return out;
+	}
+
+	/** The frame-rate cap the run had, and why (so a capped run isn't taken for the Mac's speed): "None" without one. */
+	private static String frameCap(Minecraft mc) {
+		int option = mc.options.framerateLimit().get();
+		int battery = dev.cadence.shaders.cadence.system.BatteryMode.fpsCap(), heat = dev.cadence.shaders.cadence.system.HeatControl.fpsCap();
+		int cap = Math.min(option >= net.minecraft.client.Options.UNLIMITED_FRAMERATE_CUTOFF ? Integer.MAX_VALUE : option, Math.min(battery, heat));
+		if (cap == Integer.MAX_VALUE) return "None";
+		String why = cap == battery ? "On Battery" : cap == heat ? "Cooling" : "Max Framerate";
+		return cap + " fps (" + why + ")";
 	}
 
 	private static String version() {

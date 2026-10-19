@@ -223,6 +223,7 @@ public final class CadenceSelfTest {
 					else if (lower.endsWith("inventory")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player)));
 					else if (lower.endsWith("benchmarkoffer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.offer(null)));
 					else if (lower.endsWith("benchmarkrun")) mc.execute(() -> dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.run(null));
+					else if (lower.endsWith("benchmarksave")) mc.execute(() -> dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.pressSave(mc.gui.screen()));
 					else if (lower.endsWith("offer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(null)));
 					else if (lower.endsWith("goal")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.goal(null)));
 					else if (lower.endsWith("setupmax")) {
@@ -739,6 +740,8 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("battery=")) {
 					// "battery=on|off": behave as if the Mac were on its battery (BatteryMode), or as it really is
 					dev.cadence.shaders.cadence.system.BatteryMode.fakeBattery = lower.endsWith("on");
+					LOGGER.info("[selftest] battery: macOS says on battery = {}, cap now {}", dev.cadence.metal.MacSystem.onBattery(),
+						dev.cadence.shaders.cadence.system.BatteryMode.fpsCap());
 				} else if (lower.equals("pipelines")) {
 					// "pipelines": time spent making Metal pipelines so far (translation, MSL compile, pipeline state), and cache hits
 					LOGGER.info("[selftest] pipelines: {}", new java.util.TreeMap<>(dev.cadence.metal.MetalPipeline.compileStats()));

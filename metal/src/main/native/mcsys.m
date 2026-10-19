@@ -58,7 +58,6 @@ int mc_qos_self(void) {
 	return (int) qos_class_self();
 }
 
-// The main screen's highest refresh rate (120 on ProMotion), 60 if unknown.
 // 1 while the Mac runs on its battery (IOKit's providing power source), 0 on AC power or without a battery.
 int mc_on_battery(void) {
 	CFTypeRef info = IOPSCopyPowerSourcesInfo();
@@ -69,6 +68,7 @@ int mc_on_battery(void) {
 	return battery;
 }
 
+// The main screen's highest refresh rate (120 on ProMotion), 60 if unknown.
 int mc_display_hz(void) {
 	@autoreleasepool {
 		NSScreen *s = [NSScreen mainScreen];

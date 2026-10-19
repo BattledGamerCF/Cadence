@@ -20,7 +20,8 @@ abstract class TickRangeLevelMixin {
 
 	@Inject(method = "<init>", at = @At("RETURN"))
 	private void cadence$tickRangeOwner(CallbackInfo ci) {
-		((TickRange.Owner) this.blockTicks).cadence$level((ServerLevel) (Object) this);
-		((TickRange.Owner) this.fluidTicks).cadence$level((ServerLevel) (Object) this);
+		// (only where TickRangeTicksMixin applied: it can step aside for another mod's hooks while this one applies)
+		if ((Object) this.blockTicks instanceof TickRange.Owner o) o.cadence$level((ServerLevel) (Object) this);
+		if ((Object) this.fluidTicks instanceof TickRange.Owner o) o.cadence$level((ServerLevel) (Object) this);
 	}
 }

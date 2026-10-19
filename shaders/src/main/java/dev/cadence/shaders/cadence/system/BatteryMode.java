@@ -27,7 +27,8 @@ public final class BatteryMode {
 	private static final long CHECK_NS = 2_000_000_000L;
 	private static volatile Mode mode = parse(System.getProperty("cadence.batteryMode", ShaderToggle.configValue("batteryMode", "display")));
 	private static volatile boolean onBattery;
-	private static long checkedAt = Long.MIN_VALUE;
+	private static long checkedAt;
+	private static boolean checked;
 	/** Self-tests: behave as if on battery. */
 	public static volatile boolean fakeBattery;
 
@@ -60,7 +61,9 @@ public final class BatteryMode {
 	public static boolean onBattery() {
 		if (fakeBattery) return true;
 		long now = System.nanoTime();
-		if (now - checkedAt > CHECK_NS) {
+		// (a flag for the first read: checkedAt = Long.MIN_VALUE overflowed "now - checkedAt" and macOS was never asked)
+		if (!checked || now - checkedAt > CHECK_NS) {
+			checked = true;
 			checkedAt = now;
 			onBattery = MacSystem.onBattery();
 		}

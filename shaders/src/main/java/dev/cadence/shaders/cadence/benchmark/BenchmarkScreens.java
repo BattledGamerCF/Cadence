@@ -60,9 +60,15 @@ public final class BenchmarkScreens {
 			Benchmark.remember(r);
 			mc.gui.setScreen(new ResultsScreen(r, previous, parent));
 		}, reason -> {
-			if (mc.level != null) mc.gui.setScreen(parent);
+			// (not over a screen that stopped it: the pause menu, a death screen)
+			if (mc.level != null && mc.gui.screen() == null) mc.gui.setScreen(parent);
 			Notices.post("Benchmark stopped", reason);
 		});
+	}
+
+	/** Self-test: Save Image pressed on the open results card. */
+	public static void pressSave(Screen screen) {
+		if (screen instanceof ResultsScreen results) results.beginCapture();
 	}
 
 	/** The results card. */

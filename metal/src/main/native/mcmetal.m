@@ -1780,12 +1780,9 @@ static _Atomic long presentIntervals, presentLong;
 static double presentLastShown;
 static _Atomic double refreshPeriod;
 static void startDisplayLink(void);
-static int displayLinkStarted;
+static _Atomic int displayLinkStarted;
 void mc_present_stats_on(int on) {
-	if (on && !displayLinkStarted) {  // (the refresh period comes from the display link, which the pacer may not have started)
-		displayLinkStarted = 1;
-		startDisplayLink();
-	}
+	if (on && atomic_exchange(&displayLinkStarted, 1) == 0) startDisplayLink();  // (the refresh period comes from the display link)
 	presentStatsOn = on; presentIntervals = 0; presentLong = 0; presentLastShown = 0;
 }
 long mc_present_stats_total(void) { return presentIntervals; }
@@ -1866,10 +1863,7 @@ static void paceWatch(id<CAMetalDrawable> drawable) {
 }
 
 int mc_pace(double margin) {
-	if (!displayLinkStarted) {
-		displayLinkStarted = 1;
-		startDisplayLink();
-	}
+	if (atomic_exchange(&displayLinkStarted, 1) == 0) startDisplayLink();
 	double now = CACurrentMediaTime(), anchor = nextRefresh, period = refreshPeriod, lead = gpuLatency + margin + paceExtra;
 	if (lastPace > 0) frameInterval += (now - lastPace - frameInterval) * 0.1;
 	lastPace = now;
