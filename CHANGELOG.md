@@ -2,6 +2,30 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased
+
+New:
+- **Benchmark** (Video Settings, Cadence: Performance): 30 seconds of your view turning once round, then a results card
+  anyone can read: average fps, the slowest 1% of frames, the worst single frame, graphics and processor time per frame, and
+  what it ran on (Mac, memory, window, render distance, shader pack, Cadence settings), with "last time" for comparison.
+  Save Image puts the card in your screenshots folder (with a text copy for forum posts). Nothing leaves your Mac.
+- **On Battery** (Video Settings): unplugged, the frame rate is capped at your display's refresh rate (Match Display, the
+  default: 60, or 120 on ProMotion; nothing you can see is lost), or at 30 (Saver), or not at all (Off). Plugged in, nothing
+  changes. Drawing 500 frames a second on battery mostly turns the battery into heat.
+- **Even frames under a cap**: with any frame cap (Max Framerate, menus, In Background, On Battery, Cooling) each frame is
+  shown at least the cap's interval (Metal's presentDrawable:afterMinimumDuration:), so a capped game advances one frame per
+  interval instead of jittering against the display; on ProMotion displays it also tells macOS the rate to refresh at.
+  Capped frame rates are unchanged; the evenness itself couldn't be measured here (this Mac's display doesn't report when
+  frames reach it). `-Dcadence.framePacing=false` turns it off.
+
+Cadence Logic (the integrated server; exact, each checked in game against vanilla's answer):
+- **Scheduled ticks just outside the simulation distance** (water, leaves, redstone waiting for a chunk to tick) are no
+  longer re-checked every tick: the server thread's scheduled-tick bookkeeping went from 22% to under 1% in a test world by
+  a river (600,000 checks against vanilla: none different). `cadence.logic.tickRange=false` turns it off.
+- **Mob pathfinding**: the per-search cache of block path types no longer allocates per question or clears its whole table
+  per search: path finding 11.7% -> 5.3% of the server thread in a crowded scene (1.8 million answers checked: none
+  different). `cadence.logic.pathCache=false` turns it off.
+
 ## 0.4.0-beta.7 / shaders 0.3.6 (2026-10-19)
 
 - **Core tiers on M5 Pro / Max and M6** (Super + Performance (+ Efficiency) cores): Cadence reads the chip's tiers, and where
