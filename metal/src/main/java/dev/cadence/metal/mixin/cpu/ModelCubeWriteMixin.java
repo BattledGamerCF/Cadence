@@ -31,6 +31,15 @@ import org.spongepowered.asm.mixin.Shadow;
 abstract class ModelCubeWriteMixin {
 	@Shadow @Final public ModelPart.Polygon[] polygons;
 	@org.spongepowered.asm.mixin.Unique private static final Vector3f CADENCE_SCRATCH = new Vector3f();
+	/** The render thread's transformed corners (x, y, z per distinct corner). */
+	@org.spongepowered.asm.mixin.Unique private static final float[] CADENCE_CORNERS = new float[3 * 32];
+	/**
+	 * The cube's distinct vertex positions (x, y, z each; a cube's faces share its 8 corners, each corner in 3 faces) and, for
+	 * each face's vertices in order, which of them it is; null until first drawn, or when there are more than 32.
+	 */
+	@org.spongepowered.asm.mixin.Unique private float[] cadence$positions;
+	@org.spongepowered.asm.mixin.Unique private byte[] cadence$cornerOf;
+	@org.spongepowered.asm.mixin.Unique private boolean cadence$indexed;
 
 	/**
 	 * @author Cadence
@@ -41,8 +50,29 @@ abstract class ModelCubeWriteMixin {
 		Matrix4f matrix = pose.pose();
 		// (one scratch vector on the render thread: a new one per cube was ~5% of its garbage in a crowded scene)
 		Vector3f scratch = com.mojang.blaze3d.systems.RenderSystem.isOnRenderThread() ? CADENCE_SCRATCH : new Vector3f();
-		if (Cpu.modelWrite && builder instanceof BufferBuilder bb && cadence$fast((ModelBufferBuilderAccessor) bb)) {
+		// (an atlas sprite's model draws through SpriteCoordinateExpander: its UVs mapped by the same calls, then the builder)
+		net.minecraft.client.renderer.texture.UvMapping mapping = null;
+		VertexConsumer target = builder;
+		if (builder instanceof net.minecraft.client.renderer.SpriteCoordinateExpander expander) {
+			mapping = expander.mapping();
+			target = expander.delegate();
+		}
+		if (Cpu.modelWrite && target instanceof BufferBuilder bb && cadence$fast((ModelBufferBuilderAccessor) bb)) {
 			ModelBufferBuilderAccessor b = (ModelBufferBuilderAccessor) bb;
+			// Each distinct corner transformed once (vanilla: once per face it's in, 24 times for 8 corners): the same
+			// transformPosition on the same numbers, so the same results. Off the render thread, per vertex as before.
+			byte[] cornerOf = scratch == CADENCE_SCRATCH ? this.cadence$corners() : null;
+			float[] corners = CADENCE_CORNERS;
+			if (cornerOf != null) {
+				float[] pos = this.cadence$positions;
+				for (int c = 0, n = pos.length / 3; c < n; c++) {
+					Vector3f p = matrix.transformPosition(pos[c * 3], pos[c * 3 + 1], pos[c * 3 + 2], scratch);
+					corners[c * 3] = p.x();
+					corners[c * 3 + 1] = p.y();
+					corners[c * 3 + 2] = p.z();
+				}
+			}
+			int vertexIndex = 0;
 			int size = b.cadence$vertexSize();
 			int abgr = ARGB.toABGR(color);
 			for (ModelPart.Polygon polygon : this.polygons) {
@@ -53,6 +83,8 @@ abstract class ModelCubeWriteMixin {
 				int count = vertices.length;
 				if (count == 0) continue;
 				int already = b.cadence$vertices();
+				int first = vertexIndex;
+				vertexIndex += count;
 				if (already + count > 16777215) { // vanilla's limit: let it throw where it would
 					cadence$vanillaPolygon(matrix, scratch, fx, fy, fz, vertices, builder, lightCoords, overlayCoords, color);
 					continue;
@@ -62,21 +94,28 @@ abstract class ModelCubeWriteMixin {
 				b.cadence$vertexPointer(base + (long) size * (count - 1));
 				for (int i = 0; i < count; i++) {
 					ModelPart.Vertex v = vertices[i];
-					Vector3f p = matrix.transformPosition(v.worldX(), v.worldY(), v.worldZ(), scratch);
 					long at = base + (long) size * i;
-					MemoryUtil.memPutFloat(at, p.x());
-					MemoryUtil.memPutFloat(at + 4, p.y());
-					MemoryUtil.memPutFloat(at + 8, p.z());
+					if (cornerOf != null) {
+						int c = cornerOf[first + i] * 3;
+						MemoryUtil.memPutFloat(at, corners[c]);
+						MemoryUtil.memPutFloat(at + 4, corners[c + 1]);
+						MemoryUtil.memPutFloat(at + 8, corners[c + 2]);
+					} else {
+						Vector3f p = matrix.transformPosition(v.worldX(), v.worldY(), v.worldZ(), scratch);
+						MemoryUtil.memPutFloat(at, p.x());
+						MemoryUtil.memPutFloat(at + 4, p.y());
+						MemoryUtil.memPutFloat(at + 8, p.z());
+					}
 					MemoryUtil.memPutInt(at + 12, abgr);
-					MemoryUtil.memPutFloat(at + 16, v.u());
-					MemoryUtil.memPutFloat(at + 20, v.v());
+					MemoryUtil.memPutFloat(at + 16, mapping == null ? v.u() : mapping.getU(v.u()));
+					MemoryUtil.memPutFloat(at + 20, mapping == null ? v.v() : mapping.getV(v.v()));
 					MemoryUtil.memPutInt(at + 24, overlayCoords);
 					MemoryUtil.memPutInt(at + 28, lightCoords);
 					MemoryUtil.memPutByte(at + 32, nx);
 					MemoryUtil.memPutByte(at + 33, ny);
 					MemoryUtil.memPutByte(at + 34, nz);
 				}
-				if (Cpu.MODEL_WRITE_VERIFY) cadence$verify(b, base, size, matrix, fx, fy, fz, vertices, lightCoords, overlayCoords, color);
+				if (Cpu.MODEL_WRITE_VERIFY) cadence$verify(b, base, size, matrix, fx, fy, fz, vertices, lightCoords, overlayCoords, color, mapping);
 			}
 			return;
 		}
@@ -84,6 +123,43 @@ abstract class ModelCubeWriteMixin {
 			Vector3f n = pose.transformNormal(polygon.normal(), scratch);
 			cadence$vanillaPolygon(matrix, scratch, n.x(), n.y(), n.z(), polygon.vertices(), builder, lightCoords, overlayCoords, color);
 		}
+	}
+
+	/**
+	 * Which distinct position each face vertex has (built once per cube; positions compared exactly, so a vertex is only ever
+	 * given a corner with its own coordinates), or null when the cube has more than 32 distinct positions.
+	 */
+	@org.spongepowered.asm.mixin.Unique
+	private byte @org.jspecify.annotations.Nullable [] cadence$corners() {
+		if (this.cadence$indexed) return this.cadence$cornerOf;
+		int total = 0;
+		for (ModelPart.Polygon polygon : this.polygons) total += polygon.vertices().length;
+		float[] pos = new float[3 * 32];
+		byte[] of = new byte[total];
+		int n = 0, k = 0;
+		boolean ok = true;
+		for (ModelPart.Polygon polygon : this.polygons) {
+			for (ModelPart.Vertex v : polygon.vertices()) {
+				float x = v.worldX(), y = v.worldY(), z = v.worldZ();
+				int found = -1;
+				for (int c = 0; c < n && found < 0; c++)
+					if (Float.floatToRawIntBits(pos[c * 3]) == Float.floatToRawIntBits(x) && Float.floatToRawIntBits(pos[c * 3 + 1]) == Float.floatToRawIntBits(y)
+						&& Float.floatToRawIntBits(pos[c * 3 + 2]) == Float.floatToRawIntBits(z)) found = c;
+				if (found < 0) {
+					if (n == 32) { ok = false; break; }
+					pos[n * 3] = x;
+					pos[n * 3 + 1] = y;
+					pos[n * 3 + 2] = z;
+					found = n++;
+				}
+				of[k++] = (byte) found;
+			}
+			if (!ok) break;
+		}
+		this.cadence$positions = ok ? java.util.Arrays.copyOf(pos, n * 3) : null;
+		this.cadence$cornerOf = ok ? of : null;
+		this.cadence$indexed = true;
+		return this.cadence$cornerOf;
 	}
 
 	/** Vanilla's per-vertex loop for one face (the normal already transformed). */
@@ -111,10 +187,11 @@ abstract class ModelCubeWriteMixin {
 	 * byte for byte with what was just written (the padding byte after the normal excepted: neither path writes it).
 	 */
 	private static void cadence$verify(ModelBufferBuilderAccessor b, long base, int size, Matrix4f matrix, float nx, float ny, float nz,
-		ModelPart.Vertex[] vertices, int lightCoords, int overlayCoords, int color) {
+		ModelPart.Vertex[] vertices, int lightCoords, int overlayCoords, int color, net.minecraft.client.renderer.texture.@org.jspecify.annotations.Nullable UvMapping mapping) {
 		try (com.mojang.blaze3d.vertex.ByteBufferBuilder bytes = new com.mojang.blaze3d.vertex.ByteBufferBuilder(size * vertices.length + 64)) {
 			BufferBuilder ref = new BufferBuilder(bytes, b.cadence$topology(), b.cadence$format());
-			cadence$vanillaPolygon(matrix, new Vector3f(), nx, ny, nz, vertices, ref, lightCoords, overlayCoords, color);
+			cadence$vanillaPolygon(matrix, new Vector3f(), nx, ny, nz, vertices,
+				mapping == null ? ref : new net.minecraft.client.renderer.SpriteCoordinateExpander(ref, mapping), lightCoords, overlayCoords, color);
 			long refBase = ((ModelByteBufferBuilderAccessor) bytes).cadence$pointer();
 			for (int i = 0; i < vertices.length; i++)
 				for (int o = 0; o < 35; o++)

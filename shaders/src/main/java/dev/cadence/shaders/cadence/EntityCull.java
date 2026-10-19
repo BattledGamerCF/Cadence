@@ -49,6 +49,15 @@ public final class EntityCull {
 	/** Particles: per section, 1 = reached by the camera search, 2 = not (this extraction). */
 	private static final it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap reached = new it.unimi.dsi.fastutil.longs.Long2ByteOpenHashMap();
 	private static long particlesSeen, particlesHidden;
+	/**
+	 * In front of reached: the last answers by section, direct-mapped (a frame's particles are in a few sections: a hash map
+	 * lookup per particle was 5.7% of the render thread in a scene with a few thousand). An entry counts only with this
+	 * extraction's stamp.
+	 */
+	private static final long[] recentKey = new long[64];
+	private static final byte[] recentAnswer = new byte[64];
+	private static final int[] recentAt = new int[64];
+	private static int recentStamp = 1;
 	private static boolean pendingCamera = true, pendingShadow = true, pending;
 	private static long frames, seen, hidden, cameraOnly, shadowOnly, dropped, beSeen, beCameraOnly, beShadowOnly, beDropped, logged;
 
@@ -70,6 +79,7 @@ public final class EntityCull {
 		packFrame = false;
 		reuseFrame = false;
 		if (!reached.isEmpty()) reached.clear();
+		recentStamp++;
 		pending = false;
 		if (!enabled) return;
 		frames++;
@@ -184,7 +194,8 @@ public final class EntityCull {
 		if (mc.level == null) return true;
 		int sx = SectionPos.blockToSectionCoord(x), sy = SectionPos.blockToSectionCoord(y), sz = SectionPos.blockToSectionCoord(z);
 		long key = SectionPos.asLong(sx, sy, sz);
-		byte r = reached.get(key);
+		int slot = (sx * 31 + sy * 7 + sz * 131) & 63;
+		byte r = recentAt[slot] == recentStamp && recentKey[slot] == key ? recentAnswer[slot] : reached.get(key);
 		if (r == 0) {
 			r = 1;
 			var area = mc.levelRenderer.viewArea();
@@ -198,6 +209,9 @@ public final class EntityCull {
 			}
 			reached.put(key, r);
 		}
+		recentKey[slot] = key;
+		recentAnswer[slot] = r;
+		recentAt[slot] = recentStamp;
 		particlesSeen++;
 		if (r == 2) {
 			particlesHidden++;
