@@ -35,11 +35,11 @@ img = Image.open(bg_path).convert('RGB')
 scale = max(W / img.width, H / img.height)
 img = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
 img = img.crop(((img.width - W) // 2, (img.height - H) // 2, (img.width - W) // 2 + W, (img.height - H) // 2 + H))
-img = ImageEnhance.Brightness(img).enhance(0.85)
+img = ImageEnhance.Brightness(img).enhance(0.95)
 over = Image.new('RGBA', (W, H), (0, 0, 0, 0))
 od = ImageDraw.Draw(over)
 for y in range(H):  # darker at the top (title) and bottom (footer)
-    a = int(150 * max(0, 1 - y / 260)) + int(120 * max(0, (y - 900) / 180))
+    a = int(120 * max(0, 1 - y / 240)) + int(120 * max(0, (y - 920) / 160))
     od.line([(0, y), (W, y)], fill=(8, 10, 22, min(a, 200)))
 img = Image.alpha_composite(img.convert('RGBA'), over)
 
@@ -48,12 +48,14 @@ px, py, pw = 150, 205, W - 300
 rh, hh = 76, 58
 ph = hh + rh * len(ROWS) + 16
 panel = img.crop((px, py, px + pw, py + ph)).filter(ImageFilter.GaussianBlur(22))
-panel = Image.alpha_composite(panel, Image.new('RGBA', panel.size, (10, 14, 30, 178)))
+panel = Image.alpha_composite(panel, Image.new('RGBA', panel.size, (10, 14, 30, 158)))
 mask = Image.new('L', panel.size, 0)
 ImageDraw.Draw(mask).rounded_rectangle([0, 0, pw - 1, ph - 1], radius=28, fill=255)
 img.paste(panel, (px, py), mask)
+edge = Image.new('RGBA', (W, H), (0, 0, 0, 0))  # (a faint edge: ImageDraw on the image itself would not blend it)
+ImageDraw.Draw(edge).rounded_rectangle([px, py, px + pw, py + ph], radius=28, outline=(255, 255, 255, 70), width=2)
+img = Image.alpha_composite(img, edge)
 d = ImageDraw.Draw(img)
-d.rounded_rectangle([px, py, px + pw, py + ph], radius=28, outline=(255, 255, 255, 60), width=2)
 
 white, soft, dim, blue, grey = (255, 255, 255), (214, 220, 240), (150, 158, 185), (110, 185, 255), (170, 172, 185)
 # header

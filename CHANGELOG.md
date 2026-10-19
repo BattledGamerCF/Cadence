@@ -9,6 +9,16 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
   Performance and Efficiency cores and the few Super cores stay free for the render thread and the game logic. Chips with
   two tiers in the old sense (M1-M4, the base M5) are unchanged. Not yet measured on that hardware;
   `-Dcadence.workerQos=default` turns it off. The startup log names the layout ("CPU cores: ...").
+- **Particles are written faster on the CPU**: each particle's four corners go into the vertex buffer at once (vanilla makes
+  sixteen calls and five new objects per particle). The bytes are identical to vanilla's (`-Dcadence.cpu.particleWriteVerify=true`
+  checks); `-Dcadence.cpu.particleWrite=false` turns it off. Not yet measured in game.
+
+Experimental native build (`cadence-native-VERSION.jar`, from `tools/release native`; the regular jar has it off):
+- Vanilla's shaders as hand-written Metal instead of GLSL translated through SPIR-V: 35 programs, now including Fabulous
+  graphics' order-independent transparency (every translucent program's three passes, the composite and the depth-bounds
+  pass). A program goes native only while no resource pack replaces any file it reads; anything else is translated as before.
+- Fixed before it shipped: the native programs were missing their shared definitions at run time (only the compile checker
+  added them), so in game each would have failed to compile and fallen back to translation.
 
 ## 0.4.0-beta.6 / shaders 0.3.5 (2026-10-18)
 
