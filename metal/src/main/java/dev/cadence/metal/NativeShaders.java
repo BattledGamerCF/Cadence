@@ -19,7 +19,7 @@ import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Cadence (the native track; -Dcadence.native=true, the default in the experimental build): vanilla's shader programs as
+ * Cadence (native shaders; on by default, -Dcadence.native=false turns them off): vanilla's shader programs as
  * hand-written Metal Shading Language instead of their GLSL run through SPIR-V and SPIRV-Cross. Each program is common.metal
  * and one file under cadence/native/ (core/entity.metal: native_vs and native_fs) written from vanilla's GLSL, with the same
  * #ifdef variants; it is compiled with the pipeline's own defines (ShaderDefines.asSourceDirectives: the preprocessor reads
@@ -33,8 +33,8 @@ import org.jspecify.annotations.Nullable;
  * as before.
  */
 public final class NativeShaders {
-	static final boolean ON = Boolean.parseBoolean(System.getProperty("cadence.native",
-		NativeShaders.class.getResource("/cadence/native/ENABLED") != null ? "true" : "false"));
+	/** On by default since beta.8 (193 pipelines native, pictures alike, nothing failed in testing); -Dcadence.native=false: translated. */
+	static final boolean ON = !"false".equals(System.getProperty("cadence.native"));
 	/** -Dcadence.native.log=true: which pipelines are native, and why the others aren't. */
 	private static final boolean LOG = Boolean.getBoolean("cadence.native.log");
 

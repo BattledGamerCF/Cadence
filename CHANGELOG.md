@@ -48,7 +48,7 @@ Cadence Logic (the integrated server; exact, each checked in game against vanill
   written a quad at once (1.2 million checked, identical); Cadence's particle culling looks each section up once a frame instead of once a particle. All
   write exactly the bytes vanilla does (checked on 57 million faces with `-Dcadence.cpu.modelWriteVerify=true`).
 
-Experimental native build (`cadence-native-VERSION.jar`, from `tools/release native`; the regular jar has it off):
+Native shaders, now on in the regular jar (there is no separate native jar any more; `-Dcadence.native=false` turns them off):
 - Vanilla's shaders as hand-written Metal instead of GLSL translated through SPIR-V: 35 programs, now including Fabulous
   graphics' order-independent transparency (every translucent program's three passes, the composite and the depth-bounds
   pass). A program goes native only while no resource pack replaces any file it reads; anything else is translated as before.
