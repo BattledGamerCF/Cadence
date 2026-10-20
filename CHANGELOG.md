@@ -21,6 +21,9 @@ New:
   just a sky-blue void and your HUD: about 8,500 fps on an M2 MacBook Air. It turns itself off when Minecraft restarts.
 - **Full screen**: the Metal layer is marked opaque, so macOS doesn't blend the game window and can show full-screen frames
   directly.
+- **Sharpness & Speed...** (Video Settings): Resolution, Sharpening and Retina moved to their own page, the settings that
+  trade picture sharpness for frame rate (fewer pixels: much higher fps, especially in full screen), so the main panel is
+  shorter.
 - **FPS Counter** (Video Settings: On / Off) turns the corner frame rate off. **Benchmark Details** (Simple, the default /
   Detailed): Simple shows the average frame rate and what it ran on; Detailed adds the slowest 1% of frames, the worst
   frame, and graphics and processor time per frame.

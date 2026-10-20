@@ -64,8 +64,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 				"#Nothing changes until you press Apply." + (mac.isEmpty() ? "" : " Last set up for: " + mac + ".")))
 			.build());
 		this.list.addHeader(Component.literal("Cadence: Performance"));
-		this.list.addSmall(ShaderToggle.scaleButton(), ShaderToggle.upscalerButton());
-		this.list.addSmall(ShaderToggle.retinaButton(), dev.cadence.shaders.cadence.CadenceSettings.leavesButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.SharpnessScreen.button(self), dev.cadence.shaders.cadence.CadenceSettings.leavesButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.backgroundButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.dynamicLightsButton(), dev.cadence.shaders.cadence.CadenceSettings.messagesButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.batteryButton(), dev.cadence.shaders.cadence.CadenceSettings.fpsCounterButton());
