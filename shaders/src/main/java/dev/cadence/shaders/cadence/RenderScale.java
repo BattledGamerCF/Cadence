@@ -8,7 +8,7 @@ import java.util.Locale;
  * (next frame). -Dcadence.shaders.renderScale overrides it for tests.
  *
  * <p>Auto is dynamic resolution: each pack frame reports its time (frame). Once a second, when frames are over 10% too slow
- * for the target frame rate (autoTarget=, default the display's refresh rate) and the GPU is the reason (its time per frame, Cadence GpuBusy, is near
+ * for the target frame rate (autoTarget=, default 60; without a shader pack, 60 means the display's refresh rate: see aimFps) and the GPU is the reason (its time per frame, Cadence GpuBusy, is near
  * the budget), the scale drops to the value that should hit it (pixel cost goes with scale squared); when the GPU has 25% to
  * spare for two windows running it rises one 0.05 step, also under VSync (the GPU time still shows the headroom). Never
  * outside autoMin..1.0 (config autoMin=, default 0.5). A CPU-bound frame changes nothing: a lower resolution would cost sharpness and gain nothing. A 2-second
@@ -27,13 +27,10 @@ public final class RenderScale {
 		String prop = System.getProperty("cadence.shaders.renderScale");
 		String value = prop != null ? prop : ShaderToggle.configValue("renderScale", "auto");
 		applyValue(value);
-		// (default: the display's refresh rate, 60 or 120 on ProMotion: a 120 Hz Mac in full screen held at 80 fps is GPU-bound
-		// below what its display shows, and Auto should help it there too; on 60 Hz displays this is the old 60)
-		int display = Math.max(60, Math.min(240, dev.cadence.metal.MacSystem.displayHz()));
 		try {
-			autoTarget = Math.max(20, Math.min(240, Integer.parseInt(ShaderToggle.configValue("autoTarget", Integer.toString(display)).strip())));
+			autoTarget = Math.max(20, Math.min(240, Integer.parseInt(ShaderToggle.configValue("autoTarget", "60").strip())));
 		} catch (NumberFormatException e) {
-			autoTarget = display;
+			autoTarget = 60;
 		}
 		try {
 			autoMin = Math.max(MIN, Math.min(MAX, Float.parseFloat(ShaderToggle.configValue("autoMin", "0.5").strip())));
@@ -55,6 +52,18 @@ public final class RenderScale {
 
 	public static int autoTarget() {
 		return autoTarget;
+	}
+
+	private static final int DISPLAY_HZ = Math.max(60, Math.min(240, dev.cadence.metal.MacSystem.displayHz()));
+
+	/**
+	 * The frame rate Auto actually aims for: the saved target, except that the default 60 means the display's refresh rate
+	 * without a shader pack (a 120 Hz ProMotion Mac in full screen held at 80 fps is GPU-bound below what its display shows).
+	 * With a pack it stays 60: chasing 120 there would cost most of the picture's sharpness.
+	 */
+	public static int aimFps() {
+		int t = autoTarget;
+		return t == 60 && dev.cadence.shaders.runtime.ShaderRuntime.get() == null ? DISPLAY_HZ : t;
 	}
 
 	/** Auto's frame-rate goal (presets: 40 Battery Saver, 60 otherwise); saved as autoTarget=. */
@@ -295,7 +304,7 @@ public final class RenderScale {
 			busySum = 0;
 			return;
 		}
-		double targetMs = 1000.0 / autoTarget;
+		double targetMs = 1000.0 / aimFps();
 		float next = scale;
 		QualityHint.window(scale, intervalMs, gpuMs, targetMs);
 		boolean slow = intervalMs > targetMs * 1.10 && gpuMs > targetMs * 0.85;
