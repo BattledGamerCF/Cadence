@@ -1756,6 +1756,9 @@ void mc_layer_configure(Ctx *ctx, CAMetalLayer *layer, int width, int height, in
 	layer.device = ctx->device;
 	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	layer.framebufferOnly = YES;
+	// Cadence: the game covers its window completely: an opaque layer spares macOS's compositor the blend, and in full screen
+	// lets it hand the frames to the display directly (no composition pass at all)
+	layer.opaque = (vsync & (1 << 17)) == 0;
 	layer.drawableSize = CGSizeMake(width, height);
 	// vsync: bit 0 = display sync; bits 8-15 = maximumDrawableCount (0 = the default, 3; -Dcadence.metal.drawables)
 	layer.displaySyncEnabled = (vsync & 1) != 0;

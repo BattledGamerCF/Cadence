@@ -32,6 +32,8 @@ final class MetalSurface implements GpuSurfaceBackend {
 	 * paced frame shown more than half a refresh after the refresh it was aimed at adds lead, a frame on time takes a little away.
 	 */
 	static final boolean PACE_ADAPT = Boolean.getBoolean("cadence.metal.paceAdapt");
+	/** The layer marked opaque (the compositor skips the blend; full screen can go direct to display); -Dcadence.metal.opaque=false: as before. */
+	static final boolean OPAQUE = !"false".equals(System.getProperty("cadence.metal.opaque"));
 	private boolean paced;
 	private final long ctx;
 	private final MetalEncoder encoder;
@@ -51,7 +53,7 @@ final class MetalSurface implements GpuSurfaceBackend {
 		this.paced = !vsync && PACE;
 		if (PACE_ADAPT) Native.paceAdapt(this.paced ? 1 : 0);
 		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || PACE_SYNC && this.paced ? 1 : 0) | DRAWABLES << 8
-			| (Retina.on() ? 0 : 1 << 16));
+			| (Retina.on() ? 0 : 1 << 16) | (OPAQUE ? 0 : 1 << 17));
 	}
 
 	@Override
