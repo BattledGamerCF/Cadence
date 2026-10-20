@@ -4,6 +4,7 @@
   "plugin": "dev.cadence.shaders.cadence.mixin.CadenceMixinPlugin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "MaxFpsModeMixin", "MaxFpsModeExtractMixin",
     "VideoSettingsShadersMixin",
     "OptionsShaderKeysMixin",
     "MinecraftShaderKeysMixin",

@@ -261,6 +261,22 @@ public final class CadenceSettings {
 		return Component.literal("Benchmark Details: " + (benchmarkDetailed ? "Detailed" : "Simple"));
 	}
 
+	/** Render Max FPS (MaxFpsMode): the world not drawn at all, for the highest frame rate possible. Not saved. */
+	public static Button maxFpsButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(maxFpsLabel(), b -> {
+			MaxFpsMode.set(!MaxFpsMode.on());
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("For curiosity: the most frames a second Minecraft can draw on this Mac.",
+			"#It removes all block faces and everything else in the world from the picture (the sky, clouds, mobs, particles, your hand): you see a black void with your HUD. The game keeps running underneath. For the highest number, set Max Framerate to Unlimited and turn VSync off. It turns itself off when Minecraft restarts.")).build();
+		onRefresh(() -> self[0].setMessage(maxFpsLabel()));
+		return self[0];
+	}
+
+	private static Component maxFpsLabel() {
+		return Component.literal("Render Max FPS: " + (MaxFpsMode.on() ? "On" : "Off"));
+	}
+
 	/** On Battery (system.BatteryMode): Match Display, Saver, Off. */
 	public static Button batteryButton() {
 		Button[] self = new Button[1];

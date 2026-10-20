@@ -737,6 +737,12 @@ public final class CadenceSelfTest {
 					long[] p = dev.cadence.metal.MacSystem.presentStats();
 					LOGGER.info("[selftest] presents: {} intervals, {} longer than 1.5 refreshes ({})", p[0], p[1],
 						p[0] == 0 ? "no presented times" : String.format(java.util.Locale.ROOT, "%.2f%%", 100.0 * p[1] / p[0]));
+				} else if (lower.startsWith("maxfpsmode=")) {
+					// "maxfpsmode=on|off": Render Max FPS (MaxFpsMode)
+					MaxFpsMode.set(lower.endsWith("on"));
+				} else if (lower.startsWith("fpscounter=")) {
+					// "fpscounter=on|off": the Cadence HUD's corner frame rate (not saved)
+					System.setProperty("cadence.fpsCounter", Boolean.toString(lower.endsWith("on")));
 				} else if (lower.startsWith("battery=")) {
 					// "battery=on|off": behave as if the Mac were on its battery (BatteryMode), or as it really is
 					dev.cadence.shaders.cadence.system.BatteryMode.fakeBattery = lower.endsWith("on");
@@ -862,6 +868,7 @@ public final class CadenceSelfTest {
 				case "facepacked" -> dev.cadence.shaders.cadence.facecull.FaceCull.packedGroups = on;
 				case "lazyclears" -> dev.cadence.metal.FrameHints.lazyClears(on);
 				case "modelwrite" -> dev.cadence.metal.cpu.Cpu.modelWrite = on;
+				case "fpscounter" -> System.setProperty("cadence.fpsCounter", Boolean.toString(on));
 				case "rgssskip" -> dev.cadence.metal.own.OwnTerrain.rgssSkip(on);
 				case "s67apple" -> { RenderScale.applyUpscaler("metalfx"); RenderScale.applyValue(on ? "0.67" : "1.0"); }
 				case "s67fast" -> { RenderScale.applyUpscaler("fast"); RenderScale.applyValue(on ? "0.67" : "1.0"); }
