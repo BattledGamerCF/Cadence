@@ -258,6 +258,7 @@ public final class Benchmark {
 		String pack = ShaderToggle.selectedPack();
 		out.add("Shader pack|" + (pack.isEmpty() ? "None" : ShaderToggle.display(pack)));
 		out.add("Frame cap|" + frameCap(mc));
+		if (dev.cadence.shaders.cadence.MaxFpsMode.on()) out.add("World|not drawn (Render Max FPS)");
 		out.add("Cadence|" + version() + " · " + CadenceSettings.current().label() + " · world at " + Math.round(RenderScale.get() * 100) + "%");
 		return out;
 	}
