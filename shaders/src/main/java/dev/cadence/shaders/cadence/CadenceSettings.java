@@ -231,7 +231,7 @@ public final class CadenceSettings {
 	public static Button fpsCounterButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(fpsCounterLabel(), b -> {
-			boolean on = !"true".equals(System.getProperty("cadence.fpsCounter"));
+			boolean on = "false".equals(System.getProperty("cadence.fpsCounter"));  // (anything but "false" shows it, as the HUD reads it)
 			System.setProperty("cadence.fpsCounter", Boolean.toString(on));
 			ShaderToggle.saveKey("fpsCounter", Boolean.toString(on));
 			refreshAll();
@@ -241,7 +241,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component fpsCounterLabel() {
-		return Component.literal("FPS Counter: " + ("true".equals(System.getProperty("cadence.fpsCounter")) ? "On" : "Off"));
+		return Component.literal("FPS Counter: " + ("false".equals(System.getProperty("cadence.fpsCounter")) ? "Off" : "On"));
 	}
 
 	public static Button benchmarkDetailsButton() {
@@ -268,7 +268,7 @@ public final class CadenceSettings {
 			MaxFpsMode.set(!MaxFpsMode.on());
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("For curiosity: the most frames a second Minecraft can draw on this Mac.",
-			"#It removes all block faces and everything else in the world from the picture (the sky, clouds, mobs, particles, your hand): you see a black void with your HUD. The game keeps running underneath. For the highest number, set Max Framerate to Unlimited and turn VSync off. It turns itself off when Minecraft restarts.")).build();
+			"#It removes all block faces and everything else in the world from the picture (the sky, clouds, mobs, particles, your hand): you see an empty sky-blue void with your HUD. The game keeps running underneath. For the highest number, set Max Framerate to Unlimited and turn VSync off. It turns itself off when Minecraft restarts.")).build();
 		onRefresh(() -> self[0].setMessage(maxFpsLabel()));
 		return self[0];
 	}

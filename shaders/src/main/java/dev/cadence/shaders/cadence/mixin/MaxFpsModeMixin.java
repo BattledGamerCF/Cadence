@@ -15,7 +15,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Cadence (MaxFpsMode): the world's drawing skipped; the frame keeps its clear (in Minecraft's sky blue, as a world whose blocks
  * haven't loaded looks, instead of black) and its GUI.
  */
-@Mixin(GameRenderer.class)
+// (priority 500: applied before GameRendererWorldScaleMixin's renderLevel HEAD/RETURN pair, so a cancel never splits it)
+@Mixin(value = GameRenderer.class, priority = 500)
 public abstract class MaxFpsModeMixin {
 	/** Vanilla's day sky (plains), 0x78A7FF. */
 	@Unique private static final Vector4fc CADENCE_SKY = new Vector4f(120 / 255f, 167 / 255f, 1f, 1f);

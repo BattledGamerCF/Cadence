@@ -20,7 +20,7 @@ New:
 - **Render Max FPS** (Video Settings, for curiosity): the world isn't drawn at all (no block faces, sky, mobs, particles),
   just a sky-blue void and your HUD: about 8,500 fps on an M2 MacBook Air. It turns itself off when Minecraft restarts.
 - **Full screen**: the Metal layer is marked opaque, so macOS doesn't blend the game window and can show full-screen frames
-  directly; Resolution: Auto now aims for your display's refresh rate (120 on ProMotion) instead of always 60.
+  directly.
 - **FPS Counter** (Video Settings: On / Off) turns the corner frame rate off. **Benchmark Details** (Simple, the default /
   Detailed): Simple shows the average frame rate and what it ran on; Detailed adds the slowest 1% of frames, the worst
   frame, and graphics and processor time per frame.

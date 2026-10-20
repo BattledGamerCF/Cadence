@@ -57,7 +57,7 @@ public final class BenchmarkScreens {
 		Minecraft mc = Minecraft.getInstance();
 		Benchmark.start(r -> {
 			double[] previous = Benchmark.previous();
-			Benchmark.remember(r);
+			if (!dev.cadence.shaders.cadence.MaxFpsMode.on()) Benchmark.remember(r);  // (a void isn't a baseline)
 			mc.gui.setScreen(new ResultsScreen(r, previous, parent));
 		}, reason -> {
 			// (not over a screen that stopped it: the pause menu, a death screen)
