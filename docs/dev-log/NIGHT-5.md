@@ -106,3 +106,15 @@ beta.9 / shaders 0.3.8: dist/cadence-0.4.0-beta.9.jar, INSTALLED in Cadence Test
 Production launch of the release jar with 17 other mods (metal/run-compat: Essential, ImmediatelyFast, Lithium, Mod Menu,
 Jade, JEI, Xaero's Minimap, Continuity, Dynamic FPS, Entity Culling, Zoomify, YACL...): all steps, Mod Menu -> Cadence opens
 Video Settings (the moved entrypoint), BSL on/off, GC policy on through the restart. Next: the custom JDK (user's request).
+
+## 8. The custom JDK ("Vivace", working name; user's request, started right after the passes)
+Separate project: ~/Documents/CLAUDEEEEE/jdk-project (README, PLAN, PATCHES, INSTALL, CROSS-PLATFORM, research/ from three
+Haiku agents: BUILD, APPLE, LEGAL). OpenJDK jdk25u: 25.0.2+10 = Zulu 25.0.2's upstream (A/B base), release branch on
+jdk-25.0.5-ga. Builds with the Command Line Tools only (stand-in metal tools + runtime compile of Java2D's shaders), ~5 min.
+Patches: UseThreadQoS (macOS: VM thread + stop-the-world GC workers user-interactive, background GC utility; worst young
+pauses ~-1/3) and G1ClassUnloadingInterval (manageable; unloading only every Nth marking cycle, code cache/metaspace
+pressure always unloads). Cadence beta.10's GcPolicy uses the latter: interval 12 in play, 1 for a cycle it starts in a menu.
+Release vs Zulu, flight with pause menus: in-play Remark time -73% (52/67 vs 194/251 ms), longest in-play Remark 22 vs 64-87
+ms; young pauses and heap equal once heat is controlled (the second run of a pair is always hotter on the fanless Air:
+G1 grows the heap with GC time share). Not kept: -mcpu=apple-m1 + LTO (no gain). Release: dist/ = full JDK 222 MB, game
+runtime (jlink, 45 modules) 57 MB, source 77 MB; ran production Minecraft + 18 mods on the runtime.
