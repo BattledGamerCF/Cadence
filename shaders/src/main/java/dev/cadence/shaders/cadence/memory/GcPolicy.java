@@ -50,7 +50,9 @@ public final class GcPolicy {
 	private static volatile boolean requested, requestUnload;
 	/** The JVM has the manageable G1ClassUnloadingInterval (Vivace); the interval during play. */
 	private static boolean unloadControl;
-	private static final int PLAY_INTERVAL = 12;
+	// (32: in a long flight G1 can start 12+ marking cycles between two menus, and the 12th unloaded in play; the JVM still
+	// unloads at once for code cache or metaspace pressure, so a high interval can't let either grow)
+	private static final int PLAY_INTERVAL = 32;
 	private static final long UNLOAD_GAP_NS = 60_000_000_000L;
 	/** Marking cycles seen since the last unloading request (G1's end-of-cycle notifications), and when that request was. */
 	private static int cyclesSinceUnload;
