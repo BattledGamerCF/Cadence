@@ -257,6 +257,9 @@ public final class Benchmark {
 		out.add("Mac|" + (model.isEmpty() ? "Unknown Mac" : model) + (chip.isEmpty() ? "" : " · " + chip));
 		long mem = MacSystem.sysLong("hw.memsize");
 		out.add("Memory|" + (mem > 0 ? Math.round(mem / 1073741824.0) + " GB" : "unknown") + " · macOS " + System.getProperty("os.version", "?"));
+		// (which Java ran it: results from two JDKs, e.g. the launcher's and Vivace, can be told apart)
+		String vendor = System.getProperty("java.vendor.version", System.getProperty("java.vendor", ""));
+		out.add("Java|" + System.getProperty("java.version", "?") + (vendor.isBlank() ? "" : " · " + vendor.strip()));
 		out.add("Window|" + mc.getWindow().getWidth() + " × " + mc.getWindow().getHeight() + " pixels · render distance "
 			+ mc.options.renderDistance().get() + " chunks");
 		String pack = ShaderToggle.selectedPack();
