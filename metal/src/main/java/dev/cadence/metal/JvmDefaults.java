@@ -46,7 +46,15 @@ public final class JvmDefaults {
 	/** What the restarted process was given, from its environment ("" when it wasn't restarted). */
 	private static final String ENV = "CADENCE_JVM_DEFAULTS";
 	private static final String[] GCS = {"UseG1GC", "UseZGC", "UseShenandoahGC", "UseParallelGC", "UseSerialGC", "UseEpsilonGC"};
-	static final List<String> DEFAULTS = List.of("-XX:+UseG1GC", "-XX:+UseCompactObjectHeaders", "-XX:+DisableExplicitGC",
+	/**
+	 * Cadence's GC policy (GcPolicy in the shaders module): G1's own trigger for background marking is turned into a high safety
+	 * net (fixed at 90% of the heap instead of adaptive), and System.gc() starts that marking (instead of a full collection, or
+	 * nothing as with DisableExplicitGC before), so Cadence can start it when it is worth it. Measured (docs/dev-log/NIGHT-5.md):
+	 * adaptive IHOP had fallen to 0 bytes and G1 marked back to back, each cycle ending in an 8-19 ms Remark pause (class
+	 * unloading) every ~8 s while old-gen occupancy stayed flat. Only with G1 and when the player hasn't disabled System.gc().
+	 */
+	static final List<String> GC_POLICY = List.of("-XX:+ExplicitGCInvokesConcurrent", "-XX:-G1UseAdaptiveIHOP", "-XX:InitiatingHeapOccupancyPercent=90");
+	static final List<String> DEFAULTS = List.of("-XX:+UseG1GC", "-XX:+UseCompactObjectHeaders", GC_POLICY.get(0), GC_POLICY.get(1), GC_POLICY.get(2),
 		"-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:MetaspaceSize=256m",
 		"-Dfile.encoding=UTF-8", "-Dlog4j2.formatMsgNoLookups=true").stream()
 		// (compact object headers are a product flag from Java 25, which the game needs; on anything older the restarted
@@ -88,7 +96,12 @@ public final class JvmDefaults {
 		summary = gc + (gcChosen ? " (your Java arguments)" : " (Java's default)");
 		if (!enabled(gameDir) || !System.getProperty("os.name", "").startsWith("Mac")) return;
 		List<String> add = new ArrayList<>(), kept = new ArrayList<>();
+		// (the GC policy needs G1 and System.gc(): a player who chose another collector or -XX:+DisableExplicitGC keeps G1's own
+		// marking trigger, which then has no one to start marking early)
+		boolean policy = !gcChosen || input.contains("-XX:+UseG1GC");
+		if (input.contains("-XX:+DisableExplicitGC")) policy = false;
 		for (String d : DEFAULTS) {
+			if (!policy && GC_POLICY.contains(d)) continue;
 			String conflict = conflict(d, input);
 			if (conflict != null) {
 				if (!conflict.equals(d)) kept.add(conflict);

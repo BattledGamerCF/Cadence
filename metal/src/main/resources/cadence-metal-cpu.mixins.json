@@ -3,6 +3,6 @@
 	"package": "dev.cadence.metal.mixin.cpu",
 	"plugin": "dev.cadence.metal.mixin.cpu.CpuMixinPlugin",
 	"compatibilityLevel": "JAVA_25",
-	"client": ["LoadingFpsMixin", "EntityBoxVanillaMixin", "EntityRendererBoxInvoker", "EntityBoxAbMixin", "ModelLoopMixin", "ModelCubeWriteMixin", "ModelQuadWriteMixin", "ModelBufferBuilderAccessor", "ModelByteBufferBuilderAccessor", "ModelAbMixin", "AbFrameMixin", "LeashMixin", "LeashAbMixin"],
+	"client": ["LoadingFpsMixin", "EntityBoxVanillaMixin", "EntityRendererBoxInvoker", "EntityBoxAbMixin", "ModelLoopMixin", "ModelCubeWriteMixin", "ModelQuadWriteMixin", "ModelBufferBuilderAccessor", "ModelByteBufferBuilderAccessor", "ModelAbMixin", "AbFrameMixin", "LeashMixin", "LeashAbMixin", "TextBidiMixin"],
 	"injectors": { "defaultRequire": 1 }
 }

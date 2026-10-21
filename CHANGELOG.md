@@ -14,6 +14,22 @@ Settings:
   without a shader pack.
 - Shorter tooltips (Resolution, Retina, On Battery, Dynamic Lights, Render Max FPS).
 
+Performance:
+- **Cadence GC policy**: Java's garbage collector (G1) was marking the whole heap back to back, each round ending in an 8-26 ms
+  pause (class unloading) every few seconds, even when nothing had grown. Cadence now starts that marking itself, only when
+  the long-lived part of the heap has grown (sooner with a menu open or when macOS is short of memory); G1's own trigger stays
+  as a safety net. A 4-minute flight over new terrain: 126 of these pauses -> 16, total pause time -46%, same memory. Takes
+  effect through Cadence's Java defaults (not with your own -XX:+DisableExplicitGC or another collector);
+  `-Dcadence.gcPolicy=false` turns it off.
+- Text in left-to-right languages skips the right-to-left reordering every string went through each frame (HUD, chat,
+  signs, menus): less garbage, identical text (checked over 500,000 strings). `-Dcadence.cpu.textBidi=false` turns it off.
+
+Edge cases:
+- The display's refresh rate and scale are read from the screen the game is on (not the screen of whichever app is active).
+- Retina off no longer halves the GUI scale on a non-Retina monitor (where it made every menu half size).
+- Settings are saved whole or not at all (a full disk or a crash mid-save no longer empties the settings file).
+- Quick Setup recognises Macs with iPhone-class chips (A-series).
+
 Fixes:
 - Cycling the Performance preset through Max FPS left Retina off for good; the other presets turn it back on (at the next
   launch, as before), and a "Restart Minecraft to turn Retina off/on" line says so.

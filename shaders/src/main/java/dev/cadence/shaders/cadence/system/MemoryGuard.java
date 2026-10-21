@@ -35,6 +35,7 @@ public final class MemoryGuard {
 		level = now;
 		LoggerFactory.getLogger("cadence").info("Memory guard: macOS memory pressure {} -> {}", previous, now);
 		dev.cadence.shaders.cadence.HeapTrim.pressure(now);
+		dev.cadence.shaders.cadence.memory.GcPolicy.pressure(now);
 		dev.cadence.shaders.cadence.memory.ChunkHeapCompactor.pressure(now);
 		NativeTrim.purge();
 		if (now >= 2) RenderScale.setCeiling(Math.min(RenderScale.ceiling(), 0.85f));

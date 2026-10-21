@@ -28,3 +28,36 @@ game before it stays. One Haiku 5.5 research agent: docs/research/NIGHT5.md.
 6. **Deep bug pass**: my own read-through of tonight's changes and older risky paths, then the in-game sweep.
 
 ## Log
+
+### 1. UI (done)
+Tours with screenshots (self-test screen=/click=/hover=/scroll=): regrouped Video Settings (Picture & Speed / Power & Heat /
+Extras, bold-underlined like vanilla), Shadows + Faster Shadows on the Sharpness & Speed page, Benchmark details on the card,
+greyed no-op buttons, shorter tooltips. Bugs found by looking: cycling the preset through Max FPS left Retina off for good; a
+status line added while the screen was open overflowed the panel (rebuildWidgets on an OptionsSubScreen duplicates the layout:
+open a fresh VideoSettingsScreen, carry the scroll); the benchmark card claimed a cap that only applied part of the run.
+
+### 2. Edge cases and chips (done)
+Research: docs/research/NIGHT5.md. Already covered: Rosetta/Intel (PlatformCheck), Low Power Mode (Cooling treats it as warm),
+core tiers incl. M5 Pro/Max and M6 (CoreLayout), GPU features (SIMD-group functions and imageblocks are Apple7/M1-safe).
+Added: display rate and scale from the game window's own screen (mainScreen is the ACTIVE app's screen; AppKit read on the main
+thread, other threads get a cache and queue one refresh on the main queue); Retina-off GUI halving only on >=1.5x screens (on a
+1x monitor it halved every menu for nothing); On Battery no longer calls native displayHz every frame; settings files written
+atomically (temp + move; saveKey synchronized); A-series chips in Quick Setup; -Dcadence.retina respected by the restart note.
+
+### 3. GC: Cadence's GC policy (user asked for "our own GC" if possible)
+A real new collector means changing HotSpot (C++) and shipping our own Java; a mod can't. What a mod can do is decide when G1
+works. Measured in the benchmark turn (JFR + frame log): 11 of 20 hitches were GC; the rest were the OS stalling the render
+thread (CPU ~0.3 ms of a 40 ms frame). G1's adaptive IHOP had fallen to 0 bytes (young gen ~280 MB of a 760 MB heap) so it
+marked back to back, each cycle ending in a Remark whose class unloading ("G1 Complete Cleaning") took 8-19 ms, every ~8 s,
+while old gen stayed flat. GcPolicy + JvmDefaults: -XX:-G1UseAdaptiveIHOP -XX:InitiatingHeapOccupancyPercent=90 (safety net),
+-XX:+ExplicitGCInvokesConcurrent (replaces DisableExplicitGC; Minecraft only calls System.gc() on out-of-memory), and Cadence
+starts marking when old gen grew 5% of -Xmx (48-128 MB; half with a menu open, a quarter under memory pressure), 30 s apart.
+The JVM still cleans the code cache itself (SweeperThreshold 15% -> "CodeCache GC Threshold" cycles), so JIT code stays bounded.
+- benchmark scene, 70 s x2 interleaved: Remarks 14/10/7 (max 19-26 ms) -> 0; worst frames 38-54 ms -> 17-41 ms.
+- 4-min flight over new terrain, -Xmx2048 (HeapTrim on): Remarks 126 (951 ms) -> 16 (196 ms); young pause time 1765 -> 1352 ms;
+  heap committed max 754 -> 770 MB.
+Young pauses are almost all ObjCopy (survivors: new chunk data copied survivor-to-survivor up to 15 times).
+
+### 4. Text (optimization)
+FormattedBidiReorder (ICU Bidi + ArabicShaping on every drawn string, ~8% of render-thread allocation in the benchmark) skipped
+for left-to-right text below U+0590: one even run, shaping a no-op. -Dcadence.cpu.textVerify: 500,000+ strings, 0 mismatches.
