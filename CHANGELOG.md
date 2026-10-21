@@ -2,16 +2,22 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased
+## 0.4.0-beta.12 / shaders 0.3.11 (2026-10-21)
 
 - **Video Settings > Java: Launcher's / Vivace** (Extras): play on Vivace, the Java build made alongside Cadence, without
-  changing the launcher's settings. Off by default, from the next launch. Cadence looks for an installed Vivace in
-  ~/Library/Application Support/Vivace or ~/Library/Java/JavaVirtualMachines (or /Library/...), starts it once with your Java arguments to check it accepts them, then
-  restarts the game on it at the very start of loading (the same restart Cadence's Java defaults use: one process, the
-  launcher keeps tracking it). If Vivace refuses an argument, macOS blocks it (a download still in quarantine) or a start on
-  it never reaches the game, the game carries on with the launcher's Java and the settings screen says why. Cadence downloads
-  nothing and ships no part of Vivace: it is a separate, open-source download. Also `cadence.java=vivace|launcher|PATH`
-  in config/cadence.properties or `-Dcadence.java=`.
+  changing the launcher's settings. Off by default; takes effect at the next launch. Cadence looks for an installed Vivace
+  in ~/Library/Application Support/Vivace or ~/Library/Java/JavaVirtualMachines (or /Library/...), starts it once with
+  your Java arguments to check it accepts them, then restarts the game on it at the very start of loading (the same
+  restart Cadence's Java defaults use: one process, the launcher keeps tracking it). If Vivace refuses an argument, macOS
+  blocks it (a download still in quarantine) or a start on it never reaches the game, the game carries on with the
+  launcher's Java and the settings screen says why. Cadence downloads nothing and ships no part of Vivace: it is a
+  separate, open-source download. Also `cadence.java=vivace|launcher|PATH` in config/cadence.properties or
+  `-Dcadence.java=`.
+- **Vivace 27**: Vivace now also comes on OpenJDK 27.0.1 (same patches): in a flight over new terrain, about a quarter
+  less heap (~250 MB) and half as many young pauses over 8 ms as Vivace 25. Minecraft 26.3, Fabric and Cadence run on
+  Java 27 unchanged (18-mod production launch checked).
+- On Java 27, Cadence's Java defaults use `-XX:G1IHOP=90` (Java 27's new name for InitiatingHeapOccupancyPercent, which
+  now prints a deprecation warning at every start).
 
 ## 0.4.0-beta.11 / shaders 0.3.10 (2026-10-21)
 
