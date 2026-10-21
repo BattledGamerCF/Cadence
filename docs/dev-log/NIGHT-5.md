@@ -77,3 +77,15 @@ every Cadence package. docs/ARCHITECTURE.md maps all three modules. Doc indexes 
 merged agent worktree under .claude/ removed (its branch kept). The metal root package (the mcopt backend, 58 classes) stays one
 package: its classes share package-private state with Native. Checks: build, mixin-check (494 members, 0 errors), offline
 checks, in-game smoke test (21 steps: settings, Sharpness page, BSL on/off, pack settings, dynamic lights, benchmark, F3+A).
+
+### 6. Memory
+Census, render distance 12, no pack, 2 GB heap (footprint, vmmap, NMT at exit, malloc_history -callTree, histogram):
+footprint 1,413 MB (1,695 on 10-18 at a bigger window). Java ~925 (heap committed 525, live ~450; metaspace 125 + class 46;
+JIT code 97; GC 61; symbols 26); native malloc ~156 (the JVM 118 of it: symbol table 26, compiled-code metadata ~37, G1 16;
+zlib inflater windows 14); GPU ~210 (IOGPU 90 + owned 98 + IOSurface 24). Heap: byte[] 82 MB (light layers), long[] 47 (block
+palettes), int[] 24, 205k ScheduledTicks (this world's water), BakedQuad 9.5, ModelPart$Vertex 7.
+- Kept: the own renderer's cull lists start at 4,096 records (was 32,768, also the floor after a world closes); beginFrame
+  grows them before every cull. At RD 12 they grow back to 32,768 within 2 s (16-32k live records: 64 lists x 2 sets x phases
+  A/B sized for every record = 32 MB), so the saving is at small render distances. GPU capacity counters: 0 lost.
+- Measured, not changed: pooling the cull lists (one pool, offsets by prefix sum) would cut most of those 32 MB but changes every
+  list kernel; the JVM's own memory (symbols, nmethod metadata, class unloading's cost) is for the custom JDK.

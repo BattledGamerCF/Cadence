@@ -341,6 +341,8 @@ public final class OwnTerrain {
 	private final long[] grpLive = new long[5];
 	private int quadOwnerCap, qWords, qcap;
 	private int listCap;
+	/** The lists' first and smallest capacity (records); -Dcadence.own.listFloor (was 32768). */
+	private static final int LIST_FLOOR = Math.max(256, Integer.getInteger("cadence.own.listFloor", 1 << 12));
 	private long frame;
 	private final long baseMs = Util.getMillis();
 	/** Releases waiting for the GPU: frame stamp and action. */
@@ -478,7 +480,10 @@ public final class OwnTerrain {
 		this.slotMesh = new OwnMesh[0];
 		this.growSlots(1 << 14);
 		this.listCap = 0;
-		this.growLists(1 << 15);
+		// (small at first: beginFrame grows the lists to under twice the records in use before every cull, and the cull's lists
+		// (two sets, phases A and B, ~64 lists each) are sized from this; starting at 32,768 kept ~32 MB of private GPU memory at
+		// render distance 12 where ~8 MB does)
+		this.growLists(LIST_FLOOR);
 		for (int i = 0; i < RING_N; i++) {
 			this.rArgs[i] = OwnNative.buffer(this.ctx, 128, 2);
 			this.rArgsAddress[i] = OwnNative.contents(this.rArgs[i]);
@@ -1084,7 +1089,7 @@ public final class OwnTerrain {
 		for (Object m : new java.util.ArrayList<>(this.meshes.keySet())) this.release(m);
 		this.runDeferredNow();
 		// (the lists back to their first size: a level's high-water mark isn't kept for the next; they grow again as needed)
-		if (this.listCap > 1 << 15) this.growLists(1 << 15);
+		if (this.listCap > LIST_FLOOR) this.growLists(LIST_FLOOR);
 		this.runDeferredNow();
 		boolean renewed = this.renewArena();
 		long used, cap, recUsed, recCap;
