@@ -92,13 +92,23 @@ public final class BenchmarkScreens {
 		@Override
 		protected void init() {
 			this.buttons.clear();
-			int w = 100, gap = 6, x = this.width / 2 - (3 * w + 2 * gap) / 2, y = Math.min(this.height - 28, this.cardTop() + this.cardHeight() + 26);
+			// (four buttons in a row; narrower on a small window or a big GUI scale)
+			int gap = 6, w = Math.max(60, Math.min(100, (this.width - 12 - 3 * gap) / 4)), x = this.width / 2 - (4 * w + 3 * gap) / 2,
+				y = Math.min(this.height - 28, this.cardTop() + this.cardHeight() + 26);
 			this.buttons.add(this.addRenderableWidget(Button.builder(Component.literal("Save Image"), b -> this.beginCapture())
 				.bounds(x, y, w, 20).tooltip(Tips.of("Saves this card as a picture in your screenshots folder.")).build()));
+			boolean detailed = dev.cadence.shaders.cadence.CadenceSettings.benchmarkDetailed();
+			this.buttons.add(this.addRenderableWidget(Button.builder(Component.literal(detailed ? "Fewer Details" : "More Details"), b -> {
+					dev.cadence.shaders.cadence.CadenceSettings.setBenchmarkDetailed(!dev.cadence.shaders.cadence.CadenceSettings.benchmarkDetailed());
+					this.rebuildWidgets();
+				})
+				.bounds(x + w + gap, y, w, 20).tooltip(Tips.of(detailed ? "Back to the average frame rate and what it ran on."
+					: "Also the slowest 1% of frames, the worst single frame, and graphics and processor time per frame.",
+					"#Remembered for the next benchmark.")).build()));
 			this.buttons.add(this.addRenderableWidget(Button.builder(Component.literal("Run Again"), b -> run(this.parent))
-				.bounds(x + w + gap, y, w, 20).build()));
-			this.buttons.add(this.addRenderableWidget(Button.builder(Component.literal("Done"), b -> this.onClose())
 				.bounds(x + 2 * (w + gap), y, w, 20).build()));
+			this.buttons.add(this.addRenderableWidget(Button.builder(Component.literal("Done"), b -> this.onClose())
+				.bounds(x + 3 * (w + gap), y, w, 20).build()));
 		}
 
 		@Override

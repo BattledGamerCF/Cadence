@@ -41,6 +41,8 @@ public final class CadenceSettings {
 		int shadows = ShadowReuse.rate();
 		boolean heat = HeatControl.enabled();
 		int up = RenderScale.upscaler();
+		// (only Max FPS turns Retina off: the others want every pixel, so a Retina left off by hand makes them Custom)
+		if (!ShaderToggle.retinaConfigured() && !(shadows == 2 && !auto && !heat)) return Preset.CUSTOM;
 		if (auto && heat && shadows == 2 && up == RenderScale.UPSCALE_APPLE && RenderScale.autoTarget() <= 45) return Preset.BATTERY;
 		if (auto && heat && shadows == 2 && up == RenderScale.UPSCALE_APPLE && RenderScale.autoTarget() == 60) return Preset.BALANCED;
 		if (!auto && RenderScale.get() >= 0.995f && !heat && shadows == 1) return Preset.QUALITY;
@@ -52,6 +54,7 @@ public final class CadenceSettings {
 	public static void apply(Preset preset) {
 		switch (preset) {
 			case BATTERY -> {
+				ShaderToggle.setRetina(true);  // (back on after Max FPS; at the next launch, as the button says)
 				RenderScale.setAutoTarget(40);
 				RenderScale.setAuto();
 				HeatControl.setEnabled(true);
@@ -59,6 +62,7 @@ public final class CadenceSettings {
 				RenderScale.setUpscaler(RenderScale.UPSCALE_APPLE);
 			}
 			case BALANCED -> {
+				ShaderToggle.setRetina(true);  // (back on after Max FPS; at the next launch, as the button says)
 				RenderScale.setAutoTarget(60);
 				RenderScale.setAuto();
 				HeatControl.setEnabled(true);
@@ -66,6 +70,7 @@ public final class CadenceSettings {
 				RenderScale.setUpscaler(RenderScale.UPSCALE_APPLE);
 			}
 			case QUALITY -> {
+				ShaderToggle.setRetina(true);  // (back on after Max FPS; at the next launch, as the button says)
 				RenderScale.setAutoTarget(60);
 				RenderScale.set(1.0f);
 				HeatControl.setEnabled(false);
@@ -99,25 +104,28 @@ public final class CadenceSettings {
 		if (rows.isEmpty() || statusFont == null) return;
 		List<Component> parts = new ArrayList<>();
 		for (Component line : status()) parts.addAll(wrap(line, statusWidth, statusFont));
-		// as many rows as were built: a longer status joins its tail into the last row (reopening the screen lays it out anew)
-		for (int i = 0; i < rows.size(); i++) {
-			Component text = i < parts.size() ? parts.get(i) : Component.empty();
-			if (i == rows.size() - 1 && parts.size() > rows.size()) {
-				net.minecraft.network.chat.MutableComponent joined = parts.get(i).copy();
-				for (int j = i + 1; j < parts.size(); j++) joined.append(" ").append(parts.get(j));
-				text = joined;
-			}
-			rows.get(i).setMessage(text);
+		// a status with more or fewer lines than rows built (a restart note, Cooling easing off): the screen lays itself out
+		// again on the next tick (not inside the click that changed it), keeping its scroll position
+		if (parts.size() != rows.size() && relayout != null) {
+			Runnable again = relayout;
+			relayout = null;  // (once: the new layout registers its own)
+			net.minecraft.client.Minecraft.getInstance().execute(again);
+			return;
 		}
+		for (int i = 0; i < rows.size(); i++) rows.get(i).setMessage(i < parts.size() ? parts.get(i) : Component.empty());
 	}
+
+	private static Runnable relayout;
 
 	private static List<net.minecraft.client.gui.components.AbstractWidget> statusRows = List.of();
 	private static int statusWidth;
 	private static net.minecraft.client.gui.Font statusFont;
 
 	/** Video Settings, as it builds: the status rows (their widgets), for refreshAll. */
-	public static void statusRows(List<net.minecraft.client.gui.components.AbstractWidget> rows, int width, net.minecraft.client.gui.Font font) {
+	public static void statusRows(List<net.minecraft.client.gui.components.AbstractWidget> rows, int width, net.minecraft.client.gui.Font font,
+		Runnable relayoutScreen) {
 		statusRows = List.copyOf(rows);
+		relayout = relayoutScreen;
 		statusWidth = width;
 		statusFont = font;
 	}
@@ -154,7 +162,7 @@ public final class CadenceSettings {
 			"Max Quality|always full sharpness; the Mac may run hot",
 			"Max FPS|Retina off (crisp 2x2 pixels, about twice the fps; next launch), no limits",
 			"Custom|you changed something by hand",
-			"#Tip: Max Framerate 60 (120 on ProMotion) saves heat.")).build();
+			"#Vanilla's Preset further down is separate: it sets Minecraft's own quality options.")).build();
 		onRefresh(() -> self[0].setMessage(presetLabel()));
 		return self[0];
 	}
@@ -244,21 +252,10 @@ public final class CadenceSettings {
 		return Component.literal("FPS Counter: " + ("false".equals(System.getProperty("cadence.fpsCounter")) ? "Off" : "On"));
 	}
 
-	public static Button benchmarkDetailsButton() {
-		Button[] self = new Button[1];
-		self[0] = Button.builder(benchmarkDetailsLabel(), b -> {
-			benchmarkDetailed = !benchmarkDetailed;
-			ShaderToggle.saveKey("benchmarkDetails", benchmarkDetailed ? "detailed" : "simple");
-			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("What the Benchmark's results show.",
-			"Simple|the average frame rate and what it ran on",
-			"Detailed|also the slowest 1% of frames, the worst single frame, and graphics and processor time per frame")).build();
-		onRefresh(() -> self[0].setMessage(benchmarkDetailsLabel()));
-		return self[0];
-	}
-
-	private static Component benchmarkDetailsLabel() {
-		return Component.literal("Benchmark Details: " + (benchmarkDetailed ? "Detailed" : "Simple"));
+	/** The Benchmark card's More/Fewer Details button; saved as benchmarkDetails=. */
+	public static void setBenchmarkDetailed(boolean on) {
+		benchmarkDetailed = on;
+		ShaderToggle.saveKey("benchmarkDetails", on ? "detailed" : "simple");
 	}
 
 	/** Render Max FPS (MaxFpsMode): the world not drawn at all, for the highest frame rate possible. Not saved. */
@@ -268,7 +265,7 @@ public final class CadenceSettings {
 			MaxFpsMode.set(!MaxFpsMode.on());
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("For curiosity: the most frames a second Minecraft can draw on this Mac.",
-			"#It removes all block faces and everything else in the world from the picture (the sky, clouds, mobs, particles, your hand): you see an empty sky-blue void with your HUD. The game keeps running underneath. For the highest number, set Max Framerate to Unlimited and turn VSync off. It turns itself off when Minecraft restarts.")).build();
+			"#Removes every block face and everything else in the world: you see an empty sky-blue void and your HUD. Set Max Framerate to Unlimited and VSync off for the top number. Off again after a restart.")).build();
 		onRefresh(() -> self[0].setMessage(maxFpsLabel()));
 		return self[0];
 	}
@@ -287,7 +284,7 @@ public final class CadenceSettings {
 			"Match Display|at most your display's refresh rate (60, or 120 on ProMotion): nothing you can see is lost",
 			"Saver|at most 30 frames a second, for long sessions away from a charger",
 			"Off|as when plugged in",
-			"#Plugged in, nothing is capped. Unplugged, a Mac drawing hundreds of frames a second shows only its display's share and spends the rest of the battery as heat.")).build();
+			"#Plugged in, nothing is capped.")).build();
 		onRefresh(() -> self[0].setMessage(batteryLabel()));
 		return self[0];
 	}
@@ -306,7 +303,7 @@ public final class CadenceSettings {
 			"Held Items|a torch, lantern or glowstone in anyone's hand lights the world around them",
 			"All|also dropped light items, burning mobs, blazes, fireballs, lit TNT, glowing items in frames",
 			"Off|as vanilla",
-			"#Lit on the GPU, nothing rebuilt: under 0.1 ms a frame even with 16 lights. With a shader pack on, the pack's own held-item light applies instead.")).build();
+			"#Costs almost nothing (lit on the graphics chip). With a shader pack, the pack's own held light applies.")).build();
 		onRefresh(() -> self[0].setMessage(dynamicLightsLabel()));
 		if (DynamicLights.LAMB) {
 			self[0].active = false;
@@ -432,6 +429,9 @@ public final class CadenceSettings {
 		lines.add(auto.isEmpty() ? Component.literal("Automatic tuning off: your settings as set").withStyle(ChatFormatting.GRAY)
 			: Component.literal("Tuned automatically: " + String.join(" · ", auto)).withStyle(ChatFormatting.GREEN));
 		if (HeatControl.level() > 0) lines.add(Component.literal(HeatControl.shortDescribe()).withStyle(ChatFormatting.YELLOW));
+		// Retina changes at the next launch (a preset or the Retina button): said here too, so it's not missed
+		if (ShaderToggle.retinaConfigured() != dev.cadence.metal.Retina.on())
+			lines.add(Component.literal("Restart Minecraft to turn Retina " + (ShaderToggle.retinaConfigured() ? "on" : "off")).withStyle(ChatFormatting.YELLOW));
 		if (MemoryGuard.level() > 0) lines.add(Component.literal(MemoryGuard.shortDescribe()).withStyle(ChatFormatting.YELLOW));
 		// other mods that hook what Cadence replaces: those areas run vanilla's code for them (CompatLayers; the log has the detail)
 		List<String> mods = dev.cadence.metal.compat.CompatLayers.mods();

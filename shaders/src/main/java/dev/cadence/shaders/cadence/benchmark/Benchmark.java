@@ -71,6 +71,8 @@ public final class Benchmark {
 	private static boolean measuring;
 	private static float[] intervals = new float[8192];
 	private static int count;
+	/** The frame cap when the run started, and the lowest seen during it (Cooling can step in halfway). */
+	private static int capAtStart, capLowest;
 	private static Thread renderThread;
 	/** (self-test) the focus check is skipped: an automated run's window is usually not in front. */
 	public static boolean ignoreFocus = System.getProperty("cadence.selftest") != null;
@@ -111,6 +113,7 @@ public final class Benchmark {
 		measuring = false;
 		count = 0;
 		renderThread = Thread.currentThread();
+		capAtStart = capLowest = capValue(mc);
 		running = true;
 		mc.gui.setScreen(null);
 		LOGGER.info("Benchmark: started");
@@ -133,6 +136,7 @@ public final class Benchmark {
 				return;
 			}
 			if (startedAt == 0) startedAt = now;
+			capLowest = Math.min(capLowest, capValue(mc));
 			long elapsed = now - startedAt;
 			if (elapsed >= DURATION_NS) {
 				finish(mc, now);
@@ -263,14 +267,23 @@ public final class Benchmark {
 		return out;
 	}
 
-	/** The frame-rate cap the run had, and why (so a capped run isn't taken for the Mac's speed): "None" without one. */
-	private static String frameCap(Minecraft mc) {
+	/** The frame-rate cap now (Integer.MAX_VALUE: none): Max Framerate, On Battery, Cooling, whichever is lowest. */
+	private static int capValue(Minecraft mc) {
 		int option = mc.options.framerateLimit().get();
 		int battery = dev.cadence.shaders.cadence.system.BatteryMode.fpsCap(), heat = dev.cadence.shaders.cadence.system.HeatControl.fpsCap();
-		int cap = Math.min(option >= net.minecraft.client.Options.UNLIMITED_FRAMERATE_CUTOFF ? Integer.MAX_VALUE : option, Math.min(battery, heat));
+		return Math.min(option >= net.minecraft.client.Options.UNLIMITED_FRAMERATE_CUTOFF ? Integer.MAX_VALUE : option, Math.min(battery, heat));
+	}
+
+	/**
+	 * The frame-rate cap the run had, and why (so a capped run isn't taken for the Mac's speed): "None" without one; a cap that
+	 * came in during the run (Cooling as the Mac warmed) is said to be for part of it.
+	 */
+	private static String frameCap(Minecraft mc) {
+		int cap = capLowest;
 		if (cap == Integer.MAX_VALUE) return "None";
-		String why = cap == battery ? "On Battery" : cap == heat ? "Cooling" : "Max Framerate";
-		return cap + " fps (" + why + ")";
+		int battery = dev.cadence.shaders.cadence.system.BatteryMode.fpsCap(), heat = dev.cadence.shaders.cadence.system.HeatControl.fpsCap();
+		String why = cap == battery ? "On Battery" : cap == heat || cap < capAtStart ? "Cooling" : "Max Framerate";
+		return cap + " fps" + (cap < capAtStart ? " for part of the run" : "") + " (" + why + ")";
 	}
 
 	private static String version() {

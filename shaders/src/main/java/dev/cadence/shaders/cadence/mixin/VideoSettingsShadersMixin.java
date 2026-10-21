@@ -26,7 +26,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 	private void cadence$shaders(CallbackInfo ci) {
 		if (this.list == null) return;
 		dev.cadence.shaders.cadence.CadenceSettings.newScreen();
-		this.list.addHeader(Component.literal("Cadence"));
+		this.list.addHeader(heading("Cadence"));
 		// what Cadence tunes on its own (always one line), then anything it is easing right now (heat, memory, Auto resolution)
 		int wrap = Math.max(120, Math.min(this.list.getRowWidth(), this.width - 24));
 		int before = this.list.children().size();
@@ -39,7 +39,13 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 			if (entries.get(i) instanceof net.minecraft.client.gui.components.events.ContainerEventHandler entry)
 				for (var child : entry.children())
 					if (child instanceof net.minecraft.client.gui.components.AbstractWidget w) statusRows.add(w);
-		dev.cadence.shaders.cadence.CadenceSettings.statusRows(statusRows, wrap, this.font);
+		// (a status that grows or shrinks: a fresh Video Settings at the same scroll; rebuilding this one in place would keep
+		// the layout's old rows under the new ones)
+		dev.cadence.shaders.cadence.CadenceSettings.statusRows(statusRows, wrap, this.font, () -> {
+			if (this.minecraft.gui.screen() != (Object) this || this.list == null) return;
+			cadence$pendingScroll = this.list.scrollAmount();
+			this.minecraft.gui.setScreen(new VideoSettingsScreen(this.lastScreen, this.minecraft, this.options));
+		});
 		Screen self = this;
 		// shaders first: the pack in use (the list behind it) and its settings
 		net.minecraft.client.gui.components.Button settings = net.minecraft.client.gui.components.Button.builder(
@@ -63,23 +69,31 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 			.tooltip(dev.cadence.shaders.cadence.Tips.of("Tests your Mac (about 15 seconds) and recommends settings.",
 				"#Nothing changes until you press Apply." + (mac.isEmpty() ? "" : " Last set up for: " + mac + ".")))
 			.build());
-		this.list.addHeader(Component.literal("Cadence: Performance"));
+		// (grouped so the panel reads top to bottom: what you see and how fast, then power and heat, then extras; the
+		// sharpness-for-speed trades, shader shadows included, are on their own page)
+		this.list.addHeader(heading("Cadence: Picture & Speed"));
 		this.list.addSmall(dev.cadence.shaders.cadence.SharpnessScreen.button(self), dev.cadence.shaders.cadence.CadenceSettings.leavesButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.backgroundButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.dynamicLightsButton(), dev.cadence.shaders.cadence.CadenceSettings.messagesButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.batteryButton(), dev.cadence.shaders.cadence.CadenceSettings.fpsCounterButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.button(self), dev.cadence.shaders.cadence.CadenceSettings.benchmarkDetailsButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.maxFpsButton(), null);
-		this.list.addHeader(Component.literal("Cadence: Shader Speed"));
-		this.list.addSmall(ShaderToggle.shadowRateButton(), dev.cadence.shaders.cadence.CadenceSettings.packCheckButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.dynamicLightsButton(), null);
+		this.list.addHeader(heading("Cadence: Power & Heat"));
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.CadenceSettings.batteryButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.backgroundButton(), null);
+		this.list.addHeader(heading("Cadence: Extras"));
+		this.list.addSmall(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.button(self), dev.cadence.shaders.cadence.CadenceSettings.fpsCounterButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.CadenceSettings.messagesButton(), dev.cadence.shaders.cadence.CadenceSettings.maxFpsButton());
 	}
 
 	/**
 	 * Vanilla's Graphics API choice: Cadence draws with Metal whatever it says (OpenGL and Vulkan are only fallbacks), so the
 	 * button is greyed out with a note instead of offering a choice that does nothing.
 	 */
+	@org.spongepowered.asm.mixin.Unique private static double cadence$pendingScroll = -1;
+
 	@Inject(method = "addOptions", at = @At("TAIL"))
 	private void cadence$graphicsApi(CallbackInfo ci) {
+		if (cadence$pendingScroll >= 0 && this.list != null) {
+			this.list.setScrollAmount(cadence$pendingScroll);
+			cadence$pendingScroll = -1;
+		}
 		if (this.list == null || !Boolean.parseBoolean(System.getProperty("cadence.metal", "true"))) return;
 		var api = this.list.findOption(this.options.preferredGraphicsBackend());
 		if (api == null) return;
@@ -87,6 +101,11 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		api.setMessage(Component.literal("Graphics API: Metal"));
 		api.setTooltip(dev.cadence.shaders.cadence.Tips.of("Cadence always draws with Apple's Metal.",
 			"#This setting only matters without Cadence installed."));
+	}
+
+	/** A section heading in vanilla's own style (bold, underlined), so Cadence's sections read like the rest of the screen. */
+	private static Component heading(String text) {
+		return Component.literal(text).withStyle(net.minecraft.ChatFormatting.BOLD, net.minecraft.ChatFormatting.UNDERLINE);
 	}
 
 	@Inject(method = "removed", at = @At("HEAD"))

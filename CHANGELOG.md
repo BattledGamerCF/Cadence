@@ -2,6 +2,26 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased (0.4.0-beta.9)
+
+Settings:
+- **Video Settings regrouped**: Cadence's rows now read top to bottom under vanilla-style headings: Picture & Speed
+  (Sharpness & Speed..., Leaves, Dynamic Lights), Power & Heat (Cooling, On Battery, In Background), Extras (Benchmark, FPS
+  Counter, Cadence Messages, Render Max FPS). Four fewer buttons on the main panel.
+- **Sharpness & Speed...** also holds the two shader-pack speed settings (Shadows, Faster Shadows).
+- **Benchmark Details** moved onto the results card (More Details / Fewer Details), where it matters.
+- Buttons that do nothing right now are greyed out with the reason: Sharpening at a fixed 100% without shaders, Shadows
+  without a shader pack.
+- Shorter tooltips (Resolution, Retina, On Battery, Dynamic Lights, Render Max FPS).
+
+Fixes:
+- Cycling the Performance preset through Max FPS left Retina off for good; the other presets turn it back on (at the next
+  launch, as before), and a "Restart Minecraft to turn Retina off/on" line says so.
+- A status line that appeared while Video Settings was open (Cooling easing off, the restart note) was squeezed onto the
+  last line and ran past the panel; the panel now lays itself out again, keeping its scroll position.
+- The Benchmark card said "Frame cap: 120 fps (Cooling)" next to a higher average when Cooling only stepped in halfway; it
+  now says "for part of the run".
+
 ## 0.4.0-beta.8 / shaders 0.3.7 (2026-10-19)
 
 New:

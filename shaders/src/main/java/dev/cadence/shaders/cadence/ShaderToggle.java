@@ -228,11 +228,11 @@ public final class ShaderToggle {
 				else RenderScale.set(next);
 			}
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How sharp the world is drawn. Menus, the hotbar, chat and the names above players always stay sharp.",
-			"Auto|sharp whenever your Mac keeps up, lower only when needed (recommended)",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How sharp the world is drawn (menus and text always stay sharp).",
+			"Auto|lower only when your Mac can't keep up (recommended)",
 			"100%|always full sharpness",
-			"85% to 50%|faster and cooler with shaders, softer (50% with Fast: crisp, like a non-Retina screen)",
-			"#With shaders: the biggest fps setting. Without shaders the terrain's shape, not its pixels, sets the speed: 100% is best.")).build();
+			"85% to 50%|more fps with shaders, softer",
+			"#Without shaders, 100% is usually just as fast.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(scaleLabel()));
 		return self[0];
 	}
@@ -260,8 +260,7 @@ public final class ShaderToggle {
 			CadenceSettings.refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How many pixels the game draws on a Retina display.",
 			"On|every pixel of your display, the sharpest picture",
-			"Off|the game drawn at your screen's point size, each pixel a crisp 2x2 block (like a non-Retina Mac): "
-				+ "about twice the fps (M2 Air, no shaders: 530 -> 1,170)",
+			"Off|a quarter of the pixels, each a crisp 2x2 block: about twice the fps",
 			"#Takes effect when you restart Minecraft.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(retinaLabel()));
 		return self[0];
@@ -276,8 +275,15 @@ public final class ShaderToggle {
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("When Resolution is below 100%, how the picture is sharpened back:",
 			"Apple|sharpest edges, Apple's MetalFX (recommended with shaders)",
 			"Smooth|a little softer, very even",
-			"Fast|cheapest, the most fps; crisp pixel edges (at 50% exactly sharp)")).build();
-		CadenceSettings.onRefresh(() -> self[0].setMessage(upscalerLabel()));
+			"Fast|cheapest, the most fps; crisp pixel edges (at 50% exactly sharp)",
+			"#Greyed out at 100% without shaders: nothing to sharpen.")).build();
+		Runnable state = () -> {
+			self[0].setMessage(upscalerLabel());
+			// (unused at a fixed 100% without a pack: greyed, saying so; Auto or a pack's own scaling can use it)
+			self[0].active = RenderScale.isAuto() || RenderScale.get() < 0.995f || dev.cadence.shaders.runtime.ShaderRuntime.get() != null;
+		};
+		state.run();
+		CadenceSettings.onRefresh(state);
 		return self[0];
 	}
 
@@ -292,6 +298,10 @@ public final class ShaderToggle {
 			"Every 2nd Frame|about 15% more fps; moving shadows a little less smooth (recommended)",
 			"Every Frame|smoothest, slower")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(shadowRateLabel()));
+		if (dev.cadence.shaders.runtime.ShaderRuntime.get() == null) {
+			self[0].active = false;
+			self[0].setTooltip(Tips.of("Shaders only: how often sun shadows are redrawn.", "#Turn a shader pack on to change it."));
+		}
 		return self[0];
 	}
 
