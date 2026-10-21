@@ -131,3 +131,21 @@ Version numbers are unchanged. No behaviour was changed apart from the names.
 * Every mixin config of the three jars was checked against the jar contents (package, every listed mixin class,
   plugin class, mod entrypoints): nothing missing.
 * The game and `tools/cadence-test.sh` were not run.
+
+## 5. Vivace (the companion Java build)
+
+Vivace is an OpenJDK build (GPLv2 with the Classpath Exception; HotSpot GPLv2 only) made alongside Cadence. It is a
+separate program with its own repository, releases and source archives, and it stays that way:
+
+- Cadence (Apache-2.0) contains, links and downloads no Vivace or HotSpot code. Apache-2.0 and GPLv2 are incompatible,
+  so no code moves between the two projects in either direction.
+- Cadence only talks to Vivace through interfaces any Java program uses: it starts an installed Vivace's `java` (exec,
+  the same restart its Java defaults use), reads the `release` file, and on Vivace sets one documented manageable flag
+  (`G1ClassUnloadingInterval`) through `HotSpotDiagnosticMXBean`, whose classes carry the Classpath Exception. Running on
+  a JVM puts no GPL obligation on a program (the FSF's interpreter FAQ; the Classpath Exception for the class libraries).
+- Using Vivace is the player's choice (Video Settings > Java, off by default); if it is missing, refuses an option or
+  doesn't start, the game runs on the launcher's Java.
+- Listings: Vivace is described in text; it is never uploaded to Modrinth or CurseForge, never put in a modpack, and the
+  CurseForge description gets no download link for it (CurseForge forbids external download links for files).
+
+The research and its sources: the Vivace project's research/LEGAL.md and research/LEGAL2.md (not legal advice).

@@ -383,8 +383,8 @@ public final class CadenceSettings {
 		} else if (!installed && !wantsVivace(gameDir)) {
 			self[0].active = false;
 			self[0].setTooltip(Tips.of("Vivace, Cadence's companion Java build, isn't installed.",
-				"#It's a separate download (see the Cadence page). Put its .jdk folder in ~/Library/Java/JavaVirtualMachines and"
-					+ " this button turns on."));
+				"#It's a separate download (see the Cadence page). Put its .jdk folder in ~/Library/Application Support/Vivace"
+					+ " (or ~/Library/Java/JavaVirtualMachines) and this button turns on."));
 		}
 		return self[0];
 	}

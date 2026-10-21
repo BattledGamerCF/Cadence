@@ -27,7 +27,10 @@ Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
 
 - An Apple Silicon Mac (M1 or newer) on macOS 26 or later
 - Minecraft **26.3** with **Fabric Loader 0.19.5** or newer
-- Java 25 (the official launcher, Prism and CurseForge download it for you)
+- Java 25 or newer (the official launcher, Prism and CurseForge download it for you)
+- Optional: **Vivace**, a free Java build made alongside Cadence (shorter garbage-collection pauses, about a quarter less
+  memory on Vivace 27). It is a separate download with its own licence (GPLv2 with the Classpath Exception); Cadence never
+  downloads or bundles it. Install it, then pick **Video Settings > Java: Vivace** (or point your launcher at it).
 
 ## Install
 

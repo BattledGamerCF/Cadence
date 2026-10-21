@@ -27,6 +27,9 @@ public class VivaceCheck {
 			check("installed: full JDK before the runtime", Vivace.installed(), jvms.resolve("Vivace-25.0.5+8-vivace.1.jdk/Contents/Home/bin/java"));
 			fake(jvms.resolve("Vivace-27.0.1+9-vivace.1-runtime.jdk"), "27.0.1", "Vivace", false);
 			check("installed: newest version first", Vivace.installed(), jvms.resolve("Vivace-27.0.1+9-vivace.1-runtime.jdk/Contents/Home/bin/java"));
+			Path support = tmp.resolve("home/Library/Application Support/Vivace");
+			fake(support.resolve("Vivace-27.0.2+1-vivace.1-runtime.jdk"), "27.0.2", "Vivace", false);
+			check("installed: Application Support/Vivace too", Vivace.installed(), support.resolve("Vivace-27.0.2+1-vivace.1-runtime.jdk/Contents/Home/bin/java"));
 			System.setProperty("user.home", home);
 
 			// target(): the setting, the probe, the pending/failed notes

@@ -22,8 +22,9 @@ import java.util.stream.Stream;
  * nothing, ships no part of Vivace, and uses only public interfaces (exec, the release file, -version), so the two programs stay
  * separate (research/LEGAL2.md in the Vivace project).
  *
- * <p>Found in the folders macOS lists Java in (~/Library/Java/JavaVirtualMachines and /Library/Java/JavaVirtualMachines), or
- * at the path cadence.java= names (a .jdk folder, a Java home or its bin/java). A Vivace is a folder whose release file says
+ * <p>Found in ~/Library/Application Support/Vivace (macOS doesn't treat Java there as a system Java), in the folders macOS
+ * lists Java in (~/Library/Java/JavaVirtualMachines and /Library/Java/JavaVirtualMachines), or at the path cadence.java=
+ * names (a .jdk folder, a Java home or its bin/java). A Vivace is a folder whose release file says
  * IMPLEMENTOR="Vivace" (or named Vivace-*); it must be Java 25 or newer (what the game needs). The full JDK is preferred over
  * the game runtime when both are there (it has every module a mod might use).
  *
@@ -57,7 +58,9 @@ public final class Vivace {
 	public static Path installed() {
 		List<Path> homes = new ArrayList<>();
 		String home = System.getProperty("user.home", "");
-		for (Path dir : List.of(Path.of(home, "Library/Java/JavaVirtualMachines"), Path.of("/Library/Java/JavaVirtualMachines"))) {
+		// (Application Support/Vivace: a place macOS doesn't list as a system Java, so Terminal's `java` stays as it was)
+		for (Path dir : List.of(Path.of(home, "Library/Application Support/Vivace"), Path.of(home, "Library/Java/JavaVirtualMachines"),
+			Path.of("/Library/Java/JavaVirtualMachines"))) {
 			if (!Files.isDirectory(dir)) continue;
 			try (Stream<Path> s = Files.list(dir)) {
 				s.map(p -> p.resolve("Contents/Home")).filter(Vivace::isVivace).forEach(homes::add);
