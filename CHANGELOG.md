@@ -2,6 +2,13 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.10 / shaders 0.3.9 (2026-10-21)
+
+- **GC policy + Vivace**: on Java builds whose G1 can schedule class unloading (Vivace, the macOS-first OpenJDK 25 build made
+  alongside Cadence: -XX:G1ClassUnloadingInterval), Cadence keeps the expensive part of G1's Remark pause (class and compiled
+  code unloading, 5-100 ms) out of play: it happens in a cycle Cadence starts while a menu is open; during play every Remark
+  took 0.5-3.7 ms in a flight over new terrain. On any other Java nothing changes.
+
 ## 0.4.0-beta.9 / shaders 0.3.8 (2026-10-20)
 
 Settings:

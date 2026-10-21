@@ -3,7 +3,7 @@ plugins {
 }
 
 base.archivesName = 'cadence-hud'
-version = '0.4.0-beta.9'
+version = '0.4.0-beta.10'
 
 dependencies {
 	minecraft "com.mojang:minecraft:${minecraft_version}"
