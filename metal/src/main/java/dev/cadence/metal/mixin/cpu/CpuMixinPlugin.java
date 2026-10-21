@@ -29,7 +29,7 @@ public final class CpuMixinPlugin implements IMixinConfigPlugin {
 		if (name.startsWith("Model")) return Cpu.MODEL;
 		if (name.startsWith("EntityBox") || name.startsWith("EntityRendererBox")) return dev.cadence.metal.cpu.EntityBox.ON;
 		if (name.startsWith("Loading")) return Cpu.LOADING_FPS > 0;
-		if (name.startsWith("TextBidi")) return Cpu.textBidi;
+		if (name.startsWith("Text")) return Cpu.textBidi;
 		return false;
 	}
 	@Override public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) { }

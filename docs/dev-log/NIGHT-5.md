@@ -61,3 +61,10 @@ Young pauses are almost all ObjCopy (survivors: new chunk data copied survivor-t
 ### 4. Text (optimization)
 FormattedBidiReorder (ICU Bidi + ArabicShaping on every drawn string, ~8% of render-thread allocation in the benchmark) skipped
 for left-to-right text below U+0590: one even run, shaping a no-op. -Dcadence.cpu.textVerify: 500,000+ strings, 0 mismatches.
+- Third flight soak pair: MaxTenuringThreshold=3 on top of the policy WORSE (young 1778 vs 1424 ms, Remarks 21 vs 15): dropped.
+- The longest Remarks while generating terrain (40-78 ms, a hot Mac) are ~98% class unloading ("G1 Complete Cleaning" over
+  every class and compiled method): fewer of them is what a mod can do; making each cheaper is HotSpot work (custom JDK).
+- The other benchmark hitches: the render thread in cmdWait (GPU) while the GPU took 20-40 ms for a 0.7 ms frame, no uploads
+  or copies of ours in those frames: other apps/WindowServer on the GPU. Non-GC safepoints: none over 3 ms.
+- GUI glyphs: one reused identity Matrix4f per render thread instead of a new one per glyph per frame (TextGlyphMatrixMixin).
+  TextureSetup per glyph NOT cached: the record holds a random sort value per instance (Math.random), batching might change.
