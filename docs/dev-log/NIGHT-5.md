@@ -118,3 +118,16 @@ Release vs Zulu, flight with pause menus: in-play Remark time -73% (52/67 vs 194
 ms; young pauses and heap equal once heat is controlled (the second run of a pair is always hotter on the fanless Air:
 G1 grows the heap with GC time share). Not kept: -mcpu=apple-m1 + LTO (no gain). Release: dist/ = full JDK 222 MB, game
 runtime (jlink, 45 modules) 57 MB, source 77 MB; ran production Minecraft + 18 mods on the runtime.
+
+## 9. Exploration GC (after the JDK release)
+JFR promotion events (PromoteObjectInNewPLAB/OutsidePLAB) during flight: 89% of the bytes young GCs copy are float[] ~138 KB
+= vanilla worldgen DensityBuffers (allocation stacks: OreVeinRule -> MaterialRuleContext.getDensitiesInChunk ->
+DensityBuffer.createUnpooled 30%; pooled ScopedDensityBuffers from RandomState's pools ~33%: up to 16 pools, each dropping
+a buffer after 20 unused clean-ups) and 9% our own OwnQuads.order (five new arrays per bucket per compile).
+- OwnQuads.order now swaps with spare arrays: mesh verify 1,313 sections / 1.26M quads, 0 mismatched, digests equal.
+- GenBufferPoolMixin: RandomState's pool age 20 -> 1,000,000 (default on): ABBA flights young GCs 639/570 -> 427/386, pause
+  time 1,906/1,828 -> 1,374/1,409 ms (-26%), marking cycles 37/34 -> 16/15, heap used +~20 MB. (First attempt crashed
+  worldgen: the plugin field the @ModifyConstant read was package-private -> IllegalAccessError inside RandomState.)
+- Not done: OreVein's unpooled per-chunk buffer (captured by the compiled rule's lambda; no release point to pool safely).
+- Also measured: ParallelGCThreads 4 vs 8 with QoS (8 stays), MaxTenuringThreshold=3 on Vivace (no gain), AOT cache (no gain).
+Release beta.11 / shaders 0.3.10.

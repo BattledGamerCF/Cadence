@@ -2,6 +2,18 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.11 / shaders 0.3.10 (2026-10-21)
+
+- **Fewer garbage-collection pauses while exploring**: Minecraft's world generator samples noise into large float buffers
+  from pools that dropped any buffer unused for a short while, so every few chunks it allocated new ones; those arrays were
+  89% of what Java's young collections copied while flying over new terrain. Cadence keeps them (same pools, same values):
+  young collections -33%, their pause time -26%, background marking cycles -55%, about 20 MB more heap.
+  `-Dcadence.gen.bufferAge=20` restores vanilla.
+- Cadence's own mesher no longer allocates fresh sort arrays for every chunk section it builds (identical meshes, checked
+  over 1.26 million quads).
+- The Benchmark card and its text file say which Java ran the test (e.g. "25.0.5 · Vivace-25.0.5.1").
+- GC policy on Vivace: class unloading during play only every 32nd marking cycle (was 12); menus still get it.
+
 ## 0.4.0-beta.10 / shaders 0.3.9 (2026-10-21)
 
 - **GC policy + Vivace**: on Java builds whose G1 can schedule class unloading (Vivace, the macOS-first OpenJDK 25 build made
