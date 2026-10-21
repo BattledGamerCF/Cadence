@@ -89,3 +89,20 @@ palettes), int[] 24, 205k ScheduledTicks (this world's water), BakedQuad 9.5, Mo
   A/B sized for every record = 32 MB), so the saving is at small render distances. GPU capacity counters: 0 lost.
 - Measured, not changed: pooling the cull lists (one pool, offsets by prefix sum) would cut most of those 32 MB but changes every
   list kernel; the JVM's own memory (symbols, nmethod metadata, class unloading's cost) is for the custom JDK.
+
+### 7. Bug pass
+Read-through of every change tonight: JvmDefaults gating (G1 + System.gc only; Aikar-style -XX:+DisableExplicitGC keeps the
+old behaviour), the display cache (any path that can't use it falls back to the old mainScreen read), presets/Retina, the
+status relayout (and the Sharpness -> Video Settings return: re-init is clean, scroll kept), atomic saves, the text mixins
+(thread-safe fast path; verify mode only toggles a flag), cross-module class-name strings after the move (none). In-game sweep
+47/47 steps (dynamic lights at night, every screen, the Sharpness page, spectating, leave/rejoin, BSL -> Complementary ->
+Photon -> off, fullscreen twice, GUI scale 4, F3+A). Pack switches: the first frame of a new pack waits for its pipelines
+(prewarmPipelines join: Complementary 1.3 s, Photon up to 4 s); GC log during the switches: no Full GC, no to-space
+exhaustion (the GC policy is not involved). Pre-existing since parallel pipelines (NIGHT-3); worth doing later: keep drawing
+the old pack until the new one's pipelines are compiled, then swap.
+
+### Release
+beta.9 / shaders 0.3.8: dist/cadence-0.4.0-beta.9.jar, INSTALLED in Cadence Test 22:21 (backup mods-backup-1020-2221).
+Production launch of the release jar with 17 other mods (metal/run-compat: Essential, ImmediatelyFast, Lithium, Mod Menu,
+Jade, JEI, Xaero's Minimap, Continuity, Dynamic FPS, Entity Culling, Zoomify, YACL...): all steps, Mod Menu -> Cadence opens
+Video Settings (the moved entrypoint), BSL on/off, GC policy on through the restart. Next: the custom JDK (user's request).

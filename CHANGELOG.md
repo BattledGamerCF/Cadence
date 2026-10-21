@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased (0.4.0-beta.9)
+## 0.4.0-beta.9 / shaders 0.3.8 (2026-10-20)
 
 Settings:
 - **Video Settings regrouped**: Cadence's rows now read top to bottom under vanilla-style headings: Picture & Speed
