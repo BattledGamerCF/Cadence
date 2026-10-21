@@ -131,3 +131,6 @@ a buffer after 20 unused clean-ups) and 9% our own OwnQuads.order (five new arra
 - Not done: OreVein's unpooled per-chunk buffer (captured by the compiled rule's lambda; no release point to pool safely).
 - Also measured: ParallelGCThreads 4 vs 8 with QoS (8 stays), MaxTenuringThreshold=3 on Vivace (no gain), AOT cache (no gain).
 Release beta.11 / shaders 0.3.10.
+- SurfaceBuffers (ore veins' per-chunk buffer reused within MaterialSystem.buildSurface; verify: 2,000 buffers, 1,628 reused,
+  0 with unwritten elements): ABBA with the pool fix on in all arms: young pause 1,342 / 1,838 (on) vs 1,402 / 1,248 ms (off):
+  no gain. Kept as an opt-in experiment (-Dcadence.gen.surfaceBuffers=true), off.

@@ -41,6 +41,8 @@ public final class GenMixinPlugin implements IMixinConfigPlugin {
 		if (mixinClassName.endsWith(".GenWorldgenQosMixin")) return WORLDGEN_QOS;
 		if (mixinClassName.endsWith(".GenNoiseChunkMixin")) return NATIVE_NOISE;
 		if (mixinClassName.endsWith(".GenBufferPoolMixin")) return BUFFER_AGE > 0 && BUFFER_AGE != 20;
+		if (mixinClassName.endsWith(".GenSurfaceScopeMixin") || mixinClassName.endsWith(".GenSurfaceBufferMixin"))
+			return Boolean.getBoolean("cadence.gen.surfaceBuffers") && !dev.cadence.metal.compat.CompatLayers.yields(mixinClassName);
 		return false;
 	}
 
