@@ -27,6 +27,12 @@ import org.slf4j.LoggerFactory;
  * apart. The JVM still starts its own cycle when replaced JIT code piles up (SweeperThreshold, 15% of the code cache), so
  * compiled code can't grow without bound.
  *
+ * <p>On a Java whose G1 has the manageable G1ClassUnloadingInterval (the Vivace build of OpenJDK), class unloading is
+ * scheduled too: Remark pauses that unload classes and compiled code cost 5-100 ms, those that don't ~1 ms. During play the
+ * interval is raised to {@value #PLAY_INTERVAL} (the JVM still unloads at once when the code cache or metaspace needs it);
+ * when a menu is open, at least one marking cycle has run since the last unloading request and a minute has passed, the
+ * interval is set to 1 for one cycle Cadence starts, so that unloading happens while nothing moves.
+ *
  * <p>Active only when those flags are in effect (G1, adaptive IHOP off, ExplicitGCInvokesConcurrent on); otherwise nothing
  * changes. -Dcadence.gcPolicy=false: G1's adaptive trigger and no Cadence decisions (also drop the flags with
  * cadence.jvmDefaults=false or your own Java arguments).
@@ -41,7 +47,14 @@ public final class GcPolicy {
 	private static long low = Long.MAX_VALUE;
 	private static long lastCycleNs;
 	private static volatile int pressure;
-	private static volatile boolean requested;
+	private static volatile boolean requested, requestUnload;
+	/** The JVM has the manageable G1ClassUnloadingInterval (Vivace); the interval during play. */
+	private static boolean unloadControl;
+	private static final int PLAY_INTERVAL = 12;
+	private static final long UNLOAD_GAP_NS = 60_000_000_000L;
+	/** Marking cycles seen since the last unloading request (G1's end-of-cycle notifications), and when that request was. */
+	private static int cyclesSinceUnload;
+	private static long lastUnloadNs;
 	private static int started, sinceLog;
 	private static Thread worker;
 
@@ -77,6 +90,14 @@ public final class GcPolicy {
 			worker.start();
 			active = true;
 			LOGGER.info("Cadence GC policy: on: marking when the old generation has grown {} MB (half in menus), G1's own trigger at 90%", grow >> 20);
+			try {
+				hs.getVMOption("G1ClassUnloadingInterval");
+				hs.setVMOption("G1ClassUnloadingInterval", Integer.toString(PLAY_INTERVAL));
+				unloadControl = true;
+				LOGGER.info("Cadence GC policy: this Java schedules class unloading (G1ClassUnloadingInterval {} during play, unloading in menus)", PLAY_INTERVAL);
+			} catch (IllegalArgumentException absent) {
+				// (a JVM without the flag: G1 unloads in every cycle, as always)
+			}
 		} catch (RuntimeException | LinkageError e) {
 			LOGGER.info("Cadence GC policy: off ({})", e.toString());
 		}
@@ -95,6 +116,17 @@ public final class GcPolicy {
 		String name = info.getGcName();
 		long now = System.nanoTime();
 		synchronized (GcPolicy.class) {
+			if (name.contains("Concurrent")) cyclesSinceUnload++;
+			// class unloading while a menu is open (a JVM with G1ClassUnloadingInterval): one cycle with interval 1
+			if (unloadControl && !requested && cyclesSinceUnload >= 2 && now - lastUnloadNs > UNLOAD_GAP_NS && quiet()) {
+				cyclesSinceUnload = 0;
+				lastUnloadNs = lastCycleNs = now;
+				low = Long.MAX_VALUE;
+				requestUnload = requested = true;
+				GcPolicy.class.notifyAll();
+				LOGGER.info("Cadence GC policy: unloading classes and code while a menu is open");
+				return;
+			}
 			// a cycle G1 or the JVM started itself (its safety net, the code cache): a fresh start for the growth measure
 			if (name.contains("Concurrent") && now - lastCycleNs > MIN_GAP_NS) {
 				lastCycleNs = now;
@@ -141,7 +173,25 @@ public final class GcPolicy {
 				}
 				requested = false;
 			}
-			System.gc();
+			boolean unload;
+			synchronized (GcPolicy.class) {
+				unload = requestUnload;
+				requestUnload = false;
+			}
+			if (unload) setInterval(1);
+			try {
+				System.gc();
+			} finally {
+				if (unload) setInterval(PLAY_INTERVAL);
+			}
+		}
+	}
+
+	private static void setInterval(int n) {
+		try {
+			ManagementFactory.getPlatformMXBean(HotSpotDiagnosticMXBean.class).setVMOption("G1ClassUnloadingInterval", Integer.toString(n));
+		} catch (RuntimeException e) {
+			unloadControl = false;
 		}
 	}
 
