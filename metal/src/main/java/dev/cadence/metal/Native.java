@@ -81,6 +81,7 @@ final class Native {
 	private static final MethodHandle SET_QOS = fn("mc_set_qos", false, JAVA_INT, JAVA_INT);
 	private static final MethodHandle QOS_SELF = fn("mc_qos_self", false, JAVA_INT);
 	private static final MethodHandle DISPLAY_HZ = fn("mc_display_hz", false, JAVA_INT);
+	private static final MethodHandle DISPLAY_SCALE = fn("mc_display_scale", false, JAVA_INT);
 	private static final MethodHandle SYS_STRING = fn("mc_sys_string", false, JAVA_INT, ADDRESS, ADDRESS, JAVA_INT);
 	private static final MethodHandle SYS_LONG = fn("mc_sys_long", false, JAVA_LONG, ADDRESS);
 	private static final MethodHandle PRODUCT_NAME = fn("mc_product_name", false, JAVA_INT, ADDRESS, JAVA_INT);
@@ -279,6 +280,7 @@ final class Native {
 	static long presentStatsLong() { try { return (long) PRESENT_STATS_LONG.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int onBattery() { try { return (int) ON_BATTERY.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int displayHz() { try { return (int) DISPLAY_HZ.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static int displayScale() { try { return (int) DISPLAY_SCALE.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static long deviceAllocated(long ctx) { try { return (long) DEVICE_ALLOCATED.invokeExact(ctx); } catch (Throwable t) { throw rethrow(t); } }
 	static int profileCount(long enc) { try { return (int) PROFILE_COUNT.invokeExact(enc); } catch (Throwable t) { throw rethrow(t); } }
 	static void blitBuffer(long enc, long src, long srcOff, long dst, long dstOff, long size) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitBuffer(false, src, srcOff, dst, dstOff, size); try { BLIT_BUFFER.invokeExact(enc, src, srcOff, dst, dstOff, size); } catch (Throwable t) { throw rethrow(t); } }

@@ -68,15 +68,68 @@ int mc_on_battery(void) {
 	return battery;
 }
 
-// The main screen's highest refresh rate (120 on ProMotion), 60 if unknown.
+// The screen the game's window is on (its only window), whether or not the game is the active app; mainScreen (the screen
+// with the active app's window) only without one. On a laptop with an external display the two differ whenever the player
+// clicks into another app, and a game on a 60 Hz monitor would be paced for the laptop's 120 Hz.
+static NSScreen *mc_game_screen(void) {
+	NSWindow *w = NSApp.mainWindow;
+	if (!w) for (NSWindow *x in NSApp.windows) if (x.isVisible) { w = x; break; }
+	return w.screen ?: [NSScreen mainScreen];
+}
+
+// The last values read on the main thread (AppKit's windows belong to it); other threads get these. 0: not read yet.
+static _Atomic int gameScreenHz, gameScreenScale;
+
+static void mc_read_game_screen(void) {
+	NSScreen *s = mc_game_screen();
+	int hz = 60, scale = 100;
+	if (s) {
+		if ([s respondsToSelector:@selector(maximumFramesPerSecond)] && s.maximumFramesPerSecond > 0) hz = (int) s.maximumFramesPerSecond;
+		if (s.backingScaleFactor > 0) scale = (int) lround(s.backingScaleFactor * 100);
+	}
+	gameScreenHz = hz;
+	gameScreenScale = scale;
+}
+
+// From another thread (the heat governor's poll): the cached values, and one fresh read queued for the main thread (run when
+// the game's event loop next drains the main queue; at most one waiting).
+static _Atomic int screenReadQueued;
+static void mc_queue_screen_read(void) {
+	int expected = 0;
+	if (!atomic_compare_exchange_strong(&screenReadQueued, &expected, 1)) return;
+	dispatch_async(dispatch_get_main_queue(), ^{
+		mc_read_game_screen();
+		screenReadQueued = 0;
+	});
+}
+
+// The game's screen's highest refresh rate (120 on ProMotion), 60 if unknown.
 int mc_display_hz(void) {
 	@autoreleasepool {
-		NSScreen *s = [NSScreen mainScreen];
-		if (s && [s respondsToSelector:@selector(maximumFramesPerSecond)]) {
-			NSInteger hz = s.maximumFramesPerSecond;
-			if (hz > 0) return (int) hz;
+		if ([NSThread isMainThread]) mc_read_game_screen();
+		else {
+			mc_queue_screen_read();
+			if (gameScreenHz == 0) {
+				NSScreen *s = [NSScreen mainScreen];
+				return s && [s respondsToSelector:@selector(maximumFramesPerSecond)] && s.maximumFramesPerSecond > 0 ? (int) s.maximumFramesPerSecond : 60;
+			}
 		}
-		return 60;
+		return gameScreenHz;
+	}
+}
+
+// The game's screen's backing scale x 100 (200 on a Retina display, 100 on most external monitors).
+int mc_display_scale(void) {
+	@autoreleasepool {
+		if ([NSThread isMainThread]) mc_read_game_screen();
+		else {
+			mc_queue_screen_read();
+			if (gameScreenScale == 0) {
+				NSScreen *s = [NSScreen mainScreen];
+				return s && s.backingScaleFactor > 0 ? (int) lround(s.backingScaleFactor * 100) : 200;
+			}
+		}
+		return gameScreenScale;
 	}
 }
 

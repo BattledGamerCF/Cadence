@@ -74,6 +74,7 @@ public final class BatteryMode {
 	public static int fpsCap() {
 		Mode m = mode;
 		if (m == Mode.OFF || !onBattery()) return Integer.MAX_VALUE;
-		return m == Mode.SAVER ? SAVER_FPS : Math.max(30, MacSystem.displayHz());
+		// (the display rate HeatControl polls every 2 s: this runs every frame, and asking macOS each time cost a native call)
+		return m == Mode.SAVER ? SAVER_FPS : Math.max(30, HeatControl.displayHz());
 	}
 }

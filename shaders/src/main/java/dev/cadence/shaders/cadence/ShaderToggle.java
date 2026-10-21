@@ -115,16 +115,14 @@ public final class ShaderToggle {
 		saveKey("pack", pack);
 	}
 
-	public static void saveKey(String key, String value) {
+	/** (synchronized: settings are saved from the render thread and from Cadence's own threads; read-change-write must not interleave) */
+	public static synchronized void saveKey(String key, String value) {
 		Properties p = load();
 		p.setProperty(key, value);
 		Path cfg = configFile();
 		try {
-			Files.createDirectories(cfg.getParent());
-			try (Writer w = Files.newBufferedWriter(cfg, StandardCharsets.UTF_8)) {
-				p.store(w, "Cadence (Video Settings > Shaders...). pack= empty is off. shaderSwitching=restart: packs turn on only after a"
-					+ " restart (the default switches them live).");
-			}
+			dev.cadence.metal.ConfigFiles.store(p, cfg, "Cadence (Video Settings > Shaders...). pack= empty is off. shaderSwitching=restart:"
+				+ " packs turn on only after a restart (the default switches them live).", true);
 		} catch (IOException e) {
 			System.out.println("[cadence-shaders] can't save " + cfg + ": " + e);
 		}
@@ -239,6 +237,9 @@ public final class ShaderToggle {
 
 	/** Cadence: Retina as configured for the next launch (retina= in this file; the window is made with it at startup). */
 	public static boolean retinaConfigured() {
+		// (a -Dcadence.retina Java argument wins over the file at every launch, as Retina.on reads it)
+		String forced = System.getProperty("cadence.retina");
+		if (forced != null) return !"false".equalsIgnoreCase(forced.strip());
 		return !"false".equalsIgnoreCase(configValue("retina", "true"));
 	}
 

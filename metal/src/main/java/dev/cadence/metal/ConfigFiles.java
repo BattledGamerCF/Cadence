@@ -20,6 +20,28 @@ public final class ConfigFiles {
 	private ConfigFiles() {
 	}
 
+	/**
+	 * Properties saved whole or not at all: written to a file beside the real one, then moved over it, so a full disk or a game
+	 * killed mid-write leaves the old settings instead of an empty or cut-off file. chars: Properties.store(Writer) as UTF-8
+	 * text (Cadence's own files); otherwise store(OutputStream), Properties' ISO-8859-1 byte format (files Iris also reads).
+	 */
+	public static void store(Properties p, java.nio.file.Path file, String comment, boolean chars) throws IOException {
+		java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+		if (chars) {
+			try (java.io.Writer w = new java.io.OutputStreamWriter(bytes, StandardCharsets.UTF_8)) {
+				p.store(w, comment);
+			}
+		} else p.store(bytes, comment);
+		if (file.getParent() != null) java.nio.file.Files.createDirectories(file.getParent());
+		java.nio.file.Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+		java.nio.file.Files.write(tmp, bytes.toByteArray());
+		try {
+			java.nio.file.Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+		} catch (java.nio.file.AtomicMoveNotSupportedException e) {
+			java.nio.file.Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+		}
+	}
+
 	public static void load(Properties into, Reader reader) throws IOException {
 		StringBuilder b = new StringBuilder();
 		char[] buf = new char[8192];

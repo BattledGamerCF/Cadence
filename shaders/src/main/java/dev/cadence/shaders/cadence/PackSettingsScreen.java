@@ -343,9 +343,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 				Properties p = new Properties();
 				this.session.own.forEach(p::setProperty);
 				// (Properties' own byte format, as Iris writes this file)
-				try (var out = Files.newOutputStream(file)) {
-					p.store(out, "Shader pack settings (Cadence; the same file Iris uses)");
-				}
+				dev.cadence.metal.ConfigFiles.store(p, file, "Shader pack settings (Cadence; the same file Iris uses)", false);
 			}
 		} catch (IOException e) {
 			LoggerFactory.getLogger("cadence_shaders").warn("Shader Pack Settings: can't save {}: {}", file, e.toString());

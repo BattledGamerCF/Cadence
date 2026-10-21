@@ -152,12 +152,22 @@ public final class MacSystem {
 		}
 	}
 
-	/** The main screen's refresh rate in Hz (60 if unknown). */
+	/** The refresh rate in Hz of the screen the game is on (60 if unknown). */
 	public static int displayHz() {
 		try {
 			return Native.displayHz();
 		} catch (Throwable t) {
 			return 60;
+		}
+	}
+
+	/** The backing scale of the screen the game is on: 2.0 on a Retina display, 1.0 on most external monitors. */
+	public static double displayScale() {
+		try {
+			int s = Native.displayScale();
+			return s > 0 ? s / 100.0 : 2.0;
+		} catch (Throwable t) {
+			return 2.0;
 		}
 	}
 

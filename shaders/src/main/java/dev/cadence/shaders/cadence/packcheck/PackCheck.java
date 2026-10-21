@@ -95,8 +95,8 @@ public final class PackCheck {
 	private static synchronized void save() {
 		Properties p = new Properties();
 		p.putAll(results);
-		try (Writer w = Files.newBufferedWriter(file(), StandardCharsets.UTF_8)) {
-			p.store(w, "Cadence pack checks: safe = shadow receiver culling verified for that pack, options and dimension");
+		try {
+			dev.cadence.metal.ConfigFiles.store(p, file(), "Cadence pack checks: safe = shadow receiver culling verified for that pack, options and dimension", true);
 		} catch (IOException e) {
 			LoggerFactory.getLogger("cadence").info("Pack check: can't save {}: {}", file(), e.toString());
 		}

@@ -30,6 +30,8 @@ public final class QuickSetup {
 	/** The reference Mac's results (MacBook Air M2, 8-core GPU, 8 GB; 2026-10-14). */
 	private static final double REF_SCENE_MS = 5.80, REF_CHAIN_MS = 13.42, REF_CPU_MS = 120.0;
 	private static final Pattern CHIP = Pattern.compile("M(\\d+)(?:\\s+(Pro|Max|Ultra))?", Pattern.CASE_INSENSITIVE);
+	/** An iPhone-class chip in a Mac ("Apple A18 Pro"): its GPU generation as the M-series one of the same design. */
+	private static final Pattern A_CHIP = Pattern.compile("\\bA(\\d{2})\\b");
 
 	/** While the test runs the game draws at most 10 fps (FramerateCapMixin), so the test has the Mac to itself. */
 	public static volatile boolean testing;
@@ -55,6 +57,13 @@ public final class QuickSetup {
 		if (m.find()) {
 			gen = Integer.parseInt(m.group(1));
 			variant = m.group(2) == null ? "" : m.group(2).substring(0, 1).toUpperCase(Locale.ROOT) + m.group(2).substring(1).toLowerCase(Locale.ROOT);
+		} else {
+			// A14 = M1's design, A15/A16 = M2's, A17 Pro = M3's, A18 = M4's, A19 = M5's (the table's per-core speed; base tier)
+			Matcher a = A_CHIP.matcher(chip);
+			if (a.find()) {
+				int n = Integer.parseInt(a.group(1));
+				gen = n <= 14 ? 1 : n <= 16 ? 2 : n - 14;
+			}
 		}
 		// (fast = every tier but efficiency: Super + Performance on an M6; the old perflevel0/1 read took the M6's middle tier for efficiency)
 		int e = dev.cadence.shaders.cadence.system.CoreLayout.efficiency(), p = 0;

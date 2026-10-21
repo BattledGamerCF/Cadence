@@ -106,6 +106,7 @@ public final class HeatControl {
 	private static volatile int thermal, extras;
 	private static volatile boolean lowPower;
 	private static volatile int displayHz = 60;
+	private static boolean displayPolled;
 	/** The frame-rate cap in force (Double.POSITIVE_INFINITY: none), and the cap at which the Mac last warmed up again. */
 	private static volatile double cap = Double.POSITIVE_INFINITY, learned = Double.POSITIVE_INFINITY;
 	private static long warmSince, coolSince, lastLower, lastRaise, lastLoosen, notHotSince, lastNotice, releasedAt;
@@ -143,7 +144,12 @@ public final class HeatControl {
 	static void poll(long now) {
 		thermal = fakeThermal >= 0 ? fakeThermal : MacSystem.thermalState();
 		lowPower = MacSystem.lowPowerMode();
-		displayHz = Math.max(30, MacSystem.displayHz());
+		int hz = Math.max(30, MacSystem.displayHz());
+		// (the window moved to another display, or its refresh rate changed: the caps that follow it follow too)
+		if (hz != displayHz && displayPolled)
+			org.slf4j.LoggerFactory.getLogger("cadence").info("Display: {} Hz (was {} Hz)", hz, displayHz);
+		displayHz = hz;
+		displayPolled = true;
 		if (!enabled) return;
 		Cooling mode = cooling;
 		boolean performance = mode == Cooling.PERFORMANCE;
