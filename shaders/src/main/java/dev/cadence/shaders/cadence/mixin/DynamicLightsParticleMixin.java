@@ -1,7 +1,7 @@
 package dev.cadence.shaders.cadence.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
-import dev.cadence.shaders.cadence.DynamicLights;
+import dev.cadence.shaders.cadence.render.DynamicLights;
 import net.minecraft.client.particle.Particle;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;

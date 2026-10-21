@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.mixin;
 
-import dev.cadence.shaders.cadence.CompileQueue;
+import dev.cadence.shaders.cadence.render.CompileQueue;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.client.renderer.chunk.SectionTaskDynamicQueue;
 import net.minecraft.world.phys.Vec3;

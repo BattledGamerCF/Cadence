@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.mixin;
 
-import dev.cadence.shaders.cadence.MaxFpsMode;
+import dev.cadence.shaders.cadence.render.MaxFpsMode;
 import net.minecraft.client.renderer.extract.LevelExtractor;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

@@ -111,6 +111,8 @@ For the development and test tools, see [CONTRIBUTING.md](CONTRIBUTING.md).
 | [`docs/`](docs) | Shader-pack status, changes from mcopt, licensing notes, development log and research notes |
 | [`packaging/`](packaging) | Release README, Modrinth page text, project icon |
 
+New to the code? [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) maps every package: what it does and where to start.
+
 ## Credits and license
 
 Cadence is a fork of two open-source projects, and it wouldn't exist without them:

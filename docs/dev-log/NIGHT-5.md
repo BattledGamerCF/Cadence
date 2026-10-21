@@ -68,3 +68,12 @@ for left-to-right text below U+0590: one even run, shaping a no-op. -Dcadence.cp
   or copies of ours in those frames: other apps/WindowServer on the GPU. Non-GC safepoints: none over 3 ms.
 - GUI glyphs: one reused identity Matrix4f per render thread instead of a new one per glyph per frame (TextGlyphMatrixMixin).
   TextureSetup per glyph NOT cached: the record holds a random sort value per instance (Math.random), batching might change.
+
+### 5. File layout
+dev.cadence.shaders.cadence held 38 unrelated classes flat; now by area: ui/ (settings screens, ShaderToggle = shader
+settings + config file), render/, shaderpack/, shadow/, memory/, selftest/ (scripted move: git mv, package lines, qualified
+names, imports; package-private members the new packages need made public by a compiler-driven fixer). package-info.java in
+every Cadence package. docs/ARCHITECTURE.md maps all three modules. Doc indexes and tools/README brought up to date; the
+merged agent worktree under .claude/ removed (its branch kept). The metal root package (the mcopt backend, 58 classes) stays one
+package: its classes share package-private state with Native. Checks: build, mixin-check (494 members, 0 errors), offline
+checks, in-game smoke test (21 steps: settings, Sharpness page, BSL on/off, pack settings, dynamic lights, benchmark, F3+A).

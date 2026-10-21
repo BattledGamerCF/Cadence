@@ -1,7 +1,7 @@
 package dev.cadence.shaders.cadence.system;
 
-import dev.cadence.shaders.cadence.NativeTrim;
-import dev.cadence.shaders.cadence.RenderScale;
+import dev.cadence.shaders.cadence.memory.NativeTrim;
+import dev.cadence.shaders.cadence.render.RenderScale;
 import dev.cadence.metal.MacSystem;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +34,7 @@ public final class MemoryGuard {
 		int previous = level;
 		level = now;
 		LoggerFactory.getLogger("cadence").info("Memory guard: macOS memory pressure {} -> {}", previous, now);
-		dev.cadence.shaders.cadence.HeapTrim.pressure(now);
+		dev.cadence.shaders.cadence.memory.HeapTrim.pressure(now);
 		dev.cadence.shaders.cadence.memory.GcPolicy.pressure(now);
 		dev.cadence.shaders.cadence.memory.ChunkHeapCompactor.pressure(now);
 		NativeTrim.purge();

@@ -68,23 +68,23 @@ Apache-2.0 §4(b): files Cadence modified or added, relative to mcopt commit `7b
 - `TerrainShaderGeometry.java` — compact 48-byte pack terrain vertices by default (lossless; `-DminecraftShaders.compactTerrainVertices=false` for 64).
 - `ShadowRenderer.java` — shadow receiver culling (upstream, audited per pack) on by default and switchable at runtime;
   measured -5..-7 ms GPU/frame on BSL at RD 12 (48% of shadow sections culled).
-- `cadence/CompileQueue.java`, `cadence/mixin/SectionTaskDynamicQueueMixin.java`, `SectionTaskAccessor.java` (added) —
+- `cadence/render/CompileQueue.java`, `cadence/mixin/SectionTaskDynamicQueueMixin.java`, `SectionTaskAccessor.java` (added) —
   chunk compile queue as two heaps ordered (distance, insertion), vanilla's exact pick without the O(n) scan per poll
   (13.8% of CPU while loading with a pack); verified 140k polls / 0 mismatches; `-Dcadence.fastCompileQueue=false|verify`.
 - `cadence/mixin/MinecraftDisconnectMixin.java` (added) — leaving a world drops queued compile tasks so the integrated
   server's save isn't starved (vanilla hung 5+ min with a pack's backlog); `-Dcadence.dropCompileOnLeave=false`.
-- `cadence/QualityHint.java` (added) — one chat hint per launch when Auto is pinned at 50% and GPU-bound.
+- `cadence/shaderpack/QualityHint.java` (added) — one chat hint per launch when Auto is pinned at 50% and GPU-bound.
 - `CadenceSelfTest` — `receiver=`, `tp=` steps; chunk build timing per step.
-- `cadence/ShadowCompileCull.java`, `cadence/ReceiverDepth.java` (added), `ShadowRenderer.extractionSections` — with a
+- `cadence/shadow/ShadowCompileCull.java`, `cadence/render/ReceiverDepth.java` (added), `ShadowRenderer.extractionSections` — with a
   pack, only shadow casters that can shadow a receiver (camera-visible sections, open air in view) are compiled;
   `-Dcadence.shadowCompileCull=false` compiles every light-view section as upstream.
-- `cadence/HeapTrim.java` (added), `ShaderLoaderMod` — runtime G1 tuning when -Xmx > 2.5 GB on <= 16 GB RAM;
+- `cadence/memory/HeapTrim.java` (added), `ShaderLoaderMod` — runtime G1 tuning when -Xmx > 2.5 GB on <= 16 GB RAM;
   `-Dcadence.heapTrim=false`.
-- `cadence/MemoryProbe.java`, `cadence/LightReach.java` (added) — diagnostics (chunk buffer heaps, geometry census).
+- `cadence/memory/MemoryProbe.java`, `cadence/render/LightReach.java` (added) — diagnostics (chunk buffer heaps, geometry census).
 - `metal/.../GpuMemory.java` (added) — Metal device allocated bytes for diagnostics.
 - `tools/cadence-guard.sh` — `CADENCE_GUARD_MAXRSS`; `tools/cadence-test.sh` — waits for an earlier dev game,
   `CADENCE_WORLD_SNAPSHOT`, `CADENCE_VSYNC`.
-- `cadence/ChunkHeaps.java`, `cadence/mixin/ChunkHeapSizeMixin.java` (added), `ChunkBufferRebuild` — chunk uber-buffer
+- `cadence/render/ChunkHeaps.java`, `cadence/mixin/ChunkHeapSizeMixin.java` (added), `ChunkBufferRebuild` — chunk uber-buffer
   heaps of 32 MB / 8 MB while a pack is active (vanilla's 128 / 32 MB otherwise); `-Dcadence.chunkHeapMB=N`.
 - `TerrainShaderGeometry.beginBlock/currentBlock` — pack block metadata resolved at the block's first emitted vertex
   instead of for every block (air included): F3+A with BSL at RD 16 ~35% faster. `BlockMaterialMap` — fastutil map.
@@ -101,14 +101,14 @@ Apache-2.0 §4(b): files Cadence modified or added, relative to mcopt commit `7b
   refuses.
 
 ### 2026-10-12 (day 2: entities, particles, shadows, memory, world generation) — all Cadence's own code
-- `cadence/EntityCull.java`, `cadence/mixin/EntityCullMixin.java`, `EntityRendererCullInvoker`, `ParticleCullMixin`
+- `cadence/render/EntityCull.java`, `cadence/mixin/EntityCullMixin.java`, `EntityRendererCullInvoker`, `ParticleCullMixin`
   (added); `ShadowRenderer.UnionFrustum/casterTest`, `FeatureDrawContext` (mainOnly tag, per-pass block entity tags),
   `BlockEntityFeatureTagMixin` — entities/particles behind walls (vanilla's camera search) not drawn; with a pack each
   entity/block entity drawn only in the passes that can see it; `-Dcadence.entityCull=false`.
-- `cadence/ShadowReuse.java` (added), `ShaderRuntime.beginFrame/skipShadow`, `PackRenderTargets.beginFrame(fog, clear)`,
+- `cadence/shadow/ShadowReuse.java` (added), `ShaderRuntime.beginFrame/skipShadow`, `PackRenderTargets.beginFrame(fog, clear)`,
   `ShadowRenderer.render` — shadow map drawn every Nth frame (config `shadowRate=`, default 2), reused with
   camera-shifted matrices in between; Video Settings "Shadow Updates".
-- `cadence/ParticlePhysics.java`, `mixin/ParticleMoveMixin.java` (added) — particles skip the collision search when
+- `cadence/render/ParticlePhysics.java`, `mixin/ParticleMoveMixin.java` (added) — particles skip the collision search when
   vanilla's own cell rule finds no candidate block; `-Dcadence.particlePhysics=false`.
 - `mixin/PalettedContainerLockMixin.java` (added) — one field instead of a ThreadingDetector (5 objects) per chunk
   section container, same crash on concurrent writes; `-Dcadence.sectionLocks=vanilla`.
@@ -135,8 +135,8 @@ Apache-2.0 §4(b): files Cadence modified or added, relative to mcopt commit `7b
   `ShaderRenderPass.depthTexture()` — two-phase GPU occlusion culling of the pack's terrain pass; `-Dcadence.hiz=false`.
 - `PackRenderTargets.shadowColorAttached`, `PackPipeline`, `ShaderRuntime` — shadow color targets no program samples are
   left unattached (never slot 0).
-- `cadence/OcclusionEstimate.java` (added) — diagnostic.
-- `cadence/HeapTrim.java` — SoftMaxHeapSize follows the live heap every 30 s; `cadence/NativeTrim.java` (added) —
+- `cadence/render/OcclusionEstimate.java` (added) — diagnostic.
+- `cadence/memory/HeapTrim.java` — SoftMaxHeapSize follows the live heap every 30 s; `cadence/memory/NativeTrim.java` (added) —
   jemalloc purge every 30 s; `-Dcadence.nativeTrim=false`.
 - `metal/.../GpuMemory.census`, `MetalTexture`, `MetalBuffer`, `MetalDevice` — live texture/buffer census (diagnostics).
 - `MetalEncoder` — encoder log labels carry the pass name.
@@ -153,7 +153,7 @@ Apache-2.0 §4(b): files Cadence modified or added, relative to mcopt commit `7b
   `tools/cadence-test.sh` — CADENCE_GC, CADENCE_ENV, stops an idle Gradle daemon.
 
 ### 2026-10-13 (round 2, tier 1-2)
-- `cadence/WorldScale.java`, `mixin/GameRendererWorldScaleMixin`, `mixin/LevelRendererOutlineAccess` — World Resolution
+- `cadence/render/WorldScale.java`, `mixin/GameRendererWorldScaleMixin`, `mixin/LevelRendererOutlineAccess` — World Resolution
   without shaders; `runtime/PackUpscale` (Fast bilinear mode), `RenderScale` (three upscalers, Auto ceiling, restart,
   freeze, saved auto target).
 - `metal/src/main/native/mcsys.m`, `metal/.../MacSystem.java`, `Native.java`, `metal/build.gradle` (AppKit) — thermal
@@ -161,9 +161,9 @@ Apache-2.0 §4(b): files Cadence modified or added, relative to mcopt commit `7b
 - `cadence/system/` (HeatControl, MemoryGuard, SystemMonitor, ThreadRoles, Notices) + `mixin/FramerateCapMixin`,
   `ThreadRolesMixin`, `ThreadRolesWorkerMixin`; `HeapTrim.pressure`, `ChunkHeapCompactor.pressure`,
   `ShadowReuse` (heat minimum, suspend).
-- `cadence/CadenceSettings.java`, `ShaderToggle` (plain names/tooltips), `mixin/VideoSettingsShadersMixin` — Performance
+- `cadence/ui/CadenceSettings.java`, `ShaderToggle` (plain names/tooltips), `mixin/VideoSettingsShadersMixin` — Performance
   preset, Heat Control, status lines, Pack Speed-ups button.
-- `cadence/WorldClosed.java`, `mixin/WorldClosedMixin`; `ShadowProxies.release`, `HiZ.release`,
+- `cadence/render/WorldClosed.java`, `mixin/WorldClosedMixin`; `ShadowProxies.release`, `HiZ.release`,
   `ShadowRenderer.releaseWorld`, `FrameUniforms.forgetLevel`, `SpatialSceneProvider.invalidate` — leaving a world frees it.
 - `facecull/FaceCull` — empty draw when every face turned away (crash fix).
 - `ChunkHeaps` — 32 MB heaps without shaders too.

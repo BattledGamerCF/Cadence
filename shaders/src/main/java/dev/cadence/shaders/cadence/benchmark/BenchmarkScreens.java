@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.benchmark;
 
-import dev.cadence.shaders.cadence.Tips;
+import dev.cadence.shaders.cadence.ui.Tips;
 import dev.cadence.shaders.cadence.setup.CadenceConfirmScreen;
 import dev.cadence.shaders.cadence.system.Notices;
 import java.nio.file.Files;
@@ -57,7 +57,7 @@ public final class BenchmarkScreens {
 		Minecraft mc = Minecraft.getInstance();
 		Benchmark.start(r -> {
 			double[] previous = Benchmark.previous();
-			if (!dev.cadence.shaders.cadence.MaxFpsMode.on()) Benchmark.remember(r);  // (a void isn't a baseline)
+			if (!dev.cadence.shaders.cadence.render.MaxFpsMode.on()) Benchmark.remember(r);  // (a void isn't a baseline)
 			mc.gui.setScreen(new ResultsScreen(r, previous, parent));
 		}, reason -> {
 			// (not over a screen that stopped it: the pause menu, a death screen)
@@ -97,9 +97,9 @@ public final class BenchmarkScreens {
 				y = Math.min(this.height - 28, this.cardTop() + this.cardHeight() + 26);
 			this.buttons.add(this.addRenderableWidget(Button.builder(Component.literal("Save Image"), b -> this.beginCapture())
 				.bounds(x, y, w, 20).tooltip(Tips.of("Saves this card as a picture in your screenshots folder.")).build()));
-			boolean detailed = dev.cadence.shaders.cadence.CadenceSettings.benchmarkDetailed();
+			boolean detailed = dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed();
 			this.buttons.add(this.addRenderableWidget(Button.builder(Component.literal(detailed ? "Fewer Details" : "More Details"), b -> {
-					dev.cadence.shaders.cadence.CadenceSettings.setBenchmarkDetailed(!dev.cadence.shaders.cadence.CadenceSettings.benchmarkDetailed());
+					dev.cadence.shaders.cadence.ui.CadenceSettings.setBenchmarkDetailed(!dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed());
 					this.rebuildWidgets();
 				})
 				.bounds(x + w + gap, y, w, 20).tooltip(Tips.of(detailed ? "Back to the average frame rate and what it ran on."
@@ -120,7 +120,7 @@ public final class BenchmarkScreens {
 		private List<String[]> rows() {
 			List<String[]> rows = new ArrayList<>();
 			rows.add(new String[] {"Average speed", fps(r.avgFps()), "g"});
-			boolean detailed = dev.cadence.shaders.cadence.CadenceSettings.benchmarkDetailed();
+			boolean detailed = dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed();
 			if (detailed) {  // (Benchmark Details: Detailed; Simple, the default, keeps the card to what anyone can read)
 				rows.add(new String[] {"1% low (slowest frames)", fps(r.lowFps()), ""});
 				rows.add(new String[] {"Worst single frame", String.format(Locale.ROOT, "%.1f ms", r.worstMs()), ""});

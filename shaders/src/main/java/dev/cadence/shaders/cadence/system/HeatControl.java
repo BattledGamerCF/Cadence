@@ -1,9 +1,9 @@
 package dev.cadence.shaders.cadence.system;
 
 import dev.cadence.metal.MacSystem;
-import dev.cadence.shaders.cadence.RenderScale;
-import dev.cadence.shaders.cadence.ShaderToggle;
-import dev.cadence.shaders.cadence.ShadowReuse;
+import dev.cadence.shaders.cadence.render.RenderScale;
+import dev.cadence.shaders.cadence.ui.ShaderToggle;
+import dev.cadence.shaders.cadence.shadow.ShadowReuse;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;

@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.mixin;
 
-import dev.cadence.shaders.cadence.HudTarget;
+import dev.cadence.shaders.cadence.render.HudTarget;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.state.OptionsRenderState;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
@@ -18,7 +18,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class GameRendererHudTargetMixin {
 	@Inject(method = "render", at = @At("HEAD"))
 	private void cadence$panorama(CallbackInfo ci) {
-		dev.cadence.shaders.cadence.PanoramaTexture.frame();
+		dev.cadence.shaders.cadence.render.PanoramaTexture.frame();
 	}
 
 	@Inject(method = "render3dHud", at = @At("HEAD"))

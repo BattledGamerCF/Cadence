@@ -1,7 +1,7 @@
 package dev.cadence.shaders.cadence.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
-import dev.cadence.shaders.cadence.VanillaRgss;
+import dev.cadence.shaders.cadence.render.VanillaRgss;
 import net.minecraft.client.renderer.ShaderManager;
 import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;

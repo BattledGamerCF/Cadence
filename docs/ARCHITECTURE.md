@@ -1,0 +1,72 @@
+# How Cadence is put together
+
+A map of the source tree for anyone reading the code for the first time. Start here, then open the package you need: each
+Cadence package begins with a short description (package-info.java or the first class's doc comment).
+
+## The three mods
+
+The release jar (`tools/release`) nests three Fabric mods built by Gradle from three modules:
+
+| Module | Mod id | What it is |
+|---|---|---|
+| `metal/` | `cadence` | The Metal renderer and everything that runs below Minecraft's rendering: the backend, the native library, the fast terrain path, game-logic optimizations, startup and Java settings. Forked from mcopt (Apache-2.0). |
+| `shaders/` | `cadence_shaders` | Shader packs on Metal (forked from the MIT Shader Loader), and Cadence's own features that need the game's screens and settings: Video Settings, Auto resolution, cooling, the benchmark, the GC policy. |
+| `fpshud/` | `cadence_hud` | The frame-rate counter in the corner. |
+
+`metal` never depends on `shaders`; `shaders` uses `metal` (MacSystem, Native, the backend's hooks).
+
+## metal/ (dev.cadence.metal)
+
+| Where | What |
+|---|---|
+| `dev.cadence.metal` (root) | The Metal backend: Minecraft's `renderpearl` device/encoder/buffer/texture API implemented on Metal (`MetalDevice`, `MetalEncoder`, `MetalRenderPass`, `MetalBuffer`, `MetalTexture`, `MetalSurface`), `Native` (every native call, through Java's foreign-function API), `MacSystem` (thermal state, battery, fans, display, sysctl), `Profile` and `JvmDefaults` (startup settings), `PlatformCheck` (Apple Silicon, macOS, Rosetta). Kept as one package: the backend's classes share package-private state, as in mcopt. |
+| `own/` | Cadence's own terrain renderer: chunk meshes in one arena, GPU culling (`OwnFrag`, Hi-Z), the opaque/cutout draw path, dynamic lights. |
+| `lod/` | Far terrain (experimental, off by default). |
+| `chunk/`, `chunkio/` | Opt-in chunk pipeline and save-file changes (each behind a `-Dcadence.chunk.*` switch). |
+| `logic/` | Cadence Logic: the game-logic optimizations that replace Lithium (see docs/GAME-LOGIC.md). |
+| `cpu/` | Render-thread CPU work: model and item vertex writers, text, A/B timers. |
+| `compat/` | Compatibility layers: where another mod hooks code Cadence replaces, Minecraft's own code runs there. |
+| `alloc/` | Allocation-free data structures used by the hot paths. |
+| `rec/` | An opt-in video recorder for development. |
+| `mixin/<area>/` | The mixins for each area above, one mixin config per area (`cadence-metal-<area>.mixins.json`), each with a plugin that decides whether it applies. |
+| `src/main/native/` | The Objective-C/C native library: `mcmetal.m` (the backend), `mcown.m` (own terrain), `mccull.m` (Hi-Z), `mcfx.m` (MetalFX), `mcsys.m` (system signals), `mcpack.m` (shader-pack helpers), `mcbench.m` (Quick Setup's GPU test), `mclod.m`/`lod*.c` (far terrain), `rec.m`. Built by clang from Gradle. |
+| `src/main/resources/cadence/` | Metal shaders: `own/terrain.metal`, `native/` (Minecraft's own shaders rewritten in Metal: `common.metal` plus one file per program), `lod/`, `rec/`. |
+
+## shaders/ (dev.cadence.shaders, dev.cadence.scene, dev.cadence.sceneoptimizer)
+
+| Where | What |
+|---|---|
+| `dev.cadence.shaders` | Mod entry (`ShaderLoaderMod`) and the gate that applies the shader-pack hooks only when they are needed (`CadencePackGate`). |
+| `shaders/pack/` | Reading a shader pack: `shaders.properties`, options, profiles, programs. |
+| `shaders/compile/` | Translating pack GLSL to Metal (GLSL → SPIR-V → MSL) and the translation caches. |
+| `shaders/runtime/` | Running a pack: render targets, pipelines, uniforms, the frame's passes. |
+| `shaders/geometry/` | The vertex data packs see (terrain, entities, items). |
+| `shaders/mixin/` | Hooks into Minecraft's renderer for shader packs. |
+| `scene/`, `sceneoptimizer/` | The Scene Optimizer port (from the Shader Loader). |
+| **`shaders/cadence/`** | **Cadence's own features**, by area: |
+| `cadence/ui/` | Video Settings rows and buttons (`CadenceSettings`, `ShaderToggle` = the shader settings and the config file), the Sharpness & Speed page, the Shader Packs list, Shader Pack Settings, tooltips (`Tips`), keys O/K, the Mod Menu entry. |
+| `cadence/render/` | Rendering features: Auto resolution and World Resolution (`RenderScale`, `WorldScale`), crisp text, dynamic lights, entity culling, Render Max FPS, the compile queue, lazy targets (outline, HUD, panorama), recovering from a failed frame, cleanup when a world closes. |
+| `cadence/shaderpack/` | Switching packs live (`ShaderSwitcher`), the pack catalogue (tested/heavy), quality hints. |
+| `cadence/shadow/` | Shader-pack shadows: every-2nd-frame reuse, shadow proxies, skipping casters that can't shadow anything. |
+| `cadence/hiz/`, `cadence/facecull/`, `cadence/mesh/` | Occlusion (Hi-Z), face culling, chunk meshing caches and Smart Leaves. |
+| `cadence/system/` | The Mac: cooling (`HeatControl`), On Battery, In Background, frame pacing, the memory guard, CPU core tiers, thread priorities, Cadence messages. |
+| `cadence/memory/` | Memory: the GC policy (`GcPolicy`), heap and native trimming, chunk heap compaction. |
+| `cadence/setup/` | Quick Setup (tests the Mac, recommends settings). |
+| `cadence/benchmark/` | The Benchmark screen and run. |
+| `cadence/packcheck/` | Faster Shadows' picture test for a pack. |
+| `cadence/selftest/` | The development self-test driven by `tools/cadence-test.sh` (`-Dcadence.selftest=steps`). Not used in normal play. |
+| `cadence/alloc/`, `cadence/worldgen/`, `cadence/census/` | Allocation fixes, worldgen experiments, the offline pack census. |
+| `cadence/mixin/` | The mixins for all of the above. |
+
+## Settings and switches
+
+- Player settings live in `config/cadence-shaders.properties` (Video Settings writes it, atomically) and
+  `config/cadence.properties` (the profile and Java defaults).
+- Every optimization has a `-Dcadence.<name>=false` switch, and most exact ones a `...Verify=true` mode that runs both paths
+  and compares; the switch names are in each class's doc comment.
+
+## Where to look next
+
+- [CONTRIBUTING.md](../CONTRIBUTING.md): building, the test harness, the rules for changes (exact or switch-gated, measured).
+- [tools/README.md](../tools/README.md): the scripts.
+- [dev-log/](dev-log): why things are the way they are, with the measurements.

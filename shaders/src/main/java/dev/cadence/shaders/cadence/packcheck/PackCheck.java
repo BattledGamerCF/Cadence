@@ -3,8 +3,8 @@ package dev.cadence.shaders.cadence.packcheck;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.textures.GpuTexture;
-import dev.cadence.shaders.cadence.RenderScale;
-import dev.cadence.shaders.cadence.ShadowReuse;
+import dev.cadence.shaders.cadence.render.RenderScale;
+import dev.cadence.shaders.cadence.shadow.ShadowReuse;
 import dev.cadence.shaders.runtime.ShaderRuntime;
 import java.io.IOException;
 import java.io.Reader;
@@ -238,7 +238,7 @@ public final class PackCheck {
 		}
 		look(camera, yaw0 + VIEWS[view][0], Math.max(-89, Math.min(89, VIEWS[view][1])));
 		frame++;
-		if (frame % 10 == 0) dev.cadence.shaders.cadence.CadenceSettings.refreshLater();
+		if (frame % 10 == 0) dev.cadence.shaders.cadence.ui.CadenceSettings.refreshLater();
 		if (phase == 0) {
 			var chunks = Minecraft.getInstance().levelRenderer.sectionRenderDispatcher();
 			boolean building = chunks != null && chunks.getCompileQueueSize() > 0;

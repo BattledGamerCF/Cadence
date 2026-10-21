@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.mixin;
 
-import dev.cadence.shaders.cadence.ParticlePhysics;
+import dev.cadence.shaders.cadence.render.ParticlePhysics;
 import java.util.List;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.world.entity.Entity;

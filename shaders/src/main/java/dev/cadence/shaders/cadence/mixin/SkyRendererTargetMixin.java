@@ -20,8 +20,8 @@ public abstract class SkyRendererTargetMixin {
 	@Redirect(method = "render", at = @At(value = "FIELD", target = "Lnet/minecraft/client/renderer/SkyRenderer;renderTarget:Lcom/mojang/blaze3d/pipeline/RenderTarget;",
 		opcode = Opcodes.GETFIELD))
 	private RenderTarget cadence$currentMain(SkyRenderer sky) {
-		if (dev.cadence.shaders.cadence.FrameRecovery.failNextSky) {
-			dev.cadence.shaders.cadence.FrameRecovery.failNextSky = false;
+		if (dev.cadence.shaders.cadence.render.FrameRecovery.failNextSky) {
+			dev.cadence.shaders.cadence.render.FrameRecovery.failNextSky = false;
 			throw new IllegalStateException("self-test: injected frame failure");
 		}
 		return Minecraft.getInstance().gameRenderer.mainRenderTarget();

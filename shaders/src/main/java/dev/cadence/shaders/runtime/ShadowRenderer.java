@@ -365,12 +365,12 @@ public final class ShadowRenderer {
                 purpose,
                 updateTracker,
                 purpose == SceneExtractionRequest.Purpose.DIRTY_SECTIONS
-                    ? dev.cadence.shaders.cadence.ShadowCompileCull.excludedNodes(renderer)
+                    ? dev.cadence.shaders.cadence.shadow.ShadowCompileCull.excludedNodes(renderer)
                     : null));
     var result = new ObjectArrayList<>(selected);
     // Cadence: of the light-view sections, compile only casters that can shadow a receiver (ShadowCompileCull).
     if (purpose == SceneExtractionRequest.Purpose.DIRTY_SECTIONS)
-      result = dev.cadence.shaders.cadence.ShadowCompileCull.filter(renderer, normal, result);
+      result = dev.cadence.shaders.cadence.shadow.ShadowCompileCull.filter(renderer, normal, result);
     extractionCache.put(purpose, result);
     extractionRenderer = renderer;
     return result;
@@ -390,7 +390,7 @@ public final class ShadowRenderer {
       runtime.skipShadow();
       return;
     }
-    if (runtime != null && dev.cadence.shaders.cadence.ShadowReuse.reusing()) {
+    if (runtime != null && dev.cadence.shaders.cadence.shadow.ShadowReuse.reusing()) {
       // Cadence: this frame keeps the last shadow map (ShadowReuse).
       discardSelection();
       runtime.skipShadow();
@@ -402,7 +402,7 @@ public final class ShadowRenderer {
       SelectionResult selected = selectForRender(renderer, area, runtime);
       SceneSelection selection = selected.selection();
       if (Boolean.getBoolean("cadence.shadowSelectionDiag"))
-        dev.cadence.shaders.cadence.ShadowCompileCull.countShadowSelection(selection.sections());
+        dev.cadence.shaders.cadence.shadow.ShadowCompileCull.countShadowSelection(selection.sections());
       lastCullingStats =
           new CullingStats(
               RECEIVER_CULLING,

@@ -1,7 +1,7 @@
 package dev.cadence.shaders.cadence.system;
 
 import dev.cadence.metal.MacSystem;
-import dev.cadence.shaders.cadence.ShaderToggle;
+import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import java.util.Locale;
 
 /**

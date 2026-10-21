@@ -2,7 +2,7 @@ package dev.cadence.shaders.cadence.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.sugar.Local;
-import dev.cadence.shaders.cadence.DynamicLights;
+import dev.cadence.shaders.cadence.render.DynamicLights;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;

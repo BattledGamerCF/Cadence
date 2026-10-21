@@ -3,7 +3,7 @@ package dev.cadence.shaders.cadence.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.mojang.renderpearl.api.commands.RenderPass;
-import dev.cadence.shaders.cadence.CrispText;
+import dev.cadence.shaders.cadence.render.CrispText;
 import java.util.List;
 import net.minecraft.client.renderer.feature.FeatureFrameContext;
 import net.minecraft.client.renderer.feature.FeatureRendererMap;

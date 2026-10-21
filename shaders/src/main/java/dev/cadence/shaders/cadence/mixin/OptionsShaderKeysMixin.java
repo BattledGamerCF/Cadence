@@ -17,6 +17,6 @@ abstract class OptionsShaderKeysMixin {
 
 	@Inject(method = "load", at = @At("HEAD"))
 	private void cadence$shaderKeys(CallbackInfo ci) {
-		this.keyMappings = dev.cadence.shaders.cadence.ShaderKeys.add(this.keyMappings);
+		this.keyMappings = dev.cadence.shaders.cadence.ui.ShaderKeys.add(this.keyMappings);
 	}
 }

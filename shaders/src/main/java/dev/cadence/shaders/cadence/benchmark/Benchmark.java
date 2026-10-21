@@ -1,9 +1,9 @@
 package dev.cadence.shaders.cadence.benchmark;
 
 import dev.cadence.metal.MacSystem;
-import dev.cadence.shaders.cadence.CadenceSettings;
-import dev.cadence.shaders.cadence.RenderScale;
-import dev.cadence.shaders.cadence.ShaderToggle;
+import dev.cadence.shaders.cadence.ui.CadenceSettings;
+import dev.cadence.shaders.cadence.render.RenderScale;
+import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import dev.cadence.shaders.cadence.setup.QuickSetup;
 import dev.cadence.shaders.cadence.system.BackgroundFps;
 import java.lang.management.ManagementFactory;
@@ -262,7 +262,7 @@ public final class Benchmark {
 		String pack = ShaderToggle.selectedPack();
 		out.add("Shader pack|" + (pack.isEmpty() ? "None" : ShaderToggle.display(pack)));
 		out.add("Frame cap|" + frameCap(mc));
-		if (dev.cadence.shaders.cadence.MaxFpsMode.on()) out.add("World|not drawn (Render Max FPS)");
+		if (dev.cadence.shaders.cadence.render.MaxFpsMode.on()) out.add("World|not drawn (Render Max FPS)");
 		out.add("Cadence|" + version() + " · " + CadenceSettings.current().label() + " · world at " + Math.round(RenderScale.get() * 100) + "%");
 		return out;
 	}

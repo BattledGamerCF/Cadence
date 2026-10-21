@@ -1,7 +1,7 @@
 package dev.cadence.shaders.cadence.mixin;
 
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import dev.cadence.shaders.cadence.WorldScale;
+import dev.cadence.shaders.cadence.render.WorldScale;
 import net.minecraft.client.renderer.LevelRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;

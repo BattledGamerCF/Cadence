@@ -2,7 +2,7 @@ package dev.cadence.shaders.cadence.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.sugar.Local;
-import dev.cadence.shaders.cadence.EntityCull;
+import dev.cadence.shaders.cadence.render.EntityCull;
 import dev.cadence.shaders.runtime.ShadowRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.culling.Frustum;

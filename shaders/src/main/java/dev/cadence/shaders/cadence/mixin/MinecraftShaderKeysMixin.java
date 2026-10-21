@@ -11,6 +11,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class MinecraftShaderKeysMixin {
 	@Inject(method = "handleKeybinds", at = @At("HEAD"))
 	private void cadence$shaderKeys(CallbackInfo ci) {
-		dev.cadence.shaders.cadence.ShaderKeys.tick((Minecraft) (Object) this);
+		dev.cadence.shaders.cadence.ui.ShaderKeys.tick((Minecraft) (Object) this);
 	}
 }

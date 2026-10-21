@@ -29,7 +29,7 @@
       "dev.cadence.sceneoptimizer.SceneOptimizerMod"
     ],
     "modmenu": [
-      "dev.cadence.shaders.cadence.ModMenuSettings"
+      "dev.cadence.shaders.cadence.ui.ModMenuSettings"
     ]
   },
   "mixins": [

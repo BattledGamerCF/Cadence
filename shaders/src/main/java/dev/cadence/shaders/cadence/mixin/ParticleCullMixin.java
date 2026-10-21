@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.mixin;
 
-import dev.cadence.shaders.cadence.EntityCull;
+import dev.cadence.shaders.cadence.render.EntityCull;
 import net.minecraft.client.particle.QuadParticleGroup;
 import net.minecraft.client.renderer.culling.Frustum;
 import org.spongepowered.asm.mixin.Mixin;

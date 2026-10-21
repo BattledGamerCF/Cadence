@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.mesh;
 
-import dev.cadence.shaders.cadence.ShaderToggle;
+import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.chunk.RenderSectionRegion;
 import net.minecraft.core.BlockPos;

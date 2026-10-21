@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.mixin;
 
-import dev.cadence.shaders.cadence.OutlineTarget;
+import dev.cadence.shaders.cadence.render.OutlineTarget;
 import net.minecraft.client.renderer.LevelRenderer;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;

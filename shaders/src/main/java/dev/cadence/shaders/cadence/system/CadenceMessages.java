@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.system;
 
-import dev.cadence.shaders.cadence.ShaderToggle;
+import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import java.util.Locale;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;

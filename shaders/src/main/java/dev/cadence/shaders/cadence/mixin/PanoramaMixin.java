@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.mixin;
 
-import dev.cadence.shaders.cadence.PanoramaTexture;
+import dev.cadence.shaders.cadence.render.PanoramaTexture;
 import net.minecraft.client.renderer.CubeMap;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

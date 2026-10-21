@@ -34,7 +34,7 @@ public abstract class ShaderGameRendererMixin {
 
   @WrapMethod(method = "renderLevel")
   private void shaders$frame(Operation<Void> original) {
-    dev.cadence.shaders.cadence.ShaderSwitcher.beforeFrame(); // Cadence: a pack that failed last frame goes off here
+    dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.beforeFrame(); // Cadence: a pack that failed last frame goes off here
     boolean success = false;
     try {
       original.call();
@@ -42,8 +42,8 @@ public abstract class ShaderGameRendererMixin {
     } catch (RuntimeException failure) {
       // Cadence: with a pack, a failed frame turns shaders off (and says why) instead of crashing the game
       if (ShaderRuntime.get() == null) throw failure;
-      dev.cadence.shaders.cadence.ShaderSwitcher.failedInFrame(failure);
-      dev.cadence.shaders.cadence.FrameRecovery.afterFailedFrame();
+      dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.failedInFrame(failure);
+      dev.cadence.shaders.cadence.render.FrameRecovery.afterFailedFrame();
     } finally {
       ShaderRuntime runtime = ShaderRuntime.get();
       if (runtime != null) {
@@ -51,7 +51,7 @@ public abstract class ShaderGameRendererMixin {
           try {
             runtime.endFrame();
           } catch (RuntimeException failure) { // Cadence: as a failed frame (the pack goes off next frame)
-            dev.cadence.shaders.cadence.ShaderSwitcher.failedInFrame(failure);
+            dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.failedInFrame(failure);
             try {
               runtime.abortFrame();
             } catch (RuntimeException ignored) {

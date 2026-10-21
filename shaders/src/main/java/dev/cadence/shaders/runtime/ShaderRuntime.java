@@ -265,9 +265,9 @@ public final class ShaderRuntime implements AutoCloseable {
             .texture();
     var main = minecraft.gameRenderer.mainRenderTarget();
     var chunks = minecraft.levelRenderer.sectionRenderDispatcher();
-    dev.cadence.shaders.cadence.RenderScale.frame(
+    dev.cadence.shaders.cadence.render.RenderScale.frame(
         System.nanoTime(), chunks != null && chunks.getCompileQueueSize() > 32);
-    float scale = dev.cadence.shaders.cadence.RenderScale.get();
+    float scale = dev.cadence.shaders.cadence.render.RenderScale.get();
     frameWidth = Math.max(1, Math.round(main.width * scale));
     frameHeight = Math.max(1, Math.round(main.height * scale));
     String nextDimension = minecraft.level.dimension().identifier().toString();
@@ -420,7 +420,7 @@ public final class ShaderRuntime implements AutoCloseable {
       boolean reuseShadow =
           programs.find("shadow") != null
               && !shadowWritesStorage()
-              && dev.cadence.shaders.cadence.ShadowReuse.decide(
+              && dev.cadence.shaders.cadence.shadow.ShadowReuse.decide(
                   targets, cameraPos, uniforms.shadowDirectionWorld());
       targets.beginFrame(
           minecraft.gameRenderer.gameRenderState()
@@ -434,11 +434,11 @@ public final class ShaderRuntime implements AutoCloseable {
       geometryMipsDone.clear();
       if (reuseShadow) {
         uniforms.setShadowMatrices(
-            dev.cadence.shaders.cadence.ShadowReuse.projection(),
-            dev.cadence.shaders.cadence.ShadowReuse.view(cameraPos));
+            dev.cadence.shaders.cadence.shadow.ShadowReuse.projection(),
+            dev.cadence.shaders.cadence.shadow.ShadowReuse.view(cameraPos));
       } else {
         updateShadowMatrices();
-        dev.cadence.shaders.cadence.ShadowReuse.drawn(
+        dev.cadence.shaders.cadence.shadow.ShadowReuse.drawn(
             targets,
             cameraPos,
             uniforms.shadowDirectionWorld(),
@@ -567,13 +567,13 @@ public final class ShaderRuntime implements AutoCloseable {
         try {
           var mainView = Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTextureView();
           // Cadence: Apple's MetalFX spatial upscaler when chosen (upscaler=metalfx), else (or if it can't) the shader upscale.
-          if (!dev.cadence.shaders.cadence.RenderScale.metalFx()
+          if (!dev.cadence.shaders.cadence.render.RenderScale.metalFx()
               || !dev.cadence.metal.MetalFxUpscaler.encode(scaledOutputView, mainView))
           {
-            if (upscale.fast() != dev.cadence.shaders.cadence.RenderScale.fastUpscale()) {
-              float sharpen = dev.cadence.shaders.cadence.RenderScale.sharpenFor(dev.cadence.shaders.cadence.RenderScale.get());
+            if (upscale.fast() != dev.cadence.shaders.cadence.render.RenderScale.fastUpscale()) {
+              float sharpen = dev.cadence.shaders.cadence.render.RenderScale.sharpenFor(dev.cadence.shaders.cadence.render.RenderScale.get());
               upscale.close();
-              upscale = new PackUpscale(device(), scaledOutput.getFormat(), sharpen, dev.cadence.shaders.cadence.RenderScale.fastUpscale());
+              upscale = new PackUpscale(device(), scaledOutput.getFormat(), sharpen, dev.cadence.shaders.cadence.render.RenderScale.fastUpscale());
             }
             upscale.run(device(), scaledOutputView, mainView);
           }
@@ -1582,10 +1582,10 @@ public final class ShaderRuntime implements AutoCloseable {
                 1,
                 1);
     scaledOutputView = device().createTextureView(scaledOutput);
-    float sharpen = dev.cadence.shaders.cadence.RenderScale.sharpenFor(dev.cadence.shaders.cadence.RenderScale.get());
+    float sharpen = dev.cadence.shaders.cadence.render.RenderScale.sharpenFor(dev.cadence.shaders.cadence.render.RenderScale.get());
     if (upscale == null || upscale.sharpen() != sharpen) {
       if (upscale != null) upscale.close();
-      upscale = new PackUpscale(device(), format, sharpen, dev.cadence.shaders.cadence.RenderScale.fastUpscale());
+      upscale = new PackUpscale(device(), format, sharpen, dev.cadence.shaders.cadence.render.RenderScale.fastUpscale());
     }
     LoggerFactory.getLogger("cadence_shaders")
         .info("Cadence render scale: pack frame {}x{} upscaled to {}x{}", frameWidth, frameHeight, main.width, main.height);

@@ -1,7 +1,7 @@
 // Cadence: offline regression checks for fixes that are otherwise only visible in game (no game started).
 // Run with tools/offline-checks/run.sh after ./gradlew build.
 import dev.cadence.shaders.ShaderLoaderConfig;
-import dev.cadence.shaders.cadence.VanillaRgss;
+import dev.cadence.shaders.cadence.render.VanillaRgss;
 import dev.cadence.shaders.pack.ShaderPack;
 import java.nio.file.Files;
 import java.nio.file.Path;

@@ -25,8 +25,8 @@ public final class ShaderLoaderMod implements ClientModInitializer {
   @Override
   public void onInitializeClient() {
 		// (the HUD's FPS Counter reads cadence.fpsCounter from the first frame: set from the saved setting now)
-		dev.cadence.shaders.cadence.CadenceSettings.benchmarkDetailed();
-    dev.cadence.shaders.cadence.HeapTrim.apply();
+		dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed();
+    dev.cadence.shaders.cadence.memory.HeapTrim.apply();
     dev.cadence.shaders.cadence.memory.GcPolicy.start();
     // Cadence: the render thread's scheduling role, and the heat/memory monitor (Heat Control, memory guard)
     dev.cadence.shaders.cadence.system.ThreadRoles.renderThread();
@@ -39,8 +39,8 @@ public final class ShaderLoaderMod implements ClientModInitializer {
         CadencePackGate.hooksApplied() ? "on" : "off",
         System.getProperty("cadence.own"),
         System.getProperty("cadence.startup.mslCache"));
-    dev.cadence.shaders.cadence.SwitchProbe.onFirstWorld();
-    dev.cadence.shaders.cadence.CadenceSelfTest.maybeStart();
+    dev.cadence.shaders.cadence.shaderpack.SwitchProbe.onFirstWorld();
+    dev.cadence.shaders.cadence.selftest.CadenceSelfTest.maybeStart();
     Path selected = null;
     try {
       FabricLoader loader = FabricLoader.getInstance();
@@ -60,10 +60,10 @@ public final class ShaderLoaderMod implements ClientModInitializer {
       // Cadence: a pack that can't load must never stop the game (this threw out of Fabric's client entrypoint, which
       // fails the launch): the game starts without shaders and the player is told why when they join a world
       if (selected != null)
-        dev.cadence.shaders.cadence.ShaderSwitcher.launchFailed(selected.getFileName().toString(), failure);
+        dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.launchFailed(selected.getFileName().toString(), failure);
       dev.cadence.shaders.cadence.system.CadenceMessages.launchFailure(
           (selected == null ? "Cadence Shaders' settings" : "Shader pack "
-              + dev.cadence.shaders.cadence.ShaderToggle.display(selected.getFileName().toString()))
+              + dev.cadence.shaders.cadence.ui.ShaderToggle.display(selected.getFileName().toString()))
               + " couldn't load (" + (failure instanceof java.nio.file.NoSuchFileException ? "its file is missing from the shaderpacks folder"
                   : failure.getMessage()) + "), so shaders are off. Pick another pack or Off in Video Settings > Shader Packs.");
     }

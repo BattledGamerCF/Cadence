@@ -2,7 +2,7 @@ package dev.cadence.shaders.cadence.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import dev.cadence.shaders.cadence.WorldScale;
+import dev.cadence.shaders.cadence.render.WorldScale;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
