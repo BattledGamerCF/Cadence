@@ -36,6 +36,7 @@ import java.util.stream.Stream;
  * CADENCE_JVM_DEFAULTS in its environment and never restarts again; any failure just carries on as launched. The command line
  * (it holds the account token) is never logged, only the options added. Open files are marked close-on-exec first so the new
  * process doesn't inherit them. Off: -Dcadence.jvmDefaults=false, or cadence.jvmDefaults=false in config/cadence.properties.
+ * The same restart can go to another Java: Vivace, when the player chose it in Video Settings (see {@link Vivace}).
  * Measured (docs/dev-log/DAY2.md): G1 + HeapTrim used ~870 MB less than ZGC on the same route; compact object headers ~23 MB less heap.
  * -XX:MetaspaceSize=256m: the game's class metadata grows to ~170 MB while it loads, and each threshold on the way triggered a
  * collection; the threshold only decides when to collect, it reserves nothing. Tried and withdrawn (docs/dev-log/DAY-10-18.md):
@@ -53,7 +54,9 @@ public final class JvmDefaults {
 	 * adaptive IHOP had fallen to 0 bytes and G1 marked back to back, each cycle ending in an 8-19 ms Remark pause (class
 	 * unloading) every ~8 s while old-gen occupancy stayed flat. Only with G1 and when the player hasn't disabled System.gc().
 	 */
-	static final List<String> GC_POLICY = List.of("-XX:+ExplicitGCInvokesConcurrent", "-XX:-G1UseAdaptiveIHOP", "-XX:InitiatingHeapOccupancyPercent=90");
+	static final List<String> GC_POLICY = List.of("-XX:+ExplicitGCInvokesConcurrent", "-XX:-G1UseAdaptiveIHOP", ihop(Runtime.version().feature()));
+	/** Java 27 renamed InitiatingHeapOccupancyPercent to G1IHOP (the old name still works there, with a warning at every start). */
+	private static final String IHOP_OLD = "InitiatingHeapOccupancyPercent", IHOP_NEW = "G1IHOP";
 	static final List<String> DEFAULTS = List.of("-XX:+UseG1GC", "-XX:+UseCompactObjectHeaders", GC_POLICY.get(0), GC_POLICY.get(1), GC_POLICY.get(2),
 		"-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:MetaspaceSize=256m",
 		"-Dfile.encoding=UTF-8", "-Dlog4j2.formatMsgNoLookups=true").stream()
@@ -87,20 +90,23 @@ public final class JvmDefaults {
 			: ManagementFactory.getGarbageCollectorMXBeans().get(0).getName().split(" ")[0];
 		String given = System.getenv(ENV);
 		if (given != null) {
-			summary = gc + " (Cadence default" + (given.contains("UseG1GC") ? "" : "; the collector is yours") + ")";
-			System.out.println("[cadence] Java started with Cadence's defaults: " + given + " (your own Java arguments win on any conflict)");
+			summary = gc + (given.contains("UseG1GC") ? " (Cadence default)" : given.isEmpty() ? "" : " (Cadence default; the collector is yours)");
+			Vivace.reached(gameDir);
+			System.out.println("[cadence] Java started" + (Vivace.running() ? " on Vivace" : "") + " with Cadence's defaults: " + given
+				+ " (your own Java arguments win on any conflict)");
 			return;
 		}
 		boolean gcChosen = false;
 		for (String a : input) for (String g : GCS) if (a.equals("-XX:+" + g)) gcChosen = true;
 		summary = gc + (gcChosen ? " (your Java arguments)" : " (Java's default)");
-		if (!enabled(gameDir) || !System.getProperty("os.name", "").startsWith("Mac")) return;
+		if (!System.getProperty("os.name", "").startsWith("Mac")) return;
+		boolean defaults = enabled(gameDir);
 		List<String> add = new ArrayList<>(), kept = new ArrayList<>();
 		// (the GC policy needs G1 and System.gc(): a player who chose another collector or -XX:+DisableExplicitGC keeps G1's own
 		// marking trigger, which then has no one to start marking early)
 		boolean policy = !gcChosen || input.contains("-XX:+UseG1GC");
 		if (input.contains("-XX:+DisableExplicitGC")) policy = false;
-		for (String d : DEFAULTS) {
+		for (String d : defaults ? DEFAULTS : List.<String>of()) {
 			if (!policy && GC_POLICY.contains(d)) continue;
 			String conflict = conflict(d, input);
 			if (conflict != null) {
@@ -117,21 +123,32 @@ public final class JvmDefaults {
 			if (!known(d)) continue;
 			add.add(d);
 		}
-		if (add.stream().noneMatch(a -> a.startsWith("-XX:"))) return;
 		var info = ProcessHandle.current().info();
 		if (info.command().isEmpty() || info.arguments().isEmpty()) return;
+		// (the player's choice, Video Settings > Java: the restart goes to Vivace's java instead of this one)
+		Path vivace = Vivace.target(gameDir, input, add);
+		if (vivace != null) add.replaceAll(a -> a.equals(ihop(Runtime.version().feature())) ? ihop(Vivace.feature(vivace)) : a);
+		if (vivace == null && add.stream().noneMatch(a -> a.startsWith("-XX:"))) return;
 		List<String> argv = new ArrayList<>();
-		argv.add(info.command().get());
+		argv.add(vivace != null ? vivace.toString() : info.command().get());
 		argv.addAll(add);
 		argv.addAll(List.of(info.arguments().get()));
 		Map<String, String> env = new TreeMap<>(System.getenv());
 		env.put(ENV, String.join(" ", add));
-		System.out.println("[cadence] Restarting Java with Cadence's defaults: " + String.join(" ", add)
+		if (vivace != null) env.put(Vivace.ENV, vivace.toString());
+		System.out.println("[cadence] Restarting Java" + (vivace != null ? " on Vivace (" + vivace + ")" : "")
+			+ (add.isEmpty() ? "" : " with Cadence's defaults: " + String.join(" ", add))
 			+ (kept.isEmpty() ? "" : "; kept your own: " + String.join(" ", kept)));
 		System.out.flush();
 		closeOnExec();
 		int r = exec(argv, env);
+		if (vivace != null) Vivace.execFailed(gameDir);
 		System.out.println("[cadence] Java defaults: restart failed (" + r + "); carrying on as launched");
+	}
+
+	/** The IHOP default under the name a Java of that version knows. */
+	static String ihop(int feature) {
+		return "-XX:" + (feature >= 27 ? IHOP_NEW : IHOP_OLD) + "=90";
 	}
 
 	/** The player's option that decides the same setting as {@code d}, or null. */
@@ -147,6 +164,7 @@ public final class JvmDefaults {
 			if (!a.startsWith("-XX:")) continue;
 			String n = flagName(a);
 			if (n.equals(name) || isGc && List.of(GCS).contains(n)) return a;
+			if (List.of(IHOP_OLD, IHOP_NEW).contains(name) && List.of(IHOP_OLD, IHOP_NEW).contains(n)) return a;
 		}
 		return null;
 	}

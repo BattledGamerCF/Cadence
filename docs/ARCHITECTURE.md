@@ -19,7 +19,7 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 
 | Where | What |
 |---|---|
-| `dev.cadence.metal` (root) | The Metal backend: Minecraft's `renderpearl` device/encoder/buffer/texture API implemented on Metal (`MetalDevice`, `MetalEncoder`, `MetalRenderPass`, `MetalBuffer`, `MetalTexture`, `MetalSurface`), `Native` (every native call, through Java's foreign-function API), `MacSystem` (thermal state, battery, fans, display, sysctl), `Profile` and `JvmDefaults` (startup settings), `PlatformCheck` (Apple Silicon, macOS, Rosetta). Kept as one package: the backend's classes share package-private state, as in mcopt. |
+| `dev.cadence.metal` (root) | The Metal backend: Minecraft's `renderpearl` device/encoder/buffer/texture API implemented on Metal (`MetalDevice`, `MetalEncoder`, `MetalRenderPass`, `MetalBuffer`, `MetalTexture`, `MetalSurface`), `Native` (every native call, through Java's foreign-function API), `MacSystem` (thermal state, battery, fans, display, sysctl), `Profile` and `JvmDefaults` (startup settings), `Vivace` (restarting on the Vivace Java build when the player chose it), `PlatformCheck` (Apple Silicon, macOS, Rosetta). Kept as one package: the backend's classes share package-private state, as in mcopt. |
 | `own/` | Cadence's own terrain renderer: chunk meshes in one arena, GPU culling (`OwnFrag`, Hi-Z), the opaque/cutout draw path, dynamic lights. |
 | `lod/` | Far terrain (experimental, off by default). |
 | `chunk/`, `chunkio/` | Opt-in chunk pipeline and save-file changes (each behind a `-Dcadence.chunk.*` switch). |

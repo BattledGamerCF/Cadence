@@ -360,6 +360,56 @@ public final class CadenceSettings {
 			? dev.cadence.shaders.cadence.system.BackgroundFps.FPS + " fps" : "Normal"));
 	}
 
+	/** Java (dev.cadence.metal.Vivace): the launcher's Java or Vivace, from the next launch; saved as java=. */
+	public static Button javaButton() {
+		java.nio.file.Path gameDir = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir();
+		boolean installed = dev.cadence.metal.Vivace.installed() != null;
+		Button[] self = new Button[1];
+		self[0] = Button.builder(javaLabel(gameDir), b -> {
+			boolean on = !wantsVivace(gameDir);
+			ShaderToggle.saveKey("java", on ? "vivace" : "launcher");
+			if (on) dev.cadence.metal.Vivace.clearFailure(gameDir);
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Which Java runs Minecraft, from the next launch.",
+			"Launcher's|the Java your launcher chose",
+			"Vivace|Cadence's companion Java build: shorter garbage-collection pauses",
+			"#Vivace is a separate, free download (open source, GPLv2 with the Classpath Exception). Cadence only starts it when you"
+				+ " choose it here, and falls back to the launcher's Java if it can't.")).build();
+		onRefresh(() -> self[0].setMessage(javaLabel(gameDir)));
+		boolean byLauncher = dev.cadence.metal.Vivace.running() && System.getenv("CADENCE_JAVA") == null;
+		if (byLauncher) {
+			self[0].active = false;
+			self[0].setTooltip(Tips.of("Your launcher starts Minecraft on Vivace itself (its Java setting)."));
+		} else if (!installed && !wantsVivace(gameDir)) {
+			self[0].active = false;
+			self[0].setTooltip(Tips.of("Vivace, Cadence's companion Java build, isn't installed.",
+				"#It's a separate download (see the Cadence page). Put its .jdk folder in ~/Library/Java/JavaVirtualMachines and"
+					+ " this button turns on."));
+		}
+		return self[0];
+	}
+
+	private static boolean wantsVivace(java.nio.file.Path gameDir) {
+		String s = dev.cadence.metal.Vivace.setting(gameDir);
+		return !(s.isEmpty() || s.equalsIgnoreCase("launcher") || s.equalsIgnoreCase("off") || s.equalsIgnoreCase("false"));
+	}
+
+	private static Component javaLabel(java.nio.file.Path gameDir) {
+		if (dev.cadence.metal.Vivace.running() && System.getenv("CADENCE_JAVA") == null) return Component.literal("Java: Vivace");
+		return Component.literal("Java: " + (wantsVivace(gameDir) ? "Vivace" : "Launcher's"));
+	}
+
+	/** The status line about Java: a restart to switch, or why Vivace isn't in use; null when nothing to say. */
+	private static Component javaStatus() {
+		java.nio.file.Path gameDir = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir();
+		boolean want = wantsVivace(gameDir), on = dev.cadence.metal.Vivace.running(), ours = System.getenv("CADENCE_JAVA") != null;
+		String note = dev.cadence.metal.Vivace.note();
+		if (want && !on && !note.isEmpty()) return Component.literal(note).withStyle(ChatFormatting.YELLOW);
+		if (want && !on) return Component.literal("Restart Minecraft to play on Vivace").withStyle(ChatFormatting.YELLOW);
+		if (!want && on && ours) return Component.literal("Restart Minecraft to play on the launcher's Java").withStyle(ChatFormatting.YELLOW);
+		return null;
+	}
+
 	/** Faster Shadows (PackCheck): the label says what is known about the pack in use; a click tests it when that's unknown. */
 	public static Button packCheckButton() {
 		Button[] self = new Button[1];
@@ -438,6 +488,8 @@ public final class CadenceSettings {
 		if (ShaderToggle.retinaConfigured() != dev.cadence.metal.Retina.on())
 			lines.add(Component.literal("Restart Minecraft to turn Retina " + (ShaderToggle.retinaConfigured() ? "on" : "off")).withStyle(ChatFormatting.YELLOW));
 		if (MemoryGuard.level() > 0) lines.add(Component.literal(MemoryGuard.shortDescribe()).withStyle(ChatFormatting.YELLOW));
+		Component java = javaStatus();
+		if (java != null) lines.add(java);
 		// other mods that hook what Cadence replaces: those areas run vanilla's code for them (CompatLayers; the log has the detail)
 		List<String> mods = dev.cadence.metal.compat.CompatLayers.mods();
 		if (!mods.isEmpty()) lines.add(Component.literal("Works alongside: " + String.join(" · ", mods)).withStyle(ChatFormatting.AQUA));
