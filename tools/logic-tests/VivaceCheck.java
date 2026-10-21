@@ -50,6 +50,13 @@ public class VivaceCheck {
 			Vivace.execFailed(game);
 			check("an option it refuses: stay", Vivace.target(game, List.of("-XX:+NoSuchOptionAnywhere"), add), null);
 			checkNote("...and names it", "NoSuchOptionAnywhere");
+			if (a.length > 1) {
+				// a Java 27 (second argument): an option it removed is reported by the probe and left out of the restart
+				System.setProperty("cadence.java", a[1]);
+				check("Java 27: restart on it", Vivace.target(game, List.of(), List.of("-XX:+ParallelRefProcEnabled")), Path.of(a[1], "bin/java"));
+				Vivace.execFailed(game);
+				check("...and ParallelRefProcEnabled is known to be gone", Vivace.removedOptions().contains("ParallelRefProcEnabled"), true);
+			}
 			System.setProperty("cadence.java", tmp.resolve("nothing-here").toString());
 			check("a path with no Java: stay", Vivace.target(game, List.of(), add), null);
 			// the button's setting (cadence-shaders.properties java=) when nothing else says

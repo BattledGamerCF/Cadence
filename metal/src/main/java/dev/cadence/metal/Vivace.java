@@ -7,9 +7,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -40,6 +44,9 @@ public final class Vivace {
 	static final String ENV = "CADENCE_JAVA";
 	private static final String STATE = "cadence-java.properties";
 	private static volatile String note = "";
+	/** Options the chosen Java said it ignores ("support was removed"), from the probe: left out of the restart. */
+	private static final Set<String> removed = new HashSet<>();
+	private static final Pattern REMOVED = Pattern.compile("Ignoring option (\\w+); support was removed");
 
 	private Vivace() {
 	}
@@ -142,6 +149,11 @@ public final class Vivace {
 		return version(release(java.getParent().getParent())).feature();
 	}
 
+	/** Names of options the chosen Java ignores (removed in its version), from the probe. */
+	static Set<String> removedOptions() {
+		return removed;
+	}
+
 	/** After the player turns the switch back on: forget a failed start. */
 	public static void clearFailure(Path gameDir) {
 		Path state = gameDir.resolve("config").resolve(STATE);
@@ -172,8 +184,13 @@ public final class Vivace {
 				p.destroyForcibly();
 				return "Vivace didn't answer in 20 s";
 			}
-			if (p.exitValue() == 0) return null;
 			String text = new String(out, StandardCharsets.UTF_8);
+			if (p.exitValue() == 0) {
+				// (a newer Java warns about options it no longer has at every start; those are dropped from the restart)
+				Matcher m = REMOVED.matcher(text);
+				while (m.find()) removed.add(m.group(1));
+				return null;
+			}
 			for (String line : text.split("\n")) {
 				if (line.startsWith("Unrecognized VM option") || line.startsWith("Error: VM option") || line.contains("Improperly specified VM option"))
 					return "Vivace refused " + line.strip();

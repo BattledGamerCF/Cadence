@@ -57,9 +57,21 @@ public final class JvmDefaults {
 	static final List<String> GC_POLICY = List.of("-XX:+ExplicitGCInvokesConcurrent", "-XX:-G1UseAdaptiveIHOP", ihop(Runtime.version().feature()));
 	/** Java 27 renamed InitiatingHeapOccupancyPercent to G1IHOP (the old name still works there, with a warning at every start). */
 	private static final String IHOP_OLD = "InitiatingHeapOccupancyPercent", IHOP_NEW = "G1IHOP";
-	static final List<String> DEFAULTS = List.of("-XX:+UseG1GC", "-XX:+UseCompactObjectHeaders", GC_POLICY.get(0), GC_POLICY.get(1), GC_POLICY.get(2),
-		"-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem", "-XX:MetaspaceSize=256m",
-		"-Dfile.encoding=UTF-8", "-Dlog4j2.formatMsgNoLookups=true").stream()
+	/**
+	 * Java 26+ only: young generation at most 128 MB. From Java 26 G1 resizes the heap after every young collection by its "GC
+	 * CPU usage", which now includes concurrent marking; each marking cycle (Cadence starts one every ~25 s) reads as a 20-70%
+	 * spike, G1 grows the heap by hundreds of MB toward -Xmx and fills it with eden, and a young pause lasts as long as eden is
+	 * big. Measured, 14-minute flights with menus (Vivace project PATCHES.md): Java 27 as is, eden ~535 MB, 193 young pauses
+	 * over 8 ms, 1.1-1.5 GB resident; with this cap, 58 over 8 ms, 0.87-1.0 GB: about what Java 25 does by itself (41-51; its
+	 * tighter heap keeps eden near 100 MB), and 25 with the cap only collects more often (79), so 25 doesn't get it. G1 only;
+	 * the player's own young-generation sizing (-Xmn, NewSize, MaxNewSize, NewRatio, G1 new-size percents) wins.
+	 */
+	static final String YOUNG_CAP = "-XX:MaxNewSize=128m";
+	private static final List<String> YOUNG_SIZING = List.of("MaxNewSize", "NewSize", "NewRatio", "G1NewSizePercent", "G1MaxNewSizePercent");
+	static final List<String> DEFAULTS = java.util.stream.Stream.concat(Stream.of("-XX:+UseG1GC", "-XX:+UseCompactObjectHeaders",
+			GC_POLICY.get(0), GC_POLICY.get(1), GC_POLICY.get(2), "-XX:+ParallelRefProcEnabled", "-XX:+PerfDisableSharedMem",
+			"-XX:MetaspaceSize=256m", "-Dfile.encoding=UTF-8", "-Dlog4j2.formatMsgNoLookups=true"),
+			Runtime.version().feature() >= 26 ? Stream.of(YOUNG_CAP) : Stream.empty())
 		// (compact object headers are a product flag from Java 25, which the game needs; on anything older the restarted
 		// Java would refuse to start, so it is left out)
 		.filter(d -> Runtime.version().feature() >= 25 || !d.contains("CompactObjectHeaders")).toList();
@@ -106,8 +118,10 @@ public final class JvmDefaults {
 		// marking trigger, which then has no one to start marking early)
 		boolean policy = !gcChosen || input.contains("-XX:+UseG1GC");
 		if (input.contains("-XX:+DisableExplicitGC")) policy = false;
+		boolean g1 = !gcChosen || input.contains("-XX:+UseG1GC");
 		for (String d : defaults ? DEFAULTS : List.<String>of()) {
 			if (!policy && GC_POLICY.contains(d)) continue;
+			if (!g1 && d.equals(YOUNG_CAP)) continue;
 			String conflict = conflict(d, input);
 			if (conflict != null) {
 				if (!conflict.equals(d)) kept.add(conflict);
@@ -127,7 +141,14 @@ public final class JvmDefaults {
 		if (info.command().isEmpty() || info.arguments().isEmpty()) return;
 		// (the player's choice, Video Settings > Java: the restart goes to Vivace's java instead of this one)
 		Path vivace = Vivace.target(gameDir, input, add);
-		if (vivace != null) add.replaceAll(a -> a.equals(ihop(Runtime.version().feature())) ? ihop(Vivace.feature(vivace)) : a);
+		if (vivace != null) {
+			// (defaults that depend on the Java version follow the Java the game restarts on)
+			int feature = Vivace.feature(vivace);
+			add.replaceAll(a -> a.equals(ihop(Runtime.version().feature())) ? ihop(feature) : a);
+			add.remove(YOUNG_CAP);
+			if (defaults && g1 && feature >= 26 && conflict(YOUNG_CAP, input) == null) add.add(YOUNG_CAP);
+			add.removeIf(a -> a.startsWith("-XX:") && Vivace.removedOptions().contains(flagName(a)));
+		}
 		if (vivace == null && add.stream().noneMatch(a -> a.startsWith("-XX:"))) return;
 		List<String> argv = new ArrayList<>();
 		argv.add(vivace != null ? vivace.toString() : info.command().get());
@@ -161,10 +182,12 @@ public final class JvmDefaults {
 		String name = flagName(d);
 		boolean isGc = List.of(GCS).contains(name);
 		for (String a : input) {
+			if (name.equals("MaxNewSize") && a.startsWith("-Xmn")) return a;
 			if (!a.startsWith("-XX:")) continue;
 			String n = flagName(a);
 			if (n.equals(name) || isGc && List.of(GCS).contains(n)) return a;
 			if (List.of(IHOP_OLD, IHOP_NEW).contains(name) && List.of(IHOP_OLD, IHOP_NEW).contains(n)) return a;
+			if (name.equals("MaxNewSize") && YOUNG_SIZING.contains(n)) return a;
 		}
 		return null;
 	}

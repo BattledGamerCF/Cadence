@@ -13,11 +13,17 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
   launcher's Java and the settings screen says why. Cadence downloads nothing and ships no part of Vivace: it is a
   separate, open-source download. Also `cadence.java=vivace|launcher|PATH` in config/cadence.properties or
   `-Dcadence.java=`.
-- **Vivace 27**: Vivace now also comes on OpenJDK 27.0.1 (same patches): in a flight over new terrain, about a quarter
-  less heap (~250 MB) and half as many young pauses over 8 ms as Vivace 25. Minecraft 26.3, Fabric and Cadence run on
-  Java 27 unchanged (18-mod production launch checked).
+- **Java 26 and newer: young generation capped at 128 MB** (Cadence's Java defaults, G1 only; your own young-generation
+  options win). From Java 26, G1 counts background marking as GC overhead and grows the heap after it, then fills the
+  heap with new objects, so each young collection takes longer: on Java 27, a 14-minute flight had 193 young pauses over
+  8 ms and used ~200 MB more memory than on Java 25. With the cap: 58 over 8 ms and the same memory as 25 (41-51 there).
+  Java 25 keeps its own sizing (the cap only adds collections there).
+- Vivace 27 (OpenJDK 27.0.1 with the same patches) exists alongside Vivace 25 and plays the same with the cap above;
+  Vivace 25 stays the recommended one (long-term support). Minecraft 26.3, Fabric and Cadence run on Java 27 unchanged
+  (18-mod production launch checked).
 - On Java 27, Cadence's Java defaults use `-XX:G1IHOP=90` (Java 27's new name for InitiatingHeapOccupancyPercent, which
-  now prints a deprecation warning at every start).
+  now prints a deprecation warning at every start) and leave out ParallelRefProcEnabled (removed in 27); when the Java
+  switch restarts onto a newer Vivace, options that Java reports as removed are left out too.
 
 ## 0.4.0-beta.11 / shaders 0.3.10 (2026-10-21)
 
