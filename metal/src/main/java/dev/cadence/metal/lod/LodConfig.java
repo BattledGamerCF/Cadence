@@ -26,7 +26,22 @@ public final class LodConfig {
 	 * would be, and N sets how big that is: at 5K, 2048 gives cells of 2.5-5 px (level 0 to ~960 blocks), 4096 1.2-2.5 px.
 	 * Memory: 8 N^2 bytes a level.
 	 */
-	public static final int N = Integer.getInteger("cadence.lod.n", SMALL ? 512 : 2048);
+	public static final int N = Integer.getInteger("cadence.lod.n", SMALL ? 512 : defaultN());
+
+	/**
+	 * Without -Dcadence.lod.n: 1024 on Macs with up to 16 GB, 2048 above. Measured on an M2 Air (8 GB, 2560-point-wide Retina
+	 * screen), the same flight at 512 chunks: 1024 drew the same picture as 2048 (the cells are smaller than a pixel apart at
+	 * a laptop's width) with 452 MB of Metal memory instead of 753 (clipmap 68 MB instead of 240, half the mesh arena) and more
+	 * fps (255 vs 197): at 2048 the 8 GB Mac swapped (the memory guard stopped the game). 2048 is for 5K-class screens.
+	 */
+	private static int defaultN() {
+		long ram = 0;
+		try {
+			ram = ((com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean()).getTotalMemorySize();
+		} catch (RuntimeException | LinkageError ignored) {
+		}
+		return ram > 0 && ram <= 17L << 30 ? 1024 : 2048;
+	}
 	/** -Dcadence.lod.threads=N: generation workers (default: the cores the game and the GPU driver leave). */
 	public static final int THREADS = Integer.getInteger("cadence.lod.threads", Math.max(2, Runtime.getRuntime().availableProcessors() - 4));
 	/**
@@ -82,6 +97,12 @@ public final class LodConfig {
 	public static final boolean DISK_CACHE = Boolean.parseBoolean(System.getProperty("cadence.lod.cache", "true"));
 	/** -Dcadence.lod.cacheDir=PATH: where the per-world cache lives (default: the game dir's cadence-lod). */
 	public static final String CACHE_DIR = System.getProperty("cadence.lod.cacheDir");
+	/**
+	 * -Dcadence.lod.generate=false: explored terrain only (Distant Horizons' "pre-existing chunks only"): nothing is generated
+	 * from the world's noise; tiles fill from the disk cache and from the chunks the client has received (so on a server, what
+	 * the player has seen). Video Settings > Far Terrain > Unexplored Terrain.
+	 */
+	public static final boolean GENERATE = Boolean.parseBoolean(System.getProperty("cadence.lod.generate", "true"));
 	/** -Dcadence.lod.trees=false: no tree canopy on generated (never visited) terrain. */
 	public static final boolean TREES = Boolean.parseBoolean(System.getProperty("cadence.lod.trees", "true"));
 	/**

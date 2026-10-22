@@ -73,7 +73,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		// sharpness-for-speed trades, shader shadows included, are on their own page)
 		this.list.addHeader(heading("Cadence: Picture & Speed"));
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.SharpnessScreen.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.leavesButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.dynamicLightsButton(), null);
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.dynamicLightsButton(), dev.cadence.shaders.cadence.ui.FarTerrainScreen.button(self));
 		this.list.addHeader(heading("Cadence: Power & Heat"));
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.batteryButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.backgroundButton(), null);

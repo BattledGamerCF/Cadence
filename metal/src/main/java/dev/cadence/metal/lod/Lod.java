@@ -37,6 +37,7 @@ import org.lwjgl.system.MemoryUtil;
  * everything else.
  */
 public final class Lod {
+	private int memLogs;
 	private static @Nullable Lod instance;
 	private static boolean failed;
 	private static final boolean SODIUM = FabricLoader.getInstance().isModLoaded("sodium");
@@ -1158,6 +1159,7 @@ public final class Lod {
 	}
 
 	private void stats(LodField w) {
+		if (LodNative.MEMLOG && ++this.memLogs % 10 == 1) System.out.println(LodNative.memLog());
 		this.statFrames++;
 		long now = System.nanoTime();
 		if (now - this.statStart < 1_000_000_000L) return;

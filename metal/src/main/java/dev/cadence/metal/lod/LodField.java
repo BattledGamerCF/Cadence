@@ -158,7 +158,11 @@ final class LodField {
 		int[] pl = level == 0 && this.clip.plants ? new int[2 * LodTile.CELLS] : null;
 		long start = System.nanoTime();
 		boolean fromDisk = LodConfig.DISK_CACHE && this.load(key, g, c, cr, tw, rn, pl);
-		if (!fromDisk) {
+		if (!fromDisk && !LodConfig.GENERATE) {
+			// explored terrain only: an empty tile (every cell "no data"), so real chunks have a tile to patch into; not saved,
+			// so turning generation on later fills it
+			this.loaded.incrementAndGet();
+		} else if (!fromDisk) {
 			LodTile t = new LodTile(level, tx, tz);
 			LodForest forest = this.forest;
 			boolean exact = level < Math.min(2, LodConfig.TREE_LEVELS) && forest != null && forest.available();

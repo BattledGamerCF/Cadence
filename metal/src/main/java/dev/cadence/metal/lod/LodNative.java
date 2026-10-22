@@ -200,10 +200,38 @@ final class LodNative {
 		}
 	}
 
+	/** -Dcadence.lod.memlog=true: every far-terrain buffer counted under the code that asked for it (MemLog: memLog()). */
+	static final boolean MEMLOG = Boolean.getBoolean("cadence.lod.memlog");
+	private static final java.util.Map<String, long[]> LEDGER = new java.util.concurrent.ConcurrentHashMap<>();
+
+	private static void account(long size) {
+		String at = StackWalker.getInstance().walk(f -> f.skip(2).findFirst().map(x -> x.getClassName().replace("dev.cadence.metal.lod.", "")
+			+ "." + x.getMethodName() + ":" + x.getLineNumber()).orElse("?"));
+		long[] e = LEDGER.computeIfAbsent(at, k -> new long[2]);
+		synchronized (e) {
+			e[0] += size;
+			e[1]++;
+		}
+	}
+
+	/** The ledger, largest first (MB, count), for the log. */
+	static String memLog() {
+		StringBuilder b = new StringBuilder("cadence-lod memory (buffers asked for, MB):");
+		long total = 0;
+		var rows = new java.util.ArrayList<>(LEDGER.entrySet());
+		rows.sort((x, y) -> Long.compare(y.getValue()[0], x.getValue()[0]));
+		for (var r : rows) {
+			total += r.getValue()[0];
+			b.append(String.format(java.util.Locale.ROOT, "\n  %8.1f  x%-5d %s", r.getValue()[0] / 1048576.0, r.getValue()[1], r.getKey()));
+		}
+		return b.append(String.format(java.util.Locale.ROOT, "\n  %8.1f  total", total / 1048576.0)).toString();
+	}
+
 	/** A CPU-readable, hazard-tracked buffer. */
 	static long sharedTrackedBuffer(long ctx, long size) {
 		try {
 			long b = (long) SHARED_TRACKED.invokeExact(ctx, size);
+			if (MEMLOG) account(size);
 			if (b == 0) throw new IllegalStateException("lod: buffer of " + size + " bytes failed");
 			return b;
 		} catch (Throwable t) {
@@ -214,6 +242,7 @@ final class LodNative {
 	static long privateBuffer(long ctx, long size) {
 		try {
 			long b = (long) PRIVATE_BUFFER.invokeExact(ctx, size);
+			if (MEMLOG) account(size);
 			if (b == 0) throw new IllegalStateException("lod: private buffer of " + size + " bytes failed");
 			return b;
 		} catch (Throwable t) {
@@ -225,6 +254,7 @@ final class LodNative {
 	static long privateUntrackedBuffer(long ctx, long size) {
 		try {
 			long b = (long) PRIVATE_UNTRACKED.invokeExact(ctx, size);
+			if (MEMLOG) account(size);
 			if (b == 0) throw new IllegalStateException("lod: private buffer of " + size + " bytes failed");
 			return b;
 		} catch (Throwable t) {
@@ -235,6 +265,7 @@ final class LodNative {
 	static long buffer(long ctx, long size) {
 		try {
 			long b = (long) BUFFER.invokeExact(ctx, size);
+			if (MEMLOG) account(size);
 			if (b == 0) throw new IllegalStateException("lod: buffer of " + size + " bytes failed");
 			return b;
 		} catch (Throwable t) {
