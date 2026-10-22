@@ -73,10 +73,13 @@ public final class CadenceMessages {
 	 * A command typed or clicked: true when it is Cadence's (handled here, never sent to the server). "cadence messages
 	 * off|on".
 	 */
-	public static boolean command(String command) {
+	public static boolean command(String command, net.minecraft.client.multiplayer.ClientPacketListener connection) {
 		String c = command.strip().toLowerCase(Locale.ROOT);
 		if (c.startsWith("/")) c = c.substring(1);
 		if (!c.equals("cadence") && !c.startsWith("cadence ")) return false;
+		// (a server with its own /cadence command, another mod's: everything but Cadence's two exact commands goes to it)
+		boolean serverHasIt = connection != null && connection.getCommands().getRoot().getChild("cadence") != null;
+		if (serverHasIt && !c.equals("cadence messages off") && !c.equals("cadence messages on")) return false;
 		switch (c) {
 			case "cadence messages off" -> {
 				setEnabled(false);

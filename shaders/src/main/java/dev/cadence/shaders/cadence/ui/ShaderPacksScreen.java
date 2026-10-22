@@ -146,7 +146,7 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 	@Override
 	public void onFilesDrop(List<Path> paths) {
 		Path dir = ShaderToggle.packsDirectory();
-		List<String> added = new ArrayList<>(), refused = new ArrayList<>();
+		List<String> added = new ArrayList<>(), refused = new ArrayList<>(), updated = new ArrayList<>();
 		for (Path p : paths) {
 			String name = p.getFileName().toString();
 			if (!isPack(p)) {
@@ -156,7 +156,12 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 			try {
 				Files.createDirectories(dir);
 				Path target = dir.resolve(name);
-				if (!Files.exists(target)) copy(p, target);
+				// (a zip of the same name but different content is a newer version: it replaces the old one; the same file is left)
+				boolean existed = Files.exists(target);
+				if (!existed || !Files.isDirectory(p) && copyChanged(p, target)) {
+					if (!existed) copy(p, target);
+					else updated.add(name);
+				}
 				added.add(name);
 			} catch (IOException e) {
 				LoggerFactory.getLogger("cadence_shaders").warn("Shader Packs: can't copy {}: {}", p, e.toString());
@@ -165,11 +170,14 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 		}
 		if (!added.isEmpty()) {
 			this.packs.fill(added.get(0));
-			this.choose(added.get(0));
+			// (the pack in use was replaced by a newer file: reloaded, as choosing it again would do nothing)
+			if (updated.contains(added.get(0)) && added.get(0).equals(ShaderSwitcher.target())) ShaderSwitcher.reload();
+			else this.choose(added.get(0));
 		}
 		if (!refused.isEmpty()) this.say(Component.literal(String.join(", ", refused.stream().map(ShaderToggle::display).toList())
 			+ (refused.size() == 1 ? " isn't a shader pack" : " aren't shader packs") + " (no shaders folder inside).").withStyle(ChatFormatting.RED));
-		else if (!added.isEmpty()) this.say(Component.literal("Added " + String.join(", ", added.stream().map(ShaderToggle::display).toList()) + ".")
+		else if (!added.isEmpty()) this.say(Component.literal((updated.size() == added.size() ? "Updated " : "Added ")
+			+ String.join(", ", added.stream().map(ShaderToggle::display).toList()) + ".")
 			.withStyle(ChatFormatting.GREEN));
 	}
 
@@ -188,9 +196,23 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 		}
 	}
 
+	/** A zip copied over an existing one when their contents differ (via a temporary file, then moved in whole); false if same. */
+	private static boolean copyChanged(Path from, Path to) throws IOException {
+		if (Files.size(from) == Files.size(to) && Files.mismatch(from, to) == -1) return false;
+		copy(from, to);
+		return true;
+	}
+
 	private static void copy(Path from, Path to) throws IOException {
 		if (!Files.isDirectory(from)) {
-			Files.copy(from, to);
+			// (into a temporary file first: a copy cut short, a full disk, left a partial zip that was never replaced)
+			Path tmp = Files.createTempFile(to.getParent(), ".drop-", ".tmp");
+			try {
+				Files.copy(from, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+				Files.move(tmp, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+			} finally {
+				Files.deleteIfExists(tmp);
+			}
 			return;
 		}
 		try (Stream<Path> all = Files.walk(from)) {

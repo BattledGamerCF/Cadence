@@ -162,6 +162,9 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 	protected void addFooter() {
 		var row = this.layout.addToFooter(net.minecraft.client.gui.layouts.LinearLayout.horizontal().spacing(8));
 		int w = this.top ? 120 : 150;
+		// (three buttons of 120 on the first page are 376 GUI pixels; the smallest GUI is 320 wide: narrower then)
+		int buttons = this.top ? 3 : 2;
+		w = Math.max(60, Math.min(w, (this.width - 2 * 8 - 12) / buttons));
 		if (this.top) row.addChild(Button.builder(Component.literal("Reset to Defaults"), b -> {
 			this.session.own.clear();
 			this.session.profile = "";

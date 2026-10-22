@@ -153,6 +153,12 @@ public final class ShaderToggle {
 		String pack = CadencePackGate.hooksApplied() ? ShaderSwitcher.target() : saved();
 		boolean none = choices().size() <= 1;
 		Component label = Component.literal("Shaders: " + (none && pack.isEmpty() ? "Add Packs" : display(pack)) + "...");
+		if (!CadencePackGate.metalBackend()) {
+			Button off = Button.builder(Component.literal("Shaders: Unavailable"), b -> {
+			}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(CadencePackGate.NO_METAL + ".")).build();
+			off.active = false;
+			return off;
+		}
 		return Button.builder(label, b -> net.minecraft.client.Minecraft.getInstance().gui.setScreen(new ShaderPacksScreen(parent)))
 			.width(Button.DEFAULT_WIDTH)
 			.tooltip(none ? Tips.of("No shader packs installed yet.",

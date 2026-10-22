@@ -9,6 +9,10 @@ import dev.cadence.metal.MacSystem;
  * frame at least the cap's interval (Metal's presentDrawable:afterMinimumDuration:, a hair under the interval so the cap itself
  * never drops), so a capped game advances one frame per interval; on ProMotion displays this also tells macOS the rate to
  * refresh at. Without a cap nothing changes. -Dcadence.framePacing=false: off.
+ *
+ * <p>Only for caps a fixed-rate display can show evenly: a whole number of refreshes per frame (60, 30, 20 on a 60 Hz screen;
+ * 120, 60, 40, 30 on 120 Hz). Any other cap (45, 50) would be rounded up to whole refreshes by the display (45 became 30 on a
+ * MacBook Air); there the CPU's wait alone holds the cap on average.
  */
 public final class FramePacing {
 	private static final boolean ENABLED = !"false".equals(System.getProperty("cadence.framePacing"));
@@ -21,6 +25,12 @@ public final class FramePacing {
 	/** FramerateCapMixin, each time the game reads its frame-rate limit (render thread): the effective cap. */
 	public static void cap(int limit) {
 		int target = ENABLED && limit > 0 && limit < net.minecraft.client.Options.UNLIMITED_FRAMERATE_CUTOFF ? limit : 0;
+		int hz = HeatControl.refreshHz();
+		if (target > 0) {
+			// refreshes per frame for this cap; not a whole number (within 3%): no pacing
+			int n = Math.max(1, Math.round((float) hz / target));
+			if (Math.abs((double) hz / n - target) > target * 0.03) target = 0;
+		}
 		if (target == pacedFor) return;
 		pacedFor = target;
 		MacSystem.presentMinimum(target == 0 ? 0 : 1.0 / target * 0.97);

@@ -17,7 +17,7 @@ public final class Retina {
 			String p = System.getProperty("cadence.retina");
 			if (p == null) {
 				try {
-					var file = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("cadence-shaders.properties");
+					var file = Legacy.readable(net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir(), Legacy.SHADERS_CONFIG, Legacy.SHADERS_CONFIG_OLD);
 					if (java.nio.file.Files.isRegularFile(file)) {
 						java.util.Properties props = new java.util.Properties();
 						try (var in = java.nio.file.Files.newInputStream(file)) {

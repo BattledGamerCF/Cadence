@@ -51,6 +51,13 @@ public final class ShaderLoaderMod implements ClientModInitializer {
         LOGGER.info("Cadence Shaders ready; no shader pack selected.");
         return;
       }
+      if (!CadencePackGate.metalBackend()) {
+        LOGGER.warn("Shader pack {} not loaded: {}.", selected.getFileName(), CadencePackGate.NO_METAL);
+        dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.launchFailed(selected.getFileName().toString(),
+            new IllegalStateException(CadencePackGate.NO_METAL));
+        dev.cadence.shaders.cadence.system.CadenceMessages.launchFailure(CadencePackGate.NO_METAL + ", so shaders are off.");
+        return;
+      }
       activate(config);
     } catch (IOException | RuntimeException failure) {
       String context =
@@ -64,8 +71,7 @@ public final class ShaderLoaderMod implements ClientModInitializer {
       dev.cadence.shaders.cadence.system.CadenceMessages.launchFailure(
           (selected == null ? "Cadence Shaders' settings" : "Shader pack "
               + dev.cadence.shaders.cadence.ui.ShaderToggle.display(selected.getFileName().toString()))
-              + " couldn't load (" + (failure instanceof java.nio.file.NoSuchFileException ? "its file is missing from the shaderpacks folder"
-                  : failure.getMessage()) + "), so shaders are off. Pick another pack or Off in Video Settings > Shader Packs.");
+              + " couldn't load (" + dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.playerReason(failure) + "), so shaders are off. Pick another pack or Off in Video Settings > Shader Packs.");
     }
   }
 

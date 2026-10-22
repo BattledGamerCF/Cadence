@@ -89,7 +89,7 @@ public final class ShaderPack {
         shaders = absolute;
       }
       if (!Files.isDirectory(shaders))
-        throw new ShaderPackException("Pack has no shaders directory: " + absolute);
+        throw new ShaderPackException("there's no shaders folder directly inside it (unzipped into a nested folder?)");
       if (Files.isSymbolicLink(shaders))
         throw new ShaderPackException(
             "Pack shaders directory cannot be a symbolic link: " + shaders);

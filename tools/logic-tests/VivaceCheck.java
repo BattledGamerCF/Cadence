@@ -57,6 +57,40 @@ public class VivaceCheck {
 				Vivace.execFailed(game);
 				check("...and ParallelRefProcEnabled is known to be gone", Vivace.removedOptions().contains("ParallelRefProcEnabled"), true);
 			}
+			// a java that never exits (a quarantined download waiting on macOS's prompt): the probe gives up, and that Vivace is
+			// not probed again (no wait at every launch) until it changes or the switch is turned on again
+			Path hang = tmp.resolve("hang/Contents/Home");
+			Files.createDirectories(hang.resolve("bin"));
+			Files.writeString(hang.resolve("release"), "JAVA_VERSION=\"25.0.5\"\nIMPLEMENTOR=\"Vivace\"\n");
+			Files.writeString(hang.resolve("bin/java"), "#!/bin/bash\nsleep 300\n");
+			hang.resolve("bin/java").toFile().setExecutable(true);
+			System.setProperty("cadence.java", hang.toString());
+			long t0 = System.nanoTime();
+			check("a java that hangs: stay", Vivace.target(game, List.of(), add), null);
+			long ms = (System.nanoTime() - t0) / 1_000_000;
+			check("...within the timeout (" + ms + " ms)", ms < 5_000, true);
+			checkNote("...and says why", "didn't start in");
+			check("...and isn't probed again", Vivace.target(game, List.of(), add), null);
+			checkNote("...(said so)", "didn't start last time");
+			// a release file with an unparsable version: never chosen, never a crash (two candidates, so the comparator runs)
+			String home2 = System.getProperty("user.home");
+			System.setProperty("user.home", tmp.resolve("home2").toString());
+			Path j2 = tmp.resolve("home2/Library/Java/JavaVirtualMachines");
+			fake(j2.resolve("Vivace-25.0.5+8-vivace.1.jdk"), "25.0.5", "Vivace", false);
+			fake(j2.resolve("Vivace-broken.jdk"), "banana", "Vivace", false);
+			Path chosen = null;
+			try {
+				chosen = Vivace.installed();
+			} catch (RuntimeException e) {
+				check("garbage version: no exception (" + e + ")", false, true);
+			}
+			check("garbage version: the valid one chosen", chosen, j2.resolve("Vivace-25.0.5+8-vivace.1.jdk/Contents/Home/bin/java"));
+			System.setProperty("user.home", home2);
+			System.setProperty("cadence.java", j2.resolve("Vivace-broken.jdk").toString());
+			check("garbage version via cadence.java: stay, no exception", Vivace.target(game, List.of(), add), null);
+			checkNote("...too old", "too old");
+			// where the setting comes from (the Video Settings button is greyed when it's not its own)
+			check("source: -D", Vivace.settingSource(game), "-Dcadence.java in your Java arguments");
 			System.setProperty("cadence.java", tmp.resolve("nothing-here").toString());
 			check("a path with no Java: stay", Vivace.target(game, List.of(), add), null);
 			// the button's setting (cadence-shaders.properties java=) when nothing else says
@@ -78,6 +112,7 @@ public class VivaceCheck {
 		Path h = bundle.resolve("Contents/Home");
 		Files.createDirectories(h.resolve("bin"));
 		Files.writeString(h.resolve("bin/java"), "");
+		h.resolve("bin/java").toFile().setExecutable(true);
 		if (jdk) Files.writeString(h.resolve("bin/javac"), "");
 		Files.writeString(h.resolve("release"), "JAVA_VERSION=\"" + version + "\"\n" + (implementor == null ? "" : "IMPLEMENTOR=\"" + implementor + "\"\n"));
 	}

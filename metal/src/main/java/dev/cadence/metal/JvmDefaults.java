@@ -157,6 +157,7 @@ public final class JvmDefaults {
 		Map<String, String> env = new TreeMap<>(System.getenv());
 		env.put(ENV, String.join(" ", add));
 		if (vivace != null) env.put(Vivace.ENV, vivace.toString());
+		else if (!Vivace.note().isEmpty()) env.put(Vivace.NOTE_ENV, Vivace.note());
 		System.out.println("[cadence] Restarting Java" + (vivace != null ? " on Vivace (" + vivace + ")" : "")
 			+ (add.isEmpty() ? "" : " with Cadence's defaults: " + String.join(" ", add))
 			+ (kept.isEmpty() ? "" : "; kept your own: " + String.join(" ", kept)));

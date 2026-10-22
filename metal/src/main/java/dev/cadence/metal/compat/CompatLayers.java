@@ -128,7 +128,7 @@ public final class CompatLayers {
 			for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
 				String id = mod.getMetadata().getId();
 				NAMES.put(id, displayName(mod));
-				if (id.startsWith("cadence")) read(mod, ours);
+				if (java.util.Set.of("cadence", "cadence_shaders", "cadence_hud").contains(id)) read(mod, ours);  // (only our own ids)
 				else if (!known(id)) read(mod, theirs);
 			}
 			if (Boolean.getBoolean("cadence.compat.log")) {

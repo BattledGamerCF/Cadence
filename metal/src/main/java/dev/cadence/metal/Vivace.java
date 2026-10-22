@@ -80,6 +80,14 @@ public final class Vivace {
 			.map(h -> h.resolve("bin/java")).orElse(null);
 	}
 
+	/** Where the setting comes from when it isn't the Video Settings button's ("-Dcadence.java", ...), or null. */
+	public static String settingSource(Path gameDir) {
+		if (System.getProperty("cadence.java") != null) return "-Dcadence.java in your Java arguments";
+		if (read(gameDir.resolve("config"), Legacy.CONFIG, Legacy.CONFIG_OLD).getProperty("cadence.java") != null)
+			return "cadence.java in config/cadence.properties";
+		return null;
+	}
+
 	/** "vivace", "launcher", or a path: the setting, from the first place that has one. */
 	public static String setting(Path gameDir) {
 		String p = System.getProperty("cadence.java");
@@ -89,8 +97,14 @@ public final class Vivace {
 		return read(gameDir.resolve("config"), Legacy.SHADERS_CONFIG, Legacy.SHADERS_CONFIG_OLD).getProperty("java", "launcher").strip();
 	}
 
+	/** The environment variable that carries the note into the restarted process (the note is per process). */
+	static final String NOTE_ENV = "CADENCE_JAVA_NOTE";
+
 	/** At startup, from JvmDefaults, on a Java Cadence restarted: a start on Vivace got this far (its pending note goes). */
 	static void reached(Path gameDir) {
+		// (why Vivace wasn't used was decided in the process before the restart: shown here, where the settings screen reads it)
+		String carried = System.getenv(NOTE_ENV);
+		if (carried != null && !carried.isEmpty()) note = carried;
 		if (System.getenv(ENV) == null) return;
 		Properties st = read(gameDir.resolve("config"), STATE, STATE);
 		if (st.remove("pending") != null) save(st, gameDir.resolve("config").resolve(STATE));
@@ -135,6 +149,12 @@ public final class Vivace {
 		}
 		String refused = probe(java, input, add);
 		if (refused != null) {
+			// (a Vivace that hangs or that macOS stops costs 20 s of every launch: not again until it changes or the player
+			// turns the switch on again)
+			if (refused == TIMEOUT || refused == STOPPED) {
+				st.setProperty("failed", stamp);
+				save(st, state);
+			}
 			note = refused;
 			System.out.println("[cadence] Vivace: not used (" + refused + ")");
 			return null;
@@ -174,15 +194,20 @@ public final class Vivace {
 			cmd.add(a);
 		}
 		cmd.add("-version");
+		Path log = null;
 		try {
-			Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-			byte[] out;
-			try (var in = p.getInputStream()) {
-				out = in.readNBytes(8192);
-			}
-			if (!p.waitFor(20, TimeUnit.SECONDS)) {
+			// (output to a file, and the wait first: reading the pipe first blocked for as long as the java stayed alive, e.g. a
+			// download still in quarantine waiting on macOS's "can't be opened" prompt, and the game never opened a window)
+			log = Files.createTempFile("cadence-vivace-probe", ".txt");
+			Process p = new ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+			if (!p.waitFor(PROBE_SECONDS, TimeUnit.SECONDS)) {
+				p.descendants().forEach(ProcessHandle::destroyForcibly);
 				p.destroyForcibly();
-				return "Vivace didn't answer in 20 s";
+				return TIMEOUT;
+			}
+			byte[] out;
+			try (var in = Files.newInputStream(log)) {
+				out = in.readNBytes(8192);
 			}
 			String text = new String(out, StandardCharsets.UTF_8);
 			if (p.exitValue() == 0) {
@@ -196,15 +221,28 @@ public final class Vivace {
 					return "Vivace refused " + line.strip();
 			}
 			// a signal (exit 128+n): macOS stopped it, most often a download still in quarantine
-			if (p.exitValue() > 128) return "macOS stopped Vivace (see INSTALL.md: xattr -dr com.apple.quarantine)";
+			if (p.exitValue() > 128) return STOPPED;
 			return "Vivace exited with " + p.exitValue();
 		} catch (IOException e) {
 			return "Vivace can't be started (" + e.getMessage() + ")";
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			return "interrupted";
+		} finally {
+			if (log != null) {
+				try {
+					Files.deleteIfExists(log);
+				} catch (IOException ignored) {
+				}
+			}
 		}
 	}
+
+	/** How long the probe waits (-Dcadence.javaProbeTimeout, seconds; tests use a short one). */
+	private static final long PROBE_SECONDS = Long.getLong("cadence.javaProbeTimeout", 20);
+	private static final String TIMEOUT = "Vivace didn't start in " + PROBE_SECONDS
+		+ " s (macOS may be asking about it: see INSTALL.md, xattr -dr com.apple.quarantine)";
+	private static final String STOPPED = "macOS stopped Vivace (see INSTALL.md: xattr -dr com.apple.quarantine)";
 
 	/** cadence.java=PATH: a .jdk folder, a Java home, or a java program. */
 	private static Path javaAt(String path) {
@@ -234,9 +272,11 @@ public final class Vivace {
 
 	private static Runtime.Version version(Properties release) {
 		try {
-			return Runtime.Version.parse(release.getProperty("JAVA_VERSION", "0"));
+			return Runtime.Version.parse(release.getProperty("JAVA_VERSION", "1"));
 		} catch (IllegalArgumentException e) {
-			return Runtime.Version.parse("0");
+			// (missing, damaged or Java-8-style "1.8.0_292": oldest possible, so it is never chosen and reads as too old;
+			// "0" is not a valid version and threw out of the settings screen)
+			return Runtime.Version.parse("1");
 		}
 	}
 

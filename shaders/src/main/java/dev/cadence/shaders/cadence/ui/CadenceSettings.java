@@ -267,7 +267,7 @@ public final class CadenceSettings {
 	public static Button maxFpsButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(maxFpsLabel(), b -> {
-			MaxFpsMode.set(!MaxFpsMode.on());
+			MaxFpsMode.set(!MaxFpsMode.chosen());
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("For curiosity: the most frames a second Minecraft can draw on this Mac.",
 			"#Removes every block face and everything else in the world: you see an empty sky-blue void and your HUD. Set Max Framerate to Unlimited and VSync off for the top number. Off again after a restart.")).build();
@@ -276,7 +276,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component maxFpsLabel() {
-		return Component.literal("Render Max FPS: " + (MaxFpsMode.on() ? "On" : "Off"));
+		return Component.literal("Render Max FPS: " + (MaxFpsMode.chosen() ? "On" : "Off"));
 	}
 
 	/** On Battery (system.BatteryMode): Match Display, Saver, Off. */
@@ -377,7 +377,12 @@ public final class CadenceSettings {
 				+ " choose it here, and falls back to the launcher's Java if it can't.")).build();
 		onRefresh(() -> self[0].setMessage(javaLabel(gameDir)));
 		boolean byLauncher = dev.cadence.metal.Vivace.running() && System.getenv("CADENCE_JAVA") == null;
-		if (byLauncher) {
+		String source = dev.cadence.metal.Vivace.settingSource(gameDir);
+		if (source != null) {
+			// (that setting wins over this button's: a click would change nothing)
+			self[0].active = false;
+			self[0].setTooltip(Tips.of("Set by " + source + ".", "#Change or remove it there to use this button."));
+		} else if (byLauncher) {
 			self[0].active = false;
 			self[0].setTooltip(Tips.of("Your launcher starts Minecraft on Vivace itself (its Java setting)."));
 		} else if (!installed && !wantsVivace(gameDir)) {

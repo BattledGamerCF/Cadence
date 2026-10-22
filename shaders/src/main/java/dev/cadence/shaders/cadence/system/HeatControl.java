@@ -136,6 +136,11 @@ public final class HeatControl {
 		return holding() ? 1 : 0;
 	}
 
+	/** The refresh rate of the window's display (polled every 2 s), at least 30. */
+	public static int refreshHz() {
+		return displayHz;
+	}
+
 	private static boolean holding() {
 		return cap != Double.POSITIVE_INFINITY;
 	}
@@ -169,6 +174,9 @@ public final class HeatControl {
 					log("warm again after a release", now);
 				}
 				double fps = freshMode ? 0 : Minecraft.getInstance().getFps();
+				// (a rate under the screen's refresh is a moment, not what the Mac can do: a world loading, chunks arriving, a pack
+				// compiling. Starting the hold there kept whole sessions at 45, shown as 30 on a 60 Hz screen: start at the ceiling)
+				if (fps < displayHz) fps = 0;
 				cap = Math.max(floor, Math.min(ceiling, fps > 0 ? fps : Math.min(ceiling, limit())));
 				if (learned != Double.POSITIVE_INFINITY) cap = Math.min(cap, learned);
 				freshMode = false;

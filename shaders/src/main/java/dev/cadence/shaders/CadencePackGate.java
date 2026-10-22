@@ -56,6 +56,18 @@ public final class CadencePackGate implements IMixinConfigPlugin {
 		return p.getProperty(key, fallback);
 	}
 
+	/** The reason given when packs can't run this session. */
+	public static final String NO_METAL = "Shader packs need Cadence's Metal renderer, which is off this session"
+		+ " (cadence.metal=false, or a mod that needs OpenGL such as Distant Horizons on its OpenGL renderer)";
+
+	/**
+	 * Whether shader packs can run this session: only on Cadence's Metal renderer (the loader's programs are translated for
+	 * Metal; on the OpenGL fallback they fail to link, and the parallel pipeline compile aborted the JVM).
+	 */
+	public static boolean metalBackend() {
+		return Boolean.parseBoolean(System.getProperty("cadence.metal", "true"));
+	}
+
 	/** Whether a pack is selected for this launch (read once). */
 	public static boolean selected() {
 		return SELECTED;

@@ -196,7 +196,8 @@ int mc_fan_count(void) {
 	unsigned int type = 0;
 	int n = mc_smc_read("FNum", b, &type);
 	// no FNum key while the SMC itself answers (#KEY: its key count): a fanless Mac
-	int readable = n >= 1 || mc_smc_read("#KEY", b + 8, &type) > 0;
+	unsigned char k[32];  // (#KEY into its own 32 bytes: up to 32 are written)
+	int readable = n >= 1 || mc_smc_read("#KEY", k, &type) > 0;
 	pthread_mutex_unlock(&mc_smc_lock);
 	return n >= 1 ? b[0] : readable ? 0 : -1;
 }

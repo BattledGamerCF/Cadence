@@ -172,15 +172,32 @@ final class Native {
 	}
 
 	private static Path extract() {
+		String tmp = System.getProperty("java.io.tmpdir");
 		try (InputStream in = Native.class.getResourceAsStream("/natives/libmcmetal.dylib")) {
+			if (in == null) throw new IOException("the mod's jar has no natives/libmcmetal.dylib (a damaged download?)");
 			Path dir = Files.createTempDirectory("mcmetal");
 			Path lib = dir.resolve("libmcmetal.dylib");
-			Files.copy(in, lib, StandardCopyOption.REPLACE_EXISTING);
-			lib.toFile().deleteOnExit();
+			// (deleted at exit in the reverse order of registration: the folder first would fail while it still holds the
+			// library, leaving an empty folder behind at every launch)
 			dir.toFile().deleteOnExit();
+			lib.toFile().deleteOnExit();
+			Files.copy(in, lib, StandardCopyOption.REPLACE_EXISTING);
 			return lib;
-		} catch (IOException e) {
-			throw new IllegalStateException("can't extract libmcmetal.dylib", e);
+		} catch (IOException | RuntimeException e) {
+			// the temporary folder can't be used (read-only, missing volume, odd java.io.tmpdir): the game folder instead
+			Path fallback = Path.of(System.getProperty("user.dir"), ".cadence-natives");
+			try (InputStream in = Native.class.getResourceAsStream("/natives/libmcmetal.dylib")) {
+				if (in == null) throw e;
+				Files.createDirectories(fallback);
+				Path lib = fallback.resolve("libmcmetal.dylib");
+				Files.copy(in, lib, StandardCopyOption.REPLACE_EXISTING);
+				System.out.println("[cadence] the temporary folder " + tmp + " can't be used (" + e + "): the native library is in " + fallback);
+				return lib;
+			} catch (IOException | RuntimeException e2) {
+				// (thrown from a static initializer: the crash report shows this message only, not the cause, so it says both)
+				throw new IllegalStateException("can't extract libmcmetal.dylib into the temporary folder " + tmp + " (" + e
+					+ ") or into " + fallback + " (" + e2 + "): is the disk full, or are those folders read-only?", e);
+			}
 		}
 	}
 
@@ -195,7 +212,17 @@ final class Native {
 	static long create(long name, int nameCap, long err, int errCap) { try { long c = (long) CREATE.invokeExact(name, nameCap, err, errCap); if (FrameCapture.ON) FrameCapture.Own.ctx = c; return c; } catch (Throwable t) { throw rethrow(t); } }
 	static long maxBufferLength(long ctx) { try { return (long) MAX_BUFFER_LENGTH.invokeExact(ctx); } catch (Throwable t) { throw rethrow(t); } }
 	static void release(long obj) { try { RELEASE.invokeExact(obj); } catch (Throwable t) { throw rethrow(t); } }
-	static long bufferNew(long ctx, long size) { try { return (long) BUFFER_NEW.invokeExact(ctx, size); } catch (Throwable t) { throw rethrow(t); } }
+	static long bufferNew(long ctx, long size) {
+		long handle;
+		try {
+			handle = (long) BUFFER_NEW.invokeExact(ctx, size);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+		// (Metal gives nil when the GPU or the Mac can't provide the memory: an error here, not a native crash at the first write)
+		if (handle == 0) throw new OutOfMemoryError("Metal couldn't allocate a GPU buffer of " + (size >> 20) + " MB");
+		return handle;
+	}
 	static long bufferPrivate(long ctx, long src, long size) { try { return (long) BUFFER_PRIVATE.invokeExact(ctx, src, size); } catch (Throwable t) { throw rethrow(t); } }
 	static long bufferContents(long buffer) { try { return (long) BUFFER_CONTENTS.invokeExact(buffer); } catch (Throwable t) { throw rethrow(t); } }
 	static long textureNew(long ctx, int format, int w, int h, int layers, int mips, int usage, int cube) { try { return (long) TEXTURE_NEW.invokeExact(ctx, format, w, h, layers, mips, usage, cube); } catch (Throwable t) { throw rethrow(t); } }

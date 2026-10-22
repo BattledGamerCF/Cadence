@@ -239,6 +239,11 @@ Measured and dropped:
 
 ## Not supported yet
 
+PBR resource packs: the `normals` and `specular` samplers are constants (a flat normal, black), so a pack's labPBR /
+seuspbr "resource pack required" modes see no material maps (bug hunt 10-21, BH-22; reading `_n` / `_s` into material
+atlases laid out like the block atlas, as Iris does, is the missing piece). Shader packs on the OpenGL fallback
+(`cadence.metal=false`): refused with a message (the translated programs are Metal-only).
+
 1D images, geometry/tessellation stages (Shrimple and Rethinking Voxels need them), Distant Horizons programs (dh_*). A
 cold first load of a big pack translates for 2-7 s (cached afterwards: 0.1-0.4 s).
 

@@ -42,6 +42,9 @@ int mc_pc_max_threads(id<MTLComputePipelineState> p) { return (int) p.maxTotalTh
 // A texture compute kernels and shaders may write (ShaderRead | ShaderWrite, and RenderTarget when asked): dims 2 or 3.
 id<MTLTexture> mc_pc_texture_new(Ctx *ctx, int format, int dims, int w, int h, int d, int renderTarget) {
 	@autoreleasepool {
+		// (Metal asserts, killing the process, on a descriptor outside its limits: refuse those here, the caller throws)
+		int limit = dims == 3 ? 2048 : 16384;
+		if (w < 1 || h < 1 || (dims == 3 && d < 1) || w > limit || h > limit || (dims == 3 && d > limit)) return nil;
 		MTLTextureDescriptor *t = [[MTLTextureDescriptor new] autorelease];
 		t.textureType = dims == 3 ? MTLTextureType3D : MTLTextureType2D;
 		t.pixelFormat = (MTLPixelFormat) format;
@@ -58,7 +61,10 @@ id<MTLTexture> mc_pc_texture_new(Ctx *ctx, int format, int dims, int w, int h, i
 // A GPU-only buffer of zeros (buffer objects).
 id<MTLBuffer> mc_pc_buffer_new(Ctx *ctx, uint64_t size) {
 	@autoreleasepool {
+		// (beyond the device's limit, or a size that overflows when rounded: none; nil was filled and crashed the GPU driver)
+		if (size == 0 || size > (uint64_t) ctx->device.maxBufferLength) return nil;
 		id<MTLBuffer> b = [ctx->device newBufferWithLength:(size + 15) & ~(uint64_t) 15 options:MTLResourceStorageModePrivate];
+		if (!b) return nil;
 		id<MTLCommandBuffer> cb = [ctx->queue commandBuffer];
 		id<MTLBlitCommandEncoder> e = [cb blitCommandEncoder];
 		[e fillBuffer:b range:NSMakeRange(0, b.length) value:0];

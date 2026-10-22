@@ -33,7 +33,9 @@ public final class ConfigFiles {
 			}
 		} else p.store(bytes, comment);
 		if (file.getParent() != null) java.nio.file.Files.createDirectories(file.getParent());
-		java.nio.file.Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+		// (a unique temporary name: two saves of the same file at once from different threads shared ".tmp" before)
+		java.nio.file.Path tmp = java.nio.file.Files.createTempFile(file.getParent() == null ? java.nio.file.Path.of(".") : file.getParent(),
+			file.getFileName().toString(), ".tmp");
 		java.nio.file.Files.write(tmp, bytes.toByteArray());
 		try {
 			java.nio.file.Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);

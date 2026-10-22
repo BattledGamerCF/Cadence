@@ -50,7 +50,7 @@ public final class ShaderRuntime implements AutoCloseable {
   }
   private static final boolean SPARSE_PROJECTION =
       Boolean.getBoolean("cadence.shaders.sparseProjectionMatrices");
-  private static ShaderRuntime instance;
+  private static volatile ShaderRuntime instance;  // (read by chunk-compile workers and the pack-switch worker too)
   // Cadence render scale: the pack draws its whole frame at scale x the window into scaledOutput, then PackUpscale draws
   // that to the window. Null at scale 1 (exactly the original path).
   private com.mojang.renderpearl.api.textures.GpuTexture scaledOutput;

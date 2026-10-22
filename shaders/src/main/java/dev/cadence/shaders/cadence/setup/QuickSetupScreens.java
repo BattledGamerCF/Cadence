@@ -48,8 +48,17 @@ public final class QuickSetupScreens {
 		Minecraft mc = Minecraft.getInstance();
 		mc.gui.setScreen(new GenericMessageScreen(Component.literal("Setting up Cadence...")));
 		Thread t = new Thread(() -> {
-			QuickSetup.Result r = QuickSetup.run(stage -> mc.execute(() -> mc.gui.setScreen(new GenericMessageScreen(Component.literal(stage)))), goal);
-			mc.execute(() -> mc.gui.setScreen(results(r, parent)));
+			try {
+				QuickSetup.Result r = QuickSetup.run(stage -> mc.execute(() -> mc.gui.setScreen(new GenericMessageScreen(Component.literal(stage)))), goal);
+				mc.execute(() -> mc.gui.setScreen(results(r, parent)));
+			} catch (Throwable failure) {
+				// (the "Setting up..." screen has no buttons: a test that throws must not leave the player on it)
+				org.slf4j.LoggerFactory.getLogger("cadence").warn("Quick Setup failed", failure);
+				mc.execute(() -> {
+					mc.gui.setScreen(parent);
+					dev.cadence.shaders.cadence.system.Notices.post("Quick Setup couldn't finish", "Nothing was changed (" + failure + ").");
+				});
+			}
 		}, "cadence-quick-setup");
 		t.setDaemon(true);
 		t.start();

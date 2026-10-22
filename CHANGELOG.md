@@ -2,6 +2,48 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.13 / shaders 0.3.12 (2026-10-22)
+
+Fixes from an overnight audit (docs/dev-log/BUG-HUNT-10-21.md: 23 bugs found, 21 fixed here).
+
+Crashes and hangs:
+- **Many animated textures** (about 470 or more in one atlas: big resource packs and modpacks) stopped the game on its
+  out-of-memory screen ("Out of stack space"); the animation copy now uses a reusable table, and any failure there falls
+  back to vanilla's upload for that atlas.
+- **Shader packs with Cadence's Metal renderer off** (`cadence.metal=false`, or Distant Horizons on its OpenGL renderer)
+  aborted the game; packs now say they need the Metal renderer and the Shaders button is unavailable.
+- **Malformed shader packs** (an image of zero, negative or more than 16384 pixels a side, or a buffer the GPU can't give)
+  aborted the game; they're refused with a chat line naming the size.
+- **Video Settings > Java = Vivace**: a Vivace that never answers (a download still waiting on macOS's "can't be opened"
+  prompt) no longer stops the game from opening (20 s, then the launcher's Java, and not tried again until the switch is
+  turned on again); a damaged Vivace folder no longer stops Video Settings from opening.
+
+Frame rate:
+- **Max Framerate 40 or 50 on a 60 Hz screen ran at 30**: frame pacing now only paces caps a fixed-rate display can show
+  evenly (60, 30, 20 on 60 Hz); others are held by the CPU's wait as in vanilla (50 -> 50 fps).
+- **Cooling could hold 45 (shown as 30) for a whole session** when the Mac was first "warm" while a world was loading; the
+  hold now starts at its ceiling (120 fps with Balanced) when the moment's rate is under the screen's refresh.
+- **Render Max FPS** no longer makes every world join and dimension change wait 30 s on "Loading terrain...".
+
+Smaller:
+- Why Vivace isn't in use (missing, refused an option, didn't start) now shows in Video Settings after Cadence's restart;
+  the Java button is greyed (and says where) when `cadence.java` is set in cadence.properties or the Java arguments.
+- A shader pack that failed to load at launch no longer shows as "in use", and picking it again retries.
+- Shader pack errors no longer print full file paths (with the account name); a folder without `shaders/` inside says so.
+- Dropping a newer version of a pack onto the Shader Packs screen replaces the old file (copied whole, then moved in).
+- The shader caches (cadence-cache/spirv and msl) are kept under 256 MB each; they grew without limit.
+- Faster Shadows' check frees its frame-sized buffer when it ends (8-22 MB kept for the session before).
+- `autoMin=NaN` in the config no longer makes Auto resolution draw nothing; Pack Settings' first page fits a small window.
+- No empty temporary folder left at every launch; a temporary folder that can't be used falls back to the game folder,
+  and the error names the folder and the reason.
+- Metal's validation layer runs cleanly (the culling kernels' unused slots are bound; the animation copy stays under
+  Metal's 4 KB inline-data limit); failed GPU frames are reported in the log.
+- A server's own `/cadence` command reaches the server (only `/cadence messages on|off` stays local); Cadence's heap
+  trimming leaves GC options you set yourself alone; Quick Setup can't get stuck on "Setting up Cadence...".
+
+Known, not fixed: changing a pack's settings still pauses for 1-2 s (its pipelines compile on the first frame);
+PBR resource packs (labPBR/OldPBR `_n`/`_s` maps) aren't read (README > Known issues).
+
 ## 0.4.0-beta.12 / shaders 0.3.11 (2026-10-21)
 
 - **Video Settings > Java: Launcher's / Vivace** (Extras): play on Vivace, the Java build made alongside Cadence, without

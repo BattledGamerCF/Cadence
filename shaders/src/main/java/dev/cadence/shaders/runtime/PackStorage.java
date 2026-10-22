@@ -133,6 +133,12 @@ public final class PackStorage implements AutoCloseable {
       hh = (int) s.size()[1];
       if (s.dims() == 3) d = (int) s.size()[2];
     }
+    // (sizes from the pack: within Metal's limits, as raw textures; an invalid descriptor made Metal abort the whole game)
+    int limit = s.dims() == 3 ? 2048 : 16384;
+    if (w < 1 || hh < 1 || d < 1 || w > limit || hh > limit || d > limit
+        || (long) w * hh * d * s.format().blockSize() > 256L << 20)
+      throw new UnsupportedOperationException("Image " + s.name() + " is " + w + "x" + hh + (s.dims() == 3 ? "x" + d : "")
+          + ", beyond what Metal can make (1 to " + limit + " per side, 256 MB)");
     long texture = MetalCompute.texture(s.format(), s.dims(), w, hh, d, false);
     h = new long[] {texture, w, hh, d};
     imageHandles.put(s.name(), h);
@@ -157,8 +163,18 @@ public final class PackStorage implements AutoCloseable {
     if (b == null) return 0;
     long[] h = bufferHandles.get(index);
     if (h == null) {
-      long size = b.relative() ? b.bytes() * Math.max(1, Math.round(width * b.scaleX())) * Math.max(1, Math.round(height * b.scaleY())) : b.bytes();
-      h = new long[] {MetalCompute.buffer(Math.max(16, size)), size};
+      long size;
+      try {
+        size = b.relative() ? Math.multiplyExact(Math.multiplyExact(b.bytes(), (long) Math.max(1, Math.round(width * b.scaleX()))),
+            (long) Math.max(1, Math.round(height * b.scaleY()))) : b.bytes();
+      } catch (ArithmeticException e) {
+        size = Long.MAX_VALUE;
+      }
+      // (a buffer the GPU can't give came back nil and was filled anyway: a native crash; now a refusal with the size)
+      long handle = MetalCompute.buffer(Math.max(16, size));
+      if (handle == 0)
+        throw new UnsupportedOperationException("Buffer object " + index + " asks for " + size + " bytes, more than this Mac's GPU can give");
+      h = new long[] {handle, size};
       bufferHandles.put(index, h);
     }
     return h[0];

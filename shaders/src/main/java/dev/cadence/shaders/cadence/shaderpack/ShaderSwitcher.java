@@ -54,7 +54,22 @@ public final class ShaderSwitcher {
 
 	/** ShaderLoaderMod: the pack selected at launch couldn't load. */
 	public static void launchFailed(String pack, Throwable failure) {
-		failures.put(pack, failure instanceof java.nio.file.NoSuchFileException ? "its file is missing" : reason(failure));
+		failures.put(pack, playerReason(failure));
+		// (nothing runs: the list, the Shaders button and K must not treat it as in use, and picking it again must retry)
+		if (pack.equals(active) || pack.equals(requested)) {
+			active = "";
+			requested = "";
+		}
+	}
+
+	/**
+	 * Why a pack couldn't load, for chat and the Shader Packs list: a fixed reason for missing or unreadable files (their
+	 * exception text is just a full path, with the account name in it), the exception's own text otherwise.
+	 */
+	public static String playerReason(Throwable failure) {
+		if (failure instanceof java.nio.file.NoSuchFileException) return "its file is missing from the shaderpacks folder";
+		if (failure instanceof java.nio.file.AccessDeniedException) return "its file can't be read (permissions)";
+		return reason(failure);
 	}
 
 	private static String reason(Throwable failure) {
@@ -128,6 +143,10 @@ public final class ShaderSwitcher {
 	private static void apply(String pack, String mode, boolean force) {
 		if (!CadencePackGate.hooksApplied() || (!force && pack.equals(requested))) return;
 		Minecraft mc = Minecraft.getInstance();
+		if (!pack.isEmpty() && !CadencePackGate.metalBackend()) {
+			dev.cadence.shaders.cadence.system.Notices.post("Shaders are off", CadencePackGate.NO_METAL + ".");
+			return;
+		}
 		requested = pack;
 		int ticket = generation.incrementAndGet();
 		if (pack.isEmpty()) {
@@ -192,8 +211,8 @@ public final class ShaderSwitcher {
 				}
 				active = "";
 				requested = "";
-				failures.put(pack, reason(e));
-				tell(mc, Component.literal("Couldn't load shader pack " + ShaderToggle.display(pack) + ": " + e.getMessage()
+				failures.put(pack, playerReason(e));
+				tell(mc, Component.literal("Couldn't load shader pack " + ShaderToggle.display(pack) + ": " + playerReason(e)
 					+ " — shaders are off.").withStyle(ChatFormatting.RED));
 			}
 			// Cadence: a quality preset (or the same pack again) usually leaves every block's pack id and the vertex layout as

@@ -85,6 +85,10 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
   area (compatibility layers, first version).
 - Far terrain (`cadence.lod=true`) is experimental and best on Macs with 10 or more GPU cores.
 - Pegasus's rain draws as wide, blocky streaks (most likely the pack's own look; unverified).
+- PBR resource packs (labPBR or OldPBR normal and specular maps, `_n.png` / `_s.png`) aren't read yet: a shader pack's
+  "labPBR / seuspbr (resource pack required)" mode draws as with a plain resource pack (flat normals, no reflections).
+- Shader packs need the Metal renderer: with `cadence.metal=false` (or Distant Horizons on its OpenGL renderer) the
+  Shaders button is unavailable.
 
 ## Building from source
 

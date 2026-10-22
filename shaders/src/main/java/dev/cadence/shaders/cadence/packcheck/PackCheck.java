@@ -56,6 +56,16 @@ public final class PackCheck {
 	private static long diffOn, diffOff;
 	private static int worstOn = -1;
 	private static GpuBuffer readback;
+	/** A copy into readback not yet read (its callback will read it): the buffer is closed after, not under it. */
+	private static boolean copyPending;
+
+	/** The check's frame-sized buffer and picture, released when it ends (8-22 MB kept for the session before). */
+	private static void releaseReadback() {
+		off1 = null;
+		if (copyPending || readback == null) return;
+		readback.close();
+		readback = null;
+	}
 	private static volatile boolean captureDone;
 	private static String runningKey, status = "";
 	private static Result outcome;
@@ -199,6 +209,7 @@ public final class PackCheck {
 		if (camera != null) look(camera, yaw0, pitch0);
 		outcome = result;
 		status = message;
+		releaseReadback();
 		if (result != null && runningKey != null) {
 			load();
 			results.put(runningKey, result.name() + " " + java.time.LocalDate.now());
@@ -288,6 +299,7 @@ public final class PackCheck {
 			readback = device.createBuffer(() -> "Cadence pack check", GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST, bytes);
 		}
 		int capturedPhase = phase;
+		copyPending = true;
 		device.createCommandEncoder().copyTextureToBuffer(picture, readback, 0, () -> compare(capturedPhase), 0);
 	}
 
@@ -297,6 +309,12 @@ public final class PackCheck {
 			ByteBuffer data = view.data();
 			now = new byte[data.remaining()];
 			data.get(now);
+		} finally {
+			copyPending = false;
+		}
+		if (!running) {
+			releaseReadback();  // (the check ended while this copy was on its way)
+			return;
 		}
 		if (Boolean.getBoolean("cadence.packCheckDump")) {
 			try {

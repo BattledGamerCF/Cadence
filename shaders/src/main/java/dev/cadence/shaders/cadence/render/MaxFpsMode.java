@@ -15,6 +15,13 @@ public final class MaxFpsMode {
 	}
 
 	public static boolean on() {
+		// (not while a world or dimension is loading: the loading screen waits for the player's chunk to be built, which needs
+		// the world gathered and drawn; skipped, it held "Loading terrain..." for vanilla's full 30 s timeout at every join)
+		return on && !(net.minecraft.client.Minecraft.getInstance().gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);
+	}
+
+	/** The button's setting (on even while a world loads). */
+	public static boolean chosen() {
 		return on;
 	}
 

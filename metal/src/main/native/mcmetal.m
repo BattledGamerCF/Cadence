@@ -108,6 +108,16 @@ void mc_diag_enable(double thresholdMs) {
 	diagOn = 1;
 }
 
+// A frame's command buffer that failed (GPU timeout, out of memory, a page fault): said in the log, the first 5 times a session.
+// Without it a failed frame was a black or garbled picture with nothing in the log.
+static int cmdErrors;
+static void cmdErrorReport(const char *which, id<MTLCommandBuffer> cb) {
+	if (cb.status != MTLCommandBufferStatusError) return;
+	int k = __atomic_fetch_add(&cmdErrors, 1, __ATOMIC_RELAXED);
+	if (k < 5) fprintf(stderr, "cadence-metal: the frame's %s command buffer failed: %s%s\n", which,
+		cb.error ? cb.error.localizedDescription.UTF8String : "(no error given)", k == 4 ? " (not reported again this session)" : "");
+}
+
 static void diagReport(const char *which, long submit, double commit, uint64_t big, uint64_t copied, id<MTLCommandBuffer> cb) {
 	double ks = cb.kernelStartTime, ke = cb.kernelEndTime, gs = cb.GPUStartTime, ge = cb.GPUEndTime;
 	if (!big && (ke - ks) * 1e3 < diagMs && (ge - gs) * 1e3 < diagMs && (gs - ke) * 1e3 < diagMs) return;
@@ -1000,6 +1010,7 @@ id<MTLCommandBuffer> mc_enc_commit(Enc *enc) {
 	if (enc->pre) {
 		mc_pre_end_encoders(enc);
 		if (diagOn) [enc->pre addCompletedHandler:^(id<MTLCommandBuffer> cb) { diagReport("pre", n, t, big, preBytes, cb); }];
+		[enc->pre addCompletedHandler:^(id<MTLCommandBuffer> cb) { cmdErrorReport("pre", cb); }];
 		[enc->pre commit];
 		[enc->pre release];
 		enc->pre = nil;
@@ -1008,6 +1019,7 @@ id<MTLCommandBuffer> mc_enc_commit(Enc *enc) {
 	endRender(enc);
 	id<MTLCommandBuffer> c = cmd(enc);
 	if (diagOn) [c addCompletedHandler:^(id<MTLCommandBuffer> cb) { diagReport("main", n, t, big, mainBytes, cb); }];
+	[c addCompletedHandler:^(id<MTLCommandBuffer> cb) { cmdErrorReport("main", cb); }];
 	[c commit];
 	if (gcOn) {  // -Dcadence.metal.gpuCount: the next frame's encoders get a new record and frame index
 		gcFrame++;

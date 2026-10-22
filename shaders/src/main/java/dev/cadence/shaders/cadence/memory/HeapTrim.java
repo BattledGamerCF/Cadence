@@ -111,7 +111,14 @@ public final class HeapTrim {
 		}
 	}
 
+	/** The player's own Java arguments: the options they set are theirs (as with Cadence's Java defaults). */
+	private static final java.util.List<String> INPUT = ManagementFactory.getRuntimeMXBean().getInputArguments();
+
 	private static void set(String flag, String value) {
+		for (String a : INPUT) {
+			if (a.startsWith("-XX:" + flag + "=")) return;
+			if (flag.equals("SoftMaxHeapSize") && (a.startsWith("-XX:SoftMaxHeapSize"))) return;
+		}
 		try {
 			ManagementFactory.getPlatformMXBean(com.sun.management.HotSpotDiagnosticMXBean.class).setVMOption(flag, value);
 		} catch (RuntimeException e) {

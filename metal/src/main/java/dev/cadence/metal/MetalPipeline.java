@@ -424,6 +424,11 @@ public final class MetalPipeline implements BackendRenderPipeline {
 	/** What the translation depends on besides its inputs: this class's code (options, bindings) and the SPIRV-Cross build. */
 	private static final String MSL_KEY_SALT = MSL_CACHE ? mslSalt() : null;
 
+	static {
+		// (at load, not at the first translation: with every pipeline found in the later caches no translation ever runs)
+		if (MSL_CACHE) DiskCacheBudget.pruneOnce(MSL_DIR, Long.getLong("cadence.startup.mslCacheDisk", 256L << 20));
+	}
+
 	private static String mslSalt() {
 		try (java.io.InputStream in = MetalPipeline.class.getResourceAsStream("MetalPipeline.class")) {
 			byte[] code = in.readAllBytes();
@@ -465,6 +470,7 @@ public final class MetalPipeline implements BackendRenderPipeline {
 			int nl = text.indexOf('\n');
 			if (nl > 0) {
 				mslHits++;
+				DiskCacheBudget.used(file);
 				Translated hit = new Translated(text.substring(nl + 1), text.substring(0, nl));
 				if (MSL_MODE.equals("verify") && !hit.equals(translateNow(module, uniformCount, slots, constexpr, storage))) mslMismatches++;
 				return hit;

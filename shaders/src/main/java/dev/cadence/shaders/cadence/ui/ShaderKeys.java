@@ -29,6 +29,13 @@ public final class ShaderKeys {
 
 	/** Minecraft.handleKeybinds (in a world, no screen open). */
 	public static void tick(Minecraft mc) {
+		if (!dev.cadence.shaders.CadencePackGate.metalBackend()) {
+			// (no shader packs this session: say why once per press instead of opening a list that can't work)
+			boolean pressed = false;
+			while (PACKS.consumeClick() | TOGGLE.consumeClick()) pressed = true;
+			if (pressed) dev.cadence.shaders.cadence.system.Notices.post("Shaders are off", dev.cadence.shaders.CadencePackGate.NO_METAL + ".");
+			return;
+		}
 		while (PACKS.consumeClick()) mc.gui.setScreen(new ShaderPacksScreen(null));
 		while (TOGGLE.consumeClick()) {
 			String now = ShaderToggle.selectedPack();

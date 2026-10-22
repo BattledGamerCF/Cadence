@@ -19,11 +19,11 @@ public abstract class CadenceMessagesMixin {
 
 	@Inject(method = "sendCommand", at = @At("HEAD"), cancellable = true)
 	private void cadence$typed(String command, CallbackInfo ci) {
-		if (CadenceMessages.command(command)) ci.cancel();
+		if (CadenceMessages.command(command, (ClientPacketListener) (Object) this)) ci.cancel();
 	}
 
 	@Inject(method = "sendUnattendedCommand", at = @At("HEAD"), cancellable = true)
 	private void cadence$clicked(String command, Screen screen, CallbackInfo ci) {
-		if (CadenceMessages.command(command)) ci.cancel();
+		if (CadenceMessages.command(command, (ClientPacketListener) (Object) this)) ci.cancel();
 	}
 }

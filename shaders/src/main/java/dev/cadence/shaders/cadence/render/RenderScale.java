@@ -36,7 +36,9 @@ public final class RenderScale {
 			autoTarget = 60;
 		}
 		try {
-			autoMin = Math.max(MIN, Math.min(MAX, Float.parseFloat(ShaderToggle.configValue("autoMin", "0.5").strip())));
+			float v = Float.parseFloat(ShaderToggle.configValue("autoMin", "0.5").strip());
+			// (NaN passed Math.min/max and drove Auto to scale 0: an empty world)
+			autoMin = Float.isNaN(v) ? 0.5f : Math.max(MIN, Math.min(MAX, v));
 		} catch (NumberFormatException e) {
 			autoMin = 0.5f;
 		}

@@ -16,5 +16,5 @@ set -e
 "$JAVA/bin/java" -cp "$OUT:$CP" SectionBench | tail -1
 M="$ROOT/metal/src/main/java/dev/cadence/metal"
 "$JAVA/bin/javac" -nowarn -d "$OUT/v" "$M/Vivace.java" "$M/ConfigFiles.java" "$M/Legacy.java" "$ROOT/tools/logic-tests/VivaceCheck.java"
-"$JAVA/bin/java" -cp "$OUT/v" dev.cadence.metal.VivaceCheck "$JAVA" | tail -1
+"$JAVA/bin/java" -Dcadence.javaProbeTimeout=3 -cp "$OUT/v" dev.cadence.metal.VivaceCheck "$JAVA" | tail -1
 rm -rf "$OUT"
