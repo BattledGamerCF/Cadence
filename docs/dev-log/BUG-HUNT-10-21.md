@@ -525,18 +525,18 @@ Each fix re-tested with the audit's own reproduction unless noted.
 |---|---|---|---|
 | BH-01 | fixed | probe output to a file, wait with the deadline first, kill the process tree; a timeout or a macOS stop marks that Vivace failed (no 20 s at every launch) | VivaceCheck: a `sleep 300` java returns in 2 s (test timeout), not probed again |
 | BH-02 | fixed | unparsable JAVA_VERSION reads as version 1 (oldest, "too old") | VivaceCheck: two candidates, one "banana": valid one chosen, no exception |
-| BH-03 | fixed | `autoMin=NaN` falls back to 0.5 | run-b `1022-043838`: BSL at scale 0.8 |
+| BH-03 | fixed | `autoMin=NaN` falls back to 0.5 | run-b `1022-043834`: BSL at scale 0.8 |
 | BH-04 | fixed | the temp folder registered for deletion before the library | 0 new `mcmetal*` folders over ~15 launches (822 old empty ones removed) |
 | BH-05 | fixed | `DiskCacheBudget`: spirv and msl kept under 256 MB each (LRU by file time, refreshed on hits; stale .tmp removed) | spirv 304 -> 191 MB at the first launch |
 | BH-06 | fixed | `launchFailed` clears the active/requested pack | run-b `1022-043554`: no "in use", re-pick retries with the error |
 | BH-07 | fixed | the note rides into the restarted process (`CADENCE_JAVA_NOTE`) | two launches with a Vivace that passes -version only: Video Settings says "Vivace didn't start last time..." |
 | BH-08 | not fixed | the new pack's pipelines compile on its first frame (they depend on that frame's setup); moving that setup off the render thread is a restructuring left for a day session | — |
-| BH-09 | fixed | Render Max FPS doesn't apply while `LevelLoadingScreen` is up | `1022-043937`: void right after rejoin and after the Nether change, no 30 s timeout |
-| BH-10 | fixed | the readback buffer (and the kept picture) released when the check ends, after any copy in flight | `1022-044*`: no "Cadence pack check" buffer at the end, 10 MB of buffers |
+| BH-09 | fixed | Render Max FPS doesn't apply while `LevelLoadingScreen` is up | `1022-043948`: void right after rejoin and after the Nether change, no 30 s timeout |
+| BH-10 | fixed | the readback buffer (and the kept picture) released when the check ends, after any copy in flight | `1022-044903`: no "Cadence pack check" buffer at the end, 10 MB of buffers |
 | BH-11 | fixed | `CadencePackGate.metalBackend()`: packs refused at launch and on switch, Shaders button "Unavailable", K/O say why | `1022-043023` (`cadence.metal=false`, BSL): notice, game runs, exit 0 |
-| BH-12 | fixed | pacing only for caps that are a whole number of refreshes | run-b: cap 50 -> 50 fps, 60 -> 60 (paced), 45 -> 40 (the display's own rounding, as unpaced) |
+| BH-12 | fixed | pacing only for caps that are a whole number of refreshes | run-b `1022-044158` (45), `044313` (50), `044428` (60): cap 50 -> 50 fps, 60 -> 60 (paced), 45 -> 40 (the display's own rounding, as unpaced) |
 | BH-13 | fixed | footer buttons narrowed to fit the screen | run-b 640x480 GUI 4: Reset / Apply / Done all visible |
-| BH-14 | fixed | the hold starts at its ceiling when the moment's rate is under the refresh rate | `thermal=1` right after a join, twice: hold 120 both times |
+| BH-14 | fixed | the hold starts at its ceiling when the moment's rate is under the refresh rate | `1022-044558`, `1022-044727` (`thermal=1` right after a join): hold 120 both times |
 | BH-15 | fixed | the rectangle table in a reusable native buffer; any failure in the copy falls back to vanilla's upload for that atlas | run-anim (600 animated sprites, 3287 sprite mips) under `MTL_DEBUG_LAYER=1`: runs |
 | BH-16 | fixed | a 4 KB zero buffer bound to the cull kernels' optional slots | the same run: the strict validation layer no longer aborts |
 | BH-17 | fixed | image sizes checked (1..16384, 3D 1..2048, 256 MB) in Java and natively | six odd packs: each refused with a chat line, game runs |
