@@ -57,10 +57,20 @@ public final class LodPackFrame {
 
 	/**
 	 * The draw's arguments (a native MTLBuffer): at offset 0 an indexed indirect draw of instances of 64 quads, the quad
-	 * count in word 14, the camera's offset from the far terrain's origin (float bits) in words 116-118, the origin's y in word 119.
+	 * count in word 14, the camera's offset from the far terrain's origin (float bits) in words 116-118, the origin's y in word 119, the earth's curvature (float bits) in word 120.
 	 */
 	public static long args() {
 		return args;
+	}
+
+	/** (Far Terrain page) Pre-generates within `chunks` chunks of the camera: tiles queued; 0 all cached; -1 not possible here. */
+	public static int pregenerate(int chunks) {
+		return LodConfig.ENABLED ? Lod.pregenerate(chunks) : -1;
+	}
+
+	/** A line for the HUD while the far terrain fills in or pre-generates, else null. */
+	public static @org.jspecify.annotations.Nullable String status() {
+		return LodConfig.ENABLED ? Lod.status() : null;
 	}
 
 	/** The far terrain's reach in blocks while it draws, else 0. */

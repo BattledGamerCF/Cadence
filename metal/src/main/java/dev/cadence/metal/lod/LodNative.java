@@ -26,7 +26,7 @@ final class LodNative {
 	private static final MethodHandle COLS_COMPOSITE = fn("mcl_cols_composite", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle MESH_TILE = fn("mcl_mesh_tile", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT,
-		JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT);
+		JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_INT);
 	private static final MethodHandle MESH_CULL = fn("mcl_mesh_cull", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT);
 	private static final MethodHandle MESH_PACK_MODE = fn("mcl_mesh_pack_mode", false, null, JAVA_LONG, JAVA_LONG);
@@ -119,12 +119,14 @@ final class LodNative {
 
 	/**
 	 * Meshes one tile (lodmesh.c) from native memory into native memory; any thread. The quad count, or -1 when cap is too small.
-	 * color (shader-pack mode; colorLogN its toroidal size): faces merge only within one colour; 0: geometric merging.
+	 * color (shader-pack mode; colorLogN its toroidal size): faces merge only within one colour; 0: geometric merging. floating: a
+	 * dimension without a floor (columns end at their depth; the deepest y is void).
 	 */
 	static int meshTile(long geom, long crown, long runs, long plantA, long plantB, int logN, int level, int tx, int tz, int neighbors, int block, long header,
-		long quads, int cap, long color, int colorLogN) {
+		long quads, int cap, long color, int colorLogN, boolean floating) {
 		try {
-			return (int) MESH_TILE.invokeExact(geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block, header, quads, cap, color, colorLogN);
+			return (int) MESH_TILE.invokeExact(geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block, header, quads, cap, color, colorLogN,
+				floating ? 1 : 0);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}

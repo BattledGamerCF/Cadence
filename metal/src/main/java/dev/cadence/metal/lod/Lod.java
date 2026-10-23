@@ -45,7 +45,7 @@ public final class Lod {
 	/** ColFrame in columns.metal: A, B, C, cam, origin, cols, lines, screen, mask, maskDist (10 x 16) + 12 levels x 32. */
 	static final int COL_FRAME_BYTES = 10 * 16 + MAX_LEVELS * 32;
 	/** CompFrame: float4x4 + A, B, C, screen, fogColor, fog, skyLight, faceShade, quadDepth, origin, camFrac, tex (12 x 16). */
-	static final int COMP_FRAME_BYTES = 64 + 12 * 16;
+	static final int COMP_FRAME_BYTES = 64 + 13 * 16;
 	private static final int MASK_MAX = 128;
 	private static final int RING = 4;
 
@@ -347,7 +347,7 @@ public final class Lod {
 	private void ensureWorld(Minecraft mc) {
 		ClientLevel level = mc.level;
 		MinecraftServer server = mc.getSingleplayerServer();
-		Object owner = level == null || server == null ? null : level;
+		Object owner = level;
 		if (owner == this.worldOwner) return;
 		if (this.field != null) {
 			this.field.close();
@@ -371,20 +371,40 @@ public final class Lod {
 		}
 		this.worldOwner = owner;
 		if (owner == null) return;
-		ServerLevel sl = server.getLevel(level.dimension());
-		if (sl == null) return;
-		LodNoise noise = LodNoise.of(sl);
-		if (noise == null) {
-			System.out.println("cadence-lod: no far terrain in " + level.dimension().identifier() + " (not noise-generated, or a ceiling)");
-			return;
+		// Cadence: single player (and a LAN host) generates the far terrain from the world's own generator; on a server (or a
+		// LAN guest) there is no generator at hand: the far terrain is the land this player has explored, kept on disk per
+		// server and dimension (as Distant Horizons does without its server plugin)
+		LodNoise noise = null;
+		String save;
+		if (server != null) {
+			ServerLevel sl = server.getLevel(level.dimension());
+			if (sl == null) return;
+			if (level.dimensionType().hasCeiling()) {
+				System.out.println("cadence-lod: no far terrain in " + level.dimension().identifier() + " (a ceiling: the far view would be the roof)");
+				return;
+			}
+			noise = LodNoise.of(sl);
+			if (noise == null) System.out.println("cadence-lod: " + level.dimension().identifier() + " isn't noise-generated: far terrain from explored land only");
+			save = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize().getFileName().toString();
+		} else {
+			if (level.dimensionType().hasCeiling()) {
+				System.out.println("cadence-lod: no far terrain in " + level.dimension().identifier() + " (a ceiling: the far view would be the roof)");
+				return;
+			}
+			var info = mc.getCurrentServer();
+			String address = info != null ? info.ip : "server";
+			save = "servers/" + address.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9._-]", "_");
+			System.out.println("cadence-lod: on a server: far terrain from explored land only");
 		}
 		Path root = LodConfig.CACHE_DIR != null ? Path.of(LodConfig.CACHE_DIR) : mc.gameDirectory.toPath().resolve("cadence-lod");
-		String save = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize().getFileName().toString();
 		Path cache = root.resolve(save).resolve(level.dimension().identifier().getNamespace() + "_" + level.dimension().identifier().getPath());
 		// tiles cached under other crown or tree levels lack (or carry) data these levels need: their own directory
 		if (LodConfig.CROWN_LEVELS != 1 || LodConfig.TREE_LEVELS != 1) cache = cache.resolve("c" + LodConfig.CROWN_LEVELS + "t" + LodConfig.TREE_LEVELS);
 		this.clip = new LodClip(this.ctx, LodConfig.N, LodConfig.reachBlocks());
-		if (LodConfig.MESH) this.mesh = new LodMesh(this.ctx, this.clip);
+		if (LodConfig.MESH) {
+			this.mesh = new LodMesh(this.ctx, this.clip);
+			this.mesh.floating = level.dimension() == net.minecraft.world.level.Level.END;
+		}
 		if (this.mesh != null && LodPk.ENABLED) {
 			// (its passes order their outputs by hazard tracking, not -Dcadence.lod.meshFences' fences)
 			if (LodMesh.FENCES) System.out.println("cadence-lod: -Dcadence.lod.pk ignores -Dcadence.lod.meshFences");
@@ -397,7 +417,8 @@ public final class Lod {
 			this.clip.publisher = this.publish;
 		}
 		this.field = new LodField(noise, this.clip, cache);
-		if (LodGenBench.ENABLED) LodGenBench.start(noise, this.field);
+		this.field.floating = level.dimension() == net.minecraft.world.level.Level.END;
+		if (LodGenBench.ENABLED && noise != null) LodGenBench.start(noise, this.field);
 		if (LodYield.ON) LodYield.top = this.clip.levels - 1;
 	}
 
@@ -861,6 +882,11 @@ public final class Lod {
 		MemoryUtil.memPutFloat(c + 240, (float) (2 * Math.atan(tanY) / height));
 		MemoryUtil.memPutFloat(c + 244, this.atlasMips);
 		MemoryUtil.memPutFloat(c + 248, LodConfig.TEXTURES && this.atlasMips >= 0 ? 1 : 0);
+		// the player's look settings: brightness, saturation, the earth's curvature
+		MemoryUtil.memPutFloat(c + 256, LodConfig.brightness());
+		MemoryUtil.memPutFloat(c + 260, LodConfig.saturation());
+		MemoryUtil.memPutFloat(c + 264, LodConfig.curvatureDrop());
+		MemoryUtil.memPutFloat(c + 268, 0);
 		MemoryUtil.memPutFloat(c + 252, Integer.getInteger("cadence.lod.debugView", 0));
 		return columns;
 	}
@@ -1226,7 +1252,7 @@ public final class Lod {
 			(LodField.CHUNK_TILES ? String.format(", chunk tiles %d (generations skipped %d)", w.chunkTiles.get(), w.chunkSkipped.get()) : "")
 				+ (CHUNK_HOLD ? String.format(", chunks held %d (released %d)", w.heldCount(), w.heldReleased) : ""));
 		StringBuilder gen = new StringBuilder();
-		for (int i = 0; i < 16; i++) {
+		for (int i = 0; i < 16 && w.noise != null; i++) {
 			long n = w.noise.stageNanos.get(i * 4 + 3);
 			if (n == 0) continue;
 			gen.append(String.format(" L%d:%d tiles %.0f/%.0f/%.0f ms", i, n, w.noise.stageNanos.get(i * 4) / 1e6 / n, w.noise.stageNanos.get(i * 4 + 1) / 1e6 / n,
@@ -1360,6 +1386,30 @@ public final class Lod {
 	public static boolean settled() {
 		Lod l = instance;
 		return l != null && l.field != null && l.field.settled;
+	}
+
+	/**
+	 * (Far Terrain page) Pre-generates the far terrain within `chunks` chunks of the camera to the disk cache: tiles queued, 0
+	 * when all are cached already, -1 when far terrain isn't running here or can't generate (a server: explored land only).
+	 */
+	static int pregenerate(int chunks) {
+		Lod l = instance;
+		LodField w = l == null ? null : l.field;
+		if (w == null || !w.generates) return -1;
+		return w.pregenerate(l.camX, l.camZ, chunks);
+	}
+
+	/** A line for the HUD while the far terrain fills in view or pre-generates, else null. Render thread. */
+	static @Nullable String status() {
+		Lod l = instance;
+		LodField w = l == null ? null : l.field;
+		if (w == null) return null;
+		int queued = w.pregenQueued.get(), done = w.pregenDone.get();
+		if (done < queued) return "Far terrain: pre-generating " + done * 100L / queued + "%";
+		int needed = w.needed, missing = w.missing;
+		// (a few tiles missing at the edge while moving is normal: shown only while a real share is still to come)
+		if (needed > 0 && missing * 20L > needed) return "Far terrain: " + (needed - missing) * 100L / needed + "% filled";
+		return null;
 	}
 
 	/** For the bench: seconds from the world's first request to settled (NaN while not). */

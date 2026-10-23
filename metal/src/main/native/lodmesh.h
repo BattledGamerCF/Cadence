@@ -60,6 +60,9 @@ typedef struct {
 	// colour (a pack's program colours a quad by its vertices, as Distant Horizons' are). NULL: purely geometric merging.
 	const uint32_t *color;
 	int colorLogN;
+	// (Cadence) a dimension without a floor (the End): a column's solid run ends GEOM_DEPTH blocks under its top (an island's
+	// underside) instead of reaching the world's bottom, and a column at the deepest y (-512) is void: no faces
+	int floating;
 } LmIn;
 
 // Meshes one tile. header: (64 / block)^2 blocks x LM_HDR words, block-major in rows of z: per group start (quads from the

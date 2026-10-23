@@ -153,6 +153,10 @@ public final class Profile {
 			set.put("cadence.lod.plants", "false");
 			set.put("cadence.lod.treeLevels", "0");
 		}
+		for (String look : new String[] {"brightness", "saturation", "curvature"}) {
+			String v = ui.getProperty("farTerrain." + look, "").strip();
+			if (v.matches("[0-9]+(\\.[0-9]+)?")) set.put("cadence.lod." + look, v);
+		}
 		switch (ui.getProperty("farTerrain.fog", "normal").strip().toLowerCase(java.util.Locale.ROOT)) {
 			case "light" -> set.put("cadence.lod.haze", "2.0");
 			case "off" -> {

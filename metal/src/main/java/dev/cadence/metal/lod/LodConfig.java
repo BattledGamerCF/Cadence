@@ -18,6 +18,34 @@ public final class LodConfig {
 	 * on its own; an explicit flag wins.
 	 */
 	public static final boolean SMALL = Boolean.getBoolean("cadence.lod.small");
+
+	/**
+	 * (Video Settings > Far Terrain) the far terrain's look, changed live by the settings page: brightness and saturation
+	 * (1: as generated) and the earth's curvature as Distant Horizons gives it, a ratio to the Earth's size (0: flat; 50: a
+	 * planet a fiftieth the size, so far land sinks below the horizon). -Dcadence.lod.brightness / saturation / curvature.
+	 */
+	private static volatile float brightness = Float.parseFloat(System.getProperty("cadence.lod.brightness", "1")),
+		saturation = Float.parseFloat(System.getProperty("cadence.lod.saturation", "1")),
+		curvature = Float.parseFloat(System.getProperty("cadence.lod.curvature", "0"));
+
+	public static void look(float brightnessValue, float saturationValue, float curvatureRatio) {
+		brightness = brightnessValue;
+		saturation = saturationValue;
+		curvature = curvatureRatio;
+	}
+
+	static float brightness() {
+		return brightness;
+	}
+
+	static float saturation() {
+		return saturation;
+	}
+
+	/** Blocks a point drops per square block of horizontal distance: d^2 / (2 R), R the Earth's radius over the ratio. */
+	static float curvatureDrop() {
+		return curvature <= 0 ? 0 : (float) (curvature / (2 * 6_371_000.0));
+	}
 	/** -Dcadence.lod.radius=N: how far the far terrain reaches, in chunks (to the edge of the coarsest tiles drawn). */
 	public static final int RADIUS_CHUNKS = Integer.getInteger("cadence.lod.radius", 512);
 	/**

@@ -114,6 +114,8 @@ final class LodMesh implements LodClip.Listener {
 	 * pack colours each quad by its vertices (lodmesh.c). Read by the workers.
 	 */
 	private volatile boolean colorMerge;
+	/** A dimension without a floor (the End): columns float (lodmesh.c LmIn.floating). Set once, before any meshing. */
+	volatile boolean floating;
 
 	/** Render thread: switches the merging mode; every resident tile is meshed again in the new one. */
 	void colorMerge(boolean on) {
@@ -248,10 +250,10 @@ final class LodMesh implements LodClip.Listener {
 					ver = v;
 					long sp = (long) SCRATCH * SCRATCH * 4;
 					n = LodNative.meshTile(scratch, crowns ? scratch + sp : 0, crowns ? scratch + 2 * sp : 0, plants ? scratch + 3 * sp : 0, plants ? scratch + 4 * sp : 0,
-						SCRATCH_LOG, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS, byColor ? scratch + 5 * sp : 0, SCRATCH_LOG);
+						SCRATCH_LOG, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS, byColor ? scratch + 5 * sp : 0, SCRATCH_LOG, this.floating);
 				} else {
 					n = LodNative.meshTile(this.clip.geom + lw, crown, runs, pa, pb, this.clip.logN, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS,
-						byColor ? this.clip.color + lw : 0, this.clip.logN);
+						byColor ? this.clip.color + lw : 0, this.clip.logN, this.floating);
 				}
 				if (byColor != this.colorMerge) this.request(level, tx, tz);  // (the mode changed meanwhile: again, in the new one)
 				this.meshNanos.addAndGet(System.nanoTime() - t0);

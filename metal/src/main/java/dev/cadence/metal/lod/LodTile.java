@@ -23,6 +23,13 @@ final class LodTile {
 	final short[] height;
 	/** World y of the water surface's top face, or DRY. */
 	final short[] water;
+	/**
+	 * (A dimension without a floor: the End) world y of the bottom of each column's top solid run (an island's underside), or
+	 * DRY: solid all the way down. A column with nothing solid has its height at VOID.
+	 */
+	final short[] floor;
+	/** The height of a column with nothing solid in it (a floorless dimension's void): no faces at all. */
+	static final short VOID = -512;
 	/** RGB seen from above (water's own color, already mixed with the floor by depth, where wet). */
 	final int[] top;
 	/**
@@ -81,6 +88,8 @@ final class LodTile {
 		int n = size * size;
 		this.height = new short[n];
 		this.water = new short[n];
+		this.floor = new short[n];
+		java.util.Arrays.fill(this.floor, DRY);
 		this.top = new int[n];
 		this.side = new int[n];
 		this.below = new int[n];

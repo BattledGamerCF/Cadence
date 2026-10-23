@@ -64,8 +64,53 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 				new String[] {"Normal", "Light", "Off"},
 				Tips.of("Haze over the far terrain.", "Normal|the game's own fog, stretched to the far terrain's reach",
 					"Light|half as dense", "Off|clear to the horizon")),
+			cycle("Progress Line", "farTerrain.progress", "on", new String[] {"on", "off"}, new String[] {"On", "Off"},
+				Tips.of("A line under the fps counter while the far terrain fills in or pre-generates (\"Far terrain: 63% filled\").")));
+		this.list.addHeader(Component.literal("Look (applies now)").withStyle(ChatFormatting.GRAY));
+		this.list.addSmall(cycle("Brightness", "farTerrain.brightness", "1.0", new String[] {"0.6", "0.8", "1.0", "1.2", "1.4"},
+				new String[] {"60%", "80%", "100%", "120%", "140%"}, Tips.of("How bright the far terrain is drawn (100%: as generated).")),
+			cycle("Saturation", "farTerrain.saturation", "1.0", new String[] {"0.5", "0.75", "1.0", "1.25", "1.5"},
+				new String[] {"50%", "75%", "100%", "125%", "150%"}, Tips.of("How vivid the far terrain's colours are (100%: as generated).")));
+		this.list.addSmall(cycle("Earth Curvature", "farTerrain.curvature", "0", new String[] {"0", "50", "200", "1000"},
+				new String[] {"Off", "Gentle", "Strong", "Tiny Planet"},
+				Tips.of("The world curving away like a planet, as Distant Horizons' option: far land sinks below the horizon.",
+					"Off|flat, as Minecraft is", "Gentle|a planet 1/50 the Earth's size", "Strong|1/200",
+					"Tiny Planet|1/1000: a few kilometres around")),
 			null);
+		if (running()) {
+			this.list.addHeader(Component.literal("Pre-generate the far terrain around you, to disk").withStyle(ChatFormatting.GRAY));
+			this.list.addSmall(pregen("Pre-generate 1 km", 64), pregen("Pre-generate 4 km", 256));
+		}
 		this.list.addHeader(Component.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
+	}
+
+	/** Whether the progress line shows (Progress Line setting). */
+	public static boolean progressLine() {
+		return !"off".equalsIgnoreCase(ShaderToggle.configValue("farTerrain.progress", "on").strip());
+	}
+
+	/** The look settings (brightness, saturation, curvature) into the running far terrain: they apply live. */
+	public static void applyLook() {
+		if (!running()) return;
+		dev.cadence.metal.lod.LodConfig.look(number("farTerrain.brightness", 1), number("farTerrain.saturation", 1), number("farTerrain.curvature", 0));
+	}
+
+	private static float number(String key, float fallback) {
+		try {
+			return Float.parseFloat(ShaderToggle.configValue(key, Float.toString(fallback)).strip());
+		} catch (NumberFormatException e) {
+			return fallback;
+		}
+	}
+
+	private Button pregen(String label, int chunks) {
+		return Button.builder(Component.literal(label), b -> {
+			int queued = dev.cadence.metal.lod.LodPackFrame.pregenerate(chunks);
+			b.setMessage(Component.literal(queued < 0 ? "Not here (no generator)" : queued == 0 ? "Already generated" : "Queued " + queued + " tiles"));
+			b.active = false;
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Generates the far terrain within " + chunks * 16 / 1000 + " km of you now, in the background, and keeps it"
+			+ " on disk: travelling there later shows it at once.",
+			"#Single player and LAN hosts. About " + (chunks <= 64 ? "40 MB, under a minute" : "250 MB, a few minutes") + "; progress on the progress line.")).build();
 	}
 
 	private Button cycle(String label, String key, String def, String[] values, String[] labels, Tooltip tip) {
@@ -75,6 +120,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 			int i = java.util.Arrays.asList(values).indexOf(now);
 			int step = Minecraft.getInstance().hasShiftDown() ? values.length - 1 : 1;
 			ShaderToggle.saveKey(key, values[(Math.max(0, i) + step) % values.length]);
+				applyLook();
 			// (the header says whether a restart is due: rebuilt with the new value)
 			Minecraft.getInstance().gui.setScreen(new FarTerrainScreen(this.lastScreen));
 		}).width(Button.DEFAULT_WIDTH).tooltip(tip).build();

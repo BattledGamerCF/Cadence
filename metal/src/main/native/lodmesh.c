@@ -48,6 +48,8 @@ static void column(const LmIn *in, int ax, int az, Col *c) {
 	int m = (1 << in->logN) - 1;
 	int depth = GEOM_DEPTH(in->geom[((size_t) (az & m) << in->logN) | (size_t) (ax & m)]);
 	c->bot = depth > 0 && c->n > 0 ? c->hi[0] - depth : NEG_INF;
+	// (a floating column's void underneath is no occluder)
+	if (in->floating && c->n == 0) c->bot = NEG_INF;
 }
 
 static void column0(const LmIn *in, int ax, int az, Col *c) {
@@ -79,6 +81,13 @@ static void column0(const LmIn *in, int ax, int az, Col *c) {
 				y += (int) len;
 			}
 		}
+		return;
+	}
+	if (in->floating) {
+		// an island: its run's underside (GEOM_DEPTH blocks down; 0: to the bottom), nothing at all for the void
+		if (top <= LM_DEEP) return;
+		int depth = GEOM_DEPTH(g);
+		addIv(c, depth > 0 ? top - depth : NEG_INF, top, LM_K_GROUND);
 		return;
 	}
 	addIv(c, NEG_INF, top, LM_K_GROUND);
@@ -296,7 +305,8 @@ static void walls(Out *o, const LmIn *in, const Col *cols, int b, int x0, int z0
 				if (p[r].used[k]) continue;
 				int lo = p[r].lo[k], hi = p[r].hi[k], kind = p[r].kind[k];
 				// a skirt's ground piece (its lowest): one cell each, its foot found on the GPU
-				int dynamic = skirt && k == 0 && kind != LM_K_CROWN;
+				// (not for a floating column: its skirt ends at its own underside, there is nothing below to reach)
+				int dynamic = skirt && k == 0 && kind != LM_K_CROWN && !in->floating;
 				if (dynamic) {
 					if (alongX) emitf(o, x0 + r, plane, 1, 1, face, kind, lo, hi, 0, 1);
 					else emitf(o, plane, z0 + r, 1, 1, face, kind, lo, hi, 0, 1);

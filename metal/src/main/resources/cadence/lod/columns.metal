@@ -1061,7 +1061,16 @@ struct CompFrame {
     int4 origin;         // floor(camera) xyz, w: log2 N
     float4 camFrac;      // camera - origin
     float4 tex;          // x: radians a pixel spans, y: the block atlas's highest mip, z: 1 = textures on level 0
+    float4 look;         // (Video Settings > Far Terrain) x: brightness, y: saturation (1, 1: as generated); z: earth curvature
+                         // (blocks a point drops per square block of horizontal distance; 0: flat)
 };
+
+// The far terrain's colour with the player's brightness and saturation.
+static inline half3 compLook(constant CompFrame& f, half3 c) {
+    if (f.look.x == 1.0 && f.look.y == 1.0) return c;
+    half l = dot(c, half3(0.2126h, 0.7152h, 0.0722h));
+    return max(mix(half3(l), c, half(f.look.y)) * half(f.look.x), half3(0.0h));
+}
 
 struct CompVOut {
     float4 position [[position]];
@@ -1309,6 +1318,7 @@ struct CompVanillaOut {
 // The game's own fog (fog.glsl): the larger of a linear fade over the render distance's range (cylindrical distance) and a
 // linear fade over the environmental range (spherical), both moved out to the far terrain's reach by LodFogMixin.
 static inline half3 compFog(constant CompFrame& f, float3 rel, half3 lit) {
+    lit = compLook(f, lit);
     float cyl = max(length(rel.xz), abs(rel.y));
     float sph = length(rel);
     float fr = saturate((cyl - f.fog.x) / max(f.fog.y - f.fog.x, 1e-3));
@@ -2340,6 +2350,7 @@ struct MeshVOut {
 };
 
 static inline float4 meshClip(constant CompFrame& f, float3 rel) {
+    rel.y -= f.look.z * dot(rel.xz, rel.xz);   // the earth's curvature (Far Terrain setting; 0: flat)
     float4 clip = f.viewProj * float4(rel, 1.0);
     clip.y = -clip.y;   // the backend draws GL's orientation flipped
 #ifdef SEAM_DEPTH_PUSH
@@ -2717,6 +2728,13 @@ static inline void meshSurface(constant CompFrame& f, float4 pos, uint info, dev
     float pc = float(plane) - (flat ? f.camFrac.y : face <= FACE_XN ? f.camFrac.x : f.camFrac.z);
     float dc = flat ? D.y : face <= FACE_XN ? D.x : D.z;
     float t = pc / (abs(dc) < 1e-12 ? (dc < 0.0 ? -1e-12 : 1e-12) : dc);
+    if (flat && f.look.z > 0.0) {
+        // with the earth's curvature the plane bends down by look.z x the horizontal distance squared (meshClip): the ray meets
+        // it where look.z |D.xz|^2 t^2 + D.y t - pc = 0, the nearer root (stable form)
+        float a = f.look.z * dot(D.xz, D.xz), b = D.y, c = -pc;
+        float q = -0.5 * (b + (b < 0.0 ? -1.0 : 1.0) * sqrt(max(b * b - 4.0 * a * c, 0.0)));
+        t = c / (abs(q) < 1e-12 ? 1e-12 : q);
+    }
     s.rel = D * max(t, 0.0);
     s.depth = pos.z;
     s.face = face;
@@ -3770,7 +3788,7 @@ kernel void lod_pk_facet_commit(constant PkParams& pk [[buffer(14)]], device uin
 //   z: (y0 + 512) (12) | (y1 + 512) << 12 (12) | face << 24 (3; 7: nothing) | material << 27 (4)
 //   w: colour (RGB565) | sky light << 16 (4 bits)
 // args[112..114]: this pass's threadgroups; args[116..118]: the camera's offset from the origin (float bits), args[119] the
-// origin's y (the records' heights are absolute), for the vertex stage. The draw is the mesh's own: args 0-4 (instances of MESH_DRAW_Q survivors).
+// origin's y (the records' heights are absolute), args[120] the earth's curvature (CompFrame.look.z), for the vertex stage. The draw is the mesh's own: args 0-4 (instances of MESH_DRAW_Q survivors).
 #define PACK_ARGS 112u
 
 kernel void lod_mesh_pack_args(constant CompFrame& f [[buffer(22)]], device uint* args [[buffer(4)]], uint gid [[thread_position_in_grid]]) {
@@ -3782,6 +3800,7 @@ kernel void lod_mesh_pack_args(constant CompFrame& f [[buffer(22)]], device uint
     args[PACK_ARGS + 5u] = as_type<uint>(f.camFrac.y);
     args[PACK_ARGS + 6u] = as_type<uint>(f.camFrac.z);
     args[PACK_ARGS + 7u] = uint(f.origin.y);
+    args[PACK_ARGS + 8u] = as_type<uint>(f.look.z);
 }
 
 // The material a pack's dh_terrain program tells surfaces apart by (lighting, wetness, subsurface scattering): what the cell's
@@ -3879,10 +3898,16 @@ kernel void lod_mesh_pack(constant MeshFrame& mf [[buffer(0)]], device const uin
     if (kind == 2u) c565 = (crowns[idx] >> 12) & 0xFFFFu;
     bool wet = (g & GEOM_WET) != 0u;
     uint sky = kind == 2u ? 11u : 15u;
+    uint material = packMaterial(c565, face, kind, wet);
+    if (f.look.x != 1.0 || f.look.y != 1.0) {
+        half3 c = compLook(f, comp565(c565));
+        uint3 q = uint3(round(saturate(float3(c)) * float3(31.0, 63.0, 31.0)));
+        c565 = q.x << 11 | q.y << 5 | q.z;
+    }
     uint4 o;
     o.x = (uint(bx0) & 0x1FFFFu) | (uint(min(bx1 - bx0, 32767)) << 17);
     o.y = (uint(bz0) & 0x1FFFFu) | (uint(min(bz1 - bz0, 32767)) << 17);
-    o.z = uint(clamp(y0, -512, 3583) + 512) | uint(clamp(y1, -512, 3583) + 512) << 12 | face << 24 | packMaterial(c565, face, kind, wet) << 27;
+    o.z = uint(clamp(y0, -512, 3583) + 512) | uint(clamp(y1, -512, 3583) + 512) << 12 | face << 24 | material << 27;
     o.w = c565 | sky << 16;
     survivors[sidx] = o;
 }

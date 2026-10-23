@@ -109,6 +109,7 @@ public final class MinecraftVertexAdapter {
                 rel.x += c.x > x0 ? eps : -eps;
                 rel.y += up ? eps : -eps;
               }
+              rel.y -= uintBitsToFloat(cadence_farArgs[120]) * dot(rel.xz, rel.xz);   // the earth's curvature (0: flat)
               sl_DhVertex = vec4(rel, 1.0);
               uint rgb = r.w & 0xFFFFu;
               sl_DhColor = vec4(float((rgb >> 11) & 31u) / 31.0, float((rgb >> 5) & 63u) / 63.0, float(rgb & 31u) / 31.0, 1.0);

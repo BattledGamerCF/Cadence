@@ -77,11 +77,22 @@ final class LodField {
 		}
 	}
 
-	LodField(LodNoise noise, LodClip clip, Path cache) {
+	/** A dimension without a floor (the End): real chunks' empty columns are void and their solid runs end (Lod sets it). */
+	volatile boolean floating;
+
+	/** A worker ran out of memory: no more jobs run in this world. */
+	private volatile boolean outOfMemory;
+
+	/** Whether missing tiles are generated (a generator is at hand and Unexplored Terrain is Generate), else left for real chunks. */
+	final boolean generates;
+
+	/** noise: the world's generator; null on a server (explored land only). */
+	LodField(@org.jspecify.annotations.Nullable LodNoise noise, LodClip clip, Path cache) {
 		this.noise = noise;
+		this.generates = noise != null && LodConfig.GENERATE;
 		this.clip = clip;
 		this.cache = cache;
-		this.forest = LodConfig.TREES ? new LodForest(noise) : null;
+		this.forest = LodConfig.TREES && noise != null ? new LodForest(noise) : null;
 		this.winTx = new int[clip.levels];
 		this.winTz = new int[clip.levels];
 		for (int i = 0; i < LodConfig.THREADS; i++) {
@@ -115,9 +126,19 @@ final class LodField {
 				LodYield.idle();
 				continue;
 			}
+			if (this.outOfMemory) {
+				if (j.task == null) this.pending.remove(j.key);
+				continue;
+			}
 			try {
 				if (j.task != null) j.task.run();
 				else this.generate(j.key);
+			} catch (OutOfMemoryError e) {
+				// never again in this world: generation that runs the game out of memory would take the game down with it (the
+				// far terrain keeps what it has and what the disk and real chunks give)
+				if (!this.outOfMemory) System.out.println("cadence-lod: generation ran out of memory; far terrain generation stopped for this world");
+				this.outOfMemory = true;
+				if (j.task == null) this.pending.remove(j.key);
 			} catch (Throwable t) {
 				System.out.println("cadence-lod: job failed: " + t);
 				t.printStackTrace(System.out);
@@ -133,6 +154,69 @@ final class LodField {
 	private boolean stillWanted(long key) {
 		int l = LodTile.levelOf(key), x = LodTile.txOf(key) - this.winTx[l], z = LodTile.tzOf(key) - this.winTz[l];
 		return x >= 0 && z >= 0 && x < this.clip.tilesPerSide && z < this.clip.tilesPerSide;
+	}
+
+	// ---- pre-generation (Video Settings > Far Terrain: Pre-generate) ----
+
+	/** Pre-generation: tiles queued and done (workers count up). */
+	final java.util.concurrent.atomic.AtomicInteger pregenQueued = new java.util.concurrent.atomic.AtomicInteger(),
+		pregenDone = new java.util.concurrent.atomic.AtomicInteger();
+
+	/**
+	 * Render thread: every tile the far terrain would need anywhere within `chunks` chunks of (x, z) (each level's tiles out to
+	 * that distance plus the level's window), generated now on the workers after the tiles in view, straight to the disk
+	 * cache: travelling there later loads them instead of generating them. Tiles already cached are skipped. Returns how many
+	 * were queued (0 without a generator: on a server).
+	 */
+	int pregenerate(double x, double z, int chunks) {
+		if (!this.generates || !LodConfig.DISK_CACHE) return 0;
+		int queued = 0;
+		for (int level = 0; level < this.clip.levels; level++) {
+			int span = this.clip.span(level);
+			double reach = chunks * 16.0 + this.clip.tilesPerSide / 2.0 * span;
+			int tx0 = (int) Math.floor((x - reach) / span), tx1 = (int) Math.floor((x + reach) / span);
+			int tz0 = (int) Math.floor((z - reach) / span), tz1 = (int) Math.floor((z + reach) / span);
+			for (int tz = tz0; tz <= tz1; tz++) {
+				for (int tx = tx0; tx <= tx1; tx++) {
+					long key = LodTile.key(level, tx, tz);
+					if (java.nio.file.Files.exists(this.file(key))) continue;
+					// (after every tile in view: a priority no view request reaches; nearer and finer first)
+					double d = Math.hypot((tx + 0.5) * span - x, (tz + 0.5) * span - z);
+					this.jobs.add(new Job(1e12 + d, this.seq.incrementAndGet(), key, () -> this.pregenerate(key)));
+					queued++;
+				}
+			}
+		}
+		this.pregenQueued.addAndGet(queued);
+		return queued;
+	}
+
+	/** A worker: one pre-generated tile, generated and saved (not put in the window: the window loads it from disk when needed). */
+	private void pregenerate(long key) {
+		try {
+			if (this.closed || java.nio.file.Files.exists(this.file(key))) return;
+			int level = LodTile.levelOf(key);
+			int[] g = new int[LodTile.CELLS], c = new int[LodTile.CELLS];
+			int[] cr = level < this.clip.crownLevels ? new int[LodTile.CELLS] : null;
+			int[] tw = level == 0 && LodConfig.TEXTURES ? new int[LodTile.CELLS] : null;
+			int[] rn = cr != null ? new int[LodTile.CELLS] : null;
+			int[] pl = level == 0 && this.clip.plants ? new int[2 * LodTile.CELLS] : null;
+			LodTile t = new LodTile(level, LodTile.txOf(key), LodTile.tzOf(key));
+			LodForest forest = this.forest;
+			boolean exact = level < Math.min(2, LodConfig.TREE_LEVELS) && forest != null && forest.available();
+			t.impostorTrees = !exact;
+			this.noise.generate(t);
+			if (exact) {
+				forest.plant(t);
+				this.noise.dressTrees(t);
+				this.noise.dressGround(t);
+			}
+			pack(t, g, c, cr, rn, pl);
+			if (tw != null) System.arraycopy(t.tex, 0, tw, 0, LodTile.CELLS);
+			this.save(key, g, c, cr, tw, rn, pl);
+		} finally {
+			this.pregenDone.incrementAndGet();
+		}
 	}
 
 	private void generate(long key) {
@@ -158,7 +242,7 @@ final class LodField {
 		int[] pl = level == 0 && this.clip.plants ? new int[2 * LodTile.CELLS] : null;
 		long start = System.nanoTime();
 		boolean fromDisk = LodConfig.DISK_CACHE && this.load(key, g, c, cr, tw, rn, pl);
-		if (!fromDisk && !LodConfig.GENERATE) {
+		if (!fromDisk && !this.generates) {
 			// explored terrain only: an empty tile (every cell "no data"), so real chunks have a tile to patch into; not saved,
 			// so turning generation on later fills it
 			this.loaded.incrementAndGet();
@@ -219,6 +303,8 @@ final class LodField {
 				continue;
 			}
 			g[i] = LodClip.geomWord(surface, wet) | (t.fringe[i] && !wet && t.level == 0 ? LodClip.GEOM_FRINGE : 0);
+			// (a floorless dimension: how deep the column's solid run goes, as a real chunk's word says it; lodmesh.c floats it)
+			if (t.floor[i] != LodTile.DRY && t.height[i] > t.floor[i]) g[i] |= Math.clamp(t.height[i] - t.floor[i], 1, 127) << 25;
 			c[i] = LodClip.colorWord(t.top[i], t.side[i]);
 			BlockState plant = t.plantLower[i];
 			if (pl != null && plant != null && !wet && t.level == 0) {
@@ -354,7 +440,7 @@ final class LodField {
 	/** Render thread: a chunk the client loaded or is unloading becomes far terrain (colors worked out on a worker). */
 	void chunk(net.minecraft.world.level.chunk.LevelChunk chunk) {
 		long t0 = System.nanoTime();
-		LodChunks.Snapshot snap = LodChunks.snapshot(chunk);
+		LodChunks.Snapshot snap = LodChunks.snapshot(chunk, this.floating);
 		this.snapNanos += System.nanoTime() - t0;
 		this.snapshots++;
 		this.jobs.add(new Job(-2, this.seq.incrementAndGet(), 0, () -> {

@@ -321,8 +321,8 @@ int mcl_enc_size(Enc *enc) {
 // Meshes one tile of the clipmap (lodmesh.c), from any thread: the quads' count, or -1 when cap is too small.
 // color (shader-pack mode, colorLogN its toroidal size): faces merge only within one colour; NULL: geometric merging.
 int mcl_mesh_tile(const uint32_t *geom, const uint32_t *crown, const uint32_t *runs, const uint32_t *plantA, const uint32_t *plantB, int logN, int level,
-	int tx, int tz, int neighbors, int block, uint32_t *header, uint32_t *quads, int cap, const uint32_t *color, int colorLogN) {
-	LmIn in = {geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block, color, colorLogN};
+	int tx, int tz, int neighbors, int block, uint32_t *header, uint32_t *quads, int cap, const uint32_t *color, int colorLogN, int floating) {
+	LmIn in = {geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block, color, colorLogN, floating};
 	return lm_mesh(&in, header, quads, cap);
 }
 
