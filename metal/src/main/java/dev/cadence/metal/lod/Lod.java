@@ -424,6 +424,53 @@ public final class Lod {
 		if (LodYield.ON) LodYield.top = this.clip.levels - 1;
 	}
 
+	/** -Dcadence.lod.stillReuse=false: cull every frame, even with nothing changed (the A/B). */
+	private static final boolean STILL_REUSE = !"false".equals(System.getProperty("cadence.lod.stillReuse"));
+	private long lastCullKey, lastCullFrame = -2, stillFrames;
+	/** -Dcadence.lod.stillLog: once a second, which part of the cull's key changed (view, mask, table). */
+	private static final boolean STILL_LOG = Boolean.getBoolean("cadence.lod.stillLog");
+	private long stillLogged, lastView, lastMask, lastTable;
+
+	/**
+	 * Everything the cull's result depends on, hashed: the view (its matrix and position), the real terrain's mask, the installed
+	 * meshes (the tile table), the cull's buffers and the mode. Equal keys: the last frame's cull holds for this one. Never 0.
+	 */
+	private long cullKey(LodMesh mesh, int rd, boolean pack) {
+		long h = 0x9E3779B97F4A7C15L;
+		for (int i = 0; i < 16; i++) h = mix(h, Float.floatToRawIntBits(this.viewProj.getRowColumn(i >> 2, i & 3)));
+		h = mix(h, Double.doubleToRawLongBits(this.camX));
+		h = mix(h, Double.doubleToRawLongBits(this.camY));
+		h = mix(h, Double.doubleToRawLongBits(this.camZ));
+		h = mix(h, this.maskOn ? 1 : 0);
+		h = mix(h, ((long) this.maskX << 32) ^ this.maskZ ^ ((long) this.maskSize << 16) ^ this.maskWords);
+		long hv = h;
+		if (this.maskOn) for (int i = 0; i < this.maskSize * this.maskWords; i++) h = mix(h, this.mask[i]);
+		long hm = h;
+		long table = mesh.tableHash();
+		h = mix(h, table);
+		h = mix(h, mesh.instBuf ^ (mesh.survBuf << 1));
+		h = mix(h, rd ^ (pack ? 1L << 40 : 0) ^ this.packColors);
+		if (STILL_LOG && System.nanoTime() - this.stillLogged > 1_000_000_000L) {
+			this.stillLogged = System.nanoTime();
+			System.out.println("cadence-lod still: view " + (hv != this.lastView ? "changed" : "same") + ", mask " + (hm - hv != this.lastMask ? "changed" : "same")
+				+ ", table " + (table != this.lastTable ? "changed" : "same"));
+		}
+		this.lastView = hv;
+		this.lastMask = hm - hv;
+		this.lastTable = table;
+		return h == 0 ? 1 : h;
+	}
+
+	private static long mix(long h, long v) {
+		h ^= v;
+		h *= 0xBF58476D1CE4E5B9L;
+		return h ^ (h >>> 31);
+	}
+
+	/** (stats) the cull's GPU time, sampled every 64th frame */
+	private double statCullMs;
+	private int statCulls;
+
 	/** (shader-pack mode) the colour words the native cull reads for the pack's records (0: the far terrain draws itself) */
 	private long packColors;
 
@@ -492,7 +539,8 @@ public final class Lod {
 			height = size & 0xFFFF;
 		}
 		if (attachments > 0 && width > 0 && height > 0) {
-			this.ensureOut(width, height);
+			// (the column march's output: the mesh never reads it, 8 bytes a pixel, 62 MB at 3456 x 2234)
+			if (this.mesh == null) this.ensureOut(width, height);
 			long maskBuf = this.maskBufs[(int) (this.frames % RING)];
 			MemoryUtil.memSet(this.maskAddrs[(int) (this.frames % RING)], 0, MASK_MAX * MASK_MAX / 8);
 			if (this.maskOn) {
@@ -512,10 +560,20 @@ public final class Lod {
 			if (columns > 0 && mesh != null) {
 				boolean gbuffer = false;
 				if (this.dumpNow(w)) this.dump(clip, this.maskAddrs[(int) (this.frames % RING)], width, height);
+				LodPk pk = this.pk;
+				// Cadence: a still camera over unchanged far terrain (the same view, real-terrain mask, installed meshes and buffers as
+				// the last frame's cull) draws the last cull's survivors again: no cull at all (1.6 ms of GPU a frame on an M2 at 512
+				// chunks), what a player standing to build or look around saves. Any change culls as before.
+				long key = pk == null && STILL_REUSE ? this.cullKey(mesh, rd, pack) : 0;
+				boolean still = key != 0 && key == this.lastCullKey && this.lastCullFrame == this.frames - 1;
+				this.lastCullFrame = this.frames;
+				if (still) this.stillFrames++;
+				else {
+				// (the cull's buffers sized to the last counts, before this frame's cull and draw are encoded with them)
+				mesh.adapt(this.frames);
 				mesh.pack(this.viewProj, this.camX, this.camY, this.camZ, LodConfig.reachBlocks(), this.maskOn, this.maskX, this.maskZ, this.maskSize, this.maskWords,
 					rd * 16.0F + 48.0F);
 				long table = mesh.table(this.frames);
-				LodPk pk = this.pk;
 				// (the load switch: every TIME_EVERY-th frame's cull samples its GPU time, read TIME_EVERY frames later)
 				boolean sample = (this.frames % LodPk.TIME_EVERY) == 0;
 				int slot = (int) ((this.frames / LodPk.TIME_EVERY) & 15);
@@ -534,6 +592,16 @@ public final class Lod {
 						pkBufs, pk.rebuilding(), pk.liveNow ? 2 : 1, mesh.blocks());
 					pk.encoded(this.camX, this.camY, this.camZ);
 				} else {
+					if (LodConfig.STATS && (this.frames & 63) == 0) {
+						// (stats: every 64th cull's GPU time, read 64 frames later)
+						int cs = (int) ((this.frames >> 6) & 15);
+						double ms = LodNative.cullTime(this.lod, (cs - 1) & 15);
+						if (ms >= 0) {
+							this.statCullMs += ms;
+							this.statCulls++;
+						}
+						LodNative.cullTimeSlot(this.lod, cs);
+					}
 					LodNative.meshCull(this.lod, enc, mesh.frame, LodMesh.FRAME_BYTES, this.compFrame, COMP_FRAME_BYTES, table, mesh.arena(), maskBuf, mesh.argsBuf,
 						mesh.instBuf, mesh.plantBuf, mesh.survBuf, mesh.horizonBuf, mesh.listBuf, clip.geomBuf, clip.crownBuf, mesh.blocks(), LodMesh.FENCES);
 				}
@@ -541,6 +609,9 @@ public final class Lod {
 					pk.timedPath(slot, listsRan);
 					int old = (slot - 1) & 15;
 					pk.cullTime(old, LodNative.cullTime(this.lod, old));
+				}
+				// (after adapt: a grown buffer is part of the key)
+				this.lastCullKey = pk == null && STILL_REUSE ? this.cullKey(mesh, rd, pack) : 0;
 				}
 				if (pack) {
 					LodPackFrame.publish(mesh.survBuf, mesh.argsBuf);
@@ -1267,6 +1338,8 @@ public final class Lod {
 			long n = mesh.meshed.get();
 			System.out.printf("cadence-lod stats: mesh %d tiles installed, %d meshed (%.2f ms, %.0f quads a tile), %d pending, arena %.1f of %.0f MB%n", mesh.installed, n,
 				n == 0 ? 0 : mesh.meshNanos.get() / 1e6 / n, n == 0 ? 0 : (double) mesh.meshQuads.get() / n, mesh.pending(), mesh.usedMb(), mesh.arenaMb());
+			System.out.println("cadence-lod stats: cull " + mesh.counts() + (this.statCulls > 0 ? String.format(", %.2f ms on the GPU", this.statCullMs / this.statCulls) : "")
+				+ ", " + this.stillFrames + " frames reused the last cull");
 		}
 		LodPk pk = this.pk;
 		if (pk != null) {

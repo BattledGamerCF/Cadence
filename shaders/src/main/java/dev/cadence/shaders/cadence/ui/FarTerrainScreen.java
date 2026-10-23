@@ -53,10 +53,10 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 					"Low|one core: slowest to fill in, coolest",
 					"Balanced|the cores the game leaves free",
 					"High|all but two cores: fastest to fill in")));
-		this.list.addSmall(cycle("Unexplored Terrain", "farTerrain.generate", "true", new String[] {"true", "false"},
-				new String[] {"Generate", "Explored Only"},
+		this.list.addSmall(cycle("Land", "farTerrain.generate", "true", new String[] {"true", "false"},
+				new String[] {"Generated", "Explored Only"},
 				Tips.of("Where the far terrain comes from.",
-					"Generate|the world's own generator draws land you haven't been to (single player and LAN hosts)",
+					"Generated|the world's own generator draws land you haven't been to (single player and LAN hosts)",
 					"Explored Only|only land you have seen: nothing is generated (also what servers show)")),
 			cycle("Trees & Plants", "farTerrain.trees", "true", new String[] {"true", "false"}, new String[] {"On", "Off"},
 				Tips.of("Trees, grass and flowers in the far terrain. Off: bare ground, faster to fill in.")));

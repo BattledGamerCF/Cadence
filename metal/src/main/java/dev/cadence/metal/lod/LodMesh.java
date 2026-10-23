@@ -80,7 +80,16 @@ final class LodMesh implements LodClip.Listener {
 	private final long tableBytes;
 	private final long tableHost;
 	private final long[] tableBufs = new long[RING];
-	final long argsBuf, instBuf, plantBuf, survBuf, horizonBuf, listBuf;
+	final long argsBuf, plantBuf, horizonBuf, listBuf;
+	/**
+	 * The cull's candidate instances and surviving quads, sized to what this world needs (adapt): they start at an eighth
+	 * of their caps and double when a frame fills three quarters (measured 10-22: under 400k survivors at 512 chunks, so
+	 * the 2M-quad buffer held 26 MB nobody used). The position-keyed lists (-Dcadence.lod.pk) keep the full size.
+	 */
+	long instBuf, survBuf;
+	private int instCap = LodPk.ENABLED ? MAX_INSTANCES : MAX_INSTANCES / 8, survCap = LodPk.ENABLED ? MAX_SURVIVORS : MAX_SURVIVORS / 8;
+	private final long argsAddr;
+	private final java.util.function.LongUnaryOperator gpuBuffer;
 	private static final int MAX_LISTED = 1 << 16;
 	final long frame = MemoryUtil.nmemCalloc(1, FRAME_BYTES);
 	// meshing
@@ -150,10 +159,13 @@ final class LodMesh implements LodClip.Listener {
 		// the cull's outputs: hazard-tracked (the whole level pass waits for the cull), or with -Dcadence.lod.meshFences untracked and
 		// ordered by fences (only the far terrain's draw waits: the real terrain's draws before it overlap the cull)
 		java.util.function.LongUnaryOperator gpu = FENCES ? n -> LodNative.privateUntrackedBuffer(ctx, n) : n -> LodNative.privateBuffer(ctx, n);
-		this.argsBuf = gpu.applyAsLong(512);
-		this.instBuf = gpu.applyAsLong((long) MAX_INSTANCES * 32);
+		this.gpuBuffer = gpu;
+		// (the draws' arguments where the CPU can read the counts the GPU left: adapt sizes the buffers by them)
+		this.argsBuf = FENCES ? LodNative.buffer(ctx, 512) : LodNative.sharedTrackedBuffer(ctx, 512);
+		this.argsAddr = LodNative.contents(this.argsBuf);
+		this.instBuf = gpu.applyAsLong((long) this.instCap * 32);
 		this.plantBuf = gpu.applyAsLong((long) MAX_PLANT_INSTANCES * 32);
-		this.survBuf = gpu.applyAsLong((long) MAX_SURVIVORS * 16);
+		this.survBuf = gpu.applyAsLong((long) this.survCap * 16);
 		// (bins x bands, then per bin the far terrain's lowest tangent: columns.metal HZ_FARMIN)
 		this.horizonBuf = gpu.applyAsLong(4096L * 129 * 4);
 		this.listBuf = gpu.applyAsLong((long) MAX_LISTED * 16);
@@ -550,7 +562,7 @@ final class LodMesh implements LodClip.Listener {
 				this.usedWords += words;
 				return at;
 			}
-			if (this.arenaWords * 2 > MAX_ARENA_WORDS) return -1;
+			if (this.arenaWords >= MAX_ARENA_WORDS) return -1;
 			this.grow(frame);
 		}
 	}
@@ -573,8 +585,46 @@ final class LodMesh implements LodClip.Listener {
 		this.free.put(at, words);
 	}
 
+	/**
+	 * Once a frame after the cull is encoded: the counts the GPU left in the arguments (a frame or two old) against the buffers'
+	 * sizes; a buffer three quarters full doubles (up to its cap; the old one is released once the GPU is done with it).
+	 */
+	void adapt(long frame) {
+		if (LodPk.ENABLED) return;
+		int candidates = MemoryUtil.memGetInt(this.argsAddr + 13 * 4L), survivors = MemoryUtil.memGetInt(this.argsAddr + 14 * 4L);
+		if (candidates > this.instCap * 3L / 4 && this.instCap < MAX_INSTANCES) {
+			this.buffersLater.add(new long[] {frame, this.instBuf});
+			this.instCap = Math.min(MAX_INSTANCES, this.instCap * 2);
+			this.instBuf = this.gpuBuffer.applyAsLong((long) this.instCap * 32);
+			System.out.println("cadence-lod: mesh instances grown to " + this.instCap + " (" + ((long) this.instCap * 32 >> 20) + " MB)");
+		}
+		if (survivors > this.survCap * 3L / 4 && this.survCap < MAX_SURVIVORS) {
+			this.buffersLater.add(new long[] {frame, this.survBuf});
+			this.survCap = Math.min(MAX_SURVIVORS, this.survCap * 2);
+			this.survBuf = this.gpuBuffer.applyAsLong((long) this.survCap * 16);
+			System.out.println("cadence-lod: mesh survivors grown to " + this.survCap + " (" + ((long) this.survCap * 16 >> 20) + " MB)");
+		}
+	}
+
+	/** A hash of the tile table as it is now (what the cull reads of the installed meshes): Lod's still-camera reuse. ~3 us. */
+	long tableHash() {
+		long h = 0;
+		for (long i = 0; i < this.tableBytes; i += 8) {
+			h ^= MemoryUtil.memGetLong(this.tableHost + i);
+			h *= 0x100000001B3L;
+		}
+		return h;
+	}
+
+	/** (stats) the last counts the GPU left: candidate instances, surviving quads, and the buffers' sizes */
+	String counts() {
+		return "candidates " + MemoryUtil.memGetInt(this.argsAddr + 13 * 4L) + "/" + this.instCap + ", survivors " + MemoryUtil.memGetInt(this.argsAddr + 14 * 4L)
+			+ "/" + this.survCap;
+	}
+
 	private void grow(long frame) {
-		long words = this.arenaWords * 2;
+		// (by half, rounded up to 16 MB: doubling left up to half the arena unused, 53 MB at 512 chunks)
+		long words = Math.min(MAX_ARENA_WORDS, (this.arenaWords * 3 / 2 + (4L << 20) - 1) & ~((4L << 20) - 1));
 		long buf = LodNative.buffer(this.ctx, words * 4);
 		long addr = LodNative.contents(buf);
 		MemoryUtil.memCopy(this.arenaAddr, addr, this.arenaWords * 4);
@@ -637,13 +687,13 @@ final class LodMesh implements LodClip.Listener {
 		MemoryUtil.memPutInt(f + 128, this.tps);
 		MemoryUtil.memPutInt(f + 132, BLOCK);
 		// (with the lists, the culls' own instances stay under their sectors' stand-ins, whichever path draws)
-		MemoryUtil.memPutInt(f + 136, LodPk.ENABLED ? LodPk.STAND_BASE : MAX_INSTANCES);
+		MemoryUtil.memPutInt(f + 136, LodPk.ENABLED ? LodPk.STAND_BASE : this.instCap);
 		MemoryUtil.memPutInt(f + 140, MAX_PLANT_INSTANCES);
 		// the horizon cull: bands from 48 blocks, 128 of them out to twice the reach
 		MemoryUtil.memPutInt(f + 392, HORIZON ? (REAL_OCC ? (REAL_OCC_HEIGHT ? 49 : 17) : 1) | (HZ_MARK ? 8 : 0) : 0);
 		MemoryUtil.memPutFloat(f + 400, 48.0F);
 		MemoryUtil.memPutFloat(f + 404, (float) (128.0 / Math.log(Math.max(2.0, reach * 2.0 / 48.0))));
-		MemoryUtil.memPutInt(f + 416, MAX_SURVIVORS);
+		MemoryUtil.memPutInt(f + 416, this.survCap);
 		MemoryUtil.memPutInt(f + 420, MAX_LISTED);
 		for (int l = 0; l < this.clip.levels; l++) {
 			MemoryUtil.memPutInt(f + 144 + l * 16L, this.clip.winTx[l]);

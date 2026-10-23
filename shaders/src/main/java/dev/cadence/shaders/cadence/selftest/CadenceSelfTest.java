@@ -238,6 +238,7 @@ public final class CadenceSelfTest {
 						mc.execute(() -> PackSettingsScreen.pressOption(mc.gui.screen(), n));
 					} else if (lower.endsWith("packclose")) mc.execute(() -> mc.gui.screen().onClose());
 					else if (lower.endsWith("pause")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.PauseScreen(true)));
+					else if (lower.endsWith("farterrain")) mc.execute(() -> mc.gui.setScreen(new dev.cadence.shaders.cadence.ui.FarTerrainScreen(null)));
 					else if (lower.endsWith("inventory")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player)));
 					else if (lower.endsWith("benchmarkoffer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.offer(null)));
 					else if (lower.endsWith("benchmarkrun")) mc.execute(() -> dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.run(null));
