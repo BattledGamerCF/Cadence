@@ -270,7 +270,7 @@ public final class CadenceSettings {
 			MaxFpsMode.set(!MaxFpsMode.chosen());
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("For curiosity: the most frames a second Minecraft can draw on this Mac.",
-			"#Removes every block face and everything else in the world: you see an empty sky-blue void and your HUD. Set Max Framerate to Unlimited and VSync off for the top number. Off again after a restart.")).build();
+			"#A black screen with the peak frame rate of this visit and the best of the session. The world, the HUD and shader packs aren't drawn, and no frame limit, VSync or Heat Control holds it back while it's on (the game keeps running underneath). Off again after a restart.")).build();
 		onRefresh(() -> self[0].setMessage(maxFpsLabel()));
 		return self[0];
 	}

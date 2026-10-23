@@ -12,6 +12,13 @@ public abstract class FramerateCapMixin {
 	@ModifyReturnValue(method = "getFramerateLimit", at = @At("RETURN"))
 	private int cadence$heatCap(int limit) {
 		if (dev.cadence.shaders.cadence.setup.QuickSetup.testing) return Math.min(limit, 10);
+		if (dev.cadence.shaders.cadence.render.MaxFpsMode.on()) {
+			// Render Max FPS: nothing holds the frame rate back (Max Framerate, Heat Control, On Battery) while the game is the
+			// active app; In Background still applies when another app is (no frame rate is measured then that matters)
+			int background = dev.cadence.shaders.cadence.system.BackgroundFps.fpsCap();
+			dev.cadence.shaders.cadence.system.FramePacing.cap(background);
+			return background;
+		}
 		int cap = Math.min(limit, Math.min(HeatControl.fpsCap(), Math.min(dev.cadence.shaders.cadence.system.BackgroundFps.fpsCap(),
 			dev.cadence.shaders.cadence.system.BatteryMode.fpsCap())));
 		dev.cadence.shaders.cadence.system.FramePacing.cap(cap);

@@ -36,6 +36,13 @@ final class MetalEncoder implements CommandEncoderBackend {
 	 */
 	private static final int MAX_IN_FLIGHT = Integer.getInteger("cadence.metal.inFlight", 2);
 	/**
+	 * Render Max FPS (MetalBridge.uncappedPresent): frames in flight while it's on. Its frames are tiny (a clear and two lines of
+	 * text), so the GPU round trip of each, not its work, set the pace: 2 in flight reached ~9,100 fps on an M2, 4 ~12,000.
+	 * -Dcadence.metal.maxFpsInFlight. The rings frames share are fenced, not counted, so any depth is safe.
+	 */
+	private static final int MAX_FPS_IN_FLIGHT = Integer.getInteger("cadence.metal.maxFpsInFlight", 5);
+	static volatile boolean maxFps;
+	/**
 	 * -Dcadence.metal.trace=N prints every encoder operation of submit N, the tool for finding pass boundaries worth removing,
 	 * and the average per-encoder GPU time of submits N to N + PROFILE_FRAMES - 1. Traced runs are a few % slower; don't bench them.
 	 */
@@ -249,7 +256,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 			Native.passTest(this.enc, PASS_TEST_N, PASS_TEST_MODE);
 			this.passTestPending = false;
 		}
-		while (this.inFlight.size() > MAX_IN_FLIGHT) this.retire(this.inFlight.poll(), WaitStats.INFLIGHT);
+		int depth = maxFps ? Math.max(MAX_IN_FLIGHT, MAX_FPS_IN_FLIGHT) : MAX_IN_FLIGHT;
+		while (this.inFlight.size() > depth) this.retire(this.inFlight.poll(), WaitStats.INFLIGHT);
 		if (STATS) this.stats();
 		if (WaitStats.ON) WaitStats.frame(this.submitIndex - 1);
 	}
@@ -463,6 +471,9 @@ final class MetalEncoder implements CommandEncoderBackend {
 			}
 			if (PROFILE_SPLIT) this.profileSplit("pass '" + descriptor.label().get() + "' begins" + (clearDepth ? " (depth clear)" : ""));
 			int continued = Native.renderBegin(this.enc, colorCount, colorHandles, clears, depthHandle, clearDepth ? 1 : 0, (float) depthValue, width, height);
+			// Render Max FPS: nothing reads a depth buffer after its pass (no world; each frame clears it again): not stored, a
+			// third of the frame's memory traffic
+			if (maxFps && depthHandle != 0) Native.discard(this.enc, depthHandle);
 			if (dev.cadence.metal.cpu.Cpu.PASS_AB) dev.cadence.metal.cpu.Cpu.PASS_TIMER.end();
 			this.passLazy = lazy && colorCount <= this.passColors.length;
 			if (this.passLazy) {

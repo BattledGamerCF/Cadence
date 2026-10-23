@@ -47,9 +47,25 @@ final class MetalSurface implements GpuSurfaceBackend {
 		this.layer = SDLMetal.SDL_Metal_GetLayer(this.view);
 	}
 
+	/** The window's surface (one per game) and its last configuration, for the vsync override. Render thread. */
+	private static MetalSurface current;
+	private GpuSurface.Configuration lastConfig;
+	/** Render Max FPS: no vsync while it's on, whatever the option says (MetalBridge.uncappedPresent). */
+	private static boolean immediate;
+
+	/** Vsync off (on: true) or back to the option (false); applied at once. Render thread. */
+	static void immediate(boolean on) {
+		if (immediate == on) return;
+		immediate = on;
+		MetalSurface s = current;
+		if (s != null && s.lastConfig != null) s.configure(s.lastConfig);
+	}
+
 	@Override
 	public void configure(GpuSurface.Configuration config) {
-		boolean vsync = config.presentMode() == GpuSurface.PresentMode.FIFO;
+		current = this;
+		this.lastConfig = config;
+		boolean vsync = config.presentMode() == GpuSurface.PresentMode.FIFO && !immediate;
 		this.paced = !vsync && PACE;
 		if (PACE_ADAPT) Native.paceAdapt(this.paced ? 1 : 0);
 		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || PACE_SYNC && this.paced ? 1 : 0) | DRAWABLES << 8

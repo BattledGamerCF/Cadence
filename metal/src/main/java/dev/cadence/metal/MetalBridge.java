@@ -159,6 +159,12 @@ public final class MetalBridge {
 		return b;
 	}
 
+	/** Render Max FPS: presents without vsync while on (frames past one a refresh are skipped, not shown); off: the option's again. */
+	public static void uncappedPresent(boolean on) {
+		MetalSurface.immediate(on);
+		MetalEncoder.maxFps = on;
+	}
+
 	public static long useBuffer(Object encoder, GpuBuffer buffer) {
 		return ((MetalEncoder) encoder).use(buffer).handle;
 	}

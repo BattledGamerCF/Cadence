@@ -34,6 +34,11 @@ public abstract class ShaderGameRendererMixin {
 
   @WrapMethod(method = "renderLevel")
   private void shaders$frame(Operation<Void> original) {
+    if (dev.cadence.shaders.cadence.render.MaxFpsMode.on()) {
+      // Cadence (Render Max FPS): no world, so none of the pack's passes either (its frame end drew the last frame's buffers again)
+      original.call();
+      return;
+    }
     dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.beforeFrame(); // Cadence: a pack that failed last frame goes off here
     boolean success = false;
     try {
