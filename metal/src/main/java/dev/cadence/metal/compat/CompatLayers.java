@@ -154,11 +154,63 @@ public final class CompatLayers {
 					else YIELDING.add(o.mixin);
 				}
 			}
+			requested(ours);
 			if (ownOff && !"false".equals(System.getProperty("cadence.own"))) System.setProperty("cadence.own", "false");
 			report();
 		} catch (RuntimeException | LinkageError e) {
 			System.out.println("[cadence] compat: couldn't read the other mods' mixins (" + e + "); nothing changed");
 		}
+	}
+
+	/**
+	 * Cadence API: what other mods ask Cadence to leave on the vanilla path, in their fabric.mod.json ("custom": {"cadence":
+	 * {"stepAside": [...]}}; areas in dev.cadence.api.Cadence). ours: Cadence's own hooks (their mixin names).
+	 */
+	private static void requested(List<Hook> ours) {
+		for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
+			var custom = mod.getMetadata().getCustomValue("cadence");
+			if (custom == null || custom.getType() != net.fabricmc.loader.api.metadata.CustomValue.CvType.OBJECT) continue;
+			var list = custom.getAsObject().get("stepAside");
+			if (list == null || list.getType() != net.fabricmc.loader.api.metadata.CustomValue.CvType.ARRAY) continue;
+			String who = NAMES.getOrDefault(mod.getMetadata().getId(), mod.getMetadata().getId());
+			for (var v : list.getAsArray()) {
+				if (v.getType() != net.fabricmc.loader.api.metadata.CustomValue.CvType.STRING) continue;
+				String area = v.getAsString().strip();
+				Set<String> mixins = new LinkedHashSet<>();
+				switch (area) {
+					case "terrain" -> {
+						ownOff = true;
+						LAYERS.merge("api:terrain", new Layer("api:terrain", "own terrain renderer", Set.of(who), true), CompatLayers::join);
+					}
+					case "farTerrain" -> {
+						System.setProperty("cadence.lod", "false");
+						System.clearProperty("cadence.lod.radius");
+						LAYERS.merge("api:farTerrain", new Layer("api:farTerrain", "far terrain", Set.of(who), true), CompatLayers::join);
+					}
+					case "entityModels" -> ours.stream().filter(h -> h.mixin.substring(h.mixin.lastIndexOf('.') + 1).startsWith("Model")).forEach(h -> mixins.add(h.mixin));
+					case "cpu" -> ours.stream().filter(h -> h.mixin.startsWith("dev.cadence.metal.mixin.cpu.")).forEach(h -> mixins.add(h.mixin));
+					case "logic" -> ours.stream().filter(h -> h.mixin.startsWith("dev.cadence.metal.mixin.logic.")).forEach(h -> mixins.add(h.mixin));
+					default -> {
+						if (!area.startsWith("mixin:")) {
+							System.out.println("[cadence] compat: " + who + " asks to step aside in an unknown area: " + area);
+							continue;
+						}
+						String name = area.substring(6);
+						ours.stream().filter(h -> h.mixin.equals(name) || h.mixin.endsWith("." + name)).forEach(h -> mixins.add(h.mixin));
+					}
+				}
+				for (String m : mixins) {
+					YIELDING.add(m);
+					LAYERS.merge(m, new Layer(m, area(m), Set.of(who), true), CompatLayers::join);
+				}
+			}
+		}
+	}
+
+	private static Layer join(Layer a, Layer b) {
+		Set<String> mods = new LinkedHashSet<>(a.mods);
+		mods.addAll(b.mods);
+		return new Layer(a.cadenceMixin, a.area, mods, a.applied || b.applied);
 	}
 
 	/** Mods known to work with Cadence as it is (Fabric API, the loader, Java, Minecraft itself). */

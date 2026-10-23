@@ -133,3 +133,15 @@ void mc_pc_r_buffer(Enc *enc, int i, id<MTLBuffer> b) {
 void mc_pc_generate_mips(Enc *enc, id<MTLTexture> t) {
 	[mc_blit(enc) generateMipmapsForTexture:t];
 }
+
+// (Cadence API: dev.cadence.api.MetalHandles) the frame's Metal objects for addon mods, unretained: 0 the device, 1 the command
+// queue, 2 the frame's command buffer, 3 the open render encoder (NULL when none is open)
+void *mc_api_handle(Ctx *ctx, Enc *enc, int which) {
+	switch (which) {
+	case 0: return ctx ? (void *) ctx->device : NULL;
+	case 1: return ctx ? (void *) ctx->queue : NULL;
+	case 2: return enc ? (void *) enc->cmd : NULL;
+	case 3: return enc ? (void *) enc->render : NULL;
+	default: return NULL;
+	}
+}

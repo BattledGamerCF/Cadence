@@ -205,6 +205,8 @@ public final class ShaderRuntime implements AutoCloseable {
   }
 
   public static void install(ShaderRuntime runtime) {
+    // (Cadence API: dev.cadence.api.Cadence#shaderPack)
+    dev.cadence.metal.ApiHooks.shaderPack = runtime == null ? "" : dev.cadence.shaders.cadence.ui.ShaderToggle.selectedPack();
     instance = runtime;
     // (Cadence: lazy clears are on with and without a pack now: MetalEncoder.LAZY_CLEARS)
   }

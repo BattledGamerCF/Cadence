@@ -82,8 +82,10 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 
 - Mods that require Sodium or Iris, or that draw with OpenGL directly, can't be used while the Metal renderer is on.
   Mods that use Minecraft's own rendering API work; where one hooks code Cadence replaces, Cadence steps aside in that
-  area (compatibility layers, first version).
-- Far terrain (`cadence.lod=true`) is experimental and best on Macs with 10 or more GPU cores.
+  area (compatibility layers, first version). Addon mods can fill the gap for OpenGL-only mods with Cadence's API
+  (render hooks, Metal handles, step-aside requests): [docs/API.md](docs/API.md).
+- Far terrain (Video Settings > Far Terrain) is experimental and best on Macs with 10 or more GPU cores. With a shader pack
+  it's drawn by packs that support Distant Horizons (their dh_terrain program); the Nether has none.
 - Pegasus's rain draws as wide, blocky streaks (most likely the pack's own look; unverified).
 - PBR resource packs (labPBR or OldPBR normal and specular maps, `_n.png` / `_s.png`) aren't read yet: a shader pack's
   "labPBR / seuspbr (resource pack required)" mode draws as with a plain resource pack (flat normals, no reflections).

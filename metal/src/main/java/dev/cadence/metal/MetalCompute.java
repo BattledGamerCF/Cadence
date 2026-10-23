@@ -67,6 +67,22 @@ public final class MetalCompute {
 		return encoder() != null;
 	}
 
+	private static final MethodHandle API_HANDLE = fn("mc_api_handle", JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
+
+	/**
+	 * (Cadence API, dev.cadence.api.MetalHandles) The frame's Metal objects: 0 the device, 1 the command queue, 2 the frame's
+	 * command buffer, 3 the open render encoder; 0 where none, or off the Metal backend.
+	 */
+	public static long apiHandle(int which) {
+		MetalEncoder e = encoder();
+		if (e == null) return 0;
+		try {
+			return (long) API_HANDLE.invokeExact(e.ctx, e.enc, which);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
 	private static RuntimeException rethrow(Throwable t) {
 		return t instanceof RuntimeException r ? r : new IllegalStateException(t);
 	}
