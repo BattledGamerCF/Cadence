@@ -28,6 +28,10 @@ final class Native {
 	private static final SymbolLookup LIB = SymbolLookup.libraryLookup(extract(), Arena.global());
 
 	private static final MethodHandle CREATE = fn("mc_create", false, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT);
+	/** -Dcadence.metal4=true: the backend submits through Metal 4 (mcm4.m), Metal 3 otherwise; mc_metal4_on says which it got. */
+	public static final boolean METAL4_ASKED = Boolean.getBoolean("cadence.metal4");
+	private static final MethodHandle METAL4 = fn("mc_metal4", false, null, JAVA_INT);
+	private static final MethodHandle METAL4_ON = fn("mc_metal4_on", false, JAVA_INT);
 	private static final MethodHandle MAX_BUFFER_LENGTH = fn("mc_max_buffer_length", true, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle RELEASE = fn("mc_release", false, null, JAVA_LONG);
 	private static final MethodHandle BUFFER_NEW = fn("mc_buffer_new", false, JAVA_LONG, JAVA_LONG, JAVA_LONG);
@@ -209,7 +213,11 @@ final class Native {
 
 	// The wrappers below exist only to turn invokeExact's Throwable into unchecked exceptions.
 
-	static long create(long name, int nameCap, long err, int errCap) { try { long c = (long) CREATE.invokeExact(name, nameCap, err, errCap); if (FrameCapture.ON) FrameCapture.Own.ctx = c; return c; } catch (Throwable t) { throw rethrow(t); } }
+	/** Whether the backend runs on Metal 4 (after create). */
+	public static boolean metal4() { try { return (int) METAL4_ON.invokeExact() != 0; } catch (Throwable t) { throw rethrow(t); } }
+
+	static long create(long name, int nameCap, long err, int errCap) { try { METAL4.invokeExact(METAL4_ASKED ? 1 : 0); long c = (long) CREATE.invokeExact(name, nameCap, err, errCap);
+		System.out.println("[cadence] Metal backend: " + (metal4() ? "Metal 4" : "Metal 3") + (METAL4_ASKED && !metal4() ? " (Metal 4 asked for, not available)" : "")); if (FrameCapture.ON) FrameCapture.Own.ctx = c; return c; } catch (Throwable t) { throw rethrow(t); } }
 	static long maxBufferLength(long ctx) { try { return (long) MAX_BUFFER_LENGTH.invokeExact(ctx); } catch (Throwable t) { throw rethrow(t); } }
 	static void release(long obj) { try { RELEASE.invokeExact(obj); } catch (Throwable t) { throw rethrow(t); } }
 	static long bufferNew(long ctx, long size) {

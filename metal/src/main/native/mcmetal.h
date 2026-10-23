@@ -13,6 +13,12 @@ typedef struct {
 	id<MTLBuffer> fanIndices;  // {0, k+1, k+2} per triangle: Metal has no fans, so they're drawn as indexed triangle lists
 } Ctx;
 
+// Metal 4 (mcm4.m): on when mc_metal4(1) was called before mc_create and the device has it
+extern int mc4On;
+id<MTLCommandQueue> mc4_queue_new(id<MTLDevice> device);
+void mc4_pin(id resource);
+void mc4_unpin(id resource);
+
 #define MAX_COLORS 8
 
 typedef struct {

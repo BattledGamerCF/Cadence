@@ -61,9 +61,15 @@ Ctx *mc_create(char *name, int nameCap, char *err, int errCap) {
 
 		Ctx *ctx = calloc(1, sizeof(Ctx));
 		ctx->device = device;
-		ctx->queue = [device newCommandQueueWithMaxCommandBufferCount:64];
+		// Metal 4 (-Dcadence.metal4=true, mcm4.m): the same interface over an MTL4CommandQueue; Metal 3 when unavailable
+		ctx->queue = mc4On ? mc4_queue_new(device) : nil;
+		if (!ctx->queue) {
+			mc4On = 0;
+			ctx->queue = [device newCommandQueueWithMaxCommandBufferCount:64];
+		}
 		ctx->builtins = lib;
 		ctx->present = present;
+		sd.supportArgumentBuffers = YES;  // (Metal 4 binds samplers by resource id)
 		ctx->presentSampler = [device newSamplerStateWithDescriptor:sd];
 		ctx->clearPipelines = [NSMutableDictionary new];
 		ctx->depthKeep = [device newDepthStencilStateWithDescriptor:dd];
@@ -84,6 +90,7 @@ Ctx *mc_create(char *name, int nameCap, char *err, int errCap) {
 uint64_t mc_max_buffer_length(Ctx *ctx) { return ctx->device.maxBufferLength; }
 static int poolRelease(id obj);
 void mc_release(id obj) {
+	if (mc4On) mc4_unpin(obj);  // (Metal 4: it leaves the residency set once the GPU can't still use it)
 	if (!poolRelease(obj)) [obj release];
 }
 
@@ -313,7 +320,10 @@ id<MTLBuffer> mc_buffer_private(Ctx *ctx, id<MTLBuffer> src, uint64_t size) {
 	}
 }
 void *mc_buffer_contents(id<MTLBuffer> buffer) { return buffer.contents; }
-uint64_t mc_buffer_gpu_address(id<MTLBuffer> buffer) { return buffer.gpuAddress; }
+uint64_t mc_buffer_gpu_address(id<MTLBuffer> buffer) {
+	mc4_pin(buffer);  // (Metal 4: reached by address only, it must stay resident)
+	return buffer.gpuAddress;
+}
 
 // kind: 0 2D, 1 cube, 2 3D (Cadence: a shader pack's volume texture; layers is its depth)
 id<MTLTexture> mc_texture_new(Ctx *ctx, int format, int width, int height, int layers, int mips, int usage, int kind) {
@@ -361,6 +371,7 @@ id<MTLSamplerState> mc_sampler_new(Ctx *ctx, int addressU, int addressV, int min
 		d.mipFilter = (MTLSamplerMipFilter) mipFilter;
 		d.maxAnisotropy = anisotropy;
 		d.lodMaxClamp = maxLod;
+		d.supportArgumentBuffers = YES;
 		return [ctx->device newSamplerStateWithDescriptor:d];
 	}
 }
@@ -379,6 +390,7 @@ id<MTLSamplerState> mc_sampler_new_compare(Ctx *ctx, int addressU, int addressV,
 		d.maxAnisotropy = anisotropy;
 		d.lodMaxClamp = maxLod;
 		d.compareFunction = (MTLCompareFunction) compare;
+		d.supportArgumentBuffers = YES;
 		return [ctx->device newSamplerStateWithDescriptor:d];
 	}
 }

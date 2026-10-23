@@ -134,6 +134,7 @@ LodCols *mcl_cols_new(Ctx *ctx, const char *source, char *err, int errCap) {
 		sd.mipFilter = MTLSamplerMipFilterLinear;
 		sd.sAddressMode = MTLSamplerAddressModeClampToEdge;
 		sd.tAddressMode = MTLSamplerAddressModeClampToEdge;
+		sd.supportArgumentBuffers = YES;
 		l->atlasSampler = [ctx->device newSamplerStateWithDescriptor:sd];
 		if (!l->vs || !l->fsVanilla || !l->fsGbuffer) {
 			snprintf(err, errCap, "columns.metal: missing entry points");
