@@ -481,6 +481,12 @@ int mcr_vt_capture(RecVT *v, Enc *enc, id<MTLTexture> src, int64_t frame, const 
 		RecVT *vv = v;
 		[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
 			int ok = done.status == MTLCommandBufferStatusCompleted;
+			// (Metal 4: the residency set lets go of the pixel buffers' textures now; it held them about a second, longer than the
+			// encoder's 16-buffer pool lasts, and most ticks were dropped)
+			if (mc4On) {
+				mc4_unpin(yt);
+				mc4_unpin(uvt);
+			}
 			CFRelease(ty);
 			CFRelease(tuv);
 			dispatch_async(vv->q, ^{

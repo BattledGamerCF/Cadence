@@ -270,6 +270,7 @@ void *mco_contents(id<MTLBuffer> b) {
 }
 
 void mco_release(id obj) {
+	if (mc4On) mc4_unpin(obj);  // (Metal 4: out of the residency set once the GPU is done with it)
 	[obj release];
 }
 

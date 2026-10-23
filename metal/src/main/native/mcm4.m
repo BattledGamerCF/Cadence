@@ -33,6 +33,7 @@ int mc_metal4_on(void) { return mc4On; }
 static id<MTLDevice> m4dev;
 static id<MTL4CommandQueue> m4q;
 static id<MTL4Compiler> m4compiler;
+static id<MTLCommandQueue> m4facade;  // the McM4Queue (commandBuffer.commandQueue)
 
 // ---- residency ----
 
@@ -164,6 +165,9 @@ static void residencyBeforeCommit(void) {
 
 // ---- pools: allocators + command buffers, argument tables, byte chunks ----
 
+// (an argument table's high-water marks, kept by the encoder that binds it: what is cleared before the table is reused)
+typedef struct { int buf, tex, samp; } Marks;
+
 static os_unfair_lock plock = OS_UNFAIR_LOCK_INIT;
 static NSMutableArray *freeAllocs, *freeCbs, *freeTables, *freeChunks;
 #define CHUNK (256 * 1024)
@@ -182,6 +186,26 @@ static id<MTL4ArgumentTable> takeTable(void) {
 	t = [m4dev newArgumentTableWithDescriptor:d error:&e];
 	if (!t) NSLog(@"cadence-metal4: argument table: %@", e);
 	return t;
+}
+
+
+static void clearTable(id<MTL4ArgumentTable> t, Marks m) {
+	for (int i = 0; i < m.buf; i++) [t setAddress:0 atIndex:i];
+	for (int i = 0; i < m.tex; i++) [t setTexture:(MTLResourceID) {0} atIndex:i];
+	for (int i = 0; i < m.samp; i++) [t setSamplerState:(MTLResourceID) {0} atIndex:i];
+}
+
+static inline void tA(id<MTL4ArgumentTable> t, Marks *m, uint64_t a, NSUInteger i) {
+	if ((int) i >= m->buf) m->buf = (int) i + 1;
+	[t setAddress:a atIndex:i];
+}
+static inline void tT(id<MTL4ArgumentTable> t, Marks *m, MTLResourceID r, NSUInteger i) {
+	if ((int) i >= m->tex) m->tex = (int) i + 1;
+	[t setTexture:r atIndex:i];
+}
+static inline void tS(id<MTL4ArgumentTable> t, Marks *m, MTLResourceID r, NSUInteger i) {
+	if ((int) i >= m->samp) m->samp = (int) i + 1;
+	[t setSamplerState:r atIndex:i];
 }
 
 static void giveTable(id<MTL4ArgumentTable> t) {
@@ -228,8 +252,19 @@ static id<MTLBuffer> takeChunk(void) {
 	NSString *label;
 	uint64_t serial;
 	id open;                      // the encoder open on it
+	CFMutableArrayRef keep;       // what an MTL4 command buffer doesn't retain (pipeline and depth states, scalers): until done
+	const void *lastKept;
 }
 @end
+
+// Kept alive until the GPU has run the command buffer (Metal 3 command buffers retained what they used; an evicted cached
+// pipeline was freed while a commit still used it).
+static inline void keepFor(McM4CB *c, id o) {
+	if (!o || (const void *) o == c->lastKept) return;
+	c->lastKept = (const void *) o;
+	if (!c->keep) c->keep = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
+	CFArrayAppendValue(c->keep, (const void *) o);
+}
 
 static uint64_t bytesAddr(McM4CB *c, const void *bytes, NSUInteger length) {
 	NSUInteger aligned = (length + 15) & ~(NSUInteger) 15;
@@ -237,9 +272,11 @@ static uint64_t bytesAddr(McM4CB *c, const void *bytes, NSUInteger length) {
 		// (bigger than a chunk: its own buffer, kept with the chunks and released after the GPU is done)
 		id<MTLBuffer> b = [m4dev newBufferWithBytes:bytes length:length options:MTLResourceStorageModeShared];
 		track(b);
-		[c->chunks insertObject:b atIndex:0];
+		keepFor(c, b);
+		mc4_unpin(b);  // (leaves the set once this commit is done)
+		uint64_t a = b.gpuAddress;
 		[b release];
-		return b.gpuAddress;
+		return a;
 	}
 	if (c->chunks.count == 0 || c->chunkUsed + aligned > CHUNK) {
 		id<MTLBuffer> b = takeChunk();
@@ -276,15 +313,29 @@ static MTLStages fenceStages(MTLRenderStages s) {
 	McM4CB *owner;
 	id<MTL4RenderCommandEncoder> r;
 	id<MTL4ArgumentTable> vt, ft, mt, tt;
+	Marks vtm, ftm, mtm, ttm;
+	uint64_t vbase[31], fbase[31];  // the buffers' addresses at each index (set*BufferOffset)
+	NSUInteger tileW, tileH;
 }
 @end
 
+// (the mesh / object and tile stages' tables: made at their first binding, few passes have those stages)
+#define MT (mt ? mt : (mt = [self stageTable:MTLRenderStageMesh | MTLRenderStageObject]))
+#define TT (tt ? tt : (tt = [self stageTable:MTLRenderStageTile]))
+
 @implementation McM4Render
+- (id<MTL4ArgumentTable>)stageTable:(MTLRenderStages)stages {
+	id<MTL4ArgumentTable> t = takeTable();
+	[r setArgumentTable:t atStages:stages];
+	return t;
+}
 - (id<MTLDevice>)device { return m4dev; }
 - (NSString *)label { return nil; }
 - (void)setLabel:(NSString *)l { r.label = l; }
-- (void)setRenderPipelineState:(id<MTLRenderPipelineState>)p { [r setRenderPipelineState:p]; }
-- (void)setDepthStencilState:(id<MTLDepthStencilState>)s { [r setDepthStencilState:s]; }
+- (void)setRenderPipelineState:(id<MTLRenderPipelineState>)p { keepFor(owner, p); [r setRenderPipelineState:p]; }
+- (void)setDepthStencilState:(id<MTLDepthStencilState>)s { keepFor(owner, s); [r setDepthStencilState:s]; }
+- (NSUInteger)tileWidth { return tileW; }
+- (NSUInteger)tileHeight { return tileH; }
 - (void)setCullMode:(MTLCullMode)m { [r setCullMode:m]; }
 - (void)setFrontFacingWinding:(MTLWinding)w { [r setFrontFacingWinding:w]; }
 - (void)setTriangleFillMode:(MTLTriangleFillMode)m { [r setTriangleFillMode:m]; }
@@ -298,23 +349,56 @@ static MTLStages fenceStages(MTLRenderStages s) {
 - (void)setDepthStoreAction:(MTLStoreAction)a { [r setDepthStoreAction:a]; }
 - (void)setStencilStoreAction:(MTLStoreAction)a { [r setStencilStoreAction:a]; }
 // bindings
-- (void)setVertexBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { track(b); [vt setAddress:b ? b.gpuAddress + o : 0 atIndex:i]; }
-- (void)setFragmentBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { track(b); [ft setAddress:b ? b.gpuAddress + o : 0 atIndex:i]; }
-- (void)setMeshBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { track(b); [mt setAddress:b ? b.gpuAddress + o : 0 atIndex:i]; }
-- (void)setObjectBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { track(b); [mt setAddress:b ? b.gpuAddress + o : 0 atIndex:i]; }
-- (void)setTileBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { track(b); [tt setAddress:b ? b.gpuAddress + o : 0 atIndex:i]; }
-- (void)setVertexBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { [vt setAddress:bytesAddr(owner, p, n) atIndex:i]; }
-- (void)setFragmentBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { [ft setAddress:bytesAddr(owner, p, n) atIndex:i]; }
-- (void)setMeshBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { [mt setAddress:bytesAddr(owner, p, n) atIndex:i]; }
-- (void)setObjectBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { [mt setAddress:bytesAddr(owner, p, n) atIndex:i]; }
-- (void)setTileBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { [tt setAddress:bytesAddr(owner, p, n) atIndex:i]; }
-- (void)setVertexTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i { track(t); [vt setTexture:t ? t.gpuResourceID : (MTLResourceID) {0} atIndex:i]; }
-- (void)setFragmentTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i { track(t); [ft setTexture:t ? t.gpuResourceID : (MTLResourceID) {0} atIndex:i]; }
-- (void)setMeshTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i { track(t); [mt setTexture:t ? t.gpuResourceID : (MTLResourceID) {0} atIndex:i]; }
-- (void)setTileTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i { track(t); [tt setTexture:t ? t.gpuResourceID : (MTLResourceID) {0} atIndex:i]; }
-- (void)setVertexSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i { [vt setSamplerState:s ? s.gpuResourceID : (MTLResourceID) {0} atIndex:i]; }
-- (void)setFragmentSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i { [ft setSamplerState:s ? s.gpuResourceID : (MTLResourceID) {0} atIndex:i]; }
-- (void)setMeshSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i { [mt setSamplerState:s ? s.gpuResourceID : (MTLResourceID) {0} atIndex:i]; }
+- (void)setVertexBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {
+	track(b);
+	if (i < 31) vbase[i] = b ? b.gpuAddress : 0;
+	tA(vt, &vtm, b ? b.gpuAddress + o : 0, i);
+}
+- (void)setFragmentBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {
+	track(b);
+	if (i < 31) fbase[i] = b ? b.gpuAddress : 0;
+	tA(ft, &ftm, b ? b.gpuAddress + o : 0, i);
+}
+// (the rest of the interface an addon reaching the encoder through Cadence's API may call)
+- (void)setVertexBufferOffset:(NSUInteger)o atIndex:(NSUInteger)i { if (i < 31 && vbase[i]) tA(vt, &vtm, vbase[i] + o, i); }
+- (void)setFragmentBufferOffset:(NSUInteger)o atIndex:(NSUInteger)i { if (i < 31 && fbase[i]) tA(ft, &ftm, fbase[i] + o, i); }
+- (void)setVertexBuffers:(const id<MTLBuffer> *)b offsets:(const NSUInteger *)o withRange:(NSRange)r_ {
+	for (NSUInteger k = 0; k < r_.length; k++) [self setVertexBuffer:b[k] offset:o[k] atIndex:r_.location + k];
+}
+- (void)setFragmentBuffers:(const id<MTLBuffer> *)b offsets:(const NSUInteger *)o withRange:(NSRange)r_ {
+	for (NSUInteger k = 0; k < r_.length; k++) [self setFragmentBuffer:b[k] offset:o[k] atIndex:r_.location + k];
+}
+- (void)setVertexTextures:(const id<MTLTexture> *)t withRange:(NSRange)r_ {
+	for (NSUInteger k = 0; k < r_.length; k++) [self setVertexTexture:t[k] atIndex:r_.location + k];
+}
+- (void)setFragmentTextures:(const id<MTLTexture> *)t withRange:(NSRange)r_ {
+	for (NSUInteger k = 0; k < r_.length; k++) [self setFragmentTexture:t[k] atIndex:r_.location + k];
+}
+- (void)setFragmentSamplerStates:(const id<MTLSamplerState> *)s withRange:(NSRange)r_ {
+	for (NSUInteger k = 0; k < r_.length; k++) [self setFragmentSamplerState:s[k] atIndex:r_.location + k];
+}
+- (void)setVertexSamplerStates:(const id<MTLSamplerState> *)s withRange:(NSRange)r_ {
+	for (NSUInteger k = 0; k < r_.length; k++) [self setVertexSamplerState:s[k] atIndex:r_.location + k];
+}
+- (void)setViewports:(const MTLViewport *)v count:(NSUInteger)n { [r setViewports:v count:n]; }
+- (void)setScissorRects:(const MTLScissorRect *)s count:(NSUInteger)n { [r setScissorRects:s count:n]; }
+- (void)setDepthClipMode:(MTLDepthClipMode)m { [r setDepthClipMode:m]; }
+- (void)setStencilFrontReferenceValue:(uint32_t)f backReferenceValue:(uint32_t)b { [r setStencilFrontReferenceValue:f backReferenceValue:b]; }
+- (void)setMeshBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { track(b); tA(MT, &mtm, b ? b.gpuAddress + o : 0, i); }
+- (void)setObjectBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { track(b); tA(MT, &mtm, b ? b.gpuAddress + o : 0, i); }
+- (void)setTileBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { track(b); tA(TT, &ttm, b ? b.gpuAddress + o : 0, i); }
+- (void)setVertexBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { tA(vt, &vtm, bytesAddr(owner, p, n), i); }
+- (void)setFragmentBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { tA(ft, &ftm, bytesAddr(owner, p, n), i); }
+- (void)setMeshBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { tA(MT, &mtm, bytesAddr(owner, p, n), i); }
+- (void)setObjectBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { tA(MT, &mtm, bytesAddr(owner, p, n), i); }
+- (void)setTileBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { tA(TT, &ttm, bytesAddr(owner, p, n), i); }
+- (void)setVertexTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i { track(t); tT(vt, &vtm, t ? t.gpuResourceID : (MTLResourceID) {0}, i); }
+- (void)setFragmentTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i { track(t); tT(ft, &ftm, t ? t.gpuResourceID : (MTLResourceID) {0}, i); }
+- (void)setMeshTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i { track(t); tT(MT, &mtm, t ? t.gpuResourceID : (MTLResourceID) {0}, i); }
+- (void)setTileTexture:(id<MTLTexture>)t atIndex:(NSUInteger)i { track(t); tT(TT, &ttm, t ? t.gpuResourceID : (MTLResourceID) {0}, i); }
+- (void)setVertexSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i { tS(vt, &vtm, s ? s.gpuResourceID : (MTLResourceID) {0}, i); }
+- (void)setFragmentSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i { tS(ft, &ftm, s ? s.gpuResourceID : (MTLResourceID) {0}, i); }
+- (void)setMeshSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i { tS(MT, &mtm, s ? s.gpuResourceID : (MTLResourceID) {0}, i); }
 // draws
 - (void)drawPrimitives:(MTLPrimitiveType)t vertexStart:(NSUInteger)s vertexCount:(NSUInteger)n {
 	[r drawPrimitives:t vertexStart:s vertexCount:n];
@@ -361,7 +445,11 @@ static MTLStages fenceStages(MTLRenderStages s) {
 	track(icb);
 	[r executeCommandsInBuffer:icb withRange:range];
 }
-- (void)dispatchThreadsPerTile:(MTLSize)s { [r dispatchThreadsPerTile:s]; }
+- (void)dispatchThreadsPerTile:(MTLSize)s {
+	// (the tile stage reads what the draws before it wrote: Metal 3 ordered that within the pass)
+	[r barrierAfterEncoderStages:MTLStageFragment beforeEncoderStages:MTLStageTile visibilityOptions:MTL4VisibilityOptionDevice];
+	[r dispatchThreadsPerTile:s];
+}
 - (void)setThreadgroupMemoryLength:(NSUInteger)l offset:(NSUInteger)o atIndex:(NSUInteger)i { [r setThreadgroupMemoryLength:l offset:o atIndex:i]; }
 // synchronisation
 - (void)memoryBarrierWithScope:(MTLBarrierScope)s afterStages:(MTLRenderStages)a beforeStages:(MTLRenderStages)b {
@@ -384,6 +472,10 @@ static MTLStages fenceStages(MTLRenderStages s) {
 	[r endEncoding];
 	[r release];
 	r = nil;
+	if (vt) clearTable(vt, vtm);
+	if (ft) clearTable(ft, ftm);
+	if (mt) clearTable(mt, mtm);
+	if (tt) clearTable(tt, ttm);
 	giveTable(vt);
 	giveTable(ft);
 	giveTable(mt);
@@ -400,6 +492,8 @@ static MTLStages fenceStages(MTLRenderStages s) {
 	McM4CB *owner;
 	id<MTL4ComputeCommandEncoder> c;
 	id<MTL4ArgumentTable> t;
+	Marks tm;
+	uint64_t base[31];
 	int serial;  // Metal 3's serial dispatch (and every blit): each command after the previous one
 }
 @end
@@ -415,15 +509,25 @@ static MTLStages fenceStages(MTLRenderStages s) {
 - (NSString *)label { return nil; }
 - (void)setLabel:(NSString *)l { c.label = l; }
 - (MTLDispatchType)dispatchType { return serial ? MTLDispatchTypeSerial : MTLDispatchTypeConcurrent; }
-- (void)setComputePipelineState:(id<MTLComputePipelineState>)p { [c setComputePipelineState:p]; }
-- (void)setBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i { track(b); [t setAddress:b ? b.gpuAddress + o : 0 atIndex:i]; }
-- (void)setBufferOffset:(NSUInteger)o atIndex:(NSUInteger)i { NSLog(@"cadence-metal4: setBufferOffset unsupported"); abort(); }
-- (void)setBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { [t setAddress:bytesAddr(owner, p, n) atIndex:i]; }
-- (void)setTexture:(id<MTLTexture>)tx atIndex:(NSUInteger)i { track(tx); [t setTexture:tx ? tx.gpuResourceID : (MTLResourceID) {0} atIndex:i]; }
+- (void)setComputePipelineState:(id<MTLComputePipelineState>)p { keepFor(owner, p); [c setComputePipelineState:p]; }
+- (void)setBuffer:(id<MTLBuffer>)b offset:(NSUInteger)o atIndex:(NSUInteger)i {
+	track(b);
+	if (i < 31) base[i] = b ? b.gpuAddress : 0;
+	tA(t, &tm, b ? b.gpuAddress + o : 0, i);
+}
+- (void)setBufferOffset:(NSUInteger)o atIndex:(NSUInteger)i { if (i < 31 && base[i]) tA(t, &tm, base[i] + o, i); }
+- (void)setBuffers:(const id<MTLBuffer> *)b offsets:(const NSUInteger *)o withRange:(NSRange)r_ {
+	for (NSUInteger k = 0; k < r_.length; k++) [self setBuffer:b[k] offset:o[k] atIndex:r_.location + k];
+}
+- (void)setSamplerStates:(const id<MTLSamplerState> *)s withRange:(NSRange)r_ {
+	for (NSUInteger k = 0; k < r_.length; k++) [self setSamplerState:s[k] atIndex:r_.location + k];
+}
+- (void)setBytes:(const void *)p length:(NSUInteger)n atIndex:(NSUInteger)i { tA(t, &tm, bytesAddr(owner, p, n), i); }
+- (void)setTexture:(id<MTLTexture>)tx atIndex:(NSUInteger)i { track(tx); tT(t, &tm, tx ? tx.gpuResourceID : (MTLResourceID) {0}, i); }
 - (void)setTextures:(const id<MTLTexture> *)txs withRange:(NSRange)range {
 	for (NSUInteger k = 0; k < range.length; k++) [self setTexture:txs[k] atIndex:range.location + k];
 }
-- (void)setSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i { [t setSamplerState:s ? s.gpuResourceID : (MTLResourceID) {0} atIndex:i]; }
+- (void)setSamplerState:(id<MTLSamplerState>)s atIndex:(NSUInteger)i { tS(t, &tm, s ? s.gpuResourceID : (MTLResourceID) {0}, i); }
 - (void)setThreadgroupMemoryLength:(NSUInteger)l atIndex:(NSUInteger)i { [c setThreadgroupMemoryLength:l atIndex:i]; }
 - (void)dispatchThreads:(MTLSize)g threadsPerThreadgroup:(MTLSize)tg { [c dispatchThreads:g threadsPerThreadgroup:tg]; AFTER_EACH(); }
 - (void)dispatchThreadgroups:(MTLSize)g threadsPerThreadgroup:(MTLSize)tg { [c dispatchThreadgroups:g threadsPerThreadgroup:tg]; AFTER_EACH(); }
@@ -506,6 +610,7 @@ static MTLStages fenceStages(MTLRenderStages s) {
 	[c endEncoding];
 	[c release];
 	c = nil;
+	if (t) clearTable(t, tm);
 	giveTable(t);
 	t = nil;
 	if (owner->open == self) owner->open = nil;
@@ -516,7 +621,7 @@ static MTLStages fenceStages(MTLRenderStages s) {
 
 @implementation McM4CB
 - (id<MTLDevice>)device { return m4dev; }
-- (id<MTLCommandQueue>)commandQueue { return nil; }
+- (id<MTLCommandQueue>)commandQueue { return m4facade; }
 - (BOOL)retainedReferences { return NO; }
 - (MTLCommandBufferErrorOption)errorOptions { return MTLCommandBufferErrorOptionNone; }
 - (NSString *)label { return label; }
@@ -561,6 +666,8 @@ static MTLStages fenceStages(MTLRenderStages s) {
 	McM4Render *e = [McM4Render new];
 	e->owner = self;
 	e->r = [[cb renderCommandEncoderWithDescriptor:p] retain];
+	e->tileW = d.tileWidth ? d.tileWidth : 32;
+	e->tileH = d.tileHeight ? d.tileHeight : 32;
 	if (!e->r) {
 		[e release];
 		return nil;
@@ -568,12 +675,8 @@ static MTLStages fenceStages(MTLRenderStages s) {
 	barrierAll(e->r);
 	e->vt = takeTable();
 	e->ft = takeTable();
-	e->mt = takeTable();
-	e->tt = takeTable();
 	[e->r setArgumentTable:e->vt atStages:MTLRenderStageVertex];
 	[e->r setArgumentTable:e->ft atStages:MTLRenderStageFragment];
-	[e->r setArgumentTable:e->mt atStages:MTLRenderStageMesh | MTLRenderStageObject];
-	[e->r setArgumentTable:e->tt atStages:MTLRenderStageTile];
 	open = e;
 	return [e autorelease];
 }
@@ -601,14 +704,25 @@ static MTLStages fenceStages(MTLRenderStages s) {
 	[copy release];
 }
 - (void)addScheduledHandler:(MTLCommandBufferHandler)h {
+	if (!scheduledHandlers) scheduledHandlers = [NSMutableArray new];
 	MTLCommandBufferHandler copy = [h copy];
 	[scheduledHandlers addObject:copy];
 	[copy release];
 }
-- (void)presentDrawable:(id<MTLDrawable>)d { [drawables addObject:d]; minDuration = 0; }
-- (void)presentDrawable:(id<MTLDrawable>)d afterMinimumDuration:(CFTimeInterval)m { [drawables addObject:d]; minDuration = m; }
-- (void)encodeWaitForEvent:(id<MTLEvent>)e value:(uint64_t)v { [waitEvents addObject:@[e, @(v)]]; }
-- (void)encodeSignalEvent:(id<MTLEvent>)e value:(uint64_t)v { [signalEvents addObject:@[e, @(v)]]; }
+- (void)presentDrawable:(id<MTLDrawable>)d { [self presentDrawable:d afterMinimumDuration:0]; }
+- (void)presentDrawable:(id<MTLDrawable>)d afterMinimumDuration:(CFTimeInterval)m {
+	if (!drawables) drawables = [NSMutableArray new];
+	[drawables addObject:d];
+	minDuration = m;
+}
+- (void)encodeWaitForEvent:(id<MTLEvent>)e value:(uint64_t)v {
+	if (!waitEvents) waitEvents = [NSMutableArray new];
+	[waitEvents addObject:@[e, @(v)]];
+}
+- (void)encodeSignalEvent:(id<MTLEvent>)e value:(uint64_t)v {
+	if (!signalEvents) signalEvents = [NSMutableArray new];
+	[signalEvents addObject:@[e, @(v)]];
+}
 - (void)pushDebugGroup:(NSString *)s { [cb pushDebugGroup:s]; }
 - (void)popDebugGroup { [cb popDebugGroup]; }
 - (void)enqueue {}
@@ -633,6 +747,10 @@ static MTLStages fenceStages(MTLRenderStages s) {
 		if (b.length == CHUNK) [freeChunks addObject:b];
 	os_unfair_lock_unlock(&plock);
 	[chunks removeAllObjects];
+	if (keep) {
+		CFRelease(keep);
+		keep = NULL;
+	}
 	dispatch_group_leave(done);
 }
 
@@ -672,6 +790,7 @@ static MTLStages fenceStages(MTLRenderStages s) {
 	[signalEvents release];
 	[err release];
 	[label release];
+	if (keep) CFRelease(keep);
 	[alloc release];
 	[cb release];
 	dispatch_release(done);
@@ -692,10 +811,6 @@ static McM4CB *newCB(void) {
 	[c->cb beginCommandBufferWithAllocator:c->alloc];
 	c->chunks = [NSMutableArray new];
 	c->completedHandlers = [NSMutableArray new];
-	c->scheduledHandlers = [NSMutableArray new];
-	c->drawables = [NSMutableArray new];
-	c->waitEvents = [NSMutableArray new];
-	c->signalEvents = [NSMutableArray new];
 	c->done = dispatch_group_create();
 	dispatch_group_enter(c->done);
 	c->status = MTLCommandBufferStatusNotEnqueued;
@@ -733,7 +848,8 @@ id<MTLCommandQueue> mc4_queue_new(id<MTLDevice> device) {
 	freeTables = [NSMutableArray new];
 	freeChunks = [NSMutableArray new];
 	m4compiler = [device newCompilerWithDescriptor:[[MTL4CompilerDescriptor new] autorelease] error:&e];
-	return [McM4Queue new];
+	m4facade = [McM4Queue new];
+	return [m4facade retain];
 }
 
 // MetalFX under Metal 4: the scaler made with the compiler, encoded into the facade's own MTL4CommandBuffer.
@@ -751,6 +867,7 @@ void mc4_fx_spatial_encode(void *scaler, id<MTLCommandBuffer> facade, id<MTLText
 	[b updateFence:fence afterEncoderStages:MTLStageAll];
 	[b endEncoding];
 	id<MTL4FXSpatialScaler> s = (id<MTL4FXSpatialScaler>) scaler;
+	keepFor(c, s);  // (released on a resize while a frame in flight still used it)
 	s.fence = fence;
 	s.colorTexture = in;
 	s.outputTexture = out;
