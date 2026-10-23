@@ -27,7 +27,8 @@ public final class LogicMixinPlugin implements IMixinConfigPlugin {
 		Map.entry("TickRangeChunkTicksMixin", "tickRange"),
 		Map.entry("TickRangeLevelMixin", "tickRange"),
 		Map.entry("TickRangeTicksMixin", "tickRange"),
-		Map.entry("PathTypeCacheMixin", "pathCache"));
+		Map.entry("PathTypeCacheMixin", "pathCache"),
+		Map.entry("CollisionAirMixin", "collisionAir"));
 
 	@Override public void onLoad(String mixinPackage) { }
 	@Override public String getRefMapperConfig() { return null; }
