@@ -2,6 +2,73 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.15 / shaders 0.3.14 (2026-10-23)
+
+(0.4.0-beta.14 was a pre-release build for an audit, docs/dev-log/BUG-HUNT-10-23.md; everything in it is listed here,
+followed by the audit's fixes.)
+
+Far Terrain (experimental; Video Settings > Picture & Speed > Far Terrain):
+- **With shader packs**: packs that support Distant Horizons (their `dh_terrain` program: BSL, Complementary, Photon and
+  others) draw the far terrain with their own lighting and fog. It reads the far terrain's own culled quads straight from
+  the GPU, with no extra copies or memory. Packs without the program show no far terrain, as with Distant Horizons under Iris.
+- **Servers and LAN guests**: the far terrain is the land you have explored, kept on disk per server and dimension.
+- **The End**: floating islands with their undersides, the void left empty. It used to run out of memory (0-1 fps). The
+  Nether still has none (its ceiling would be all you'd see).
+- **New settings**: Brightness, Saturation and Earth Curvature (Distant Horizons' option) apply at once, also with packs;
+  Far Clouds (clouds out to the far terrain's reach); Progress Line ("Far terrain: 63% filled" under the fps counter);
+  Pre-generate 1 km / 4 km (to disk, in the background).
+- **Beacon beams** show past the render distance, widened with distance so they stay visible.
+- **Memory and speed**: 83 MB less GPU memory at 512 chunks (an unused buffer, a mesh arena that grows by half, cull buffers
+  sized to what they hold), and no GPU cull while nothing on screen changes (1.5 ms a frame saved standing still).
+
+Render Max FPS:
+- A black screen showing two numbers: the peak frame rate of this visit and the best of the session.
+- Nothing holds it back while it's on: the HUD, the world's camera and fog work and shader packs are skipped; no frame
+  limit, VSync or Heat Control applies; more frames are in flight. 9,100 -> 14,100 fps on an M2 MacBook Air (with BSL
+  selected: 120 -> 14,000).
+
+Frame rate:
+- **Frame caps are exact**: a 120 cap ran at 119.x (the counter showed 119, jumping to 120 now and then); it now holds
+  120.0, as do 60 and every other cap.
+- **Shader packs on a 60 Hz display** run at 60 by default (frames past the display's refresh are never shown);
+  `-Dcadence.shaders.displayCap=false` to turn it off.
+- **ProMotion displays**: a cap at the display's own rate (120) presents each frame on its own refresh, so motion is even
+  instead of now and then showing a frame twice and skipping the next.
+
+For mod authors:
+- **Cadence API** (`dev.cadence.api`, docs/API.md): draw at fixed points of Cadence's frame with Minecraft's render passes or
+  with Metal itself (device, queue, command buffer, encoder, main textures), query Cadence's state, and ask Cadence to step
+  aside in an area from fabric.mod.json. Costs nothing while no mod uses it.
+
+Game logic:
+- Collisions with air are answered at once (collisions were 11% of the server tick while exploring).
+- docs/COVERAGE.md lists every part of the game, what Cadence does there, and what still runs Minecraft's own code.
+
+Fixes from the audit (19 bugs found, all fixed; 8 of its 10 suspicions too):
+- **Crash: Far Terrain at Quality High**, and any shader pack switch at Distance 1024 or 2048 (sometimes at 512): the far
+  terrain's mesh memory handed out space past its end once it had grown.
+- **The far terrain follows resource packs**: it kept the colours of the pack it was first made under, also across
+  restarts. A resource pack change now makes it again (each cached tile records the packs it was made under).
+- **Explored land (servers, Explored Only) was partly forgotten** when flying fast at a low frame rate: land that left the
+  far terrain's window between two saves was never saved (a 30 fps flight kept 76 of 180 tiles; now all 180).
+- **The far terrain could skip the real chunks' later changes** to a tile it had already updated once (what you build or dig,
+  seen again from afar).
+- **Shader packs in the Nether with Far Terrain on**: Photon drew a black screen and superDuperVanilla nothing but fog.
+- **Mellow, VanillaEX and Noble draw the far terrain** (their Distant Horizons programs failed to translate).
+- **Memory**: leaving a world frees the far terrain (about 190 MB of GPU memory, the old world and its server stayed at the
+  title screen); the Nether no longer keeps the Overworld's far terrain (about 190 MB); 12.6 MB leaked at every dimension
+  change; the far forest's caches kept up to about 100 MB of chunks far behind you (now only what is around you, and the
+  trees take half the memory: a 10-minute flight ends with 466 MB of live heap instead of 609); a cache kept every visited
+  world's biomes.
+- **The 60 Hz shader-pack cap applies**: packs ran at 110-260 fps on a 60 Hz display; now 60.
+- Smaller: the look settings apply at once with a pack while standing still; a broken beacon's far beam goes; the Far
+  Terrain page keeps its scroll position and doesn't queue Pre-generate twice; Video Settings says when Render Max FPS is
+  on (not Heat Control's hold) and when the selected pack has no far terrain (or its far terrain failed); hand-edited look
+  values are clamped; a debug line no longer prints every second while the far terrain generates.
+- Mod authors: `Cadence.isMetal()` works at the `cadence` entry point (it threw, and the addon never started); a `stepAside`
+  name Cadence doesn't have is reported in the log; the API doc's example and notes are corrected. The air collision
+  shortcut covers only the game's own air blocks (a mod's collidable "air" keeps its shape).
+
 ## 0.4.0-beta.13 / shaders 0.3.12 (2026-10-22)
 
 Fixes from an overnight audit (docs/dev-log/BUG-HUNT-10-21.md: 23 bugs found, 21 fixed here).
