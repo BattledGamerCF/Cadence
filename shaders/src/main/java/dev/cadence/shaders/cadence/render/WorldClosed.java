@@ -17,6 +17,7 @@ public final class WorldClosed {
 	public static void run() {
 		try {
 			dev.cadence.shaders.cadence.shadow.ShadowProxies.release();
+			dev.cadence.metal.lod.LodPackFrame.worldClosed();
 			dev.cadence.shaders.cadence.hiz.HiZ.release();
 			dev.cadence.shaders.runtime.ShadowRenderer.releaseWorld();
 			WorldScale.releaseWorld();

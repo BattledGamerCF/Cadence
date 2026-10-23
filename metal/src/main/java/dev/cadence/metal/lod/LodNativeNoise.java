@@ -94,7 +94,13 @@ final class LodNativeNoise {
 	/** Volume calls by size: 1, 2-16, 17-256, 257-4096, 4097-65536, more (and their values), logged every 2^17 calls. */
 	static final java.util.concurrent.atomic.AtomicLongArray sizeCalls = new java.util.concurrent.atomic.AtomicLongArray(6), sizeValues = new java.util.concurrent.atomic.AtomicLongArray(6);
 
+	/** -Dcadence.lod.noiseStats=true: count the volume calls by size and log them every 2^17 calls (development only). */
+	private static final boolean NOISE_STATS = Boolean.getBoolean("cadence.lod.noiseStats") || LodGenBench.ENABLED;
+
 	static void counted(int size) {
+		// (counted only when asked: every build logged a line every 131,072 calls, about one a second while the far terrain
+		// fills in, and all generation threads bumped these shared counters on every call, BH2-12)
+		if (!NOISE_STATS) return;
 		long n = volumes.incrementAndGet();
 		volumePoints.addAndGet(size);
 		int b = size <= 1 ? 0 : size <= 16 ? 1 : size <= 256 ? 2 : size <= 4096 ? 3 : size <= 65536 ? 4 : 5;
@@ -323,7 +329,7 @@ final class LodNativeNoise {
 		public float sampleValue(SamplerContext ctx, int x, int y, int z) {
 			Backend b = this.mode.backend;
 			if (b == Backend.PLAIN) return this.original.sampleValue(ctx, x, y, z);
-			points.incrementAndGet();
+			if (NOISE_STATS) points.incrementAndGet();
 			double xz = this.original.xzScale(), ys = this.original.yScale();
 			return b == Backend.NEON ? Natives.stackPoint(this.stack, x * xz, y * ys, z * xz) : LodNoiseKernels.stackPoint(this.stack, x * xz, y * ys, z * xz);
 		}
@@ -355,7 +361,7 @@ final class LodNativeNoise {
 		public float sampleValue(SamplerContext ctx, int x, int y, int z) {
 			Backend b = this.mode.backend;
 			if (b == Backend.PLAIN) return this.original.sampleValue(ctx, x, y, z);
-			points.incrementAndGet();
+			if (NOISE_STATS) points.incrementAndGet();
 			return b == Backend.NEON ? Natives.blendedPoint(this, x, y, z)
 				: LodNoiseKernels.blendedPoint(this.main, this.lo, this.hi, x, y, z, this.mainXz, this.mainY, this.limitXz, this.limitY);
 		}

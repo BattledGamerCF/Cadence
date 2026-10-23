@@ -37,6 +37,19 @@ public final class DistantTerrain {
 		return LodPackFrame.available();
 	}
 
+	/**
+	 * Whether the far terrain runs in a dimension ("minecraft:the_end"): wired in, and no ceiling (Lod makes none under one).
+	 * The current level answers for itself; another one (translated ahead of a dimension change) by its name: the Nether is
+	 * the game's only dimension with a ceiling.
+	 */
+	public static boolean drawsIn(String dimension) {
+		if (!available()) return false;
+		String id = dimension.contains(":") ? dimension : "minecraft:" + dimension;
+		var level = net.minecraft.client.Minecraft.getInstance().level;
+		if (level != null && level.dimension().identifier().toString().equals(id)) return !level.dimensionType().hasCeiling();
+		return !id.equals("minecraft:the_nether");
+	}
+
 	/** The far terrain's reach in blocks while it draws in this level, else 0. */
 	public static double reachBlocks() {
 		return available() ? LodPackFrame.reach() : 0;

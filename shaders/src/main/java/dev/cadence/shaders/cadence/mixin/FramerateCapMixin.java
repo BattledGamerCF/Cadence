@@ -25,7 +25,8 @@ public abstract class FramerateCapMixin {
 			dev.cadence.shaders.cadence.system.BatteryMode.fpsCap())));
 		// Cadence: a shader pack on a display of 60 Hz or less runs at the display's rate by default: frames past it are never
 		// shown, and a pack's frame is expensive (heat, battery). -Dcadence.shaders.displayCap=false: as the options say.
-		if (DISPLAY_CAP && dev.cadence.shaders.runtime.ShaderRuntime.isRendering() && HeatControl.refreshHz() <= 60)
+		// (a pack is installed: "a pack frame is being drawn" was never true here, the limit is read after the frame, BH2-08)
+		if (DISPLAY_CAP && dev.cadence.shaders.runtime.ShaderRuntime.get() != null && HeatControl.refreshHz() <= 60)
 			cap = Math.min(cap, HeatControl.refreshHz());
 		dev.cadence.shaders.cadence.system.FramePacing.cap(cap);
 		return cap;

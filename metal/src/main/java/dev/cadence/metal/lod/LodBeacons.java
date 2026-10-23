@@ -13,6 +13,7 @@ import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BeaconBeamOwner;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -42,6 +43,8 @@ final class LodBeacons {
 			this.heights = heights;
 		}
 	}
+
+	private static final BlockPos.MutableBlockPos PROBE = new BlockPos.MutableBlockPos();
 
 	/** Frames counted by submit (the game's extraction of a frame comes before its submission). */
 	private static long frame;
@@ -156,10 +159,25 @@ final class LodBeacons {
 		float time = Math.floorMod(state.gameTime, 40) + state.worldPartialTicks;
 		double reach2 = (double) reach * reach;
 		int drawn = 0, loaded = 0;
-		for (Beacon b : BEACONS.values()) {
+		for (var it = BEACONS.values().iterator(); it.hasNext();) {
+			Beacon b = it.next();
 			if (b.drawnFrame == thisFrame) {
 				loaded++;
 				continue;  // (the game draws it)
+			}
+			// (the chunk cache's own lookup: ClientLevel.hasChunk is always true, and an absent chunk reads as air)
+			var chunk = level.getChunkSource().getChunkNow(b.x >> 4, b.z >> 4);
+			if (chunk != null) {
+				// its chunk is here (only too far for the game to draw it): what stands there now decides. Broken (no beacon block):
+				// forgotten; a beacon without a beam right now (its pyramid gone): not drawn. It used to keep its beam for as long
+				// as the chunk stayed loaded (BH2-04). (The block, not the block entity: a chunk being unloaded has lost its block
+				// entities but not its blocks)
+				if (!chunk.getBlockState(PROBE.set(b.x, b.y, b.z)).is(Blocks.BEACON)) {
+					it.remove();
+					dirty = true;
+					continue;
+				}
+				if (chunk.getBlockEntity(PROBE) instanceof BeaconBeamOwner owner && owner.getBeamSections().isEmpty()) continue;
 			}
 			drawn++;
 			double dx = b.x + 0.5 - cam.x, dz = b.z + 0.5 - cam.z, d2 = dx * dx + dz * dz;

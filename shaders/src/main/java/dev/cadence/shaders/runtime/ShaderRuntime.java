@@ -242,6 +242,18 @@ public final class ShaderRuntime implements AutoCloseable {
     return programs;
   }
 
+  /**
+   * Cadence: the far terrain with this pack, for the Far Terrain page and Video Settings: "draws" (its dh_terrain program
+   * draws it), "none" (no Distant Horizons support: no far terrain with it), "failed" (its dh_terrain program didn't
+   * translate or compile), "" (no far terrain in this dimension, or none running).
+   */
+  public String distantTerrainState() {
+    PackPrograms p = programs;
+    if (p == null || !p.distantProgram) return p != null && dev.cadence.shaders.cadence.render.DistantTerrain.available() ? "none" : "";
+    if (!p.distantTerrain) return "";
+    return distantFailed || p.find("dh_terrain") == null ? "failed" : "draws";
+  }
+
   public ShaderProperties properties() {
     return properties;
   }

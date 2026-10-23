@@ -24,6 +24,10 @@ calls only when it is installed.
 "entrypoints": { "cadence": ["com.example.myaddon.MyCadenceAddon"] }
 ```
 
+The entry point runs once at client start, with the other client mods' initializers, before the game's window and GPU device
+exist: register hooks there and make GPU objects from inside them. `Cadence.isMetal()` answers from the startup choice until
+the device exists (Metal unless `-Dcadence.metal=false`), exactly from the first frame on.
+
 ```java
 public final class MyCadenceAddon implements CadenceAddon {
 	@Override
@@ -45,7 +49,9 @@ public final class MyCadenceAddon implements CadenceAddon {
 | `AFTER_HUD` | the frame is complete | `null` |
 
 `RenderContext` also gives the camera position, its rotation and projection (Minecraft's: reversed depth, 1 near and 0 far),
-the partial tick, and `metal()`. All of these are valid only during the call.
+the partial tick, and `metal()`. All of these are valid only during the call (each call gets a new context: don't keep it).
+At `AFTER_HUD` the world's view is gone: `modelView()` and `projection()` are identity matrices and `camera()` is the camera
+entity's eye position, so draw in screen space there.
 
 ### Replacing OpenGL drawing
 
@@ -69,7 +75,7 @@ methods, and puts that area back on the vanilla code path for the mod. For confl
 behaviour that depends on vanilla timing), a mod can ask in its `fabric.mod.json`:
 
 ```json
-"custom": { "cadence": { "stepAside": ["terrain", "mixin:ModelPartCompileMixin"] } }
+"custom": { "cadence": { "stepAside": ["terrain", "mixin:BrainMixin"] } }
 ```
 
 | Area | What runs vanilla |
@@ -79,7 +85,7 @@ behaviour that depends on vanilla timing), a mod can ask in its `fabric.mod.json
 | `cpu` | all of Cadence's render-CPU replacements |
 | `logic` | all of Cadence's game-logic replacements |
 | `farTerrain` | the far terrain (off for the session) |
-| `mixin:Name` | one of Cadence's mixins, by simple or full class name |
+| `mixin:Name` | one of Cadence's mixins, by simple or full class name (a name Cadence doesn't have is reported in the log) |
 
 `Cadence.steppedAside()` lists what is in effect and for which mods. Cadence's settings screen shows the same.
 

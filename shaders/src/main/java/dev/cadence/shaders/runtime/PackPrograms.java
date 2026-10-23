@@ -116,12 +116,15 @@ public final class PackPrograms implements AutoCloseable {
     this.options = Map.copyOf(options);
     directory = pack.dimensionFolder(dimension);
     // Cadence: with far terrain running, a pack with a dh_terrain program draws it (DistantTerrain) and sees Iris's Distant
-    // Horizons macros, so its other programs take their DH paths too (fog to the far terrain's reach, dhDepthTex)
-    boolean distant = false;
+    // Horizons macros, so its other programs take their DH paths too (fog to the far terrain's reach, dhDepthTex). Not in a
+    // dimension without far terrain (the Nether): the DH paths there made Photon black and superDuperVanilla all fog (BH2-17)
+    boolean dhProgram = false;
     if (dev.cadence.shaders.cadence.render.DistantTerrain.available())
       for (ShaderProgram program : pack.programs(directory))
-        distant |= program.name().equals("dh_terrain") && program.paths().containsKey(ShaderStage.VERTEX)
+        dhProgram |= program.name().equals("dh_terrain") && program.paths().containsKey(ShaderStage.VERTEX)
             && program.paths().containsKey(ShaderStage.FRAGMENT);
+    distantProgram = dhProgram;
+    boolean distant = dhProgram && dev.cadence.shaders.cadence.render.DistantTerrain.drawsIn(dimension);
     distantTerrain = distant;
     Map<String, String> env = new java.util.LinkedHashMap<>(PackEnvironment.definitions());
     if (distant) env.putAll(dev.cadence.shaders.cadence.render.DistantTerrain.definitions());
@@ -291,8 +294,10 @@ public final class PackPrograms implements AutoCloseable {
   /** false: the program is refused as a whole (recorded by a census; otherwise thrown). */
   private record Job(ShaderProgram program, String vertex, String fragment, boolean screen, boolean compute, boolean distant) {}
 
-  /** Cadence: whether this pack draws the far terrain (far terrain running, and the pack has a dh_terrain program). */
+  /** Cadence: whether this pack draws the far terrain (far terrain running here, and the pack has a dh_terrain program). */
   public final boolean distantTerrain;
+  /** Cadence: whether the pack has a dh_terrain program (Distant Horizons support), in any dimension (far terrain running). */
+  public final boolean distantProgram;
 
   public final ShaderCompatibilityCompiler.StorageContext storageContext;
   /** Cadence: the pack's compute programs by name (prepare, prepare_a, composite5_b, setup1, ...). */

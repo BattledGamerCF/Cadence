@@ -33,6 +33,11 @@ final class LodPalette {
 		IDS.forEach(LodPalette::write);
 	}
 
+	/** The resources reloaded (LodResources, after LodColors.forget): every entry written again, the atlas and colors are new. */
+	static synchronized void refresh() {
+		if (table != 0) IDS.forEach(LodPalette::write);
+	}
+
 	/** The block's number (0 when the table is full, or for air and fluids: they keep the flat color). */
 	static int id(BlockState state) {
 		if (state.isAir() || !state.getFluidState().isEmpty() && state.getBlock() instanceof net.minecraft.world.level.block.LiquidBlock) return 0;

@@ -19,6 +19,15 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		super(parent, Minecraft.getInstance().options, Component.literal("Far Terrain (Experimental)"));
 	}
 
+	/** Where a rebuilt page starts scrolled to (the page it replaced). */
+	private double startScroll;
+
+	@Override
+	protected void init() {
+		super.init();
+		if (this.startScroll > 0) this.list.setScrollAmount(this.startScroll);
+	}
+
 	/** Whether this launch draws far terrain (it was on at startup). */
 	public static boolean running() {
 		return Boolean.getBoolean("cadence.lod") || System.getProperty("cadence.lod.radius") != null;
@@ -85,7 +94,25 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 			this.list.addHeader(Component.literal("Pre-generate the far terrain around you, to disk").withStyle(ChatFormatting.GRAY));
 			this.list.addSmall(pregen("Pre-generate 1 km", 64), pregen("Pre-generate 4 km", 256));
 		}
-		this.list.addHeader(Component.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
+		Component note = packNote();
+		this.list.addHeader(note != null ? note
+			: Component.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
+	}
+
+	/**
+	 * The selected shader pack without far terrain, in a line (Video Settings shows it too), or null: no pack, or it draws
+	 * the far terrain. The far terrain used to vanish with such a pack with nothing said but a log line (S2-07, S2-09).
+	 */
+	public static @org.jspecify.annotations.Nullable Component packNote() {
+		if (!running()) return null;
+		var runtime = dev.cadence.shaders.runtime.ShaderRuntime.get();
+		if (runtime == null) return null;
+		String pack = ShaderToggle.selectedPack().replaceFirst("(?i)\\.zip$", "");
+		return switch (runtime.distantTerrainState()) {
+			case "none" -> Component.literal(pack + " doesn't support Distant Horizons: no far terrain with it").withStyle(ChatFormatting.YELLOW);
+			case "failed" -> Component.literal(pack + "'s far terrain program failed to load: no far terrain (the log says why)").withStyle(ChatFormatting.YELLOW);
+			default -> null;
+		};
 	}
 
 	/** Far Clouds: the cloud distance (chunks) while far terrain draws, else 0 (the game's Cloud Distance). Asked every frame. */
@@ -139,11 +166,17 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 			int i = java.util.Arrays.asList(values).indexOf(now);
 			int step = Minecraft.getInstance().hasShiftDown() ? values.length - 1 : 1;
 			ShaderToggle.saveKey(key, values[(Math.max(0, i) + step) % values.length]);
-				applyLook();
-				farClouds = -1;
-				progress = -1;
-			// (the header says whether a restart is due: rebuilt with the new value)
-			Minecraft.getInstance().gui.setScreen(new FarTerrainScreen(this.lastScreen));
+			applyLook();
+			farClouds = -1;
+			progress = -1;
+			// (the label changes in place: rebuilding the page at every click lost its scroll position and what Pre-generate
+			// said, BH2-19. The Far Terrain switch changes the header too: that page is rebuilt, scrolled where this one was)
+			b.setMessage(Component.literal(label + ": " + labelOf(key, def, values, labels)));
+			if (key.equals("farTerrain")) {
+				FarTerrainScreen next = new FarTerrainScreen(this.lastScreen);
+				next.startScroll = this.list.scrollAmount();
+				Minecraft.getInstance().gui.setScreen(next);
+			}
 		}).width(Button.DEFAULT_WIDTH).tooltip(tip).build();
 		return self[0];
 	}

@@ -149,13 +149,19 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     FULLSCREEN
   }
 
-  /** An explicit bridge from a Minecraft vertex format and vanilla draw uniforms to pack inputs. */
+  /**
+   * An explicit bridge from a Minecraft vertex format and vanilla draw uniforms to pack inputs. fragmentValues: legacy
+   * expressions the fragment stage may read too (name -> GLSL type), passed as flat varyings; functions: definitions either
+   * stage gets when it calls one of them without defining it (name -> GLSL definition).
+   */
   public record VertexAdapter(
       String declarations,
       String initialization,
       Map<String, String> legacyExpressions,
       List<TranslatedProgram.Attribute> attributes,
-      Map<String, UniformLayout.Declaration> uniforms) {
+      Map<String, UniformLayout.Declaration> uniforms,
+      Map<String, String> fragmentValues,
+      Map<String, String> functions) {
     public VertexAdapter(
         String declarations,
         String initialization,
@@ -164,10 +170,21 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       this(declarations, initialization, legacyExpressions, attributes, Map.of());
     }
 
+    public VertexAdapter(
+        String declarations,
+        String initialization,
+        Map<String, String> legacyExpressions,
+        List<TranslatedProgram.Attribute> attributes,
+        Map<String, UniformLayout.Declaration> uniforms) {
+      this(declarations, initialization, legacyExpressions, attributes, uniforms, Map.of(), Map.of());
+    }
+
     public VertexAdapter {
       legacyExpressions = Map.copyOf(legacyExpressions);
       attributes = List.copyOf(attributes);
       uniforms = Map.copyOf(uniforms);
+      fragmentValues = Map.copyOf(fragmentValues);
+      functions = Map.copyOf(functions);
     }
   }
 
@@ -245,7 +262,9 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       adapter == null ? "" : adapter.initialization(),
       adapter == null ? "" : new java.util.TreeMap<>(adapter.legacyExpressions()),
       adapter == null ? "" : adapter.attributes(),
-      adapter == null ? "" : new java.util.TreeMap<>(adapter.uniforms())
+      adapter == null ? "" : new java.util.TreeMap<>(adapter.uniforms()),
+      adapter == null ? "" : new java.util.TreeMap<>(adapter.fragmentValues()),
+      adapter == null ? "" : new java.util.TreeMap<>(adapter.functions())
     };
     return TranslationCache.get(
         key, () -> translateNow(vertex, fragment, label, mode, adapter, alphaTest, earlyAlphaDemote));
@@ -323,6 +342,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     vertexBody =
         vertexBody.replaceAll(
             "\\bftransform\\s*\\(\\s*\\)", "(gl_ModelViewProjectionMatrix * gl_Vertex)");
+    StringBuilder adapterCopyOut = new StringBuilder();
     if (adapter != null) {
       // Cadence: the game's vertex inputs keep their own names (Position, Color, UV0, UV2, Normal); a pack identifier of the
       // same name (Mellow's `Normal`) is renamed in both stages, or the two would be redefinitions of each other
@@ -345,6 +365,27 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
         }
       }
       adapter.uniforms().forEach((name, declaration) -> merge(uniforms, name, declaration));
+      // (the adapter's expressions use them in the vertex stage, whichever stage the pack declares them in: Mellow declares
+      // dhProjection in its fragment stage only, which hid it from the vertex stage, BH2-03)
+      vertexUniforms.addAll(adapter.uniforms().keySet());
+      // Cadence: an adapter value the fragment stage reads too (VanillaEX reads dhMaterialId there, BH2-06): a flat varying
+      // the vertex stage fills from the adapter's expression
+      for (var value : adapter.fragmentValues().entrySet()) {
+        String name = value.getKey(), expression = adapter.legacyExpressions().get(name);
+        if (expression == null || !token(fragmentBody, name) || varyings.containsKey(name) || uniforms.containsKey(name)) continue;
+        String varying = "sl_adapter_" + name;
+        fragmentBody = replaceToken(fragmentBody, name, varying);
+        varyings.put(varying, new UniformLayout.Declaration(value.getValue(), 0));
+        varyingQualifiers.put(varying, "flat");
+        adapterCopyOut.append(varying).append(" = ").append(expression).append(";\n");
+      }
+      // Cadence: functions of the adapter's contract a pack calls without defining them (Noble's dh_hasTexture and
+      // dh_sampleTexture, BH2-07)
+      for (var function : adapter.functions().entrySet()) {
+        Pattern defined = Pattern.compile("\\b\\w+\\s+" + Pattern.quote(function.getKey()) + "\\s*\\([^)]*\\)\\s*\\{");
+        if (token(vertexBody, function.getKey()) && !defined.matcher(vertexBody).find()) vertexBody = function.getValue() + "\n" + vertexBody;
+        if (token(fragmentBody, function.getKey()) && !defined.matcher(fragmentBody).find()) fragmentBody = function.getValue() + "\n" + fragmentBody;
+      }
       // A single token pass prevents replacement expressions from being recursively rewritten.
       // Cadence: a pack's own declared type for an input (I Like Vanilla declares mc_midTexCoord a vec2; the adapter
       // supplies a vec4): converted as OpenGL converts a vertex attribute to the declared size
@@ -707,7 +748,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
         entry += "sl_MultiTexCoord0 = vec4(sl_uv, 0.0, 1.0);\n";
     }
     // Pack matrices and sampled depth remain OpenGL-style; rasterization expects [0, 1] NDC Z.
-    entry += "sl_pack_main();\n" + structCopyOut + "gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n";
+    entry += "sl_pack_main();\n" + adapterCopyOut + structCopyOut + "gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n";
     String compatibility =
         shadowComparison == ShadowComparison.HARDWARE
             ? """

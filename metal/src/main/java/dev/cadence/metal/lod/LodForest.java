@@ -47,7 +47,10 @@ import org.jspecify.annotations.Nullable;
  * chunks); a tile asks for its own chunks and the ring around them (trees reach across chunk edges).
  */
 final class LodForest {
-	/** A chunk's tree blocks: x, y, z (absolute) and the block state id, four ints each. */
+	/**
+	 * A chunk's tree blocks, two ints each: the position (x and z counted from 64 blocks west and north of the chunk, 7 bits
+	 * each, then y + 2048 in 12 bits) and the block state id (with FROM_TREE). Was four ints: half the memory.
+	 */
 	record Trees(int[] blocks) {
 	}
 
@@ -56,7 +59,8 @@ final class LodForest {
 	}
 
 	private static final int VEG = GenerationStep.Decoration.VEGETAL_DECORATION.ordinal();
-	private static final int CACHE_MAX = 40000;
+	/** (a backstop: prune() keeps each cache to the window, ~5,500 chunks at N 1024, ~19,000 at N 2048; pre-generation runs past it) */
+	private static final int CACHE_MAX = 24000;
 	private final LodNoise noise;
 	private final ServerLevel level;
 	private final ChunkGenerator generator;
@@ -150,6 +154,24 @@ final class LodForest {
 		return g;
 	}
 
+	/**
+	 * Lets go of the chunks outside [cx0, cx1) x [cz0, cz1): the window trees are planted in and a margin (LodField, as the
+	 * window moves). Both caches used to keep up to 40,000 chunks, most of them far behind a flight (S2-04).
+	 */
+	void prune(int cx0, int cz0, int cx1, int cz1) {
+		java.util.function.Predicate<Long> outside = k -> {
+			int x = (int) (k >> 32), z = (int) (long) k;
+			return x < cx0 || z < cz0 || x >= cx1 || z >= cz1;
+		};
+		this.trees.keySet().removeIf(outside);
+		this.grounds.keySet().removeIf(outside);
+	}
+
+	/** Chunks held: {trees, grounds} (stats). */
+	int[] cached() {
+		return new int[] {this.trees.size(), this.grounds.size()};
+	}
+
 	/** A level-0 tile's chunks go into the ground cache as it is generated (tile cells from (cx, cz), 16 x 16). */
 	void offer(LodTile t) {
 		if (t.level != 0) return;
@@ -232,15 +254,17 @@ final class LodForest {
 				}
 			}
 		}
-		int[] out = new int[s.placed.size() * 4];
-		int n = 0;
+		int[] out = new int[s.placed.size() * 2];
+		int n = 0, ox = chunkX * 16 - 64, oz = chunkZ * 16 - 64;
 		for (var e : s.placed.entrySet()) {
 			long p = e.getKey();
-			out[n++] = BlockPos.getX(p);
-			out[n++] = BlockPos.getY(p);
-			out[n++] = BlockPos.getZ(p);
+			int dx = BlockPos.getX(p) - ox, dz = BlockPos.getZ(p) - oz, y = BlockPos.getY(p) + 2048;
+			// (a block past the packing's reach, 64 blocks around the chunk: no tree feature reaches that far)
+			if ((dx | dz) >>> 7 != 0 || y >>> 12 != 0) continue;
+			out[n++] = dx | dz << 7 | y << 14;
 			out[n++] = Block.getId(e.getValue()) | (s.fromTree.contains(p) ? FROM_TREE : 0);
 		}
+		if (n < out.length) out = java.util.Arrays.copyOf(out, n);
 		this.runs.incrementAndGet();
 		this.runNanos.addAndGet(System.nanoTime() - start);
 		return new Trees(out);
@@ -270,12 +294,13 @@ final class LodForest {
 		for (int cz = c0z; cz <= c1z; cz++) {
 			for (int cx = c0x; cx <= c1x; cx++) {
 				int[] b = this.trees(cx, cz).blocks();
-				for (int k = 0; k < b.length; k += 4) {
-					int bx = b[k] - t.x0, y = b[k + 1], bz = b[k + 2] - t.z0;
+				int ox = cx * 16 - 64 - t.x0, oz = cz * 16 - 64 - t.z0;
+				for (int k = 0; k < b.length; k += 2) {
+					int p = b[k], bx = ox + (p & 127), y = (p >>> 14) - 2048, bz = oz + ((p >>> 7) & 127);
 					if (bx < 0 || bz < 0 || bx >= span || bz >= span) continue;
 					int i = (bz >> L) * t.size + (bx >> L);
-					BlockState st = Block.stateById(b[k + 3] & ~FROM_TREE);
-					boolean fromTree = (b[k + 3] & FROM_TREE) != 0;
+					BlockState st = Block.stateById(b[k + 1] & ~FROM_TREE);
+					boolean fromTree = (b[k + 1] & FROM_TREE) != 0;
 					if (st.isAir()) continue;
 					int g = t.ground[i];
 					if (L == 0 && y < g) {

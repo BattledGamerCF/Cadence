@@ -73,6 +73,11 @@ public final class LodPackFrame {
 		return LodConfig.ENABLED ? Lod.status() : null;
 	}
 
+	/** The player left the world (WorldClosed): the far terrain's memory goes now, its tiles and beacons are saved. */
+	public static void worldClosed() {
+		if (LodConfig.ENABLED) Lod.worldClosed();
+	}
+
 	/** The far terrain's reach in blocks while it draws, else 0. */
 	public static float reach() {
 		return LodConfig.ENABLED ? Lod.activeReach() : 0;

@@ -143,7 +143,12 @@ public final class MinecraftVertexAdapter {
             + "sl_PackTextureMatrices[1][1][1] = 1.0 / 256.0;\n"
             + "sl_PackTextureMatrices[1][3].xy = vec2(8.0 / 256.0);\n"
             + "sl_DhDecode();\n";
-    return new ShaderCompatibilityCompiler.VertexAdapter(declarations, initialization, expressions, List.of(), uniforms);
+    // (the far terrain has no per-block textures for a pack: Iris's dh_hasTexture is false, and dh_sampleTexture never runs)
+    Map<String, String> functions = Map.of(
+        "dh_hasTexture", "bool dh_hasTexture() { return false; }",
+        "dh_sampleTexture", "vec4 dh_sampleTexture() { return vec4(0.0); }");
+    return new ShaderCompatibilityCompiler.VertexAdapter(declarations, initialization, expressions, List.of(), uniforms,
+        Map.of("dhMaterialId", "int"), functions);
   }
 
   public static ShaderCompatibilityCompiler.VertexAdapter adapter(

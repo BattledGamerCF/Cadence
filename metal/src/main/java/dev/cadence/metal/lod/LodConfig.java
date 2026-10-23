@@ -24,14 +24,30 @@ public final class LodConfig {
 	 * (1: as generated) and the earth's curvature as Distant Horizons gives it, a ratio to the Earth's size (0: flat; 50: a
 	 * planet a fiftieth the size, so far land sinks below the horizon). -Dcadence.lod.brightness / saturation / curvature.
 	 */
-	private static volatile float brightness = Float.parseFloat(System.getProperty("cadence.lod.brightness", "1")),
-		saturation = Float.parseFloat(System.getProperty("cadence.lod.saturation", "1")),
-		curvature = Float.parseFloat(System.getProperty("cadence.lod.curvature", "0"));
+	private static volatile float brightness = lookProperty("cadence.lod.brightness", 1, 0.1F, 4),
+		saturation = lookProperty("cadence.lod.saturation", 1, 0, 4),
+		curvature = lookProperty("cadence.lod.curvature", 0, 0, 5000);
 
 	public static void look(float brightnessValue, float saturationValue, float curvatureRatio) {
-		brightness = brightnessValue;
-		saturation = saturationValue;
-		curvature = curvatureRatio;
+		brightness = lookValue(brightnessValue, 1, 0.1F, 4);
+		saturation = lookValue(saturationValue, 1, 0, 4);
+		curvature = lookValue(curvatureRatio, 0, 0, 5000);
+	}
+
+	/**
+	 * A look value from a hand-edited config or flag kept in its range (fallback when it isn't a number): the page's live path
+	 * applied NaN, 1e30 or negative values the launch path refused (BH2-16).
+	 */
+	static float lookValue(float v, float fallback, float min, float max) {
+		return Float.isFinite(v) ? Math.clamp(v, min, max) : fallback;
+	}
+
+	private static float lookProperty(String name, float fallback, float min, float max) {
+		try {
+			return lookValue(Float.parseFloat(System.getProperty(name, Float.toString(fallback))), fallback, min, max);
+		} catch (NumberFormatException e) {
+			return fallback;
+		}
 	}
 
 	static float brightness() {

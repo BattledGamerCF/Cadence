@@ -26,9 +26,18 @@ public final class Cadence {
 	private Cadence() {
 	}
 
-	/** Whether the game draws with Cadence's Metal renderer (false: Cadence runs on the game's OpenGL backend this session). */
+	/**
+	 * Whether the game draws with Cadence's Metal renderer (false: Cadence runs on the game's OpenGL backend this session).
+	 * Before the game's GPU device exists (at the {@link CadenceAddon} entry point) it answers from the startup choice: Metal
+	 * unless -Dcadence.metal=false. Asked from a render hook it is exact (Metal failing to start falls back to OpenGL).
+	 */
 	public static boolean isMetal() {
-		return MetalCompute.available();
+		try {
+			return MetalCompute.available();
+		} catch (IllegalStateException e) {
+			// (RenderSystem.getDevice() before the device is made: it threw, and an addon that asked first never started, BH2-09)
+			return Boolean.parseBoolean(System.getProperty("cadence.metal", "true"));
+		}
 	}
 
 	/** Whether a shader pack draws the world now. */

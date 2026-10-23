@@ -56,16 +56,28 @@ final class LodColors {
 	private LodColors() {
 	}
 
+	/** Counts resource reloads: what was worked out from the textures before one isn't kept (a worker can be midway). */
+	private static volatile int epoch;
+
 	static Look look(BlockState state) {
 		Look l = LOOKS.get(state);
 		if (l != null) return l;
+		int e = epoch;
 		try {
 			l = compute(state);
-		} catch (RuntimeException e) {
+		} catch (RuntimeException ex) {
 			l = FALLBACK;
 		}
-		LOOKS.put(state, l);
+		if (e == epoch) LOOKS.put(state, l);
 		return l;
+	}
+
+	/** The resources reloaded (LodResources): every look, texture average and plant profile is worked out again. */
+	static void forget() {
+		epoch++;
+		LOOKS.clear();
+		TEXTURES.clear();
+		PROFILES.clear();
 	}
 
 	/** The color of a block's top seen at a column in biome b. */
@@ -153,7 +165,13 @@ final class LodColors {
 
 	/** Per sixteenth of the sprite's width: how high its opaque texels reach (0-16), a byte each. */
 	static int[] profile(TextureAtlasSprite sprite) {
-		return PROFILES.computeIfAbsent(sprite.contents().name(), LodColors::loadProfile);
+		Identifier name = sprite.contents().name();
+		int[] p = PROFILES.get(name);
+		if (p != null) return p;
+		int e = epoch;
+		p = loadProfile(name);
+		if (e == epoch) PROFILES.put(name, p);
+		return p;
 	}
 
 	private static int[] loadProfile(Identifier name) {
@@ -223,7 +241,11 @@ final class LodColors {
 	/** Average of a sprite's first frame, weighted by alpha (cutout textures count only what is drawn). */
 	static int average(TextureAtlasSprite sprite) {
 		Identifier name = sprite.contents().name();
-		return TEXTURES.computeIfAbsent(name, LodColors::load);
+		Integer c = TEXTURES.get(name);
+		if (c != null) return c;
+		int e = epoch, rgb = load(name);
+		if (e == epoch) TEXTURES.put(name, rgb);
+		return rgb;
 	}
 
 	private static int load(Identifier name) {

@@ -7,7 +7,9 @@ import org.joml.Matrix4fc;
 import org.jspecify.annotations.Nullable;
 
 /**
- * What an addon draws with at a {@link RenderStage}. Valid only during the hook call (the same object is reused every frame).
+ * What an addon draws with at a {@link RenderStage}. Valid only during the hook call (a new one each call: don't keep it).
+ * At AFTER_HUD the world's view is gone: modelView and projection are identity matrices and camera is the camera entity's eye
+ * position (draw in screen space there).
  *
  * @param stage where in the frame this is
  * @param pass the game's open render pass at AFTER_OPAQUE and AFTER_TRANSLUCENT (draw into it with Minecraft's render

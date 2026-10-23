@@ -126,6 +126,47 @@ final class LodMesh implements LodClip.Listener {
 	/** A dimension without a floor (the End): columns float (lodmesh.c LmIn.floating). Set once, before any meshing. */
 	volatile boolean floating;
 
+	/** Per level and slot: the installed mesh merged faces within one colour (shader-pack mode). */
+	private final boolean[][] builtByColor;
+	/** (diagnostics) Per level and slot: why the last result for it wasn't installed (DROP_*), 0 none. */
+	private final byte[][] lastDrop;
+	private static final byte DROP_PUBLISHED = 2, DROP_PUBLISH = 3, DROP_WORDS = 4, DROP_SEQ = 5;
+
+	/**
+	 * Whether every installed mesh is merged as the current mode asks (render thread). Just after a shader pack turned on, the
+	 * meshes merged geometrically are still installed while their one-colour remeshes run: drawn through the pack, each of
+	 * their big merged faces took one cell's colour (giant slabs in wrong colours, S2-01); the pack draws none until this is
+	 * true (a second or two).
+	 */
+	boolean modeSettled() {
+		return this.unsettled() == 0;
+	}
+
+	/** Installed meshes not merged as the current mode asks (render thread). */
+	int unsettled() {
+		int n = 0;
+		for (int level = 0; level < this.key.length; level++)
+			for (int slot = 0; slot < this.key[level].length; slot++)
+				if (this.key[level][slot] >= 0 && this.builtByColor[level][slot] != this.colorMerge) n++;
+		return n;
+	}
+
+	/** (diagnostics) Up to eight installed meshes not merged for the current mode: level, tile, queued, resident, seq. */
+	String unsettledReport() {
+		StringBuilder b = new StringBuilder();
+		int shown = 0;
+		for (int level = 0; level < this.key.length && shown < 8; level++)
+			for (int slot = 0; slot < this.key[level].length && shown < 8; slot++) {
+				long k = this.key[level][slot];
+				if (k < 0 || this.builtByColor[level][slot] == this.colorMerge) continue;
+				shown++;
+				b.append(String.format(" [L%d %d,%d queued %s resident %s seq %d drop %d snap %s ver %d/%d pub %d]", level, LodTile.txOf(k), LodTile.tzOf(k),
+					this.queued.containsKey(k), this.clip.resident(level, LodTile.txOf(k), LodTile.tzOf(k)), this.seq[level][slot], this.lastDrop[level][slot],
+					this.snaps.containsKey(k), this.builtVer[level][slot], this.clip.writing[level].get(slot), this.publishedVer[level][slot]));
+			}
+		return b.toString();
+	}
+
 	/** Render thread: switches the merging mode; every resident tile is meshed again in the new one. */
 	void colorMerge(boolean on) {
 		if (on == this.colorMerge) return;
@@ -145,6 +186,8 @@ final class LodMesh implements LodClip.Listener {
 		this.key = new long[clip.levels][slots];
 		this.seq = new long[clip.levels][slots];
 		this.builtNeighbors = new int[clip.levels][slots];
+		this.builtByColor = new boolean[clip.levels][slots];
+		this.lastDrop = new byte[clip.levels][slots];
 		this.builtVer = new long[clip.levels][slots];
 		this.publishedVer = new long[clip.levels][slots];
 		for (long[] o : this.off) java.util.Arrays.fill(o, -1L);
@@ -267,6 +310,16 @@ final class LodMesh implements LodClip.Listener {
 					n = LodNative.meshTile(this.clip.geom + lw, crown, runs, pa, pb, this.clip.logN, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS,
 						byColor ? this.clip.color + lw : 0, this.clip.logN, this.floating);
 				}
+				if (n < 0 && byColor && !LodClip.PAIRS) {
+					// (one colour per face overflowed the scratch: the tile merged geometrically, counted as done for the mode so
+					// the pack's far terrain isn't held back by it)
+					n = LodNative.meshTile(this.clip.geom + lw, crown, runs, pa, pb, this.clip.logN, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS,
+						0, this.clip.logN, this.floating);
+				} else if (n < 0 && byColor) {
+					long sp = (long) SCRATCH * SCRATCH * 4;
+					n = LodNative.meshTile(scratch, crowns ? scratch + sp : 0, crowns ? scratch + 2 * sp : 0, plants ? scratch + 3 * sp : 0, plants ? scratch + 4 * sp : 0,
+						SCRATCH_LOG, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS, 0, SCRATCH_LOG, this.floating);
+				}
 				if (byColor != this.colorMerge) this.request(level, tx, tz);  // (the mode changed meanwhile: again, in the new one)
 				this.meshNanos.addAndGet(System.nanoTime() - t0);
 				if (n < 0) {
@@ -280,7 +333,7 @@ final class LodMesh implements LodClip.Listener {
 				this.meshed.incrementAndGet();
 				this.meshQuads.addAndGet(n);
 				if (snap != null) this.resultSnaps.put(block, snap);
-				this.results.add(new long[] {k, s, block, words, neighbors, ver != null ? ver : -1});
+				this.results.add(new long[] {k, s, block, words, neighbors, ver != null ? ver : -1, byColor ? 1 : 0});
 			} catch (RuntimeException e) {
 				System.out.println("cadence-lod: mesh job failed: " + e);
 			}
@@ -414,8 +467,16 @@ final class LodMesh implements LodClip.Listener {
 		if (!this.clip.resident(level, tx, tz)) return;
 		int slot = this.clip.slot(tx, tz);
 		if (snap != null) {
-			if (snap.version <= this.publishedVer[level][slot]) return;
-			if (!this.clip.publish(snap)) return;
+			if (snap.version <= this.publishedVer[level][slot]) {
+				// (a newer copy was published already: this one, if still waiting, never will be)
+				this.snaps.remove(k, snap);
+				this.dropped(level, slot, tx, tz, r, DROP_PUBLISHED);
+				return;
+			}
+			if (!this.clip.publish(snap)) {
+				this.dropped(level, slot, tx, tz, r, DROP_PUBLISH);
+				return;
+			}
 			this.snaps.remove(k, snap);
 			this.publishedVer[level][slot] = snap.version;
 			this.publishes++;
@@ -430,8 +491,22 @@ final class LodMesh implements LodClip.Listener {
 			}
 			return;
 		}
-		if (r[5] != this.clip.writing[level].get(slot)) return;
+		if (r[5] != this.clip.writing[level].get(slot)) {
+			this.dropped(level, slot, tx, tz, r, DROP_WORDS);
+			return;
+		}
 		this.install(frame, r, true);
+	}
+
+	/**
+	 * A result not installed (its words or snapshot superseded). Whatever superseded it asks for its own mesh, except for the
+	 * merge mode: when the dropped mesh was merged for the current mode and the installed one isn't, the tile is asked for
+	 * again (it stayed in the old mode for good, and a pack never got the far terrain).
+	 */
+	private void dropped(int level, int slot, int tx, int tz, long[] r, byte why) {
+		this.lastDrop[level][slot] = why;
+		boolean byColor = r.length > 6 && r[6] != 0;
+		if (this.key[level][slot] == r[0] && byColor == this.colorMerge && this.builtByColor[level][slot] != this.colorMerge) this.request(level, tx, tz);
 	}
 
 	private void install(long frame, long[] r) {
@@ -444,7 +519,10 @@ final class LodMesh implements LodClip.Listener {
 		if (!this.clip.resident(level, tx, tz)) return;
 		int slot = this.clip.slot(tx, tz);
 		// an older job finishing after a newer one keeps the newer mesh (PAIRS: the word versions decide, checked by the caller)
-		if (!checked && this.key[level][slot] == k && this.seq[level][slot] > r[1]) return;
+		if (!checked && this.key[level][slot] == k && this.seq[level][slot] > r[1]) {
+			this.lastDrop[level][slot] = DROP_SEQ;
+			return;
+		}
 		long words = r[3];
 		long at = this.allocate(frame, words);
 		if (at < 0) {
@@ -469,6 +547,11 @@ final class LodMesh implements LodClip.Listener {
 		this.seq[level][slot] = r[1];
 		this.builtNeighbors[level][slot] = (int) r[4];
 		this.builtVer[level][slot] = r[5];
+		this.builtByColor[level][slot] = r.length > 6 && r[6] != 0;
+		this.lastDrop[level][slot] = 0;
+		// (a mesh begun before the mode changed, installed after: meshed again in the new mode. The worker's own check can run
+		// before the change; this tile then stayed in the old mode for good, and the pack never got the far terrain)
+		if (this.builtByColor[level][slot] != this.colorMerge) this.request(level, tx, tz);
 		this.installed++;
 		long e = this.tableHost + ((long) level * this.tps * this.tps + slot) * 16;
 		MemoryUtil.memPutInt(e, (int) (at + 1));
@@ -629,9 +712,11 @@ final class LodMesh implements LodClip.Listener {
 		long addr = LodNative.contents(buf);
 		MemoryUtil.memCopy(this.arenaAddr, addr, this.arenaWords * 4);
 		this.buffersLater.add(new long[] {frame, this.arenaBuf});
-		// the new half is free
-		this.release(this.arenaWords, this.arenaWords);
-		this.usedWords += this.arenaWords;
+		// the added part is free: exactly what the new buffer adds (it said the old size was, the doubling's arithmetic, and
+		// after growing by half that offered memory past the buffer's end: a native write there crashed the game, BH2-01)
+		long added = words - this.arenaWords;
+		this.release(this.arenaWords, added);
+		this.usedWords += added;
 		this.arenaBuf = buf;
 		this.arenaAddr = addr;
 		this.arenaWords = words;

@@ -174,7 +174,10 @@ public final class CompatLayers {
 			if (list == null || list.getType() != net.fabricmc.loader.api.metadata.CustomValue.CvType.ARRAY) continue;
 			String who = NAMES.getOrDefault(mod.getMetadata().getId(), mod.getMetadata().getId());
 			for (var v : list.getAsArray()) {
-				if (v.getType() != net.fabricmc.loader.api.metadata.CustomValue.CvType.STRING) continue;
+				if (v.getType() != net.fabricmc.loader.api.metadata.CustomValue.CvType.STRING) {
+					System.out.println("[cadence] compat: " + who + " asks to step aside with a " + v.getType() + " (an area's name is a string): ignored");
+					continue;
+				}
 				String area = v.getAsString().strip();
 				Set<String> mixins = new LinkedHashSet<>();
 				switch (area) {
@@ -197,6 +200,8 @@ public final class CompatLayers {
 						}
 						String name = area.substring(6);
 						ours.stream().filter(h -> h.mixin.equals(name) || h.mixin.endsWith("." + name)).forEach(h -> mixins.add(h.mixin));
+						// (was silent: a misspelt name looked like it worked, BH2-11)
+						if (mixins.isEmpty()) System.out.println("[cadence] compat: " + who + " asks to step aside in a mixin Cadence doesn't have: " + name);
 					}
 				}
 				for (String m : mixins) {

@@ -488,11 +488,16 @@ public final class CadenceSettings {
 		if (dev.cadence.shaders.cadence.system.BackgroundFps.enabled()) auto.add("background fps");
 		lines.add(auto.isEmpty() ? Component.literal("Automatic tuning off: your settings as set").withStyle(ChatFormatting.GRAY)
 			: Component.literal("Tuned automatically: " + String.join(" · ", auto)).withStyle(ChatFormatting.GREEN));
-		if (HeatControl.level() > 0) lines.add(Component.literal(HeatControl.shortDescribe()).withStyle(ChatFormatting.YELLOW));
+		// (Render Max FPS: Heat Control, On Battery and Max Framerate don't apply, so their holds aren't shown, BH2-10)
+		if (dev.cadence.shaders.cadence.render.MaxFpsMode.chosen())
+			lines.add(Component.literal("Render Max FPS: nothing holds the frame rate back").withStyle(ChatFormatting.YELLOW));
+		else if (HeatControl.level() > 0) lines.add(Component.literal(HeatControl.shortDescribe()).withStyle(ChatFormatting.YELLOW));
 		// Retina changes at the next launch (a preset or the Retina button): said here too, so it's not missed
 		if (ShaderToggle.retinaConfigured() != dev.cadence.metal.Retina.on())
 			lines.add(Component.literal("Restart Minecraft to turn Retina " + (ShaderToggle.retinaConfigured() ? "on" : "off")).withStyle(ChatFormatting.YELLOW));
 		if (MemoryGuard.level() > 0) lines.add(Component.literal(MemoryGuard.shortDescribe()).withStyle(ChatFormatting.YELLOW));
+		Component farTerrain = FarTerrainScreen.packNote();
+		if (farTerrain != null) lines.add(farTerrain);
 		Component java = javaStatus();
 		if (java != null) lines.add(java);
 		// other mods that hook what Cadence replaces: those areas run vanilla's code for them (CompatLayers; the log has the detail)

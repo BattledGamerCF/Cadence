@@ -35,12 +35,15 @@ import org.joml.FrustumIntersection;
  * Tiles that took real chunks are saved back to the cache from the clipmap every few seconds.
  */
 final class LodField {
-	static final int FORMAT = 10;
+	/** The disk cache's format; 11 added the resource packs a tile was made under (10 is still read: packs unknown). */
+	static final int FORMAT = 11;
 	final LodNoise noise;
 	final LodClip clip;
 	/** The game's own trees on level-0 tiles (null: -Dcadence.lod.trees=false). */
 	final @org.jspecify.annotations.Nullable LodForest forest;
 	final Path cache;
+	/** The resource packs this field's colors come from (LodResources.signature): cached tiles made under others are made again. */
+	final int resources;
 	private final ConcurrentHashMap<Long, Boolean> pending = new ConcurrentHashMap<>();
 	private final PriorityBlockingQueue<Job> jobs = new PriorityBlockingQueue<>();
 	private final ConcurrentLinkedQueue<Runnable> results = new ConcurrentLinkedQueue<>();
@@ -83,16 +86,22 @@ final class LodField {
 	/** A worker ran out of memory: no more jobs run in this world. */
 	private volatile boolean outOfMemory;
 
+	boolean outOfMemory() {
+		return this.outOfMemory;
+	}
+
 	/** Whether missing tiles are generated (a generator is at hand and Unexplored Terrain is Generate), else left for real chunks. */
 	final boolean generates;
 
 	/** noise: the world's generator; null on a server (explored land only). */
-	LodField(@org.jspecify.annotations.Nullable LodNoise noise, LodClip clip, Path cache) {
+	LodField(@org.jspecify.annotations.Nullable LodNoise noise, LodClip clip, Path cache, int resources) {
 		this.noise = noise;
+		this.resources = resources;
 		this.generates = noise != null && LodConfig.GENERATE;
 		this.clip = clip;
 		this.cache = cache;
 		this.forest = LodConfig.TREES && noise != null ? new LodForest(noise) : null;
+		clip.evicting = this::evicted;
 		this.winTx = new int[clip.levels];
 		this.winTz = new int[clip.levels];
 		for (int i = 0; i < LodConfig.THREADS; i++) {
@@ -161,6 +170,8 @@ final class LodField {
 	/** Pre-generation: tiles queued and done (workers count up). */
 	final java.util.concurrent.atomic.AtomicInteger pregenQueued = new java.util.concurrent.atomic.AtomicInteger(),
 		pregenDone = new java.util.concurrent.atomic.AtomicInteger();
+	/** The pre-generation tiles queued and not yet done. */
+	private final java.util.Set<Long> pregenKeys = ConcurrentHashMap.newKeySet();
 
 	/**
 	 * Render thread: every tile the far terrain would need anywhere within `chunks` chunks of (x, z) (each level's tiles out to
@@ -179,7 +190,9 @@ final class LodField {
 			for (int tz = tz0; tz <= tz1; tz++) {
 				for (int tx = tx0; tx <= tx1; tx++) {
 					long key = LodTile.key(level, tx, tz);
-					if (java.nio.file.Files.exists(this.file(key))) continue;
+					// (also not one still queued: pressing Pre-generate again queued every tile a second time, BH2-19)
+					if (this.pregenKeys.contains(key) || java.nio.file.Files.exists(this.file(key))) continue;
+					this.pregenKeys.add(key);
 					// (after every tile in view: a priority no view request reaches; nearer and finer first)
 					double d = Math.hypot((tx + 0.5) * span - x, (tz + 0.5) * span - z);
 					this.jobs.add(new Job(1e12 + d, this.seq.incrementAndGet(), key, () -> this.pregenerate(key)));
@@ -215,6 +228,7 @@ final class LodField {
 			if (tw != null) System.arraycopy(t.tex, 0, tw, 0, LodTile.CELLS);
 			this.save(key, g, c, cr, tw, rn, pl);
 		} finally {
+			this.pregenKeys.remove(key);
 			this.pregenDone.incrementAndGet();
 		}
 	}
@@ -325,7 +339,11 @@ final class LodField {
 		Path f = this.file(key);
 		if (!Files.exists(f)) return false;
 		try (DataInputStream in = new DataInputStream(new InflaterInputStream(new BufferedInputStream(Files.newInputStream(f)), new java.util.zip.Inflater(), 65536))) {
-			if (in.readInt() != FORMAT) return false;
+			int format = in.readInt();
+			if (format != FORMAT && format != 10) return false;
+			// colors made under other resource packs (or unknown ones): a generated world makes the tile again; explored land
+			// (no generator) keeps it, it can't be made again away from the player
+			if ((format == FORMAT ? in.readInt() : ~this.resources) != this.resources && this.generates) return false;
 			for (int i = 0; i < LodTile.CELLS; i++) g[i] = in.readInt();
 			for (int i = 0; i < LodTile.CELLS; i++) c[i] = in.readInt();
 			boolean hasCrowns = in.readBoolean();
@@ -386,6 +404,7 @@ final class LodField {
 			try (DataOutputStream out = new DataOutputStream(new DeflaterOutputStream(new BufferedOutputStream(Files.newOutputStream(tmp)),
 				new Deflater(Deflater.BEST_SPEED), 65536))) {
 				out.writeInt(FORMAT);
+				out.writeInt(this.resources);
 				for (int i = 0; i < LodTile.CELLS; i++) out.writeInt(g[i]);
 				for (int i = 0; i < LodTile.CELLS; i++) out.writeInt(c[i]);
 				out.writeBoolean(cr != null);
@@ -434,6 +453,22 @@ final class LodField {
 	// ---- the game's own chunks ----
 
 	private final java.util.HashMap<Long, List<LodChunks.Summary>> waiting = new java.util.HashMap<>();
+	/**
+	 * The window moved (render thread): what was kept for tiles it has left goes. The real chunks waiting for level-0 tiles
+	 * that never arrive (a generation dropped as the window moved on; each holds up to 16 chunk summaries, S2-03), and the
+	 * forest's chunks outside the window trees are planted in, with a tile's margin around it (S2-04).
+	 */
+	private void windowMoved() {
+		if (!this.waiting.isEmpty()) this.waiting.keySet().removeIf(k -> !this.clip.inWindow(0, LodTile.txOf(k), LodTile.tzOf(k)));
+		LodForest f = this.forest;
+		if (f == null) return;
+		int l = Math.min(LodConfig.TREE_LEVELS - 1, 1);
+		if (l < 0) return;
+		int chunks = (LodTile.SIZE << l) / 16;
+		f.prune((this.clip.winTx[l] - 1) * chunks - 1, (this.clip.winTz[l] - 1) * chunks - 1,
+			(this.clip.winTx[l] + this.clip.tilesPerSide + 1) * chunks + 1, (this.clip.winTz[l] + this.clip.tilesPerSide + 1) * chunks + 1);
+	}
+
 	/** Level and tile of every tile real chunks changed since it was saved. */
 	private final java.util.Set<Long> dirtyTiles = new java.util.HashSet<>();
 
@@ -716,22 +751,45 @@ final class LodField {
 		return java.util.Arrays.equals(ua, ub);
 	}
 
-	/** Every few seconds: tiles real chunks changed go back to the disk cache (read back from the clipmap, saved on a worker). */
+	/**
+	 * The tiles real chunks changed, written to the disk cache: every 30 s (all: now, on this thread; also when the world is
+	 * left). A dirty tile leaving the window is written as it leaves (evicted), so the timer only bounds what a crash loses.
+	 * It used to run every 3000 frames and skip tiles that had left the window by then: a fast flight at a low frame rate lost
+	 * most of the land it explored (60 of 144 tiles kept at 30 fps), and on a server explored land is all the far terrain
+	 * there is (BH2-15).
+	 */
 	void saveDirty(boolean all) {
-		if (!LodConfig.DISK_CACHE || this.dirtyTiles.isEmpty() || !all && this.frame % 3000 != 0) return;
+		if (!LodConfig.DISK_CACHE || this.dirtyTiles.isEmpty()) return;
+		long now = System.nanoTime();
+		if (!all && now - this.lastSave < SAVE_EVERY_NS) return;
+		this.lastSave = now;
 		for (long key : this.dirtyTiles) {
 			int level = LodTile.levelOf(key), tx = LodTile.txOf(key), tz = LodTile.tzOf(key);
 			if (!this.clip.resident(level, tx, tz)) continue;
-			int[] g = new int[LodTile.CELLS], c = new int[LodTile.CELLS];
-			int[] cr = level < this.clip.crownLevels ? new int[LodTile.CELLS] : null;
-			int[] tw = level == 0 && LodConfig.TEXTURES ? new int[LodTile.CELLS] : null;
-			int[] rn = cr != null ? new int[LodTile.CELLS] : null;
-			int[] pl = level == 0 && this.clip.plants ? new int[2 * LodTile.CELLS] : null;
-			this.clip.read(level, tx, tz, g, c, cr, tw, rn, pl);
-			if (all) this.save(key, g, c, cr, tw, rn, pl);
-			else this.jobs.add(new Job(0, this.seq.incrementAndGet(), 0, () -> this.save(key, g, c, cr, tw, rn, pl)));
+			this.saveTile(key, all);
 		}
 		this.dirtyTiles.clear();
+	}
+
+	private static final long SAVE_EVERY_NS = 30_000_000_000L;
+	private long lastSave = System.nanoTime();
+
+	/** LodClip, a resident tile about to be cleared (render thread): written now if real chunks changed it. */
+	private void evicted(long key) {
+		if (LodConfig.DISK_CACHE && this.dirtyTiles.remove(key)) this.saveTile(key, this.closed);
+	}
+
+	/** A resident tile's words (as they'll be published) to the disk cache: read now, written on a worker (now: on this thread). */
+	private void saveTile(long key, boolean now) {
+		int level = LodTile.levelOf(key), tx = LodTile.txOf(key), tz = LodTile.tzOf(key);
+		int[] g = new int[LodTile.CELLS], c = new int[LodTile.CELLS];
+		int[] cr = level < this.clip.crownLevels ? new int[LodTile.CELLS] : null;
+		int[] tw = level == 0 && LodConfig.TEXTURES ? new int[LodTile.CELLS] : null;
+		int[] rn = cr != null ? new int[LodTile.CELLS] : null;
+		int[] pl = level == 0 && this.clip.plants ? new int[2 * LodTile.CELLS] : null;
+		this.clip.readLatest(level, tx, tz, g, c, cr, tw, rn, pl);
+		if (now) this.save(key, g, c, cr, tw, rn, pl);
+		else this.jobs.add(new Job(0, this.seq.incrementAndGet(), 0, () -> this.save(key, g, c, cr, tw, rn, pl)));
 	}
 
 	// ---- render thread ----
@@ -760,6 +818,7 @@ final class LodField {
 			this.winTx[l] = this.clip.winTx[l];
 			this.winTz[l] = this.clip.winTz[l];
 		}
+		if (moved) this.windowMoved();
 		if (!moved && !this.dirty && Math.abs(cx - this.reqX) < 16 && Math.abs(cz - this.reqZ) < 16) return;
 		this.dirty = false;
 		this.missingKeys.clear();
@@ -856,6 +915,7 @@ final class LodField {
 			this.winTx[l] = this.clip.winTx[l];
 			this.winTz[l] = this.clip.winTz[l];
 		}
+		if (moved) this.windowMoved();
 		ScanResult r = this.scanResult;
 		if (r != null) {
 			this.scanResult = null;
