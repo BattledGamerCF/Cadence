@@ -39,3 +39,21 @@ terrain renderer), `mclod.m` (far terrain), `mccull.m` (HiZ/culling), `mcpack.m`
 
 Risk notes: missing barriers show as flicker/garbage only sometimes; resources bound by address aren't resident unless in
 the residency set (page faults); interpolation base rate should be >= 30 fps and adds about a frame of input latency.
+
+## Status (2026-10-23 evening)
+- **Port done, opt-in** (`-Dcadence.metal4=true`, `mcm4.m`): every native module runs on Metal 4 through a facade.
+  Verified: world, own terrain, far terrain, BSL / Complementary / Photon / Sildur's Vibrant, MetalFX upscaling, the End,
+  Render Max FPS (memory flat: residency released on completion). Sonnet review (METAL4-REVIEW.md): no missing barrier or
+  residency on default paths; its bugs fixed (pipeline lifetimes, table clearing, recorder, tile, scaler, addon calls).
+  Speed: parity with Metal 3 (Max FPS ~13k both, within thermal noise). Stays opt-in until a full bug hunt.
+- **Frame interpolation** (`tools/m4_probe.m`): MetalFX works on the M2 but costs 0.48 ms at 160x90 ... 28 ms at 2940x1912:
+  useful for heavy shader-pack frames, far too slow for a record frame (budget 46 us). Record interpolation needs our own
+  reprojection kernel.
+- **Where Max FPS time goes** (sample + JFR): the render thread waits 69% of the time in waitUntilCompleted: the GPU is the
+  limit, not the CPU. `tools/m4_floor.m`: a render pass has a fixed GPU cost of ~53 us on the M2 whatever its size (16.8k
+  passes/s at 5 in flight, 21.1k at 32); a compute-only frame does 25.7k/s (5) and 37.2k/s (32 in flight) at 320x180.
+- **Record plan** (rules: Hone R01-R04, the world rendered, every frame really rendered; with interpolation, rendered
+  frames alone must beat 21,632): a record mode whose frames have **no render pass**: the world (blocks and entities) drawn
+  by a compute renderer at a low playable resolution straight into the drawable, the F3/HUD text by compute too, 16-32
+  frames in flight, input polled at ~1 kHz, the game's per-frame buffer churn removed (17% of the render thread now),
+  then our own reprojection interpolator for the doubled presented count.
