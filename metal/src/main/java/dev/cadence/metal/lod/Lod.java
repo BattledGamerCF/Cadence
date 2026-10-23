@@ -370,6 +370,7 @@ public final class Lod {
 			this.clip = null;
 		}
 		this.worldOwner = owner;
+		LodBeacons.world(null);
 		if (owner == null) return;
 		// Cadence: single player (and a LAN host) generates the far terrain from the world's own generator; on a server (or a
 		// LAN guest) there is no generator at hand: the far terrain is the land this player has explored, kept on disk per
@@ -417,6 +418,7 @@ public final class Lod {
 			this.clip.publisher = this.publish;
 		}
 		this.field = new LodField(noise, this.clip, cache);
+		LodBeacons.world(cache);
 		this.field.floating = level.dimension() == net.minecraft.world.level.Level.END;
 		if (LodGenBench.ENABLED && noise != null) LodGenBench.start(noise, this.field);
 		if (LodYield.ON) LodYield.top = this.clip.levels - 1;
@@ -454,6 +456,7 @@ public final class Lod {
 		if (LodField.PRIO_SCREEN) w.updateScreen(this.camX, this.camZ, this.frustum, this.camY, this.viewProj, this.forward, this::maskSnapshot);
 		else w.update(this.camX, this.camZ, this.frustum, this.camY);
 		w.saveDirty(false);
+		if ((this.frames & 1023) == 0) LodBeacons.save();
 		long t2 = System.nanoTime();
 		this.partNanos[1] += t2 - t1;
 		int rd = mc.options.getEffectiveRenderDistance();
@@ -1311,8 +1314,24 @@ public final class Lod {
 	/** The client loaded a chunk, or is about to unload it (with whatever the player changed): it becomes far terrain too. */
 	public static void chunk(net.minecraft.world.level.chunk.LevelChunk chunk) {
 		Lod l = instance;
-		if (l == null || l.field == null || !LodConfig.CHUNKS || chunk == null) return;
+		if (l == null || l.field == null || chunk == null) return;
+		LodBeacons.chunk(chunk);
+		if (!LodConfig.CHUNKS) return;
 		l.field.chunk(chunk);
+	}
+
+	/** A beacon the game draws this frame (LodBeacons remembers it). */
+	public static void beaconSeen(net.minecraft.world.level.block.entity.BlockEntity beacon) {
+		if (instance != null && instance.field != null) LodBeacons.seen(beacon);
+	}
+
+	/** The block entities' submission: the far terrain's beacon beams (where their chunks aren't loaded). */
+	public static void submitBeacons(com.mojang.blaze3d.vertex.PoseStack pose, net.minecraft.client.renderer.state.level.LevelRenderState state,
+		net.minecraft.client.renderer.SubmitNodeCollector collector) {
+		Lod l = instance;
+		ClientLevel level = Minecraft.getInstance().level;
+		if (l == null || l.field == null || level == null) return;
+		LodBeacons.submit(pose, state, collector, level, activeReach);
 	}
 
 	/**

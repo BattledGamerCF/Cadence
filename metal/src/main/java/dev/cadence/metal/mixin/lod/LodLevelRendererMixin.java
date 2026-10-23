@@ -31,4 +31,11 @@ abstract class LodLevelRendererMixin {
 	private void cadence$lodDraw(CallbackInfo ci) {
 		Lod.drawSolid();
 	}
+
+	/** The far terrain's beacon beams (LodBeacons), with the level's block entities. */
+	@Inject(method = "submitBlockEntities", at = @At("TAIL"))
+	private void cadence$lodBeacons(com.mojang.blaze3d.vertex.PoseStack pose, net.minecraft.client.renderer.state.level.LevelRenderState state,
+		net.minecraft.client.renderer.SubmitNodeCollector collector, CallbackInfo ci) {
+		Lod.submitBeacons(pose, state, collector);
+	}
 }

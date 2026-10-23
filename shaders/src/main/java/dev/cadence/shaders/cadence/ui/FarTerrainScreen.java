@@ -66,6 +66,10 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 					"Light|half as dense", "Off|clear to the horizon")),
 			cycle("Progress Line", "farTerrain.progress", "on", new String[] {"on", "off"}, new String[] {"On", "Off"},
 				Tips.of("A line under the fps counter while the far terrain fills in or pre-generates (\"Far terrain: 63% filled\").")));
+		this.list.addSmall(cycle("Far Clouds", "farTerrain.clouds", "off", new String[] {"off", "on"}, new String[] {"Off", "On"},
+				Tips.of("Clouds reach out with the far terrain (to 256 chunks at most) instead of stopping at Cloud Distance.",
+					"#Costs some frame time and memory for the bigger cloud layer.")),
+			null);
 		this.list.addHeader(Component.literal("Look (applies now)").withStyle(ChatFormatting.GRAY));
 		this.list.addSmall(cycle("Brightness", "farTerrain.brightness", "1.0", new String[] {"0.6", "0.8", "1.0", "1.2", "1.4"},
 				new String[] {"60%", "80%", "100%", "120%", "140%"}, Tips.of("How bright the far terrain is drawn (100%: as generated).")),
@@ -84,10 +88,25 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		this.list.addHeader(Component.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
 	}
 
+	/** Far Clouds: the cloud distance (chunks) while far terrain draws, else 0 (the game's Cloud Distance). Asked every frame. */
+	public static int farCloudChunks() {
+		if (farClouds < 0) farClouds = "on".equalsIgnoreCase(ShaderToggle.configValue("farTerrain.clouds", "off").strip()) ? 1 : 0;
+		if (farClouds == 0) return 0;
+		float reach = dev.cadence.shaders.cadence.render.DistantTerrain.available() ? dev.cadence.metal.lod.LodPackFrame.reach() : 0;
+		return reach <= 0 ? 0 : Math.min(256, (int) (reach / 16));
+	}
+
+	/** (the Far Clouds setting, read once and again after the page changes it: -1 unknown) */
+	private static int farClouds = -1;
+
 	/** Whether the progress line shows (Progress Line setting). */
 	public static boolean progressLine() {
-		return !"off".equalsIgnoreCase(ShaderToggle.configValue("farTerrain.progress", "on").strip());
+		// (asked every frame: the config file is read once, and again after this page changes something)
+		if (progress < 0) progress = "off".equalsIgnoreCase(ShaderToggle.configValue("farTerrain.progress", "on").strip()) ? 0 : 1;
+		return progress == 1;
 	}
+
+	private static int progress = -1;
 
 	/** The look settings (brightness, saturation, curvature) into the running far terrain: they apply live. */
 	public static void applyLook() {
@@ -121,6 +140,8 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 			int step = Minecraft.getInstance().hasShiftDown() ? values.length - 1 : 1;
 			ShaderToggle.saveKey(key, values[(Math.max(0, i) + step) % values.length]);
 				applyLook();
+				farClouds = -1;
+				progress = -1;
 			// (the header says whether a restart is due: rebuilt with the new value)
 			Minecraft.getInstance().gui.setScreen(new FarTerrainScreen(this.lastScreen));
 		}).width(Button.DEFAULT_WIDTH).tooltip(tip).build();
