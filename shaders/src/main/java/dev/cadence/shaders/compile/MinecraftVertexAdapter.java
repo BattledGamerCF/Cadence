@@ -52,6 +52,99 @@ public final class MinecraftVertexAdapter {
         Map.of("sl_Fog_color", new UniformLayout.Declaration("vec4", 0)));
   }
 
+  /** Cadence: the far terrain's buffers in a dh_* program (DistantTerrain binds them): set-1 buffer indices. */
+  public static final int FAR_QUADS = 200, FAR_ARGS = 201;
+
+  /**
+   * Cadence: a pack's dh_terrain program (Iris's Distant Horizons contract) drawing Cadence's far terrain. No vertex buffers:
+   * the vertex stage reads its quad from the far terrain's culled records (dev.cadence.metal.lod.LodPackFrame; columns.metal
+   * lod_mesh_pack), instance i holding quads [64 i, 64 i + 64), four vertices each. gl_Vertex is the corner relative to the
+   * camera (as Distant Horizons gives it), gl_Color the quad's colour, gl_Normal its face's, gl_MultiTexCoord1 the sky light,
+   * dhMaterialId a DH_BLOCK_* material; the matrices are the frame's model-view and dhProjection. A record past this frame's
+   * count, or an empty one, has all four vertices at the origin with w 0: nothing is drawn.
+   */
+  public static ShaderCompatibilityCompiler.VertexAdapter distantTerrain() {
+    String declarations =
+        "layout(std430, binding = " + FAR_QUADS + ") readonly buffer CadenceFarQuads { uvec4 cadence_farQuads[]; };\n"
+            + "layout(std430, binding = " + FAR_ARGS + ") readonly buffer CadenceFarArgs { uint cadence_farArgs[]; };\n"
+            + """
+            mat4 sl_PackTextureMatrices[8];
+            vec4 sl_DhVertex;
+            vec4 sl_DhColor;
+            vec3 sl_DhNormal;
+            vec4 sl_DhLight;
+            int sl_DhMaterial;
+            void sl_DhDecode() {
+              int q = gl_InstanceIndex * 64 + (gl_VertexIndex >> 2), corner = gl_VertexIndex & 3;
+              uvec4 r = q < int(cadence_farArgs[14]) ? cadence_farQuads[q] : uvec4(0u, 0u, 7u << 24, 0u);
+              uint face = (r.z >> 24) & 7u;
+              sl_DhVertex = vec4(0.0);
+              sl_DhColor = vec4(1.0);
+              sl_DhNormal = vec3(0.0, 1.0, 0.0);
+              sl_DhLight = vec4(0.0, 240.0, 0.0, 1.0);
+              sl_DhMaterial = 0;
+              if (face > 5u) return;
+              int x0 = int(r.x << 15) >> 15, dx = int(r.x >> 17), z0 = int(r.y << 15) >> 15, dz = int(r.y >> 17);
+              int y0 = int(r.z & 0xFFFu) - 512, y1 = int((r.z >> 12) & 0xFFFu) - 512;
+              bool a = corner == 1 || corner == 2, up = corner >= 2;
+              ivec3 c;
+              if (face == 0u) c = ivec3(up ? x0 + dx : x0, y0, a ? z0 + dz : z0);
+              else if (face == 5u) c = ivec3(a ? x0 + dx : x0, y0, up ? z0 + dz : z0);
+              else if (face == 1u) c = ivec3(x0, up ? y1 : y0, a ? z0 : z0 + dz);
+              else if (face == 2u) c = ivec3(x0, up ? y1 : y0, a ? z0 + dz : z0);
+              else if (face == 3u) c = ivec3(a ? x0 + dx : x0, up ? y1 : y0, z0);
+              else c = ivec3(a ? x0 : x0 + dx, up ? y1 : y0, z0);
+              vec3 cam = vec3(uintBitsToFloat(cadence_farArgs[116]), uintBitsToFloat(cadence_farArgs[117]),
+                  uintBitsToFloat(cadence_farArgs[118]));
+              vec3 rel = vec3(float(c.x), float(c.y - int(cadence_farArgs[119])), float(c.z)) - cam;
+              // merged quads meet at T-junctions: each grows a hair in its own plane so no pixel falls between them
+              float eps = 0.0005 + length(rel) * 3e-6;
+              if (face == 0u || face == 5u) {
+                rel.x += c.x > x0 ? eps : -eps;
+                rel.z += c.z > z0 ? eps : -eps;
+              } else if (face <= 2u) {
+                rel.z += c.z > z0 ? eps : -eps;
+                rel.y += up ? eps : -eps;
+              } else {
+                rel.x += c.x > x0 ? eps : -eps;
+                rel.y += up ? eps : -eps;
+              }
+              sl_DhVertex = vec4(rel, 1.0);
+              uint rgb = r.w & 0xFFFFu;
+              sl_DhColor = vec4(float((rgb >> 11) & 31u) / 31.0, float((rgb >> 5) & 63u) / 63.0, float(rgb & 31u) / 31.0, 1.0);
+              sl_DhNormal = face == 0u ? vec3(0.0, 1.0, 0.0) : face == 5u ? vec3(0.0, -1.0, 0.0)
+                  : face == 1u ? vec3(1.0, 0.0, 0.0) : face == 2u ? vec3(-1.0, 0.0, 0.0)
+                  : face == 3u ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 0.0, -1.0);
+              sl_DhLight = vec4(0.0, float((r.w >> 16) & 15u) * 16.0, 0.0, 1.0);
+              sl_DhMaterial = int((r.z >> 27) & 15u);
+            }
+            """;
+    Map<String, String> expressions = new LinkedHashMap<>();
+    expressions.put("gl_Vertex", "sl_DhVertex");
+    expressions.put("gl_Color", "sl_DhColor");
+    expressions.put("gl_Normal", "sl_DhNormal");
+    expressions.put("gl_MultiTexCoord0", "vec4(0.0, 0.0, 0.0, 1.0)");
+    expressions.put("gl_MultiTexCoord1", "sl_DhLight");
+    expressions.put("dhMaterialId", "sl_DhMaterial");
+    expressions.put("gl_ModelViewMatrix", "gbufferModelView");
+    expressions.put("gl_ProjectionMatrix", "dhProjection");
+    expressions.put("gl_ModelViewProjectionMatrix", "(dhProjection * gbufferModelView)");
+    expressions.put("gl_NormalMatrix", "transpose(mat3(gbufferModelViewInverse))");
+    expressions.put("gl_TextureMatrix", "sl_PackTextureMatrices");
+    expressions.put("mc_Entity", "vec4(-1.0, -1.0, 0.0, 1.0)");
+    expressions.put("mc_midTexCoord", "vec4(0.0, 0.0, 0.0, 1.0)");
+    Map<String, UniformLayout.Declaration> uniforms = new LinkedHashMap<>();
+    for (String name : List.of("gbufferModelView", "gbufferModelViewInverse", "dhProjection"))
+      uniforms.put(name, new UniformLayout.Declaration("mat4", 0));
+    String initialization =
+        "for (int i = 0; i < 8; ++i) sl_PackTextureMatrices[i] = mat4(1.0);\n"
+            + "sl_PackTextureMatrices[1][0][0] = 1.0 / 256.0;\n"
+            + "sl_PackTextureMatrices[1][1][1] = 1.0 / 256.0;\n"
+            + "sl_PackTextureMatrices[1][3].xy = vec2(8.0 / 256.0);\n"
+            + "sl_DhDecode();\n";
+    return new ShaderCompatibilityCompiler.VertexAdapter(declarations, initialization, expressions, List.of(), uniforms);
+  }
+
   public static ShaderCompatibilityCompiler.VertexAdapter adapter(
       RenderPipeline pipeline, boolean shadow) {
     return adapter(pipeline, shadow, false);

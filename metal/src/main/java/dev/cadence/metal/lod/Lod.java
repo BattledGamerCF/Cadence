@@ -196,11 +196,23 @@ public final class Lod {
 
 	/** End of the level's opaque phase (after the real terrain and solid features): the far terrain. */
 	public static void drawSolid() {
+		run(false);
+	}
+
+	/**
+	 * Cadence (LodPackFrame.prepare): start of the level's solid pass with a shader pack that draws the far terrain: this frame's
+	 * far-terrain work, culled for the pack's program (drawSolid then has nothing left to do).
+	 */
+	static void drawForPack() {
+		run(true);
+	}
+
+	private static void run(boolean forPack) {
 		Lod l = instance;
 		if (l == null || !l.haveFrame) return;
 		l.haveFrame = false;
 		try {
-			l.draw();
+			l.draw(forPack);
 		} catch (RuntimeException e) {
 			failed = true;
 			instance = null;
@@ -389,10 +401,24 @@ public final class Lod {
 		if (LodYield.ON) LodYield.top = this.clip.levels - 1;
 	}
 
-	private void draw() {
+	/** (shader-pack mode) the colour words the native cull reads for the pack's records (0: the far terrain draws itself) */
+	private long packColors;
+
+	private void draw(boolean forPack) {
 		LodField w = this.field;
 		LodClip clip = this.clip;
 		if (w == null || clip == null) return;
+		// Cadence: a shader pack's dh_terrain program draws the far terrain (LodPackFrame): the cull leaves its records, the
+		// mesh merges faces only within one colour, and nothing is drawn here
+		boolean pack = LodPackFrame.wanted && this.mesh != null && this.pk == null;
+		if (this.mesh != null) {
+			long colors = pack ? clip.colorBuf : 0;
+			if (colors != this.packColors) {
+				LodNative.meshPackMode(this.lod, colors);
+				this.packColors = colors;
+				this.mesh.colorMerge(pack);
+			}
+		}
 		long start = System.nanoTime();
 		Minecraft mc = Minecraft.getInstance();
 		this.frames++;
@@ -421,16 +447,26 @@ public final class Lod {
 		}
 		this.partNanos[2] += System.nanoTime() - t2;
 		boolean probeOn = this.probe(start);
-		if (!LodConfig.DRAW || !probeOn || !MetalBridge.inRenderPass(this.encoder)) {
+		if (!LodConfig.DRAW || !probeOn || !(pack ? forPack : !forPack && MetalBridge.inRenderPass(this.encoder))) {
 			this.statCpuNanos += System.nanoTime() - start;
 			this.sample(w, start);
 			if (LodConfig.STATS) this.stats(w);
 			return;
 		}
 		long enc = MetalBridge.enc(this.encoder);
-		int attachments = LodNative.attachments(enc);
-		int size = LodNative.encSize(enc);
-		int width = size >>> 16, height = size & 0xFFFF;
+		int attachments, width, height;
+		if (pack) {
+			// (no pass of the game's is open: the pack's targets are the window's size)
+			var target = mc.gameRenderer.mainRenderTarget();
+			attachments = 1;
+			width = target.width;
+			height = target.height;
+		} else {
+			attachments = LodNative.attachments(enc);
+			int size = LodNative.encSize(enc);
+			width = size >>> 16;
+			height = size & 0xFFFF;
+		}
 		if (attachments > 0 && width > 0 && height > 0) {
 			this.ensureOut(width, height);
 			long maskBuf = this.maskBufs[(int) (this.frames % RING)];
@@ -481,6 +517,13 @@ public final class Lod {
 					pk.timedPath(slot, listsRan);
 					int old = (slot - 1) & 15;
 					pk.cullTime(old, LodNative.cullTime(this.lod, old));
+				}
+				if (pack) {
+					LodPackFrame.publish(mesh.survBuf, mesh.argsBuf);
+					this.statCpuNanos += System.nanoTime() - start;
+					this.sample(w, start);
+					if (LodConfig.STATS) this.stats(w);
+					return;
 				}
 				long atlas = this.atlasHandle();
 				if (this.taa != null) this.taa.beforeDraw(this.camX, this.camY, this.camZ, rd * 16.0F + 48.0F);

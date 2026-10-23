@@ -75,6 +75,9 @@ typedef struct {
 	int cullSlot, cullTimesTried;
 	MTLTimestamp cullCpu0, cullGpu0;
 	uint64_t cullLast[16];
+	// (Cadence) a shader pack draws the far terrain (mcl_mesh_pack_mode): the cull ends with lod_mesh_pack over the
+	// survivors, reading the clipmap's colours from here; nil: off
+	id<MTLBuffer> packColor;
 } LodCols;
 
 LodCols *mcl_cols_new(Ctx *ctx, const char *source, char *err, int errCap) {
@@ -316,9 +319,10 @@ int mcl_enc_size(Enc *enc) {
 // ---- far terrain as meshes (-Dcadence.lod.render=mesh) ----
 
 // Meshes one tile of the clipmap (lodmesh.c), from any thread: the quads' count, or -1 when cap is too small.
+// color (shader-pack mode, colorLogN its toroidal size): faces merge only within one colour; NULL: geometric merging.
 int mcl_mesh_tile(const uint32_t *geom, const uint32_t *crown, const uint32_t *runs, const uint32_t *plantA, const uint32_t *plantB, int logN, int level,
-	int tx, int tz, int neighbors, int block, uint32_t *header, uint32_t *quads, int cap) {
-	LmIn in = {geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block};
+	int tx, int tz, int neighbors, int block, uint32_t *header, uint32_t *quads, int cap, const uint32_t *color, int colorLogN) {
+	LmIn in = {geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block, color, colorLogN};
 	return lm_mesh(&in, header, quads, cap);
 }
 
@@ -447,9 +451,26 @@ void mcl_mesh_cull(LodCols *l, Enc *enc, const void *frame, int frameLength, con
 		[c memoryBarrierWithScope:MTLBarrierScopeBuffers];
 		[c setComputePipelineState:l->meshFinish2];
 		[c dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+		id<MTLComputePipelineState> packArgs = l->packColor ? pkPso(l, "lod_mesh_pack_args") : nil, pack = packArgs ? pkPso(l, "lod_mesh_pack") : nil;
+		if (pack) {
+			// (a shader pack draws the survivors: rewritten in place as the records its program reads, columns.metal)
+			[c memoryBarrierWithScope:MTLBarrierScopeBuffers];
+			[c setComputePipelineState:packArgs];
+			[c dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+			[c memoryBarrierWithScope:MTLBarrierScopeBuffers];
+			[c setBuffer:l->packColor offset:0 atIndex:14];
+			[c setComputePipelineState:pack];
+			[c dispatchThreadgroupsWithIndirectBuffer:args indirectBufferOffset:112 * 4 threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+		}
 		if (fences) [c updateFence:l->cullDone];
 		[c endEncoding];
 	}
+}
+
+// (Cadence) Whether a shader pack draws the far terrain (color: the clipmap's colour words) or the far terrain draws itself
+// (nil). With a pack, every cull ends by turning its survivors into the pack program's records (lod_mesh_pack).
+void mcl_mesh_pack_mode(LodCols *l, id<MTLBuffer> color) {
+	l->packColor = color;
 }
 
 // The mesh's two indirect draws into the open render encoder (shaders off: color 0 and depth; native shading: its

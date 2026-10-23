@@ -114,8 +114,18 @@ public final class PackPrograms implements AutoCloseable {
       throws ShaderPackException {
     this.pack = pack;
     this.options = Map.copyOf(options);
-    environment = PackEnvironment.definitions();
     directory = pack.dimensionFolder(dimension);
+    // Cadence: with far terrain running, a pack with a dh_terrain program draws it (DistantTerrain) and sees Iris's Distant
+    // Horizons macros, so its other programs take their DH paths too (fog to the far terrain's reach, dhDepthTex)
+    boolean distant = false;
+    if (dev.cadence.shaders.cadence.render.DistantTerrain.available())
+      for (ShaderProgram program : pack.programs(directory))
+        distant |= program.name().equals("dh_terrain") && program.paths().containsKey(ShaderStage.VERTEX)
+            && program.paths().containsKey(ShaderStage.FRAGMENT);
+    distantTerrain = distant;
+    Map<String, String> env = new java.util.LinkedHashMap<>(PackEnvironment.definitions());
+    if (distant) env.putAll(dev.cadence.shaders.cadence.render.DistantTerrain.definitions());
+    environment = env;
     properties = pack.properties(options, environment);
     Map<String, String> constants = new TreeMap<>();
     Map<String, String> definitions = pack.definitions(options, environment);
@@ -147,16 +157,17 @@ public final class PackPrograms implements AutoCloseable {
     try {
       List<Job> jobs = new java.util.ArrayList<>();
       for (ShaderProgram program : pack.programs(directory)) {
-        if (program.name().startsWith("dh_") || program.name().startsWith("voxy")) continue;
+        boolean dh = distant && program.name().equals("dh_terrain");
+        if (!dh && (program.name().startsWith("dh_") || program.name().startsWith("voxy"))) continue;
         // Cadence: only the program names OptiFine/Iris load. Packs ship others (disabled copies like I Like Vanilla's
         // "_gbuffers_entities_translucent", other mods' programs like Colorwheel's clrwl_*) that a loader never runs.
-        if (!KNOWN_PROGRAM.matcher(program.name()).matches()) continue;
+        if (!dh && !KNOWN_PROGRAM.matcher(program.name()).matches()) continue;
         if (!properties.programEnabled(program.identifier(), definitions)) continue;
         boolean computeOnly = program.name().matches(".*_[a-z]");
         if (program.paths().containsKey(ShaderStage.COMPUTE)) {
           // Cadence: an Iris compute program (prepare.csh, composite5_a.csh, ...): its own job; a fragment program of the
           // same name (composite5.vsh/.fsh) is a separate full-screen pass that runs after it
-          jobs.add(new Job(program, pack.source(program.paths().get(ShaderStage.COMPUTE), options, environment), "", true, true));
+          jobs.add(new Job(program, pack.source(program.paths().get(ShaderStage.COMPUTE), options, environment), "", true, true, false));
           if (computeOnly || !program.paths().containsKey(ShaderStage.FRAGMENT)) continue;
         } else if (computeOnly) continue;
         // (shadowcomp: a full-screen pass over the shadow map after the shadow pass, ShaderRuntime.compileScreen)
@@ -181,8 +192,8 @@ public final class PackPrograms implements AutoCloseable {
         String fragment =
             pack.source(program.paths().get(ShaderStage.FRAGMENT), options, environment);
         boolean screen =
-            !program.name().startsWith("gbuffers_") && !program.name().equals("shadow");
-        jobs.add(new Job(program, vertex, fragment, screen, false));
+            !dh && !program.name().startsWith("gbuffers_") && !program.name().equals("shadow");
+        jobs.add(new Job(program, vertex, fragment, screen, false, dh));
       }
       // Cadence: the programs are translated in parallel (one shader compiler per worker; a pack's first load was ~9 s of
       // render thread for Complementary), then taken in the pack's order, so conflicts are found exactly as before.
@@ -191,6 +202,11 @@ public final class PackPrograms implements AutoCloseable {
         Job job = jobs.get(j);
         ShaderProgram program = job.program();
         String vertex = job.vertex(), fragment = job.fragment();
+        if (results[j] instanceof RuntimeException failure && job.distant()) {
+          // (the far terrain isn't drawn with this pack; the pack itself is fine)
+          org.slf4j.LoggerFactory.getLogger("cadence_shaders").warn("Far terrain not drawn with this pack: {}", failure.getMessage());
+          continue;
+        }
         if (results[j] instanceof RuntimeException failure) {
           if (CENSUS.get() == null) throw failure;
           CENSUS.get().add("Translation failed in " + program.identifier() + ": " + failure.getMessage());
@@ -273,7 +289,10 @@ public final class PackPrograms implements AutoCloseable {
   }
 
   /** false: the program is refused as a whole (recorded by a census; otherwise thrown). */
-  private record Job(ShaderProgram program, String vertex, String fragment, boolean screen, boolean compute) {}
+  private record Job(ShaderProgram program, String vertex, String fragment, boolean screen, boolean compute, boolean distant) {}
+
+  /** Cadence: whether this pack draws the far terrain (far terrain running, and the pack has a dh_terrain program). */
+  public final boolean distantTerrain;
 
   public final ShaderCompatibilityCompiler.StorageContext storageContext;
   /** Cadence: the pack's compute programs by name (prepare, prepare_a, composite5_b, setup1, ...). */
@@ -403,6 +422,10 @@ public final class PackPrograms implements AutoCloseable {
   private static Object translate(ShaderCompatibilityCompiler compiler, Job job) {
     try {
       if (job.compute()) return compiler.translateCompute(job.vertex(), job.program().identifier());
+      if (job.distant())
+        return compiler.translate(
+            job.vertex(), job.fragment(), job.program().identifier(),
+            dev.cadence.shaders.compile.MinecraftVertexAdapter.distantTerrain());
       return compiler.translate(
           job.vertex(),
           job.fragment(),

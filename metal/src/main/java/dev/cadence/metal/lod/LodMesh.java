@@ -109,6 +109,20 @@ final class LodMesh implements LodClip.Listener {
 	int installed;
 	/** The position-keyed lists (-Dcadence.lod.pk), told when a tile's mesh changes; else null. */
 	@Nullable LodPk pk;
+	/**
+	 * Cadence: shader-pack mode (a pack's dh_terrain program draws the far terrain): faces merge only within one colour, as the
+	 * pack colours each quad by its vertices (lodmesh.c). Read by the workers.
+	 */
+	private volatile boolean colorMerge;
+
+	/** Render thread: switches the merging mode; every resident tile is meshed again in the new one. */
+	void colorMerge(boolean on) {
+		if (on == this.colorMerge) return;
+		this.colorMerge = on;
+		for (int level = 0; level < this.key.length; level++)
+			for (long k : this.key[level])
+				if (k >= 0) this.request(level, LodTile.txOf(k), LodTile.tzOf(k));
+	}
 
 	LodMesh(long ctx, LodClip clip) {
 		this.ctx = ctx;
@@ -196,7 +210,8 @@ final class LodMesh implements LodClip.Listener {
 		long header = MemoryUtil.nmemAlloc((long) HDR_WORDS * 4);
 		long quads = MemoryUtil.nmemAlloc((long) SCRATCH_QUADS * 8);
 		// PAIRS: the tile and its 1-cell border copied here (geometry, crowns, runs, plants A and B), meshed from the copy
-		long scratch = LodClip.PAIRS ? MemoryUtil.nmemCalloc(5L * SCRATCH * SCRATCH, 4) : 0;
+		// (+ colours, a 6th plane: shader-pack mode's colour-aware merging)
+		long scratch = LodClip.PAIRS ? MemoryUtil.nmemCalloc(6L * SCRATCH * SCRATCH, 4) : 0;
 		while (!this.closed) {
 			long[] job;
 			try {
@@ -221,6 +236,7 @@ final class LodMesh implements LodClip.Listener {
 				long t0 = System.nanoTime();
 				LodClip.Snapshot snap = null;
 				int n;
+				boolean byColor = this.colorMerge;
 				if (LodClip.PAIRS) {
 					snap = this.snaps.get(k);
 					long v = this.copyRegion(scratch, level, tx, tz, snap, crowns, plants);
@@ -232,10 +248,12 @@ final class LodMesh implements LodClip.Listener {
 					ver = v;
 					long sp = (long) SCRATCH * SCRATCH * 4;
 					n = LodNative.meshTile(scratch, crowns ? scratch + sp : 0, crowns ? scratch + 2 * sp : 0, plants ? scratch + 3 * sp : 0, plants ? scratch + 4 * sp : 0,
-						SCRATCH_LOG, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS);
+						SCRATCH_LOG, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS, byColor ? scratch + 5 * sp : 0, SCRATCH_LOG);
 				} else {
-					n = LodNative.meshTile(this.clip.geom + lw, crown, runs, pa, pb, this.clip.logN, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS);
+					n = LodNative.meshTile(this.clip.geom + lw, crown, runs, pa, pb, this.clip.logN, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS,
+						byColor ? this.clip.color + lw : 0, this.clip.logN);
 				}
+				if (byColor != this.colorMerge) this.request(level, tx, tz);  // (the mode changed meanwhile: again, in the new one)
 				this.meshNanos.addAndGet(System.nanoTime() - t0);
 				if (n < 0) {
 					System.out.println("cadence-lod: mesh of tile L" + level + " " + tx + "," + tz + " overflows " + SCRATCH_QUADS + " quads; not drawn");
@@ -292,6 +310,7 @@ final class LodMesh implements LodClip.Listener {
 					if (snap != null && !outX && !outZ) {
 						int i = z * LodClip.TILE + x;
 						MemoryUtil.memPutInt(scratch + dst, snap.g[i]);
+						MemoryUtil.memPutInt(scratch + 5 * sp + dst, snap.c[i]);
 						if (crowns) {
 							MemoryUtil.memPutInt(scratch + sp + dst, snap.cr[i]);
 							MemoryUtil.memPutInt(scratch + 2 * sp + dst, snap.runs[i]);
@@ -304,6 +323,7 @@ final class LodMesh implements LodClip.Listener {
 					}
 					long src = (((long) (az & m) << this.clip.logN) | (ax & m)) * 4;
 					MemoryUtil.memPutInt(scratch + dst, MemoryUtil.memGetInt(this.clip.geom + lw + src));
+					MemoryUtil.memPutInt(scratch + 5 * sp + dst, MemoryUtil.memGetInt(this.clip.color + lw + src));
 					if (crowns) {
 						MemoryUtil.memPutInt(scratch + sp + dst, MemoryUtil.memGetInt(crownBase + src));
 						MemoryUtil.memPutInt(scratch + 2 * sp + dst, MemoryUtil.memGetInt(runsBase + src));

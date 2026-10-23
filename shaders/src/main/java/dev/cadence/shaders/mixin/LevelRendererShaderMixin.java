@@ -49,6 +49,12 @@ public abstract class LevelRendererShaderMixin {
     ShadowRenderer.prefetchSelection((LevelRenderer) (Object) this, viewArea);
   }
 
+  // Cadence: the far terrain through the pack's dh_terrain program, before the real terrain (DistantTerrain)
+  @Inject(method = "executeSolid", at = @At("HEAD"))
+  private void shaders$distantTerrain(CallbackInfo callback) {
+    if (ShaderRuntime.isRendering()) ShaderRuntime.get().drawDistantTerrain();
+  }
+
   @Inject(method = "executeClassicTransparency", at = @At("HEAD"))
   private void shaders$deferredBeforeTranslucents(
       ChunkSectionsToRender chunks,

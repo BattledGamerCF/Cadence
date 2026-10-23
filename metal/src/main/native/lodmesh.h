@@ -7,7 +7,7 @@
 // runs of leaves floating over it). Faces are what one cell's intervals show where its neighbor's don't: tops, the undersides
 // of floating runs, walls toward each neighbor. Coplanar faces of the same kind merge greedily inside a block of B x B cells.
 // The fragment stage looks every pixel's colors, textures and occlusion up in the clipmap by position, so merging is purely
-// geometric.
+// geometric (except in shader-pack mode, LmIn.color).
 //
 // Per block the quads come in groups, so the GPU's per-frame cull can drop whole groups that face away or aren't needed:
 //   0 tops, 1 undersides, 2-5 walls inside the block (+x, -x, +z, -z), 6-9 walls on its border toward the neighbor cells
@@ -55,6 +55,11 @@ typedef struct {
 	int tx, tz;               // the tile (absolute, in tiles of its level)
 	int neighbors;            // which edge neighbors are resident (their cells are this level's): 1 +x, 2 -x, 4 +z, 8 -z
 	int block;                // cells per block side: 8 or 16
+	// (Cadence) shader-pack mode: the level's colour words (as LodClip's: top RGB565 | side << 16; toroidal over
+	// 1 << colorLogN), and coplanar faces merge only where their cells' colours match (to 4-5-4 bits), so each quad has one
+	// colour (a pack's program colours a quad by its vertices, as Distant Horizons' are). NULL: purely geometric merging.
+	const uint32_t *color;
+	int colorLogN;
 } LmIn;
 
 // Meshes one tile. header: (64 / block)^2 blocks x LM_HDR words, block-major in rows of z: per group start (quads from the

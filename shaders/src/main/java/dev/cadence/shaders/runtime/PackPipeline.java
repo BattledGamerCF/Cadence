@@ -76,6 +76,10 @@ public record PackPipeline(
       } else if (name.matches("depthtex[012]")) {
         kind = SamplerKind.DEPTH;
         index = name.charAt(8) - '0';
+      } else if (name.matches("dhDepthTex[01]?")) {
+        // Cadence's far terrain drawn through the pack's dh_* programs (Iris's names): its own depth, opaque (0) and with water (1)
+        kind = SamplerKind.DEPTH;
+        index = PackRenderTargets.DH_DEPTH + (name.endsWith("1") ? 1 : 0);
       } else if (name.matches("shadowtex[01]")
           || name.equals("shadow")
           || name.equals("watershadow")) {

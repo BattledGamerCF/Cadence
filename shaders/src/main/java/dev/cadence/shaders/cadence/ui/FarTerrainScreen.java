@@ -65,7 +65,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 				Tips.of("Haze over the far terrain.", "Normal|the game's own fog, stretched to the far terrain's reach",
 					"Light|half as dense", "Off|clear to the horizon")),
 			null);
-		this.list.addHeader(Component.literal("Not drawn while a shader pack is on (yet)").withStyle(ChatFormatting.GRAY));
+		this.list.addHeader(Component.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
 	}
 
 	private Button cycle(String label, String key, String def, String[] values, String[] labels, Tooltip tip) {

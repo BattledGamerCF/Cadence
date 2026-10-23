@@ -148,6 +148,17 @@ public final class MetalBridge {
 	 * Native handle of buffer, marked as used by the frame being recorded (so the backend won't rewrite it in place while
 	 * the GPU may still read it): for drawing with the game's own uniform buffers (dev.cadence.metal.own).
 	 */
+	/**
+	 * Cadence: a game buffer standing for a native MTLBuffer another part of Cadence owns (the far terrain's draw arguments,
+	 * drawn by a shader pack's program), for the game's draw calls (an indirect draw's arguments). GPU-only: never mapped;
+	 * closing it leaves the memory to its owner.
+	 */
+	public static GpuBuffer foreignBuffer(Object encoder, long handle, @GpuBuffer.Usage int usage, long size) {
+		MetalBuffer b = new MetalBuffer((MetalEncoder) encoder, handle, usage, size, 0L);
+		b.foreign = true;
+		return b;
+	}
+
 	public static long useBuffer(Object encoder, GpuBuffer buffer) {
 		return ((MetalEncoder) encoder).use(buffer).handle;
 	}

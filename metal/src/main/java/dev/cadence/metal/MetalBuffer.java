@@ -36,6 +36,9 @@ class MetalBuffer extends BaseGpuBuffer {
 		this.address = address;
 	}
 
+	/** Cadence: another part of Cadence owns the memory (MetalBridge.foreignBuffer): closing it doesn't release it. */
+	boolean foreign;
+
 	/** Cadence: the creator's label (GpuMemory census), or null. */
 	@Nullable Supplier<String> label;
 
@@ -54,6 +57,7 @@ class MetalBuffer extends BaseGpuBuffer {
 		if (!this.closed) {
 			this.closed = true;
 			GpuMemory.LIVE_BUFFERS.remove(this);
+			if (this.foreign) return;
 			this.encoder.releaseLater(this.handle);
 			for (long spare : this.spares) this.encoder.releaseLater(spare);
 			this.spares.clear();
@@ -66,7 +70,7 @@ class MetalBuffer extends BaseGpuBuffer {
 	 * a buffer someone mapped, whose view would keep pointing at the old memory.
 	 */
 	boolean rename() {
-		if (this.mapped || this.arena) return false;
+		if (this.mapped || this.arena || this.foreign) return false;
 		long old = this.handle;
 		Long spare = this.spares.poll();
 		this.handle = spare != null ? spare : Native.bufferNew(this.encoder.ctx, this.size());

@@ -449,6 +449,7 @@ public final class ShaderRuntime implements AutoCloseable {
       hand = false;
       shadow = false;
       deferred = false;
+      dev.cadence.shaders.cadence.render.DistantTerrain.want(programs.distantTerrain && !distantFailed);
       // Cadence: the pack's images and buffer objects (sized for this frame, cleared where asked), its setup programs once
       if (storage == null) storage = new PackStorage(programs.properties);
       storage.beginFrame(frameWidth, frameHeight);
@@ -519,12 +520,62 @@ public final class ShaderRuntime implements AutoCloseable {
     frameBuffers.clear();
   }
 
+  // ---- Cadence: the far terrain through the pack's dh_terrain program (DistantTerrain) ----
+
+  private PackPipeline distantPipeline;
+  /** The pack's dh_terrain program didn't compile: the far terrain isn't drawn with this pack (the pack runs on). */
+  private boolean distantFailed;
+  private static boolean distantLogged;
+
+  /**
+   * Start of the level's solid pass (the sky drawn, the real terrain not yet): the far terrain, culled this frame, drawn by
+   * the pack's dh_terrain program into its colour buffers with dhDepthTex0; the real terrain then draws over it.
+   */
+  public void drawDistantTerrain() {
+    if (!active || shadow || deferred || !programs.distantTerrain || distantFailed) return;
+    if (!dev.cadence.shaders.cadence.render.DistantTerrain.prepare()) return;
+    GpuBuffer arguments = dev.cadence.shaders.cadence.render.DistantTerrain.drawArguments();
+    if (arguments == null) return;
+    PackPipeline pipeline = distantPipeline;
+    if (pipeline == null) {
+      PackPrograms.Source source = programs.find("dh_terrain");
+      try {
+        if (source == null) throw new IllegalStateException("no dh_terrain program");
+        pipeline = distantPipeline =
+            PackPipeline.compile(
+                device(), source, source.translated(), dev.cadence.shaders.cadence.render.DistantTerrain.pipeline(), targets,
+                false, false, PackRenderTargets.DH_DEPTH, PackEnvironment.STAGES.indexOf("TERRAIN_SOLID"), 0f);
+      } catch (RuntimeException failure) {
+        distantFailed = true;
+        dev.cadence.shaders.cadence.render.DistantTerrain.want(false);
+        LoggerFactory.getLogger("cadence_shaders").warn("Far terrain not drawn with this pack: its dh_terrain program failed", failure);
+        return;
+      }
+    }
+    if (!distantLogged) {
+      distantLogged = true;
+      LoggerFactory.getLogger("cadence_shaders").info("Far terrain drawn by the pack's dh_terrain program");
+    }
+    suspend();
+    profile("far_terrain.begin");
+    prepare(pipeline);
+    try (RenderPass pass = open(pipeline)) {
+      pass.setPipeline(pipeline.compiled());
+      bind(pipeline, pass, Map.of());
+      pass.setIndexBuffer(dev.cadence.shaders.cadence.render.DistantTerrain.indices(), com.mojang.renderpearl.api.pipeline.IndexType.SHORT);
+      pass.drawIndexedIndirect(arguments.slice(0, RenderPass.INDIRECT_INDEXED_DRAW_SIZE), 1);
+    }
+    profile("far_terrain.end");
+  }
+
   public void beforeTranslucents() {
     if (!active || shadow || deferred) return;
     suspend();
     profile("world.opaque.end");
     // depthtex1 also receives opaque hand rendering; it must start from scene depth.
     targets.copyDepth(1);
+    // (the far terrain's depth as the translucent phase reads it: dhDepthTex1, only for packs that read it)
+    if (programs.distantTerrain && programs.readsSampler("dhDepthTex1")) targets.copyDistantDepth();
     if (programs.readsSampler("depthtex2")) targets.copyDepth(2);
     profile("depth.snapshot.end");
     execute("deferred");
@@ -1349,6 +1400,9 @@ public final class ShaderRuntime implements AutoCloseable {
       PackTexture volume = textures.volume(program, r.name());
       if (volume != null) return dev.cadence.metal.MetalBridge.textureHandle(volume.texture);
     }
+    if (r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER
+        && dev.cadence.shaders.cadence.render.DistantTerrain.isFarBuffer(r.bufferIndex()))
+      return dev.cadence.shaders.cadence.render.DistantTerrain.bufferHandle(r.bufferIndex());
     if (storage == null) return 0;
     if (r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER) return storage.bufferHandle(r.bufferIndex());
     if (storage.hasImage(r.name())) return storage.imageHandle(r.name());
@@ -1516,6 +1570,9 @@ public final class ShaderRuntime implements AutoCloseable {
   private void disposePipelines() {
     geometry.values().forEach(PackPipeline::close);
     geometry.clear();
+    if (distantPipeline != null) distantPipeline.close();
+    distantPipeline = null;
+    distantFailed = false;
     screens.values().forEach(PackPipeline::close);
     screens.clear();
     sparseScreens.values().forEach(PackPipeline::close);
@@ -1613,6 +1670,7 @@ public final class ShaderRuntime implements AutoCloseable {
     }
     ShadowRenderer.discardSelection();
     active = false;
+    dev.cadence.shaders.cadence.render.DistantTerrain.want(false);
     suspend();
     disposeGraph();
     if (materialAtlas != null) {

@@ -277,6 +277,8 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     Map<Integer, String> integerOutputs = new HashMap<>();  // (location -> uvec4 / ivec4)
     // Cadence: images, buffer objects and set-1 samplers out first (StorageScan): one binding per name for both stages
     StorageScan storage = new StorageScan();
+    // (an adapter's own buffer objects, Cadence's far terrain for dh_* programs: set-1 resources like a pack's)
+    String adapterDeclarations = adapter == null ? "" : storage.extract(adapter.declarations());
     String vertexBody =
         declarations(
             modernInOut(storage.extract(arraysOnNames(v.source())), true, null), true, uniforms, samplers, varyings, varyingQualifiers,
@@ -555,7 +557,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     String vertexCommon = "#version 450\n" + layout.declaration(hideInVertex) + common + storage.header();
     String fragmentCommon = "#version 450\n" + layout.declaration(hideInFragment) + common + storage.header();
     StringBuilder vin = new StringBuilder();
-    if (adapter != null) vin.append(adapter.declarations()).append('\n');
+    if (adapter != null) vin.append(adapterDeclarations).append('\n');
     for (String zero : zeroInputs) { // "type name" (zero) or "type name|value"
       int bar = zero.indexOf('|');
       String declaration = bar < 0 ? zero : zero.substring(0, bar);

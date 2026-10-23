@@ -3758,3 +3758,131 @@ kernel void lod_pk_facet_commit(constant PkParams& pk [[buffer(14)]], device uin
     if (i < cnt[k]) recs[pkRecBase(pk, s) + i] = out[k * stride + i];
     if (i == 0u) sec[s * PK_SECTOR_WORDS] = cnt[k];
 }
+
+// ---- far terrain for shader packs (Cadence: their dh_terrain programs; DistantTerrain, ShaderRuntime) ----
+//
+// With a pack on, the far terrain culls as usual and draws nothing itself: the pack's own program draws the survivors, its
+// vertex stage reading them from this pass's records (each survivor rewritten in place, so no memory is added): the quad's
+// box in blocks from the origin (a stand-in's cut to its area, a skirt's foot lowered as lod_mesh_vs2 lowers it), its face,
+// one colour (its first cell's: in this mode the mesher merges only cells of one colour, lodmesh.c), the sky light and a
+// Distant Horizons material id (EDhApiBlockMaterial).
+//   x: x0 (17 bits, signed) | (x1 - x0) << 17 (15 bits)     y: z0 | (z1 - z0) << 17
+//   z: (y0 + 512) (12) | (y1 + 512) << 12 (12) | face << 24 (3; 7: nothing) | material << 27 (4)
+//   w: colour (RGB565) | sky light << 16 (4 bits)
+// args[112..114]: this pass's threadgroups; args[116..118]: the camera's offset from the origin (float bits), args[119] the
+// origin's y (the records' heights are absolute), for the vertex stage. The draw is the mesh's own: args 0-4 (instances of MESH_DRAW_Q survivors).
+#define PACK_ARGS 112u
+
+kernel void lod_mesh_pack_args(constant CompFrame& f [[buffer(22)]], device uint* args [[buffer(4)]], uint gid [[thread_position_in_grid]]) {
+    if (gid != 0u) return;
+    args[PACK_ARGS] = (args[ARGS_SURV] + 63u) / 64u;
+    args[PACK_ARGS + 1u] = 1u;
+    args[PACK_ARGS + 2u] = 1u;
+    args[PACK_ARGS + 4u] = as_type<uint>(f.camFrac.x);
+    args[PACK_ARGS + 5u] = as_type<uint>(f.camFrac.y);
+    args[PACK_ARGS + 6u] = as_type<uint>(f.camFrac.z);
+    args[PACK_ARGS + 7u] = uint(f.origin.y);
+}
+
+// The material a pack's dh_terrain program tells surfaces apart by (lighting, wetness, subsurface scattering): what the cell's
+// colour and kind say it is.
+static inline uint packMaterial(uint c565, uint face, uint kind, bool wet) {
+    if (wet) return 12u;                         // DH_BLOCK_WATER
+    if (kind == 1u) return 1u;                   // DH_BLOCK_LEAVES
+    float3 c = float3(comp565(c565));
+    float hi = max(c.r, max(c.g, c.b)), lo = min(c.r, min(c.g, c.b));
+    float sat = hi > 0.0 ? (hi - lo) / hi : 0.0;
+    if (sat < 0.15) return hi > 0.8 ? 8u : 2u;   // DH_BLOCK_SNOW, DH_BLOCK_STONE
+    if (c.g >= c.r && c.g >= c.b) return face == FACE_TOP ? 13u : 5u;   // DH_BLOCK_GRASS (its sides: DH_BLOCK_DIRT)
+    if (c.r >= c.g && c.g >= c.b && hi > 0.6) return 9u;               // DH_BLOCK_SAND
+    return 5u;                                   // DH_BLOCK_DIRT
+}
+
+kernel void lod_mesh_pack(constant MeshFrame& mf [[buffer(0)]], device const uint4* table [[buffer(1)]], device const uint* arena [[buffer(2)]],
+                          device const uint* args [[buffer(4)]], device const MeshInstance* inst [[buffer(5)]], device uint4* survivors [[buffer(7)]],
+                          device const uint* geom [[buffer(12)]], device const uint* crowns [[buffer(13)]], device const uint* color [[buffer(14)]],
+                          constant CompFrame& f [[buffer(22)]], uint sidx [[thread_position_in_grid]]) {
+    if (sidx >= args[ARGS_SURV]) return;
+    uint4 r = survivors[sidx];
+    uint w0, w1;
+    int tx, tz, L;
+    bool clipped = false;
+    int4 clip = int4(0);
+    if ((r.w & (1u << 24)) != 0u) {
+        // a stand-in: quad r.x of instance r.z, cut to the instance's area
+        MeshInstance mi = inst[r.z];
+        if (!meshResolve(mf, table, mi) || r.x >= (mi.a.y & 255u)) {
+            survivors[sidx] = uint4(0u, 0u, 7u << 24, 0u);
+            return;
+        }
+        uint qi = mi.a.x + r.x;
+        w0 = arena[qi * 2u];
+        w1 = arena[qi * 2u + 1u];
+        tx = int(mi.a.z);
+        tz = int(mi.a.w);
+        L = int((mi.a.y >> 8) & 15u);
+        clipped = (mi.a.y & (1u << 12)) != 0u;
+        clip = mi.b;
+    } else {
+        w0 = r.x;
+        w1 = r.y;
+        tx = int(r.z);
+        tz = int(r.w << 12) >> 12;
+        L = int((r.w >> 20) & 15u);
+        if ((w0 >> 31) != 0u) {
+            // a skirt's foot: down to the surface across its seam
+            int y0 = int(w1 & 0xFFFu) - 512;
+            y0 = min(y0, meshSkirtFloor(mf, table, geom, crowns, w0, tx, tz, L));
+            w1 = (w1 & ~0xFFFu) | uint(y0 + 512);
+        }
+    }
+    int x = int(w0 & 127u), z = int((w0 >> 7) & 127u), e1 = int((w0 >> 14) & 63u) + 1, e2 = int((w0 >> 20) & 63u) + 1;
+    uint face = (w0 >> 26) & 7u, kind = (w0 >> 29) & 3u;
+    int y0 = int(w1 & 0xFFFu) - 512, y1 = int((w1 >> 12) & 0xFFFu) - 512;
+    if (face == FACE_PLANT) {
+        survivors[sidx] = uint4(0u, 0u, 7u << 24, 0u);
+        return;
+    }
+    // the box (cells of level L from the tile's corner, then blocks from the origin), as meshQuadCorner's corners span it
+    int ax0, ax1, az0, az1;
+    if (face == FACE_TOP || face == FACE_BOTTOM) {
+        ax0 = x; ax1 = x + e1; az0 = z; az1 = z + e2;
+        y1 = y0;
+    } else if (face == FACE_XP || face == FACE_XN) {
+        ax0 = ax1 = x; az0 = z; az1 = z + e1;
+    } else {
+        az0 = az1 = z; ax0 = x; ax1 = x + e1;
+    }
+    int bx0 = (((tx << 6) + ax0) << L) - f.origin.x, bx1 = (((tx << 6) + ax1) << L) - f.origin.x;
+    int bz0 = (((tz << 6) + az0) << L) - f.origin.z, bz1 = (((tz << 6) + az1) << L) - f.origin.z;
+    if (clipped) {
+        // as meshQuadCorner: a wall whose own cell lies outside the area vanishes, the rest is cut to it
+        bool outside = face == FACE_XP ? (bx0 <= clip.x || bx0 > clip.y) : face == FACE_XN ? (bx0 < clip.x || bx0 >= clip.y)
+            : face == FACE_ZP ? (bz0 <= clip.z || bz0 > clip.w) : face == FACE_ZN ? (bz0 < clip.z || bz0 >= clip.w) : false;
+        if (outside) {
+            survivors[sidx] = uint4(0u, 0u, 7u << 24, 0u);
+            return;
+        }
+        bx0 = clamp(bx0, clip.x, clip.y);
+        bx1 = clamp(bx1, clip.x, clip.y);
+        bz0 = clamp(bz0, clip.z, clip.w);
+        bz1 = clamp(bz1, clip.z, clip.w);
+    }
+    // the colour: the face's own cell (the side of the plane it belongs to), as meshSurface finds it
+    int cx = (tx << 6) + x, cz = (tz << 6) + z;
+    if (face == FACE_XP) cx -= 1;
+    else if (face == FACE_ZP) cz -= 1;
+    int logN = f.origin.w, m = (1 << logN) - 1;
+    uint idx = uint(L) * (1u << uint(2 * logN)) + uint(((cz & m) << logN) | (cx & m));
+    uint g = geom[idx], cw = color[idx];
+    uint c565 = face == FACE_TOP ? (cw & 0xFFFFu) : (cw >> 16);
+    if (kind == 2u) c565 = (crowns[idx] >> 12) & 0xFFFFu;
+    bool wet = (g & GEOM_WET) != 0u;
+    uint sky = kind == 2u ? 11u : 15u;
+    uint4 o;
+    o.x = (uint(bx0) & 0x1FFFFu) | (uint(min(bx1 - bx0, 32767)) << 17);
+    o.y = (uint(bz0) & 0x1FFFFu) | (uint(min(bz1 - bz0, 32767)) << 17);
+    o.z = uint(clamp(y0, -512, 3583) + 512) | uint(clamp(y1, -512, 3583) + 512) << 12 | face << 24 | packMaterial(c565, face, kind, wet) << 27;
+    o.w = c565 | sky << 16;
+    survivors[sidx] = o;
+}

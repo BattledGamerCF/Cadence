@@ -26,9 +26,10 @@ final class LodNative {
 	private static final MethodHandle COLS_COMPOSITE = fn("mcl_cols_composite", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle MESH_TILE = fn("mcl_mesh_tile", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT,
-		JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT);
+		JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle MESH_CULL = fn("mcl_mesh_cull", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT);
+	private static final MethodHandle MESH_PACK_MODE = fn("mcl_mesh_pack_mode", false, null, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle MESH_DRAW = fn("mcl_mesh_draw", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT,
 		JAVA_LONG, JAVA_INT);
@@ -116,11 +117,14 @@ final class LodNative {
 		if (r != 0) throw new IllegalStateException(MemoryUtil.memUTF8(err));
 	}
 
-	/** Meshes one tile (lodmesh.c) from native memory into native memory; any thread. The quad count, or -1 when cap is too small. */
+	/**
+	 * Meshes one tile (lodmesh.c) from native memory into native memory; any thread. The quad count, or -1 when cap is too small.
+	 * color (shader-pack mode; colorLogN its toroidal size): faces merge only within one colour; 0: geometric merging.
+	 */
 	static int meshTile(long geom, long crown, long runs, long plantA, long plantB, int logN, int level, int tx, int tz, int neighbors, int block, long header,
-		long quads, int cap) {
+		long quads, int cap, long color, int colorLogN) {
 		try {
-			return (int) MESH_TILE.invokeExact(geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block, header, quads, cap);
+			return (int) MESH_TILE.invokeExact(geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block, header, quads, cap, color, colorLogN);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}
@@ -131,6 +135,15 @@ final class LodNative {
 		try {
 			MESH_CULL.invokeExact(lod, enc, frame, frameLength, comp, compLength, table, arena, mask, args, inst, plantInst, survivors, horizon, list, geom, crowns,
 				blocks, fences ? 1 : 0);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	/** Cadence: a shader pack draws the far terrain (color: the clipmap's colour words), or 0: the far terrain draws itself. */
+	static void meshPackMode(long lod, long color) {
+		try {
+			MESH_PACK_MODE.invokeExact(lod, color);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}
