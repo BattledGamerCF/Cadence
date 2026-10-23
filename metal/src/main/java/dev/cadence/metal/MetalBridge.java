@@ -160,6 +160,11 @@ public final class MetalBridge {
 	}
 
 	/** Render Max FPS: presents without vsync while on (frames past one a refresh are skipped, not shown); off: the option's again. */
+	/** Presents latched to the display's refreshes (display sync) whatever the VSync option (FramePacing: a cap at the refresh rate). */
+	public static void syncPresents(boolean on) {
+		MetalSurface.sync(on);
+	}
+
 	public static void uncappedPresent(boolean on) {
 		MetalSurface.immediate(on);
 		MetalEncoder.maxFps = on;

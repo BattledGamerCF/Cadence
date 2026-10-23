@@ -53,6 +53,16 @@ final class MetalSurface implements GpuSurfaceBackend {
 	/** Render Max FPS: no vsync while it's on, whatever the option says (MetalBridge.uncappedPresent). */
 	private static boolean immediate;
 
+	/** Presents latched to the display's refreshes (FramePacing: a frame cap at the display's rate), whatever the VSync option. */
+	private static boolean sync;
+
+	static void sync(boolean on) {
+		if (sync == on) return;
+		sync = on;
+		MetalSurface s = current;
+		if (s != null && s.lastConfig != null) s.configure(s.lastConfig);
+	}
+
 	/** Vsync off (on: true) or back to the option (false); applied at once. Render thread. */
 	static void immediate(boolean on) {
 		if (immediate == on) return;
@@ -68,7 +78,7 @@ final class MetalSurface implements GpuSurfaceBackend {
 		boolean vsync = config.presentMode() == GpuSurface.PresentMode.FIFO && !immediate;
 		this.paced = !vsync && PACE;
 		if (PACE_ADAPT) Native.paceAdapt(this.paced ? 1 : 0);
-		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || PACE_SYNC && this.paced ? 1 : 0) | DRAWABLES << 8
+		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || (PACE_SYNC || sync && !immediate) && this.paced ? 1 : 0) | DRAWABLES << 8
 			| (Retina.on() ? 0 : 1 << 16) | (OPAQUE ? 0 : 1 << 17));
 	}
 

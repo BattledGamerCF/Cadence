@@ -34,5 +34,9 @@ public final class FramePacing {
 		if (target == pacedFor) return;
 		pacedFor = target;
 		MacSystem.presentMinimum(target == 0 ? 0 : 1.0 / target * 0.97);
+		// a cap at a high-refresh display's own rate (120 on ProMotion): presents latched to its refreshes, one each. Unsynced, a
+		// frame now and then landed in the refresh before or after its own, the display showing one frame twice and skipping the
+		// next: an uneven 120 that reads as blur in motion
+		dev.cadence.metal.MetalBridge.syncPresents(target > 60 && Math.abs(target - hz) <= hz * 0.03);
 	}
 }
