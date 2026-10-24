@@ -24,7 +24,7 @@ struct Frame {
 	uint4 hud[3];             // the HUD: 9 hotbar slot colours (0: empty); then the selected slot, health and food (0..20)
 	int4 target;              // the block the crosshair is on (window-relative); w: 0 none, else 2 + its breaking stage (-1..9)
 	uint4 status;             // x: air (0..20; 255: not shown), y: hurt (0..10), z: eye in water (1) or lava (2), w: XP progress (0..1000)
-	uint4 chat;               // x: chat lines shown (text lines 8.., bottom left)
+	uint4 chat;               // x: chat lines shown (text lines 8.., bottom left); y: tiles across (the entity tile masks)
 	float4 light[4];          // brightness of light levels 0..15 (vanilla's lightmap curve and the Brightness option)
 };
 
@@ -41,22 +41,21 @@ struct Entity {
 
 static inline float3 rgb(uint c) { return float3((c >> 16) & 255, (c >> 8) & 255, c & 255) / 255.0f; }
 
-// Brick-major: each 8^3 brick's 512 voxels together (a ray inside a brick stays in a few cache lines), bricks ordered y, z, x.
-static inline uint voxelAt(device const ushort *grid, int3 v, constant Frame &f) {
-	uint w = 1u << f.grid.x, m = w - 1, bw = w >> 3;
-	uint ix = (uint(v.x) + f.grid.z) & m, iz = (uint(v.z) + f.grid.w) & m, iy = uint(v.y);
-	uint brick = ((iy >> 3) * bw + (iz >> 3)) * bw + (ix >> 3);
-	return grid[brick * 512 + (((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7))];
+// A voxel's place in the window's buffers: x fastest, then z, then y (toroidal in x and z). (Linear beat 8^3 bricks by 5%:
+// the occupancy bits are 196 KB, cached whole, and the address is shifts and ors.)
+static inline uint cellIndex(int3 v, constant Frame &f) {
+	uint m = (1u << f.grid.x) - 1;
+	return (uint(v.y) << (2 * f.grid.x)) | (((uint(v.z) + f.grid.w) & m) << f.grid.x) | ((uint(v.x) + f.grid.z) & m);
 }
 
-// Per 8^3 brick: 512 occupancy bits (16 words, one cache line), so a ray crossing air inside a partly filled brick tests one
-// bit a step and reads the block id only where there is a block.
+static inline uint voxelAt(device const ushort *grid, int3 v, constant Frame &f) {
+	return grid[cellIndex(v, f)];
+}
+
+// An occupancy bit per voxel, so a ray crossing air tests one bit a step and reads the block id only where there is a block.
 static inline bool occupiedAt(device const uint *bits, int3 v, constant Frame &f) {
-	uint w = 1u << f.grid.x, m = w - 1, bw = w >> 3;
-	uint ix = (uint(v.x) + f.grid.z) & m, iz = (uint(v.z) + f.grid.w) & m, iy = uint(v.y);
-	uint brick = ((iy >> 3) * bw + (iz >> 3)) * bw + (ix >> 3);
-	uint local = ((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7);
-	return (bits[brick * 16 + (local >> 5)] >> (local & 31)) & 1u;
+	uint i = cellIndex(v, f);
+	return (bits[i >> 5] >> (i & 31)) & 1u;
 }
 
 // The light where a face looks out (vanilla's flat lighting, Smooth Lighting off): per voxel sky light << 4 | block light,
@@ -64,10 +63,7 @@ static inline bool occupiedAt(device const uint *bits, int3 v, constant Frame &f
 static inline uint lightAt(device const uchar *light, int3 v, constant Frame &f) {
 	if (v.y >= int(f.grid.y)) return 0xF0u;
 	if (v.y < 0) return 0u;
-	uint w = 1u << f.grid.x, m = w - 1, bw = w >> 3;
-	uint ix = (uint(v.x) + f.grid.z) & m, iz = (uint(v.z) + f.grid.w) & m, iy = uint(v.y);
-	uint brick = ((iy >> 3) * bw + (iz >> 3)) * bw + (ix >> 3);
-	return light[brick * 512 + (((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7))];
+	return light[cellIndex(v, f)];
 }
 
 // A light level (sky << 4 | block) as vanilla's lightmap makes it brightness: the sky's part darkened for the time of day,
@@ -86,34 +82,18 @@ static inline float3 rayDir(Camera c, float2 ndc) {
 }
 
 
-// One pixel of a block of text lines (the game's font, 6-pixel advance, a dark box behind each line): `first` the block's
-// first line in the text buffer, `origin` its top left.
-static inline float3 textPixel(uint2 gid, int2 origin, uint first, uint count, uint scale, device const uchar *text, texture2d<float> font,
-	float3 color) {
-	int2 p = int2(gid) - origin;
-	uint lineH = 10 * scale, adv = 6 * scale;
-	if (p.x < 0 || p.y < 0 || uint(p.y) >= count * lineH || uint(p.x) >= 64 * adv) return color;  // (no divisions outside the block)
-	uint line = uint(p.y) / lineH, col = uint(p.x) / adv;
-	if (line >= count || col >= 64) return color;
-	uint ch = text[(first + line) * 64 + col];
-	if (ch == 0) return color;
-	color *= 0.45f;
-	uint lx = (uint(p.x) % adv) / scale, ly = (uint(p.y) % lineH) / scale;
-	if (lx < 8 && ly >= 1 && ly < 9 && font.read(uint2((ch & 15) * 8 + lx, (ch >> 4) * 8 + (ly - 1))).a > 0.5f) color = float3(1);
-	return color;
-}
 
 // (the in-between frame for one pixel, from the last two frames: see record_interp)
 static float3 interpolated(uint2 gid, constant Frame &f, texture2d<float> colorA, texture2d<float> depthA, texture2d<float> colorB,
 	texture2d<float> depthB);
 
 kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]], texture2d<float, access::write> outDepth [[texture(1)]],
-	texture2d<float> atlas [[texture(2)]], texture2d<float> font [[texture(3)]], texture2d<float> colorA [[texture(4)]],
+	texture2d<float> atlas [[texture(2)]], texture2d<float> colorA [[texture(4)]],
 	texture2d<float> depthA [[texture(5)]], texture2d<float> colorB [[texture(6)]], texture2d<float> depthB [[texture(7)]],
 	texture2d<float, access::write> outMid [[texture(8)]], constant Frame &f [[buffer(0)]],
 	device const ushort *grid [[buffer(1)]], device const uint4 *pal [[buffer(3)]],
-	constant Entity *entities [[buffer(4)]], device const uchar *text [[buffer(5)]], device const uint *occ [[buffer(6)]],
-	device const uchar *light [[buffer(7)]],
+	constant Entity *entities [[buffer(4)]], device const uint *hud [[buffer(5)]], device const uint *occ [[buffer(6)]],
+	device const uchar *light [[buffer(7)]], device const uint *tiles [[buffer(8)]], device const uint *cells [[buffer(9)]],
 	uint2 gid [[thread_position_in_grid]]) {
 	if (gid.x >= f.size.x || gid.y >= f.size.y) return;
 	float2 ndc = (float2(gid) + 0.5f) / float2(f.size.xy) * 2.0f - 1.0f;
@@ -148,6 +128,28 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 			int3 v = int3(floor(ro + rd * (t + 1e-4f)));
 			float3 tMax = (float3(v) + float3(rd > 0) - ro) * inv, tDelta = abs(inv);
 			float tIn = t;
+#ifndef RB_NO_CELLS
+			// Above the height field (RecordWorld: the highest block of each 8 x 8-column cell) the ray crosses a cell in one step:
+			// to where it leaves the cell sideways or, going down, reaches the cell's top; the voxel walk takes over below it.
+			// (A loop of its own: checks inside the walk cost ground rays more than they saved.)
+			for (int k = 0; k < 24 && tIn < tEnd; k++) {
+				if (uint(v.y) >= uint(H)) break;
+				uint cm = (1u << f.grid.x) - 1;
+				int ctop = int(cells[(((uint(v.z) + f.grid.w) & cm) >> 3) * (uint(W) >> 3) + (((uint(v.x) + f.grid.z) & cm) >> 3)]);
+				if (v.y < ctop) break;
+				float2 lo = float2(v.xz & ~7), ts = (select(lo, lo + 8.0f, rd.xz > 0) - ro.xz) * inv.xz;
+				float tj = min(ts.x, ts.y);
+				int ax = ts.x <= ts.y ? 0 : 2;
+				if (rd.y < 0) {
+					float td = (float(ctop) - ro.y) * inv.y;
+					if (td < tj) { tj = td; ax = 1; }
+				}
+				tIn = max(tj, tIn);
+				v = int3(floor(ro + rd * (tIn + 1e-4f)));
+				tMax = (float3(v) + float3(rd > 0) - ro) * inv;
+				axis = ax;
+			}
+#endif
 			for (int k = 0; k < 96 && tIn < tEnd; k++) {
 				// (x and z can't leave the window before tEnd, and wrap if rounding says otherwise; y is checked: it indexes memory)
 				if (uint(v.y) >= uint(H)) break;
@@ -231,12 +233,15 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 		return;
 #endif
 	}
-	// entities: boxes, only those whose screen rectangle holds this pixel
+	// entities: boxes, only those whose screen rectangle touches this pixel's 8 x 8 tile (a mask per tile from the CPU)
 #ifdef RB_NO_ENT
-	for (uint i = 0; i < 0; i++) {
+	uint emask = 0;
 #else
-	for (uint i = 0; i < f.size.z; i++) {
+	uint emask = tiles[(gid.y >> 3) * f.chat.y + (gid.x >> 3)];
 #endif
+	while (emask != 0) {
+		uint i = ctz(emask);
+		emask &= emask - 1;
 		Entity e = entities[i];
 		if (int(gid.x) < e.rect.x || int(gid.x) > e.rect.z || int(gid.y) < e.rect.y || int(gid.y) > e.rect.w) continue;
 		float3 a0 = (e.lo.xyz - ro) * inv, a1 = (e.hi.xyz - ro) * inv;
@@ -258,40 +263,13 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	else if (f.status.z == 2) color = mix(color, float3(0.9f, 0.3f, 0.05f), 0.85f);
 	if (f.status.y > 0) color = mix(color, float3(0.8f, 0.0f, 0.0f), float(f.status.y) * 0.035f);
 #ifndef RB_NO_HUD
-	// the HUD text: the F3 lines (top left) and the latest chat (bottom left)
-	uint scale = uint(f.misc.y);
-	color = textPixel(gid, int2(2 * scale), 0, f.size.w, scale, text, font, color);
-	if (f.chat.x > 0)
-		color = textPixel(gid, int2(2 * scale, int(f.size.y) - int((24 + 10 * f.chat.x) * scale)), 8, f.chat.x, scale, text, font, color);
-	// the HUD, the most basic way: the hotbar's nine slots (each its item's colour, the selected one outlined), health and food
-	{
-		int slot = int(10 * scale), barW = slot * 9;
-		int x0 = int(f.size.x / 2) - barW / 2, y0 = int(f.size.y) - slot - int(2 * scale);
-		int px = int(gid.x) - x0, py = int(gid.y) - y0;
-		if (px >= 0 && px < barW && py >= 0 && py < slot) {
-			uint k = uint(px / slot);
-			int lx = px % slot;
-			uint item = f.hud[k >> 2][k & 3];
-			bool edge = lx < int(scale) || lx >= slot - int(scale) || py < int(scale) || py >= slot - int(scale);
-			color = edge ? (k == f.hud[2].y ? float3(1) : float3(0.25f)) : item != 0 ? rgb(item) : color * 0.5f;
-		}
-		// the XP bar just above the hotbar
-		if (py == -int(scale) && px >= 0 && px < barW) color = px < barW * int(f.status.w) / 1000 ? float3(0.5f, 1.0f, 0.2f) : float3(0.15f);
-		// air (underwater) above the food bar
-		int ay = y0 - int(7 * scale), bh = int(2 * scale);
-		if (f.status.x != 255 && int(gid.y) >= ay && int(gid.y) < ay + bh) {
-			int halfW = barW / 2 - int(2 * scale), qx = px - (barW - halfW);
-			if (qx >= 0 && qx < halfW) color = qx >= halfW - halfW * int(f.status.x) / 20 ? float3(0.6f, 0.8f, 1.0f) : float3(0.2f);
-		}
-		// health (left) and food (right) above the hotbar: a bar each, 0..20
-		int by = y0 - int(4 * scale);
-		if (int(gid.y) >= by && int(gid.y) < by + bh) {
-			int halfW = barW / 2 - int(2 * scale);
-			if (px >= 0 && px < halfW) color = px < halfW * int(f.hud[2].z) / 20 ? float3(0.85f, 0.1f, 0.1f) : float3(0.2f);
-			int qx = px - (barW - halfW);
-			if (qx >= 0 && qx < halfW) color = qx >= halfW - halfW * int(f.hud[2].w) / 20 ? float3(0.75f, 0.5f, 0.2f) : float3(0.2f);
-		}
+	// the HUD (RecordHud: text, hotbar, bars), drawn by the CPU when it changes, blended over the frame
+	uint o = hud[gid.y * f.size.x + gid.x];
+	if (o != 0) {
+		float4 hc = unpack_unorm4x8_to_float(o);
+		color = mix(color, hc.rgb, hc.a);
 	}
+	uint scale = uint(f.misc.y);
 	// the crosshair (the game stays playable: you can see what you aim at)
 	int2 cc = int2(gid) - int2(f.size.xy / 2);
 	int arm = int(4 * scale), thick = int(max(1u, scale / 2));

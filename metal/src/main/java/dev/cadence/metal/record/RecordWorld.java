@@ -18,8 +18,8 @@ import org.lwjgl.system.MemoryUtil;
 
 /**
  * Record Mode's world: the client's loaded blocks in a window of W x H x W voxels around the camera (all of the level's
- * height), as palette numbers (ushort, 0 = air) in a shared buffer the trace reads, laid out brick-major (8^3 voxels
- * together), with an occupancy bit per voxel. The window is toroidal: as the player crosses chunks it moves by whole chunk
+ * height), as palette numbers (ushort, 0 = air) in a shared buffer the trace reads, x fastest, then z, then y, with an
+ * occupancy bit per voxel. The window is toroidal: as the player crosses chunks it moves by whole chunk
  * columns, and only the columns it gains are written. Block changes come from the game's own section updates. Beside each voxel
  * its light (sky << 4 | block, from the game's own light engine; light changes mark sections for rebuilding too), for vanilla's
  * flat lighting.
@@ -27,8 +27,16 @@ import org.lwjgl.system.MemoryUtil;
 final class RecordWorld {
 	static final int PALETTE_MAX = 4096, PALETTE_STRIDE = 16;  // bytes per entry (record.metal: a uint4)
 	final int wlog, w, h, minY;
-	final long grid, palette, occ, light;
-	private final long gridAddr, paletteAddr, occAddr, lightAddr;
+	final long grid, palette, occ, light, cells;
+	private final long gridAddr, paletteAddr, occAddr, lightAddr, cellsAddr;
+	/**
+	 * The height field the trace skips air with: per column and section the highest block in it (y + 1 within the section, 0
+	 * none), per column the highest block (window y + 1), and per 8 x 8-column cell the highest of its columns (`cells`, a uint
+	 * each, read by record.metal: a ray above its cell's top crosses the cell in one step).
+	 */
+	private final byte[] sectionTop;
+	private final short[] columnTop;
+	private final int sections;
 	private final boolean skyLight;
 	private final int bw, bh;
 	/** One above the highest block written (window-relative y): rays above it are sky. Only grows. */
@@ -63,6 +71,12 @@ final class RecordWorld {
 		MemoryUtil.memSet(this.occAddr, 0, (long) this.bw * this.bw * this.bh * 64);
 		MemoryUtil.memSet(this.gridAddr, 0, (long) this.w * this.w * this.h * 2);
 		this.light = RecordNative.buffer(ctx, (long) this.w * this.w * this.h);
+		this.sections = this.h >> 4;
+		this.sectionTop = new byte[this.w * this.w * this.sections];
+		this.columnTop = new short[this.w * this.w];
+		this.cells = RecordNative.buffer(ctx, (long) (this.w >> 3) * (this.w >> 3) * 4);
+		this.cellsAddr = RecordNative.contents(this.cells);
+		MemoryUtil.memSet(this.cellsAddr, 0, (long) (this.w >> 3) * (this.w >> 3) * 4);
 		this.lightAddr = RecordNative.contents(this.light);
 		this.skyLight = level.dimensionType().hasSkyLight();
 		MemoryUtil.memSet(this.lightAddr, this.skyLight ? 0xF0 : 0, (long) this.w * this.w * this.h);
@@ -75,6 +89,7 @@ final class RecordWorld {
 		RecordNative.releaseObject(this.palette);
 		RecordNative.releaseObject(this.occ);
 		RecordNative.releaseObject(this.light);
+		RecordNative.releaseObject(this.cells);
 	}
 
 	// ---- the window ----
@@ -156,7 +171,8 @@ final class RecordWorld {
 		int m = this.w - 1;
 		int y0 = si << 4;
 		boolean any = false;
-		int bwv = this.w >> 3;
+		byte[] colTop = this.scratchTop;
+		java.util.Arrays.fill(colTop, (byte) 0);
 		// the section's light (null: no data kept there; open sky, or no block light)
 		var pos = net.minecraft.core.SectionPos.of(sx, sy, sz);
 		var engine = this.level.getLightEngine();
@@ -170,22 +186,49 @@ final class RecordWorld {
 				for (int x = 0; x < 16; x++) {
 					int ix = ((sx << 4) + x) & m;
 					int id = empty ? 0 : this.id(sec.getBlockState(x, y, z));
-					// (brick-major, as record.metal voxelAt reads it)
-					long brick = ((long) (iy >> 3) * bwv + (iz >> 3)) * bwv + (ix >> 3);
-					int local = ((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7);
-					MemoryUtil.memPutShort(this.gridAddr + (brick * 512 + local) * 2, (short) id);
+					// (x fastest, then z, then y: record.metal cellIndex)
+					long at = ((long) iy * this.w + iz) * this.w + ix;
+					MemoryUtil.memPutShort(this.gridAddr + at * 2, (short) id);
 					int sl = skyData != null ? skyData.get(x, y, z) : skyFill, bl = blockData != null ? blockData.get(x, y, z) : 0;
-					MemoryUtil.memPutByte(this.lightAddr + brick * 512 + local, (byte) (sl << 4 | bl));
-					long word = this.occAddr + (brick * 16 + (local >> 5)) * 4;
-					int bit = 1 << (local & 31);
+					MemoryUtil.memPutByte(this.lightAddr + at, (byte) (sl << 4 | bl));
+					long word = this.occAddr + (at >> 5) * 4;
+					int bit = 1 << (at & 31);
 					int old = MemoryUtil.memGetInt(word);
 					MemoryUtil.memPutInt(word, id != 0 ? old | bit : old & ~bit);
-					any |= id != 0;
+					if (id != 0) {
+						any = true;
+						colTop[z * 16 + x] = (byte) (y + 1);
+					}
 				}
 			}
 		}
 		if (any) this.top = Math.max(this.top, y0 + 16);
+		// the height field: this section's tops, its columns' tops, their cells' tops
+		for (int z = 0; z < 16; z++)
+			for (int x = 0; x < 16; x++) {
+				int col = (((sz << 4) + z) & m) * this.w + (((sx << 4) + x) & m);
+				this.sectionTop[col * this.sections + si] = colTop[z * 16 + x];
+				int t = 0;
+				for (int k = this.sections - 1; k >= 0; k--) {
+					int st = this.sectionTop[col * this.sections + k];
+					if (st != 0) {
+						t = (k << 4) + st;
+						break;
+					}
+				}
+				this.columnTop[col] = (short) t;
+			}
+		int cw = this.w >> 3;
+		for (int k = 0; k < 4; k++) {
+			int cx = ((((sx << 4) & m) >> 3) + (k & 1)), cz = ((((sz << 4) & m) >> 3) + (k >> 1));
+			int t = 0;
+			for (int z = 0; z < 8; z++)
+				for (int x = 0; x < 8; x++) t = Math.max(t, this.columnTop[(cz * 8 + z) * this.w + cx * 8 + x]);
+			MemoryUtil.memPutInt(this.cellsAddr + (cz * cw + cx) * 4L, t);
+		}
 	}
+
+	private final byte[] scratchTop = new byte[256];
 
 	// ---- the palette ----
 

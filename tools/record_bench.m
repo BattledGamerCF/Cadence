@@ -4,7 +4,7 @@
 // Build: clang -fobjc-arc -O2 -framework Metal -framework Foundation -framework ImageIO -framework CoreGraphics tools/record_bench.m -o /tmp/record_bench
 // Usage: record_bench <dump dir> <record.metal> [frames=4000] [rounds=3] [variant macros ...]
 //   a variant is a comma list of NAME or NAME=VALUE ("" or "-": none), e.g.  record_bench dump src.metal 4000 3 - TG16
-//   RB_W=width RB_H=height: another output size; RB_PNG=path: the first variant's last frame as a PNG; RB_TG=8x8: threadgroup.
+//   RB_W=width RB_H=height: another output size; RB_PNG=path: a frame by the first variant as a PNG; RB_TG=8x8: threadgroup.
 #import <CoreGraphics/CoreGraphics.h>
 #import <Foundation/Foundation.h>
 #import <ImageIO/ImageIO.h>
@@ -66,10 +66,64 @@ int main(int argc, char **argv) {
 		if (getenv("RB_NOINTERP")) *(uint32_t *) ((char *) frame.mutableBytes + 336) = 0;
 		if (getenv("RB_STILL")) *(uint32_t *) ((char *) frame.mutableBytes + 336) = 2;
 		*(uint32_t *) ((char *) frame.mutableBytes + 348) = getenv("RB_TEMPORAL") ? 1 : 0;  // (the dump's frame may have it either way)
-		int tgx = 8, tgy = 8;
+		int tgx = 8, tgy = 8, batch = getenv("RB_BATCH") ? atoi(getenv("RB_BATCH")) : 1;
 		if (getenv("RB_TG")) sscanf(getenv("RB_TG"), "%dx%d", &tgx, &tgy);
 		id<MTLBuffer> grid = load(d, dir, @"grid.bin"), pal = load(d, dir, @"palette.bin"),
-			occ = load(d, dir, @"occ.bin"), light = load(d, dir, @"light.bin"), ents = load(d, dir, @"entities.bin"), text = load(d, dir, @"text.bin");
+			occ = load(d, dir, @"occ.bin"), light = load(d, dir, @"light.bin"), ents = load(d, dir, @"entities.bin");
+		// the entity tile masks (Record.placeEntities), made again from the dump's rectangles (older dumps have none)
+		int tilesX = (w + 7) >> 3, tilesY = (h + 7) >> 3, nEnt = *(uint32_t *) ((char *) frame.mutableBytes + 312);
+		*(uint32_t *) ((char *) frame.mutableBytes + 436) = tilesX;
+		id<MTLBuffer> tiles = [d newBufferWithLength:(NSUInteger) tilesX * tilesY * 4 options:MTLResourceStorageModeShared];
+		memset(tiles.contents, 0, tiles.length);
+		for (int i = 0; i < nEnt; i++) {
+			int32_t *r = (int32_t *) ((char *) ents.contents + i * 48 + 32);
+			for (int ty = r[1] >> 3; ty <= r[3] >> 3 && ty < tilesY; ty++)
+				for (int tx = r[0] >> 3; tx <= r[2] >> 3 && tx < tilesX; tx++) ((uint32_t *) tiles.contents)[ty * tilesX + tx] |= 1u << i;
+		}
+		if (getenv("RB_TOLINEAR")) {
+			// (the dump's brick-major buffers as x-fastest linear ones, for the RB_LINEAR layout)
+			uint32_t *gi = (uint32_t *) ((char *) frame.mutableBytes + 288);
+			int W0 = 1 << gi[0], H0 = gi[1], bw0 = W0 >> 3;
+			NSMutableData *g2 = [NSMutableData dataWithLength:grid.length], *l2 = [NSMutableData dataWithLength:light.length], *o2 = [NSMutableData dataWithLength:occ.length];
+			for (int iy = 0; iy < H0; iy++)
+				for (int iz = 0; iz < W0; iz++)
+					for (int ix = 0; ix < W0; ix++) {
+						int bi = (((iy >> 3) * bw0 + (iz >> 3)) * bw0 + (ix >> 3)) * 512 + ((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7);
+						int li = (iy * W0 + iz) * W0 + ix;
+						((uint16_t *) g2.mutableBytes)[li] = ((uint16_t *) grid.contents)[bi];
+						((uint8_t *) l2.mutableBytes)[li] = ((uint8_t *) light.contents)[bi];
+						if ((((uint32_t *) occ.contents)[bi >> 5] >> (bi & 31)) & 1) ((uint32_t *) o2.mutableBytes)[li >> 5] |= 1u << (li & 31);
+					}
+			memcpy(grid.contents, g2.bytes, grid.length);
+			memcpy(light.contents, l2.bytes, light.length);
+			memcpy(occ.contents, o2.bytes, occ.length);
+		}
+		// the height field (RecordWorld cells): the dump's, or made from the occupancy bits
+		uint32_t *gridInfo = (uint32_t *) ((char *) frame.mutableBytes + 288);
+		int W = 1 << gridInfo[0], Hh = gridInfo[1], bw = W >> 3, cw = W >> 3;
+		NSData *cellData = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"cells.bin"]];
+		id<MTLBuffer> cells = [d newBufferWithLength:(NSUInteger) cw * cw * 4 options:MTLResourceStorageModeShared];
+		if (cellData.length == cells.length) memcpy(cells.contents, cellData.bytes, cells.length);
+		else {
+			const uint32_t *ob = occ.contents;
+			uint32_t *cc = cells.contents;
+			memset(cc, 0, cells.length);
+			for (int iz = 0; iz < W; iz++)
+				for (int ix = 0; ix < W; ix++)
+					for (int iy = Hh - 1; iy >= 0; iy--) {
+						int brick = ((iy >> 3) * bw + (iz >> 3)) * bw + (ix >> 3), local = ((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7);
+						if ((ob[brick * 16 + (local >> 5)] >> (local & 31)) & 1) {
+							uint32_t *c = &cc[(iz >> 3) * cw + (ix >> 3)];
+							if ((uint32_t) (iy + 1) > *c) *c = iy + 1;
+							break;
+						}
+					}
+		}
+		// the HUD overlay (RecordHud): the dump's when it has one, else none drawn
+		NSData *hudData = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"hud.bin"]];
+		id<MTLBuffer> text = [d newBufferWithLength:(NSUInteger) w * h * 4 options:MTLResourceStorageModeShared];
+		memset(text.contents, 0, text.length);
+		if (hudData.length == text.length) memcpy(text.contents, hudData.bytes, text.length);
 		id<MTLTexture> color[3], depth[3];
 		for (int k = 0; k < 3; k++) {
 			color[k] = tex(d, MTLPixelFormatRGBA8Unorm, w, h, MTLStorageModePrivate);
@@ -103,35 +157,41 @@ int main(int argc, char **argv) {
 				__block int gpuN = 0;
 				double t0 = NSProcessInfo.processInfo.systemUptime;
 				id<MTLCommandBuffer> last = nil;
-				for (int i = 0; i < frames; i++) {
+				for (int i = 0; i < frames; i += batch) {
 					dispatch_semaphore_wait(inflight, DISPATCH_TIME_FOREVER);
 					@autoreleasepool {
 						id<MTLCommandBuffer> cb = [q commandBufferWithUnretainedReferences];
 						id<MTLComputeCommandEncoder> c = [cb computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
-						int a = (cur + 2) % 3, b = (cur + 1) % 3;
 						[c setComputePipelineState:pipes[v]];
-						[c setTexture:color[cur] atIndex:0];
-						[c setTexture:depth[cur] atIndex:1];
 						[c setTexture:atlas atIndex:2];
 						[c setTexture:font atIndex:3];
-						[c setTexture:color[a] atIndex:4];
-						[c setTexture:depth[a] atIndex:5];
-						[c setTexture:color[b] atIndex:6];
-						[c setTexture:depth[b] atIndex:7];
 						[c setTexture:mid atIndex:8];
-						[c setBytes:frame.bytes length:frame.length atIndex:0];
 						[c setBuffer:grid offset:0 atIndex:1];
 						[c setBuffer:pal offset:0 atIndex:3];
 						[c setBuffer:ents offset:0 atIndex:4];
 						[c setBuffer:text offset:0 atIndex:5];
 						[c setBuffer:occ offset:0 atIndex:6];
 						[c setBuffer:light offset:0 atIndex:7];
-						[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
+						[c setBuffer:tiles offset:0 atIndex:8];
+						[c setBuffer:cells offset:0 atIndex:9];
+						// (RB_BATCH frames to a command buffer: each its own dispatch into its own image, as the game would)
+						for (int j = 0; j < batch; j++) {
+							int a = (cur + 2) % 3, b = (cur + 1) % 3;
+							[c setTexture:color[cur] atIndex:0];
+							[c setTexture:depth[cur] atIndex:1];
+							[c setTexture:color[a] atIndex:4];
+							[c setTexture:depth[a] atIndex:5];
+							[c setTexture:color[b] atIndex:6];
+							[c setTexture:depth[b] atIndex:7];
+							[c setBytes:frame.bytes length:frame.length atIndex:0];
+							[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
+							cur = (cur + 1) % 3;
+						}
 						[c endEncoding];
-						bool sample = (i & 15) == 0;
+						bool sample = ((i / batch) & 15) == 0;
 						[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
 							if (sample) {
-								gpu += done.GPUEndTime - done.GPUStartTime;
+								gpu += (done.GPUEndTime - done.GPUStartTime) / batch;
 								gpuN++;
 							}
 							dispatch_semaphore_signal(inflight);
@@ -139,7 +199,6 @@ int main(int argc, char **argv) {
 						[cb commit];
 						last = cb;
 					}
-					cur = (cur + 1) % 3;
 				}
 				[last waitUntilCompleted];
 				for (int k = 0; k < 16; k++) dispatch_semaphore_wait(inflight, DISPATCH_TIME_FOREVER);
@@ -156,6 +215,23 @@ int main(int argc, char **argv) {
 			printf("== %-28s mean %7.0f fps  best %7.0f  gpu %6.1f us\n", argc > 5 ? argv[5 + v] : "-", sum[v] / rounds, best[v], gpuSum[v] / rounds);
 		const char *png = getenv("RB_PNG");
 		if (png) {
+			// (one more frame by the first variant: the image is of it, whichever variant ran last)
+			for (int i = 0; i < 3; i++) {
+				id<MTLCommandBuffer> cb = [q commandBuffer];
+				id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
+				int a = (cur + 2) % 3, b = (cur + 1) % 3;
+				[c setComputePipelineState:pipes[0]];
+				id<MTLTexture> ts[9] = {color[cur], depth[cur], atlas, font, color[a], depth[a], color[b], depth[b], mid};
+				for (int k = 0; k < 9; k++) [c setTexture:ts[k] atIndex:k];
+				[c setBytes:frame.bytes length:frame.length atIndex:0];
+				id<MTLBuffer> bs[10] = {nil, grid, nil, pal, ents, text, occ, light, tiles, cells};
+				for (int k = 1; k < 10; k++) if (bs[k]) [c setBuffer:bs[k] offset:0 atIndex:k];
+				[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
+				[c endEncoding];
+				[cb commit];
+				[cb waitUntilCompleted];
+				cur = (cur + 1) % 3;
+			}
 			id<MTLBuffer> out = [d newBufferWithLength:(NSUInteger) w * h * 4 options:MTLResourceStorageModeShared];
 			id<MTLCommandBuffer> cb = [q commandBuffer];
 			id<MTLBlitCommandEncoder> bl = [cb blitCommandEncoder];

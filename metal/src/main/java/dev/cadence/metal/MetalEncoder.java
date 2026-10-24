@@ -46,6 +46,15 @@ final class MetalEncoder implements CommandEncoderBackend {
 	private static final int RECORD_IN_FLIGHT = Integer.getInteger("cadence.record.inFlight", 16);
 	static volatile boolean record;
 	/**
+	 * Record Mode: its frames committed recordBatch to a command buffer (-Dcadence.record.batch, 1: each its own). Each frame is
+	 * still its own dispatch rendering its own image; a command buffer costs the M2 ~20 us of its own (tools/record_bench.m
+	 * RB_BATCH), which at 20k frames a second is ~40% of a frame. A frame that presents commits at once.
+	 */
+	static volatile int recordBatch = Math.max(1, Integer.getInteger("cadence.record.batch", 4));
+	/** Set by Record when this frame was a record frame (only those are batched). */
+	public static boolean recordFrame;
+	private int recordBatched;
+	/**
 	 * -Dcadence.metal.trace=N prints every encoder operation of submit N, the tool for finding pass boundaries worth removing,
 	 * and the average per-encoder GPU time of submits N to N + PROFILE_FRAMES - 1. Traced runs are a few % slower; don't bench them.
 	 */
@@ -187,6 +196,10 @@ final class MetalEncoder implements CommandEncoderBackend {
 	@Override
 	public void submit() {
 		if (this.currentPass != null) throw new IllegalStateException("Cannot submit inside a render pass");
+		boolean recordOnly = recordFrame;
+		recordFrame = false;
+		if (recordOnly && !this.presentedThisSubmit && !profiled(this.submitIndex) && ++this.recordBatched < recordBatch) return;
+		this.recordBatched = 0;
 		this.trace("submit");
 		this.transientMemory.endSubmit();
 		long samples = 0;

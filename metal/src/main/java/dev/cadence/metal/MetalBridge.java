@@ -176,6 +176,16 @@ public final class MetalBridge {
 		uncappedPresent(on);
 	}
 
+	/** (testing) Record Mode's frames per command buffer (MetalEncoder.recordBatch). */
+	public static void recordBatch(int n) {
+		MetalEncoder.recordBatch = Math.max(1, n);
+	}
+
+	/** Record Mode: this frame was a record frame (its command buffer may take the next ones too: MetalEncoder.recordBatch). */
+	public static void recordFrame() {
+		MetalEncoder.recordFrame = true;
+	}
+
 	/** Whether the backend runs on Metal 4 (-Dcadence.metal4=true and the device has it). */
 	public static boolean metal4() {
 		return Native.metal4();

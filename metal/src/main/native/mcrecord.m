@@ -1,7 +1,7 @@
 // Cadence: Record Mode (dev.cadence.metal.record, record.metal): the frame as compute only. A render pass costs the M2's GPU
-// about 53 us whatever its size (tools/m4_floor.m), a compute dispatch far less, so the frame is two dispatches: the world
-// ray-marched (with the HUD text) into this frame's colour and depth, then, with interpolation on, the in-between frame from
-// the last two. The game presents the colour texture at most once a refresh (Render Max FPS's uncapped presentation).
+// about 53 us whatever its size (tools/m4_floor.m), a compute dispatch far less, so the frame is one dispatch: the world traced
+// into this frame's colour and depth, the HUD overlay (RecordHud) blended in, and, with interpolation on, the in-between frame
+// of the last two. The game presents the colour texture at most once a refresh (Render Max FPS's uncapped presentation).
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import "mcmetal.h"
@@ -9,8 +9,8 @@
 
 id<MTLCommandBuffer> mc_frame_cmd(Enc *enc);
 
-// GPU time of the frames' command buffers, sampled every 64th frame (the record frame's command buffer holds only its own
-// dispatches, and now and then the present): microseconds, averaged over the samples since the last read.
+// GPU time per record frame, sampled from about every 64th frame's command buffer: its time over the record frames in it
+// (Record Mode commits several to a command buffer: MetalEncoder.recordBatch). Microseconds, averaged since the last read.
 static _Atomic double gpuSum;
 static _Atomic long gpuCount;
 double mcrm_gpu_us(void) {
@@ -21,9 +21,12 @@ double mcrm_gpu_us(void) {
 
 typedef struct {
 	id<MTLComputePipelineState> trace;
-	id<MTLTexture> color[3], depth[3], mid, font;  // the last three frames (this one, and the two the in-between frame is made from)
+	id<MTLTexture> color[3], depth[3], mid;  // the last three frames (this one, and the two the in-between frame is made from)
 	int w, h, cur;
 	long frames;
+	void *lastCb;               // (not retained: only compared) the command buffer of the last frame
+	_Atomic int *sampledFrames;  // the record frames in it, when it's being sampled
+	long lastSample;
 } Rec;
 
 static void copyErr(NSError *e, char *err, int cap) {
@@ -84,24 +87,14 @@ void mcrm_size(void *rec, Ctx *ctx, int w, int h) {
 	r->frames = 0;
 }
 
-// The game's font (ascii.png as RGBA8, 16 x 16 glyphs of 8 x 8).
-void mcrm_font(void *rec, Ctx *ctx, const void *rgba, int w, int h) {
-	Rec *r = rec;
-	MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:w height:h mipmapped:NO];
-	d.usage = MTLTextureUsageShaderRead;
-	d.storageMode = MTLStorageModeShared;
-	[r->font release];
-	r->font = [ctx->device newTextureWithDescriptor:d];
-	[r->font replaceRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:0 withBytes:rgba bytesPerRow:w * 4];
-}
 
 // One frame on the frame's command buffer: one dispatch traces it and, with interpolation on (the game passes it in the
 // frame's flags), makes the in-between frame of the last two. Returns the texture to present: this frame's colour.
 id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLength, id<MTLBuffer> grid, id<MTLBuffer> pal,
-	id<MTLBuffer> entities, id<MTLBuffer> text, id<MTLBuffer> occ, id<MTLBuffer> light, id<MTLTexture> atlas, int interpolate) {
+	id<MTLBuffer> entities, id<MTLBuffer> hud, id<MTLBuffer> occ, id<MTLBuffer> light, id<MTLBuffer> cells, id<MTLTexture> atlas, int interpolate) {
 	(void) interpolate;  // (in the frame's flags)
 	Rec *r = rec;
-	if (!r->color[0] || !r->font) return nil;
+	if (!r->color[0]) return nil;
 	int cur = r->cur, a = (cur + 2) % 3, b = (cur + 1) % 3;  // (a: the last frame, b: the one before)
 	@autoreleasepool {
 		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
@@ -110,7 +103,6 @@ id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLengt
 		[c setTexture:r->color[cur] atIndex:0];
 		[c setTexture:r->depth[cur] atIndex:1];
 		[c setTexture:atlas atIndex:2];
-		[c setTexture:r->font atIndex:3];
 		[c setTexture:r->color[a] atIndex:4];
 		[c setTexture:r->depth[a] atIndex:5];
 		[c setTexture:r->color[b] atIndex:6];
@@ -120,20 +112,33 @@ id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLengt
 		[c setBuffer:grid offset:0 atIndex:1];
 		[c setBuffer:pal offset:0 atIndex:3];
 		[c setBuffer:entities offset:0 atIndex:4];
-		[c setBuffer:text offset:0 atIndex:5];
+		[c setBuffer:hud offset:0 atIndex:5];
 		[c setBuffer:occ offset:0 atIndex:6];
 		[c setBuffer:light offset:0 atIndex:7];
+		[c setBuffer:entities offset:32 * 48 atIndex:8];  // (the entity tiles' masks, after the boxes: Record.ENTITY_REGION)
+		[c setBuffer:cells offset:0 atIndex:9];           // (the height field's cells)
 		[c dispatchThreads:MTLSizeMake(r->w, r->h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		[c endEncoding];
-		if ((r->frames & 63) == 0)
-			[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
-				double us = (done.GPUEndTime - done.GPUStartTime) * 1e6;
-				if (us > 0 && us < 1e5) {
-					double cur = atomic_load(&gpuSum);
-					while (!atomic_compare_exchange_weak(&gpuSum, &cur, cur + us)) {}
-					atomic_fetch_add(&gpuCount, 1);
-				}
-			}];
+		if ((void *) cb != r->lastCb) {
+			// the first record frame in this command buffer: sampled when one is due (its time over its record frames)
+			r->lastCb = (void *) cb;
+			r->sampledFrames = NULL;
+			if (r->frames - r->lastSample >= 64) {
+				r->lastSample = r->frames;
+				_Atomic int *n = calloc(1, sizeof(_Atomic int));
+				atomic_store(n, 1);
+				r->sampledFrames = n;
+				[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
+					double us = (done.GPUEndTime - done.GPUStartTime) * 1e6 / atomic_load(n);
+					if (us > 0 && us < 1e5) {
+						double cur = atomic_load(&gpuSum);
+						while (!atomic_compare_exchange_weak(&gpuSum, &cur, cur + us)) {}
+						atomic_fetch_add(&gpuCount, 1);
+					}
+					free(n);
+				}];
+			}
+		} else if (r->sampledFrames) atomic_fetch_add(r->sampledFrames, 1);
 	}
 	r->cur = (cur + 1) % 3;
 	r->frames++;
@@ -144,7 +149,6 @@ void mcrm_release(void *rec) {
 	Rec *r = rec;
 	if (!r) return;
 	dropTextures(r);
-	[r->font release];
 	[r->trace release];
 	free(r);
 }

@@ -32,7 +32,9 @@ public final class Record {
 	private static final int WLOG = Integer.getInteger("cadence.record.window", 6);
 	private static final int ENTITY_MAX = 32, ENTITY_BYTES = 48, TEXT_LINES = 11, FRAME_BYTES = 4 * 64 + 16 * 16;  // record.metal Frame
 
-	private static long rec, ctx, encObj, entities, text, frameBuf;
+	private static long rec, ctx, encObj, entities, entitiesAddr, frameBuf;
+	private static RecordHud hud;
+	private static final int[] HUD_STATE = new int[RecordHud.STATE];
 	private static Object encoder;
 	private static RecordWorld world;
 	private static boolean failed;
@@ -121,8 +123,9 @@ public final class Record {
 			write(dir.resolve("palette.bin"), RecordNative.contents(wd.palette), (long) RecordWorld.PALETTE_MAX * RecordWorld.PALETTE_STRIDE);
 			write(dir.resolve("occ.bin"), RecordNative.contents(wd.occ), bricks * 64);
 			write(dir.resolve("light.bin"), RecordNative.contents(wd.light), cells);
-			write(dir.resolve("entities.bin"), RecordNative.contents(entities), (long) ENTITY_MAX * ENTITY_BYTES);
-			write(dir.resolve("text.bin"), RecordNative.contents(text), TEXT_LINES * 64L);
+			write(dir.resolve("cells.bin"), RecordNative.contents(wd.cells), (long) (wd.w >> 3) * (wd.w >> 3) * 4);
+			write(dir.resolve("entities.bin"), entitiesAddr, ENTITY_REGION + (long) TILES_MAX * 4);
+			write(dir.resolve("hud.bin"), hud.address(), hud.bytes());
 			return true;
 		} catch (java.io.IOException e) {
 			System.out.println("[cadence] record dump failed: " + e);
@@ -190,9 +193,11 @@ public final class Record {
 			}
 			writeFrame(mc, cam, eye, partial);
 			long atlas = atlasHandle(mc);
-			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.palette, entities, text, world.occ, world.light, atlas,
+			long hudBuffer = hud.frame(frames, w, h, Math.max(1, h / 240), lines, 7, CHAT_SHOWN, chatLines, HUD_STATE);
+			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.palette, entities, hudBuffer, world.occ, world.light, world.cells, atlas,
 				interpolate ? 1 : 0);
 			if (tex == 0) return false;
+			MetalBridge.recordFrame();
 			presentHandle = tex;
 			count();
 			return true;
@@ -213,8 +218,8 @@ public final class Record {
 	private static int[] size(Minecraft mc) {
 		var win = mc.getWindow();
 		double aspect = Math.max(0.5, (double) win.getWidth() / Math.max(1, win.getHeight()));
-		int hh = Math.max(90, height);
-		SIZE[0] = Math.max(160, (int) Math.round(hh * aspect)) & ~1;
+		int hh = Math.clamp(height, 90, 1080);
+		SIZE[0] = Math.clamp((int) Math.round(hh * aspect), 160, 2048) & ~1;
 		SIZE[1] = hh;
 		return SIZE;
 	}
@@ -250,8 +255,10 @@ public final class Record {
 			MemoryUtil.nmemFree(s);
 			MemoryUtil.nmemFree(err);
 		}
-		entities = RecordNative.buffer(ctx, (long) ENTITY_MAX * ENTITY_BYTES);
-		text = RecordNative.buffer(ctx, TEXT_LINES * 64);
+		entities = RecordNative.buffer(ctx, ENTITY_REGION + (long) TILES_MAX * 4);
+		entitiesAddr = RecordNative.contents(entities);
+		MemoryUtil.memSet(entitiesAddr, 0, ENTITY_REGION + (long) TILES_MAX * 4);
+		hud = new RecordHud(ctx);
 		frameBuf = MemoryUtil.nmemCalloc(1, FRAME_BYTES);
 		loadFont(mc);
 		return true;
@@ -262,18 +269,11 @@ public final class Record {
 		try (InputStream in = mc.getResourceManager().getResourceOrThrow(id).open();
 			var img = com.mojang.blaze3d.platform.NativeImage.read(in)) {
 			int iw = img.getWidth(), ih = img.getHeight();
-			long px = MemoryUtil.nmemAlloc((long) iw * ih * 4);
-			try {
-				// (scaled to 128 x 128: the trace reads 8 x 8 glyph cells)
-				for (int y = 0; y < 128; y++)
-					for (int x = 0; x < 128; x++) {
-						int c = img.getPixel(x * iw / 128, y * ih / 128);  // ABGR
-						MemoryUtil.memPutInt(px + ((long) y * 128 + x) * 4, c);
-					}
-				RecordNative.font(rec, ctx, px, 128, 128);
-			} finally {
-				MemoryUtil.nmemFree(px);
-			}
+			// (its alpha, scaled to 128 x 128: the HUD draws 8 x 8 glyph cells)
+			byte[] alpha = new byte[128 * 128];
+			for (int y = 0; y < 128; y++)
+				for (int x = 0; x < 128; x++) alpha[y * 128 + x] = (byte) (img.getPixel(x * iw / 128, y * ih / 128) >>> 24);
+			hud.font(alpha);
 		} catch (Exception e) {
 			throw new IllegalStateException("record mode: no font: " + e);
 		}
@@ -361,7 +361,9 @@ public final class Record {
 		int in = 0;
 		if (!fluid.isEmpty() && eye.y < eyePos.getY() + fluid.getHeight(mc.level, eyePos))
 			in = fluid.is(net.minecraft.tags.FluidTags.WATER) ? 1 : fluid.is(net.minecraft.tags.FluidTags.LAVA) ? 2 : 0;
-		MemoryUtil.memPutInt(f + 416, air < maxAir || in == 1 ? Math.clamp(air * 20 / maxAir, 0, 20) : 255);
+		HUD_STATE[12] = air < maxAir || in == 1 ? Math.clamp(air * 20 / maxAir, 0, 20) : 255;
+		HUD_STATE[13] = Math.clamp((int) (p.experienceProgress * 1000), 0, 1000);
+		MemoryUtil.memPutInt(f + 416, HUD_STATE[12]);
 		MemoryUtil.memPutInt(f + 420, Math.clamp(p.hurtTime, 0, 10));
 		MemoryUtil.memPutInt(f + 424, in);
 		MemoryUtil.memPutInt(f + 428, Math.clamp((int) (p.experienceProgress * 1000), 0, 1000));
@@ -387,10 +389,11 @@ public final class Record {
 	private static void writeHud(Minecraft mc, long at) {
 		var p = mc.player;
 		var inv = p.getInventory();
-		for (int k = 0; k < 9; k++) MemoryUtil.memPutInt(at + k * 4L, itemColor(inv.getItem(k)));
-		MemoryUtil.memPutInt(at + 36, inv.getSelectedSlot());
-		MemoryUtil.memPutInt(at + 40, Math.clamp((int) Math.ceil(p.getHealth()), 0, 20));
-		MemoryUtil.memPutInt(at + 44, Math.clamp(p.getFoodData().getFoodLevel(), 0, 20));
+		for (int k = 0; k < 9; k++) HUD_STATE[k] = itemColor(inv.getItem(k));
+		HUD_STATE[9] = inv.getSelectedSlot();
+		HUD_STATE[10] = Math.clamp((int) Math.ceil(p.getHealth()), 0, 20);
+		HUD_STATE[11] = Math.clamp(p.getFoodData().getFoodLevel(), 0, 20);
+		for (int k = 0; k < 12; k++) MemoryUtil.memPutInt(at + k * 4L, HUD_STATE[k]);
 	}
 
 	private static final java.util.IdentityHashMap<net.minecraft.world.item.Item, Integer> ITEM_COLORS = new java.util.IdentityHashMap<>();
@@ -483,8 +486,21 @@ public final class Record {
 
 	private static int chosenCount = -1;
 
+	/**
+	 * Behind the entity boxes in their buffer (mcrecord.m binds it at ENTITY_REGION): per 8 x 8 pixel tile of the frame a mask
+	 * of the boxes whose rectangle touches it, so a pixel tests only those (a test per box per pixel was ~20% of a frame).
+	 */
+	private static final int ENTITY_REGION = ENTITY_MAX * ENTITY_BYTES, TILES_MAX = (2048 / 8) * (1152 / 8);
+	private static final int[] TILES_SET = new int[TILES_MAX];  // the tiles with a bit set (cleared next frame)
+	private static int tilesSet;
+
 	private static int placeEntities(Entity cam, float partial, long f, int n) {
 		RecordWorld wd = world;
+		long tiles = entitiesAddr + ENTITY_REGION;
+		for (int k = 0; k < tilesSet; k++) MemoryUtil.memPutInt(tiles + TILES_SET[k] * 4L, 0);
+		tilesSet = 0;
+		int tilesX = (w + 7) >> 3;
+		MemoryUtil.memPutInt(f + 436, tilesX);
 		int out = 0;
 		for (int i = 0; i < n; i++) {
 			Entity e = NEAR[i];
@@ -496,7 +512,7 @@ public final class Record {
 			double x0 = b.minX + mx, y0 = b.minY + my, z0 = b.minZ + mz, x1 = b.maxX + mx, y1 = b.maxY + my, z1 = b.maxZ + mz;
 			int[] rect = screenRect(f, x0, y0, z0, x1, y1, z1);
 			if (rect == null) continue;
-			long at = RecordNative.contents(entities) + (long) out * ENTITY_BYTES;
+			long at = entitiesAddr + (long) out * ENTITY_BYTES;
 			MemoryUtil.memPutFloat(at, (float) x0);
 			MemoryUtil.memPutFloat(at + 4, (float) y0);
 			MemoryUtil.memPutFloat(at + 8, (float) z0);
@@ -505,6 +521,13 @@ public final class Record {
 			MemoryUtil.memPutFloat(at + 20, (float) y1);
 			MemoryUtil.memPutFloat(at + 24, (float) z1);
 			for (int k = 0; k < 4; k++) MemoryUtil.memPutInt(at + 32 + k * 4L, rect[k]);
+			for (int ty = rect[1] >> 3; ty <= rect[3] >> 3; ty++)
+				for (int tx = rect[0] >> 3; tx <= rect[2] >> 3; tx++) {
+					int idx = ty * tilesX + tx;
+					int old = MemoryUtil.memGetInt(tiles + idx * 4L);
+					if (old == 0) TILES_SET[tilesSet++] = idx;
+					MemoryUtil.memPutInt(tiles + idx * 4L, old | 1 << out);
+				}
 			out++;
 		}
 		return out;
@@ -641,6 +664,7 @@ public final class Record {
 	private static final String[] CHAT = new String[CHAT_MAX];
 	private static final long[] CHAT_AT = new long[CHAT_MAX];
 	private static int chatLines;
+	private static final String[] CHAT_SHOWN = new String[CHAT_MAX];
 	/** How long a chat line shows (vanilla's 10 s; -Dcadence.record.chatSeconds, for tests). */
 	private static final long CHAT_NANOS = Long.getLong("cadence.record.chatSeconds", 10) * 1_000_000_000L;
 
@@ -654,17 +678,6 @@ public final class Record {
 			CHAT_AT[CHAT_MAX - 1] = System.nanoTime();
 		}
 		textAt = 0;
-	}
-
-	/** A line as the font's code page (ascii.png: 256 glyphs), at most 64 of them; others as '?'. */
-	private static byte[] ascii(String line) {
-		int n = Math.min(64, line.length());
-		byte[] b = new byte[n];
-		for (int i = 0; i < n; i++) {
-			char c = line.charAt(i);
-			b[i] = (byte) (c > 0 && c < 256 ? c : '?');
-		}
-		return b;
 	}
 
 	private static int writeText(Minecraft mc, Vec3 eye, float yaw, float pitch) {
@@ -681,19 +694,10 @@ public final class Record {
 		lines[4] = String.format(java.util.Locale.ROOT, "%dx%d, %d chunks, GPU %.0f us/frame", w, h, world.w / 32, gpuUs);
 		lines[5] = "Best: " + best + " fps" + (interpolate ? " (incl. interpolated)" : "");
 		lines[6] = interpolate ? "Interpolated frames counted apart" : "Every frame rendered";
-		long t = RecordNative.contents(text);
-		// the chat lines still showing (10 s), oldest first, in text lines 8..
+		// the chat lines still showing (10 s), oldest first
 		chatLines = 0;
 		for (int i = 0; i < CHAT_MAX; i++)
-			if (CHAT[i] != null && now - CHAT_AT[i] < CHAT_NANOS) {
-				byte[] b = ascii(CHAT[i]);
-				for (int k = 0; k < 64; k++) MemoryUtil.memPutByte(t + (8L + chatLines) * 64 + k, k < b.length ? b[k] : 0);
-				chatLines++;
-			}
-		for (int i = 0; i < 7; i++) {
-			byte[] b = lines[i].getBytes(StandardCharsets.US_ASCII);
-			for (int k = 0; k < 64; k++) MemoryUtil.memPutByte(t + i * 64L + k, k < b.length ? b[k] : 0);
-		}
+			if (CHAT[i] != null && now - CHAT_AT[i] < CHAT_NANOS) CHAT_SHOWN[chatLines++] = CHAT[i];
 		return 7;
 	}
 }
