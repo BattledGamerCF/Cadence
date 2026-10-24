@@ -25,7 +25,6 @@ struct Frame {
 	int4 target;              // the block the crosshair is on (window-relative); w: 0 none, else 2 + its breaking stage (-1..9)
 	uint4 status;             // x: air (0..20; 255: not shown), y: hurt (0..10), z: eye in water (1) or lava (2), w: XP progress (0..1000)
 	uint4 chat;               // x: chat lines shown (text lines 8.., bottom left); y: tiles across (the entity tile masks)
-	float4 light[4];          // brightness of light levels 0..15 (vanilla's lightmap curve and the Brightness option)
 };
 
 // A palette entry (RecordWorld.PALETTE_STRIDE bytes), a uint4: x the top's colour, y the sides' (each its texture's average,
@@ -67,13 +66,17 @@ static inline uint lightAt(device const uchar *light, int3 v, constant Frame &f)
 }
 
 // A light level (sky << 4 | block) as vanilla's lightmap makes it brightness: the sky's part darkened for the time of day,
-// the brighter of the two, then the table the game's side fills (Record.brightness: vanilla's curve, the Brightness option).
+// the brighter of the two, vanilla's curve (as Record.curve).
 static inline float brightness(uint l, constant Frame &f) {
 #ifdef RB_NO_LIGHT
 	return 1.0f;
 #endif
 	uint lv = max(uint(max(int(l >> 4) - int(f.flags.y), 0)), l & 15u);
-	return f.light[lv >> 2][lv & 3];
+	// (vanilla's curve, no ambient light; the Brightness option; the lightmap's floor. Computed: a table in constant memory,
+	// indexed per pixel, was slower)
+	float x = float(lv) * (1.0f / 15.0f), b = x / (4.0f - 3.0f * x), nb = 1.0f - b;
+	nb *= nb;
+	return mix(b, 1.0f - nb * nb, as_type<float>(f.flags.z)) * 0.96f + 0.04f;
 }
 
 
@@ -88,12 +91,12 @@ static float3 interpolated(uint2 gid, constant Frame &f, texture2d<float> colorA
 	texture2d<float> depthB);
 
 kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]], texture2d<float, access::write> outDepth [[texture(1)]],
-	texture2d<float> atlas [[texture(2)]], texture2d<float> colorA [[texture(4)]],
+	texture2d<float> colorA [[texture(4)]],
 	texture2d<float> depthA [[texture(5)]], texture2d<float> colorB [[texture(6)]], texture2d<float> depthB [[texture(7)]],
 	texture2d<float, access::write> outMid [[texture(8)]], constant Frame &f [[buffer(0)]],
 	device const ushort *grid [[buffer(1)]], device const uint4 *pal [[buffer(3)]],
 	constant Entity *entities [[buffer(4)]], device const uint *hud [[buffer(5)]], device const uint *occ [[buffer(6)]],
-	device const uchar *light [[buffer(7)]], device const uint *tiles [[buffer(8)]], device const uint *cells [[buffer(9)]],
+	device const uchar *light [[buffer(7)]], device const uint *tiles [[buffer(8)]],
 	uint2 gid [[thread_position_in_grid]]) {
 	if (gid.x >= f.size.x || gid.y >= f.size.y) return;
 	float2 ndc = (float2(gid) + 0.5f) / float2(f.size.xy) * 2.0f - 1.0f;
@@ -128,28 +131,6 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 			int3 v = int3(floor(ro + rd * (t + 1e-4f)));
 			float3 tMax = (float3(v) + float3(rd > 0) - ro) * inv, tDelta = abs(inv);
 			float tIn = t;
-#ifndef RB_NO_CELLS
-			// Above the height field (RecordWorld: the highest block of each 8 x 8-column cell) the ray crosses a cell in one step:
-			// to where it leaves the cell sideways or, going down, reaches the cell's top; the voxel walk takes over below it.
-			// (A loop of its own: checks inside the walk cost ground rays more than they saved.)
-			for (int k = 0; k < 24 && tIn < tEnd; k++) {
-				if (uint(v.y) >= uint(H)) break;
-				uint cm = (1u << f.grid.x) - 1;
-				int ctop = int(cells[(((uint(v.z) + f.grid.w) & cm) >> 3) * (uint(W) >> 3) + (((uint(v.x) + f.grid.z) & cm) >> 3)]);
-				if (v.y < ctop) break;
-				float2 lo = float2(v.xz & ~7), ts = (select(lo, lo + 8.0f, rd.xz > 0) - ro.xz) * inv.xz;
-				float tj = min(ts.x, ts.y);
-				int ax = ts.x <= ts.y ? 0 : 2;
-				if (rd.y < 0) {
-					float td = (float(ctop) - ro.y) * inv.y;
-					if (td < tj) { tj = td; ax = 1; }
-				}
-				tIn = max(tj, tIn);
-				v = int3(floor(ro + rd * (tIn + 1e-4f)));
-				tMax = (float3(v) + float3(rd > 0) - ro) * inv;
-				axis = ax;
-			}
-#endif
 			for (int k = 0; k < 96 && tIn < tEnd; k++) {
 				// (x and z can't leave the window before tEnd, and wrap if rounding says otherwise; y is checked: it indexes memory)
 				if (uint(v.y) >= uint(H)) break;
@@ -167,13 +148,13 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 					} else if (e.z & 1) {
 						// crossed plant: the two diagonal planes x - z = 0 and x + z = 1, the plant's colour over the whole quad
 						float3 o = ro - float3(v);
-						for (int q = 0; q < 2 && !done; q++) {
+						for (int q = 0; q < 2; q++) {  // (both: the nearer one hit counts)
 							float3 pn = q == 0 ? float3(1, 0, -1) : float3(1, 0, 1);
 							float den = dot(pn, rd);
 							if (abs(den) < 1e-6f) continue;
 							float tq = (float(q) - dot(pn, o)) / den;
 							float3 lp = o + rd * tq;
-							if (tq < tIn - 1e-4f || any(lp < 0.0f) || any(lp > 1.0f)) continue;
+							if (tq < tIn - 1e-4f || any(lp < 0.0f) || any(lp > 1.0f) || (done && tq >= hitT)) continue;
 							hitE = e; hitV = v; hitAx = 3; hitT = tq; done = true;
 						}
 						if (done) break;
@@ -275,10 +256,12 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	int arm = int(4 * scale), thick = int(max(1u, scale / 2));
 	if ((abs(cc.x) <= arm && abs(cc.y) < thick) || (abs(cc.y) <= arm && abs(cc.x) < thick)) color = 1.0f - color;
 #endif
-	outColor.write(float4(color, 1), gid);
-	outDepth.write(float4(hitT), gid);
+	// (stored bottom row first, as the game's targets are: the present flips them; the image above is top row first)
+	uint2 st = uint2(gid.x, f.size.y - 1 - gid.y);
+	outColor.write(float4(color, 1), st);
+	outDepth.write(float4(hitT), st);
 	// frame interpolation, in the same dispatch: the frame halfway between the last two (one frame behind this one)
-	if (f.flags.x != 0) outMid.write(float4(interpolated(gid, f, colorA, depthA, colorB, depthB), 1), gid);
+	if (f.flags.x != 0) outMid.write(float4(interpolated(gid, f, colorA, depthA, colorB, depthB), 1), st);
 }
 
 // Frame interpolation: the frame halfway between the last two (a the newer, b the older), by reprojection. Each pixel's ray
@@ -287,11 +270,12 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 // mean).
 static float3 interpolated(uint2 gid, constant Frame &f, texture2d<float> colorA, texture2d<float> depthA, texture2d<float> colorB,
 	texture2d<float> depthB) {
-	if (f.flags.x == 2) return (colorA.read(gid).rgb + colorB.read(gid).rgb) * 0.5f;
+	uint2 st = uint2(gid.x, f.size.y - 1 - gid.y);  // (the textures' rows are bottom first: see record_trace)
+	if (f.flags.x == 2) return (colorA.read(st).rgb + colorB.read(st).rgb) * 0.5f;
 	float2 size = float2(f.size.xy);
 	float2 ndc = (float2(gid) + 0.5f) / size * 2.0f - 1.0f;
 	ndc.y = -ndc.y;
-	float d = depthA.read(gid).r;
+	float d = depthA.read(st).r;
 	float3 rd = rayDir(f.mid, ndc);
 	float3 P = f.mid.pos.xyz + rd * min(d, 4096.0f);
 	float3 acc = float3(0);
@@ -304,12 +288,13 @@ static float3 interpolated(uint2 gid, constant Frame &f, texture2d<float> colorA
 		float2 q = float2(dot(v, c.right.xyz) / (z * c.fwd.w), dot(v, c.up.xyz) / (z * c.right.w));
 		if (any(abs(q) > 1.0f)) continue;
 		float2 uv = float2(q.x * 0.5f + 0.5f, 0.5f - q.y * 0.5f);
-		uint2 px = uint2(min(uv * size, size - 1.0f));  // (a 32-bit float texture isn't filterable everywhere: nearest)
+		uint2 px = uint2(min(uv * size, size - 1.0f));  // (nearest)
+		px.y = f.size.y - 1 - px.y;
 		float dd = (k == 0 ? depthA : depthB).read(px).r;
 		float dist = length(v);
 		float w = d >= 1e8f || abs(dd - dist) < max(0.5f, dist * 0.02f) ? 1.0f : 0.05f;
 		acc += (k == 0 ? colorA : colorB).read(px).rgb * w;
 		wsum += w;
 	}
-	return wsum > 0 ? acc / wsum : colorA.read(gid).rgb;
+	return wsum > 0 ? acc / wsum : colorA.read(st).rgb;
 }

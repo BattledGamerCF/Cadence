@@ -64,5 +64,25 @@ It reproduces the game's GPU time per frame within a few percent.
 - Lighting as a 16-entry table; HUD text rejects pixels outside its block before any division.
 - Interpolation with the camera still is the two frames' blend (2 reads instead of 5 and a reprojection): ~1.5 us.
 
-North view (dump-north, hot GPU): 145 us/frame at the start of the night's pass, 95 us after (entities still the old
-whole-screen cow in that dump).
+- **Entity tiles**: even small rectangles cost every pixel a test per entity (12 entities: ~18 us). The CPU now bins them into
+  8 x 8-pixel tiles (a 32-bit mask per tile, behind the boxes in their buffer): a pixel tests only those touching its tile.
+- **The HUD drawn by the CPU when it changes** (`RecordHud`: F3 text and chat at most 4 times a second, hotbar and bars when a
+  value changes) into an RGBA overlay the frame blends with one read a pixel: ~9 us -> ~1 us.
+- **Frames batched per command buffer**: a command buffer costs ~20 us of its own on the M2 (an empty-kernel frame: 34k/s one
+  per command buffer, 80k/s four per). Record frames are committed 4 to a command buffer (`-Dcadence.record.batch`); each is
+  still its own dispatch rendering its own image, and a frame that presents commits at once. In-game interleaved A/B:
+  10.9k -> 12.6k rendered (+16%).
+- **Linear voxels** (x fastest, then z, then y) instead of 8^3 bricks: the occupancy bits are 196 KB, cached whole; the
+  address is shifts and ors: 5% faster.
+- Height-field cells (highest block per 8 x 8 columns) let a ray above the terrain cross a cell in one step, in a loop of its
+  own before the voxel walk: checks inside the walk cost ground rays more than they saved.
+- Tried and dropped: caching a brick layer's occupancy bits in registers (slower), starting rays at the last frame's depth
+  (no change), threadgroup shapes (no change).
+
+| North view, hot GPU (offline bench) | us/frame |
+|---|---|
+| start of the night's pass | 145 |
+| entities behind the eye dropped, plain fog-capped walk, compact palette | 95 |
+| entity tiles, HUD overlay | 74 |
+
+In game (moderately warm Mac, north view, 320 x 180, interpolation on): 12.6k rendered / 25.2k shown, GPU 72 us a frame.

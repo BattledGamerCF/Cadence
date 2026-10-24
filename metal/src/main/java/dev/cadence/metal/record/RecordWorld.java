@@ -27,16 +27,8 @@ import org.lwjgl.system.MemoryUtil;
 final class RecordWorld {
 	static final int PALETTE_MAX = 4096, PALETTE_STRIDE = 16;  // bytes per entry (record.metal: a uint4)
 	final int wlog, w, h, minY;
-	final long grid, palette, occ, light, cells;
-	private final long gridAddr, paletteAddr, occAddr, lightAddr, cellsAddr;
-	/**
-	 * The height field the trace skips air with: per column and section the highest block in it (y + 1 within the section, 0
-	 * none), per column the highest block (window y + 1), and per 8 x 8-column cell the highest of its columns (`cells`, a uint
-	 * each, read by record.metal: a ray above its cell's top crosses the cell in one step).
-	 */
-	private final byte[] sectionTop;
-	private final short[] columnTop;
-	private final int sections;
+	final long grid, palette, occ, light;
+	private final long gridAddr, paletteAddr, occAddr, lightAddr;
 	private final boolean skyLight;
 	private final int bw, bh;
 	/** One above the highest block written (window-relative y): rays above it are sky. Only grows. */
@@ -52,6 +44,7 @@ final class RecordWorld {
 	/** Global block state id -> palette number (0 unassigned, -1 air). */
 	private int[] stateToId = new int[32768];
 	private int nextId = 1;
+	private boolean paletteFull;
 	private final ClientLevel level;
 
 	RecordWorld(long ctx, ClientLevel level, int wlog) {
@@ -71,12 +64,6 @@ final class RecordWorld {
 		MemoryUtil.memSet(this.occAddr, 0, (long) this.bw * this.bw * this.bh * 64);
 		MemoryUtil.memSet(this.gridAddr, 0, (long) this.w * this.w * this.h * 2);
 		this.light = RecordNative.buffer(ctx, (long) this.w * this.w * this.h);
-		this.sections = this.h >> 4;
-		this.sectionTop = new byte[this.w * this.w * this.sections];
-		this.columnTop = new short[this.w * this.w];
-		this.cells = RecordNative.buffer(ctx, (long) (this.w >> 3) * (this.w >> 3) * 4);
-		this.cellsAddr = RecordNative.contents(this.cells);
-		MemoryUtil.memSet(this.cellsAddr, 0, (long) (this.w >> 3) * (this.w >> 3) * 4);
 		this.lightAddr = RecordNative.contents(this.light);
 		this.skyLight = level.dimensionType().hasSkyLight();
 		MemoryUtil.memSet(this.lightAddr, this.skyLight ? 0xF0 : 0, (long) this.w * this.w * this.h);
@@ -89,15 +76,16 @@ final class RecordWorld {
 		RecordNative.releaseObject(this.palette);
 		RecordNative.releaseObject(this.occ);
 		RecordNative.releaseObject(this.light);
-		RecordNative.releaseObject(this.cells);
 	}
 
 	// ---- the window ----
 
 	/** Keeps the window centred on the camera (block x, z): columns it gains are queued for writing. */
 	void follow(double camX, double camZ) {
+		// (rounded to the nearest chunk line, so the camera is 24..40 blocks from the window's low edge: at least 24 blocks of
+		// world each way, where the fog is total)
 		int half = this.w >> 1;
-		int nx = ((int) Math.floor(camX) - half) & ~15, nz = ((int) Math.floor(camZ) - half) & ~15;
+		int nx = ((int) Math.floor(camX) - half + 8) & ~15, nz = ((int) Math.floor(camZ) - half + 8) & ~15;
 		if (this.placed && Math.abs(nx - this.ox) < 16 && Math.abs(nz - this.oz) < 16) return;
 		this.ox = nx;
 		this.oz = nz;
@@ -124,6 +112,7 @@ final class RecordWorld {
 
 	/** The game marked a section for rebuilding (a block changed): it's written again. */
 	void sectionDirty(int sx, int sy, int sz) {
+		if (!this.inWindow(sx << 4, sz << 4)) return;  // (a resource reload marks every section: only the window's are kept)
 		if (this.dirtySet.add(chunkKey(sx, sz) * 31 + sy)) this.dirty.add(new int[] {sx, sy, sz});
 	}
 
@@ -156,11 +145,12 @@ final class RecordWorld {
 		return x >= this.ox && z >= this.oz && x < this.ox + this.w && z < this.oz + this.w;
 	}
 
+	/** A column gained: its sections queued as changed ones (written within work's time budget, a section at a time). */
 	private void writeColumn(LevelChunk c, int cx, int cz) {
 		int cols = this.w >> 4;
 		this.columns[Math.floorMod(cz, cols) * cols + Math.floorMod(cx, cols)] = chunkKey(cx, cz);
 		int sections = this.h >> 4, minSection = this.minY >> 4;
-		for (int i = 0; i < sections; i++) this.writeSection(c, cx, minSection + i, cz);
+		for (int i = sections - 1; i >= 0; i--) this.sectionDirty(cx, minSection + i, cz);  // (top first: what's seen most)
 	}
 
 	private void writeSection(LevelChunk c, int sx, int sy, int sz) {
@@ -171,8 +161,6 @@ final class RecordWorld {
 		int m = this.w - 1;
 		int y0 = si << 4;
 		boolean any = false;
-		byte[] colTop = this.scratchTop;
-		java.util.Arrays.fill(colTop, (byte) 0);
 		// the section's light (null: no data kept there; open sky, or no block light)
 		var pos = net.minecraft.core.SectionPos.of(sx, sy, sz);
 		var engine = this.level.getLightEngine();
@@ -195,40 +183,12 @@ final class RecordWorld {
 					int bit = 1 << (at & 31);
 					int old = MemoryUtil.memGetInt(word);
 					MemoryUtil.memPutInt(word, id != 0 ? old | bit : old & ~bit);
-					if (id != 0) {
-						any = true;
-						colTop[z * 16 + x] = (byte) (y + 1);
-					}
+					any |= id != 0;
 				}
 			}
 		}
 		if (any) this.top = Math.max(this.top, y0 + 16);
-		// the height field: this section's tops, its columns' tops, their cells' tops
-		for (int z = 0; z < 16; z++)
-			for (int x = 0; x < 16; x++) {
-				int col = (((sz << 4) + z) & m) * this.w + (((sx << 4) + x) & m);
-				this.sectionTop[col * this.sections + si] = colTop[z * 16 + x];
-				int t = 0;
-				for (int k = this.sections - 1; k >= 0; k--) {
-					int st = this.sectionTop[col * this.sections + k];
-					if (st != 0) {
-						t = (k << 4) + st;
-						break;
-					}
-				}
-				this.columnTop[col] = (short) t;
-			}
-		int cw = this.w >> 3;
-		for (int k = 0; k < 4; k++) {
-			int cx = ((((sx << 4) & m) >> 3) + (k & 1)), cz = ((((sz << 4) & m) >> 3) + (k >> 1));
-			int t = 0;
-			for (int z = 0; z < 8; z++)
-				for (int x = 0; x < 8; x++) t = Math.max(t, this.columnTop[(cz * 8 + z) * this.w + cx * 8 + x]);
-			MemoryUtil.memPutInt(this.cellsAddr + (cz * cw + cx) * 4L, t);
-		}
 	}
-
-	private final byte[] scratchTop = new byte[256];
 
 	// ---- the palette ----
 
@@ -239,6 +199,10 @@ final class RecordWorld {
 		if (id > 0) return id;
 		if (id < 0) return 0;
 		boolean fluid = s.getBlock() instanceof LiquidBlock;
+		if (this.nextId >= PALETTE_MAX && !s.isAir() && !this.paletteFull) {
+			this.paletteFull = true;
+			System.out.println("[cadence] record mode: more than " + PALETTE_MAX + " block states seen; new ones show as air");
+		}
 		if (s.isAir() || !fluid && s.getRenderShape() == RenderShape.INVISIBLE || this.nextId >= PALETTE_MAX) {
 			this.stateToId[g] = -1;
 			return 0;

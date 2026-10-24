@@ -18,10 +18,14 @@ final class RecordHud {
 	private static final int BOX = 0x8C000000, WHITE = 0xFFFFFFFF;  // (the text's box: black at 55%, as the game's F3)
 
 	private final long ctx;
-	private long buffer, addr;
+	/** Two overlays: frames read the front one while a redraw goes into the other (a redraw in place blanked the HUD). */
+	private final long[] buffers = new long[2], addrs = new long[2];
+	private int front;
+	private long buffer, addr;  // (the one being drawn: buffers[1 - front] while drawing, then the front)
 	private int w, h, cap;
-	/** A smaller buffer replaced by a bigger one: released once no frame in flight can still read it. */
-	private long retired, retireFrame;
+	/** Smaller buffers replaced by bigger ones: released once no frame in flight can still read them. */
+	private final long[] retired = new long[2];
+	private long retireFrame;
 	private byte[] font;  // ascii.png's alpha, 128 x 128 (16 x 16 glyphs of 8 x 8)
 	private final int[] drawn = new int[STATE];
 	private final String[] drawnText = new String[16];
@@ -42,18 +46,17 @@ final class RecordHud {
 	 * the chat lines (bottom left), `state` the bars' and hotbar's values.
 	 */
 	long frame(long frameNo, int w, int h, int scale, String[] lines, int lineCount, String[] chat, int chatCount, int[] state) {
-		if (this.retired != 0 && frameNo - this.retireFrame > 64) {
-			RecordNative.releaseObject(this.retired);
-			this.retired = 0;
-		}
+		if (frameNo - this.retireFrame > 256) releaseRetired();
 		if (w != this.w || h != this.h) {
 			int need = w * h * 4;
 			if (need > this.cap) {
-				if (this.retired != 0) RecordNative.releaseObject(this.retired);
-				this.retired = this.buffer;
+				releaseRetired();
+				for (int k = 0; k < 2; k++) {
+					this.retired[k] = this.buffers[k];
+					this.buffers[k] = RecordNative.buffer(this.ctx, need);
+					this.addrs[k] = RecordNative.contents(this.buffers[k]);
+				}
 				this.retireFrame = frameNo;
-				this.buffer = RecordNative.buffer(this.ctx, need);
-				this.addr = RecordNative.contents(this.buffer);
 				this.cap = need;
 			}
 			this.w = w;
@@ -61,15 +64,27 @@ final class RecordHud {
 			this.dirty = true;
 		}
 		if (!this.dirty && scale == this.drawnScale && Arrays.equals(state, 0, STATE, this.drawn, 0, STATE)
-			&& same(lines, lineCount, 0) && same(chat, chatCount, 8)) return this.buffer;
+			&& same(lines, lineCount, 0) && same(chat, chatCount, 8)) return this.buffers[this.front];
 		this.dirty = false;
 		this.drawnScale = scale;
 		System.arraycopy(state, 0, this.drawn, 0, STATE);
 		Arrays.fill(this.drawnText, null);
 		for (int i = 0; i < lineCount; i++) this.drawnText[i] = lines[i];
 		for (int i = 0; i < chatCount; i++) this.drawnText[8 + i] = chat[i];
+		int back = 1 - this.front;
+		this.buffer = this.buffers[back];
+		this.addr = this.addrs[back];
 		draw(scale, lines, lineCount, chat, chatCount, state);
+		this.front = back;
 		return this.buffer;
+	}
+
+	private void releaseRetired() {
+		for (int k = 0; k < 2; k++)
+			if (this.retired[k] != 0) {
+				RecordNative.releaseObject(this.retired[k]);
+				this.retired[k] = 0;
+			}
 	}
 
 	private boolean same(String[] text, int count, int at) {
@@ -141,7 +156,7 @@ final class RecordHud {
 
 	/** (testing) The overlay's memory and size in bytes. */
 	long address() {
-		return this.addr;
+		return this.addrs[this.front];
 	}
 
 	long bytes() {
@@ -149,8 +164,10 @@ final class RecordHud {
 	}
 
 	void release() {
-		if (this.buffer != 0) RecordNative.releaseObject(this.buffer);
-		if (this.retired != 0) RecordNative.releaseObject(this.retired);
-		this.buffer = this.retired = 0;
+		for (int k = 0; k < 2; k++) {
+			if (this.buffers[k] != 0) RecordNative.releaseObject(this.buffers[k]);
+			this.buffers[k] = 0;
+		}
+		releaseRetired();
 	}
 }

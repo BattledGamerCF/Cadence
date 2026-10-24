@@ -15,7 +15,8 @@ final class RecordNative {
 	private static final MethodHandle NEW = fn("mcrm_new", JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle SIZE = fn("mcrm_size", null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT);
 	private static final MethodHandle FRAME = fn("mcrm_frame", JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_LONG,
-		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
+		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
+	private static final MethodHandle MID = fn("mcrm_mid", JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle RELEASE = fn("mcrm_release", null, JAVA_LONG);
 	private static final MethodHandle READ = fn("mcrm_read", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle GPU_US = fn("mcrm_gpu_us", java.lang.foreign.ValueLayout.JAVA_DOUBLE);
@@ -47,12 +48,16 @@ final class RecordNative {
 	}
 
 	static long frame(long rec, long enc, long frame, int frameLength, long grid, long palette, long entities, long hud, long occ,
-		long light, long cells, long atlas, int interpolate) {
+		long light, int interpolate) {
 		try {
-			return (long) FRAME.invokeExact(rec, enc, frame, frameLength, grid, palette, entities, hud, occ, light, cells, atlas, interpolate);
+			return (long) FRAME.invokeExact(rec, enc, frame, frameLength, grid, palette, entities, hud, occ, light, interpolate);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}
+	}
+
+	static long mid(long rec) {
+		try { return (long) MID.invokeExact(rec); } catch (Throwable t) { throw rethrow(t); }
 	}
 
 	static int read(long rec, long ctx, long dst) {

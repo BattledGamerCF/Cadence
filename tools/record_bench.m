@@ -98,27 +98,6 @@ int main(int argc, char **argv) {
 			memcpy(light.contents, l2.bytes, light.length);
 			memcpy(occ.contents, o2.bytes, occ.length);
 		}
-		// the height field (RecordWorld cells): the dump's, or made from the occupancy bits
-		uint32_t *gridInfo = (uint32_t *) ((char *) frame.mutableBytes + 288);
-		int W = 1 << gridInfo[0], Hh = gridInfo[1], bw = W >> 3, cw = W >> 3;
-		NSData *cellData = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"cells.bin"]];
-		id<MTLBuffer> cells = [d newBufferWithLength:(NSUInteger) cw * cw * 4 options:MTLResourceStorageModeShared];
-		if (cellData.length == cells.length) memcpy(cells.contents, cellData.bytes, cells.length);
-		else {
-			const uint32_t *ob = occ.contents;
-			uint32_t *cc = cells.contents;
-			memset(cc, 0, cells.length);
-			for (int iz = 0; iz < W; iz++)
-				for (int ix = 0; ix < W; ix++)
-					for (int iy = Hh - 1; iy >= 0; iy--) {
-						int brick = ((iy >> 3) * bw + (iz >> 3)) * bw + (ix >> 3), local = ((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7);
-						if ((ob[brick * 16 + (local >> 5)] >> (local & 31)) & 1) {
-							uint32_t *c = &cc[(iz >> 3) * cw + (ix >> 3)];
-							if ((uint32_t) (iy + 1) > *c) *c = iy + 1;
-							break;
-						}
-					}
-		}
 		// the HUD overlay (RecordHud): the dump's when it has one, else none drawn
 		NSData *hudData = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"hud.bin"]];
 		id<MTLBuffer> text = [d newBufferWithLength:(NSUInteger) w * h * 4 options:MTLResourceStorageModeShared];
@@ -127,7 +106,7 @@ int main(int argc, char **argv) {
 		id<MTLTexture> color[3], depth[3];
 		for (int k = 0; k < 3; k++) {
 			color[k] = tex(d, MTLPixelFormatRGBA8Unorm, w, h, MTLStorageModePrivate);
-			depth[k] = tex(d, MTLPixelFormatR32Float, w, h, MTLStorageModePrivate);
+			depth[k] = tex(d, getenv("RB_DEPTH32") ? MTLPixelFormatR32Float : MTLPixelFormatR16Float, w, h, MTLStorageModePrivate);
 		}
 		id<MTLTexture> mid = tex(d, MTLPixelFormatRGBA8Unorm, w, h, MTLStorageModePrivate);
 		id<MTLTexture> font = tex(d, MTLPixelFormatRGBA8Unorm, 128, 128, MTLStorageModeShared);
@@ -173,7 +152,6 @@ int main(int argc, char **argv) {
 						[c setBuffer:occ offset:0 atIndex:6];
 						[c setBuffer:light offset:0 atIndex:7];
 						[c setBuffer:tiles offset:0 atIndex:8];
-						[c setBuffer:cells offset:0 atIndex:9];
 						// (RB_BATCH frames to a command buffer: each its own dispatch into its own image, as the game would)
 						for (int j = 0; j < batch; j++) {
 							int a = (cur + 2) % 3, b = (cur + 1) % 3;
@@ -224,8 +202,8 @@ int main(int argc, char **argv) {
 				id<MTLTexture> ts[9] = {color[cur], depth[cur], atlas, font, color[a], depth[a], color[b], depth[b], mid};
 				for (int k = 0; k < 9; k++) [c setTexture:ts[k] atIndex:k];
 				[c setBytes:frame.bytes length:frame.length atIndex:0];
-				id<MTLBuffer> bs[10] = {nil, grid, nil, pal, ents, text, occ, light, tiles, cells};
-				for (int k = 1; k < 10; k++) if (bs[k]) [c setBuffer:bs[k] offset:0 atIndex:k];
+				id<MTLBuffer> bs[9] = {nil, grid, nil, pal, ents, text, occ, light, tiles};
+				for (int k = 1; k < 9; k++) if (bs[k]) [c setBuffer:bs[k] offset:0 atIndex:k];
 				[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
 				[c endEncoding];
 				[cb commit];
@@ -240,6 +218,10 @@ int main(int argc, char **argv) {
 			[bl endEncoding];
 			[cb commit];
 			[cb waitUntilCompleted];
+			// (the frame's rows are stored bottom first, as the game's targets: top first for the PNG)
+			NSMutableData *rows = [NSMutableData dataWithLength:(NSUInteger) w * h * 4];
+			for (int y = 0; y < h; y++) memcpy((char *) rows.mutableBytes + (size_t) y * w * 4, (char *) out.contents + (size_t) (h - 1 - y) * w * 4, (size_t) w * 4);
+			memcpy(out.contents, rows.bytes, (size_t) w * h * 4);
 			CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
 			CGContextRef ctx = CGBitmapContextCreate(out.contents, w, h, 8, w * 4, cs, kCGImageAlphaNoneSkipLast);
 			CGImageRef img = CGBitmapContextCreateImage(ctx);

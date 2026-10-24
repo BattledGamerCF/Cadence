@@ -15,7 +15,7 @@ import org.lwjgl.system.MemoryUtil;
 /**
  * Cadence Record Mode: the game at the highest frame rate it can render for real, by the FPS-record rules (the world and its
  * entities drawn every frame, at a playable resolution, an honest counter). Every frame is compute only (record.metal): the
- * client's loaded world ray-marched from a voxel copy (RecordWorld), textured from the block atlas; entities as boxes; the F3
+ * client's loaded world ray-marched from a voxel copy (RecordWorld), each block face its texture's average colour; entities as boxes; the F3
  * text from the game's font; no render pass, whose fixed GPU cost (~53 us on an M2) alone would cap the frame rate below
  * the record. With interpolation on, a second dispatch makes the frame halfway between each two (by reprojection) and the
  * counter shows both: frames made, and of them rendered.
@@ -30,14 +30,17 @@ public final class Record {
 	public static volatile int height = Integer.getInteger("cadence.record.height", 180);
 	/** The voxel window's width, log2 (6: 64 blocks, 2 chunks each way, the game's smallest render distance). */
 	private static final int WLOG = Integer.getInteger("cadence.record.window", 6);
-	private static final int ENTITY_MAX = 32, ENTITY_BYTES = 48, TEXT_LINES = 11, FRAME_BYTES = 4 * 64 + 16 * 16;  // record.metal Frame
+	private static final int ENTITY_MAX = 32, ENTITY_BYTES = 48, TEXT_LINES = 11, FRAME_BYTES = 4 * 64 + 12 * 16;  // record.metal Frame
 
 	private static long rec, ctx, encObj, entities, entitiesAddr, frameBuf;
 	private static RecordHud hud;
 	private static final int[] HUD_STATE = new int[RecordHud.STATE];
 	private static Object encoder;
 	private static RecordWorld world;
-	private static boolean failed;
+	private static boolean failed, detached;
+	private static int failures;
+	private static float viewYaw, viewPitch;
+	private static final net.minecraft.core.BlockPos.MutableBlockPos BACK = new net.minecraft.core.BlockPos.MutableBlockPos();
 	private static long presentHandle;
 	private static int w, h;
 
@@ -54,8 +57,13 @@ public final class Record {
 		peak = 0;
 		bucketStart = 0;
 		filled = 0;
+		inBucket = 0;
+		camsKnown = 0;
+		failures = 0;
+		if (on && rec != 0) failed = false;  // (a failure in a frame: tried again; one in init, no Metal, stays)
 		MetalBridge.recordPresent(on);
-		if (!on) presentHandle = 0;
+		// off: the world copy goes (block and light changes aren't followed while off; on again, it's made anew)
+		if (!on) worldClosed();
 	}
 
 	/** Whether this frame is a record frame: chosen, in a world, nothing on screen over it. */
@@ -65,10 +73,22 @@ public final class Record {
 		return mc.level != null && mc.player != null && mc.gui.screen() == null && mc.gui.overlay() == null;
 	}
 
-	/** The texture the frame presents (the record frame's colour), 0: the game's own. */
+	/**
+	 * The texture this frame presents, 0: the game's own (a frame that wasn't a record frame, a screen open: its handle is
+	 * taken once). Every other present shows the in-between frame instead (frame interpolation's frames are shown too).
+	 */
 	public static long presentHandle() {
-		return chosen ? presentHandle : 0;
+		long h = presentHandle;
+		presentHandle = 0;
+		if (h == 0 || !chosen) return 0;
+		if (interpolate && camsKnown >= 3 && (presents++ & 1) != 0) {
+			long mid = RecordNative.mid(rec);
+			if (mid != 0) return mid;
+		}
+		return h;
 	}
+
+	private static long presents;
 
 	/** The game marked a section for rebuilding (LevelExtractor.setSectionDirty). */
 	public static void sectionDirty(int sx, int sy, int sz) {
@@ -83,6 +103,11 @@ public final class Record {
 			world = null;
 		}
 		presentHandle = 0;
+		// (nothing keeps the level: its entities, its chunks)
+		worldLevel = null;
+		java.util.Arrays.fill(NEAR, null);
+		chosenCount = -1;
+		camsKnown = 0;
 	}
 
 	/** (testing) The latest record frame as a PNG at path. Render thread. Whether one was written. */
@@ -95,7 +120,7 @@ public final class Record {
 				for (int y = 0; y < h; y++)
 					for (int x = 0; x < w; x++) {
 						int c = MemoryUtil.memGetInt(px + ((long) y * w + x) * 4L);  // RGBA bytes = ABGR as an int; NativeImage takes ARGB
-						img.setPixel(x, y, 0xFF000000 | (c & 0xFF) << 16 | (c & 0xFF00) | (c >> 16) & 0xFF);
+						img.setPixel(x, h - 1 - y, 0xFF000000 | (c & 0xFF) << 16 | (c & 0xFF00) | (c >> 16) & 0xFF);  // (rows stored bottom first)
 					}
 				img.writeToFile(path);
 			}
@@ -123,7 +148,6 @@ public final class Record {
 			write(dir.resolve("palette.bin"), RecordNative.contents(wd.palette), (long) RecordWorld.PALETTE_MAX * RecordWorld.PALETTE_STRIDE);
 			write(dir.resolve("occ.bin"), RecordNative.contents(wd.occ), bricks * 64);
 			write(dir.resolve("light.bin"), RecordNative.contents(wd.light), cells);
-			write(dir.resolve("cells.bin"), RecordNative.contents(wd.cells), (long) (wd.w >> 3) * (wd.w >> 3) * 4);
 			write(dir.resolve("entities.bin"), entitiesAddr, ENTITY_REGION + (long) TILES_MAX * 4);
 			write(dir.resolve("hud.bin"), hud.address(), hud.bytes());
 			return true;
@@ -175,12 +199,34 @@ public final class Record {
 			ClientLevel level = mc.level;
 			if (world == null || world.minY != level.getMinY() || world.h != level.getHeight() || worldLevel != level) {
 				if (world != null) world.release();
+				world = null;
 				world = new RecordWorld(ctx, level, WLOG);
 				worldLevel = level;
 			}
 			float partial = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
 			Entity cam = mc.getCameraEntity() != null ? mc.getCameraEntity() : mc.player;
+			// the eye: the camera entity's, or in third person (F5) up to 4 blocks behind it (in front, turned round, for the
+			// front view), short of the first solid block, as vanilla's camera (the game's own camera isn't updated while its
+			// world drawing is skipped)
 			Vec3 eye = cam.getEyePosition(partial);
+			viewYaw = cam.getViewYRot(partial);
+			viewPitch = cam.getViewXRot(partial);
+			var type = mc.options.getCameraType();
+			detached = !type.isFirstPerson();
+			if (detached) {
+				if (type.isMirrored()) {
+					viewYaw += 180;
+					viewPitch = -viewPitch;
+				}
+				double ry = Math.toRadians(viewYaw), rp = Math.toRadians(viewPitch);
+				double fx = -Math.sin(ry) * Math.cos(rp), fy = -Math.sin(rp), fz = Math.cos(ry) * Math.cos(rp);
+				double back = 0;
+				while (back < 4 && mc.level.getBlockState(BACK.set(eye.x - fx * (back + 0.25), eye.y - fy * (back + 0.25), eye.z - fz * (back + 0.25))).isAir())
+					back += 0.25;
+				eye = new Vec3(eye.x - fx * back, eye.y - fy * back, eye.z - fz * back);
+			}
+			// (a gap since the last record frame, a screen or the mode off: the in-between frame's history starts again)
+			if (lastEnd != 0 && System.nanoTime() - lastEnd > 50_000_000L) camsKnown = 0;
 			world.tintAt(eye.x, eye.z);
 			world.follow(eye.x, eye.z);
 			// window upkeep: a little of it at most frames (it's done in a few seconds after joining or moving far)
@@ -192,9 +238,8 @@ public final class Record {
 				RecordNative.size(rec, ctx, w, h);
 			}
 			writeFrame(mc, cam, eye, partial);
-			long atlas = atlasHandle(mc);
 			long hudBuffer = hud.frame(frames, w, h, Math.max(1, h / 240), lines, 7, CHAT_SHOWN, chatLines, HUD_STATE);
-			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.palette, entities, hudBuffer, world.occ, world.light, world.cells, atlas,
+			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.palette, entities, hudBuffer, world.occ, world.light,
 				interpolate ? 1 : 0);
 			if (tex == 0) return false;
 			MetalBridge.recordFrame();
@@ -202,9 +247,12 @@ public final class Record {
 			count();
 			return true;
 		} catch (RuntimeException | LinkageError e) {
-			failed = true;
+			// tried again with a new world copy; the third failure stops the mode until it's turned on again
 			presentHandle = 0;
-			System.out.println("[cadence] record mode stopped: " + e);
+			if (world != null) world.release();
+			world = null;
+			failed = ++failures >= 3;
+			System.out.println("[cadence] record frame failed" + (failed ? ", record mode stopped: " : ": ") + e);
 			e.printStackTrace(System.out);
 			return false;
 		}
@@ -279,14 +327,6 @@ public final class Record {
 		}
 	}
 
-	private static int atlasMips;
-
-	private static long atlasHandle(Minecraft mc) {
-		var atlas = mc.getTextureManager().getTexture(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS);
-		var tex = atlas.getTexture();
-		atlasMips = Math.max(0, tex.getMipLevels() - 1);
-		return MetalBridge.textureHandle(tex);
-	}
 
 	// ---- the frame's parameters (record.metal Frame) ----
 
@@ -296,7 +336,7 @@ public final class Record {
 
 	private static void writeFrame(Minecraft mc, Entity cam, Vec3 eye, float partial) {
 		RecordWorld wd = world;
-		float yaw = cam.getViewYRot(partial), pitch = cam.getViewXRot(partial);
+		float yaw = viewYaw, pitch = viewPitch;
 		double fov = mc.options.fov().get();
 		float tanY = (float) Math.tan(Math.toRadians(fov) / 2), tanX = tanY * w / h;
 		long f = frameBuf;
@@ -320,9 +360,18 @@ public final class Record {
 		darken = mc.level.getSkyDarken();
 		gamma = mc.options.gamma().get().floatValue();
 		float day = Math.max(0.06f, 1 - darken / 12f);
-		putRgb(f + 256, 0x78A7FF, day);
-		putRgb(f + 272, 0xC0D8FF, day);
-		float fogEnd = (wd.w >> 1) - 4;
+		var dim = mc.level.dimensionType();
+		if (dim.hasSkyLight()) {
+			putRgb(f + 256, 0x78A7FF, day);
+			putRgb(f + 272, 0xC0D8FF, day);
+		} else if (dim.hasCeiling()) {  // (the Nether: a dark red haze)
+			putRgb(f + 256, 0x330808, 1);
+			putRgb(f + 272, 0x330808, 1);
+		} else {  // (the End: dark violet)
+			putRgb(f + 256, 0x150F1E, 1);
+			putRgb(f + 272, 0x150F1E, 1);
+		}
+		float fogEnd = (wd.w >> 1) - 8;  // (the window reaches at least 24 blocks each way: RecordWorld.follow)
 		MemoryUtil.memPutFloat(f + 284, fogEnd);
 		int mask = wd.w - 1;
 		MemoryUtil.memPutInt(f + 288, wd.wlog);
@@ -335,7 +384,7 @@ public final class Record {
 		MemoryUtil.memPutInt(f + 308, h);
 		MemoryUtil.memPutInt(f + 312, count);
 		MemoryUtil.memPutInt(f + 316, lines);
-		MemoryUtil.memPutFloat(f + 320, atlasMips);
+		MemoryUtil.memPutFloat(f + 320, 0);  // (unused: was the atlas's mip count)
 		MemoryUtil.memPutFloat(f + 324, Math.max(1, h / 240));
 		MemoryUtil.memPutFloat(f + 328, fogEnd * 0.6f);
 		MemoryUtil.memPutFloat(f + 332, Math.max(1, wd.top));
@@ -368,7 +417,6 @@ public final class Record {
 		MemoryUtil.memPutInt(f + 424, in);
 		MemoryUtil.memPutInt(f + 428, Math.clamp((int) (p.experienceProgress * 1000), 0, 1000));
 		MemoryUtil.memPutInt(f + 432, chatLines);
-		for (int l = 0; l < 16; l++) MemoryUtil.memPutFloat(f + 448 + l * 4L, curve(l));
 		frames++;
 	}
 
@@ -455,11 +503,11 @@ public final class Record {
 		// positions still follow every frame)
 		if ((frames & 15) != 0 && chosenCount >= 0) return placeEntities(cam, partial, f, chosenCount);
 		int n = 0;
-		double half = wd.w / 2.0 - 2;
+		double half = wd.w / 2.0 - 10;  // (inside the window, which reaches 24 blocks or more each way)
 		Vec3 c = cam.position();
 		for (Entity e : mc.level.entitiesForRendering()) {
-			if (e == cam && mc.options.getCameraType().isFirstPerson()) continue;
-			if (e.isInvisible()) continue;
+			if (e == cam && !detached) continue;  // (in first person the eye is in the camera entity's box)
+			if (e.isInvisible() || e instanceof net.minecraft.world.entity.Interaction || e instanceof net.minecraft.world.entity.Marker) continue;
 			double dx = e.getX() - c.x, dz = e.getZ() - c.z, d = dx * dx + dz * dz;
 			if (Math.abs(dx) > half || Math.abs(dz) > half) continue;
 			if (n < ENTITY_MAX) {
@@ -491,14 +539,16 @@ public final class Record {
 	 * of the boxes whose rectangle touches it, so a pixel tests only those (a test per box per pixel was ~20% of a frame).
 	 */
 	private static final int ENTITY_REGION = ENTITY_MAX * ENTITY_BYTES, TILES_MAX = (2048 / 8) * (1152 / 8);
-	private static final int[] TILES_SET = new int[TILES_MAX];  // the tiles with a bit set (cleared next frame)
-	private static int tilesSet;
+	// The masks as written (WRITTEN) and this frame's (NEXT), and the tiles with a bit in either: a tile's word is written only
+	// when it changes, never zeroed first (the GPU reads the buffer while the CPU writes it: a zeroed tile dropped its boxes).
+	private static final int[] WRITTEN = new int[TILES_MAX], NEXT = new int[TILES_MAX];
+	private static final int[] TILES_SET = new int[TILES_MAX], TILES_NEXT = new int[TILES_MAX];
+	private static int tilesSet, tilesNext;
 
 	private static int placeEntities(Entity cam, float partial, long f, int n) {
 		RecordWorld wd = world;
 		long tiles = entitiesAddr + ENTITY_REGION;
-		for (int k = 0; k < tilesSet; k++) MemoryUtil.memPutInt(tiles + TILES_SET[k] * 4L, 0);
-		tilesSet = 0;
+		tilesNext = 0;
 		int tilesX = (w + 7) >> 3;
 		MemoryUtil.memPutInt(f + 436, tilesX);
 		int out = 0;
@@ -524,12 +574,29 @@ public final class Record {
 			for (int ty = rect[1] >> 3; ty <= rect[3] >> 3; ty++)
 				for (int tx = rect[0] >> 3; tx <= rect[2] >> 3; tx++) {
 					int idx = ty * tilesX + tx;
-					int old = MemoryUtil.memGetInt(tiles + idx * 4L);
-					if (old == 0) TILES_SET[tilesSet++] = idx;
-					MemoryUtil.memPutInt(tiles + idx * 4L, old | 1 << out);
+					if (NEXT[idx] == 0) TILES_NEXT[tilesNext++] = idx;
+					NEXT[idx] |= 1 << out;
 				}
 			out++;
 		}
+		// tiles that had boxes and have none now, then the new masks where they changed
+		for (int k = 0; k < tilesSet; k++) {
+			int idx = TILES_SET[k];
+			if (NEXT[idx] == 0 && WRITTEN[idx] != 0) {
+				MemoryUtil.memPutInt(tiles + idx * 4L, 0);
+				WRITTEN[idx] = 0;
+			}
+		}
+		for (int k = 0; k < tilesNext; k++) {
+			int idx = TILES_NEXT[k];
+			if (NEXT[idx] != WRITTEN[idx]) {
+				MemoryUtil.memPutInt(tiles + idx * 4L, NEXT[idx]);
+				WRITTEN[idx] = NEXT[idx];
+			}
+			NEXT[idx] = 0;
+			TILES_SET[k] = idx;
+		}
+		tilesSet = tilesNext;
 		return out;
 	}
 
@@ -620,6 +687,7 @@ public final class Record {
 		long now = System.nanoTime();
 		if (bucketStart == 0) {
 			bucketStart = now;
+			inBucket = 0;
 			return;
 		}
 		inBucket++;
@@ -687,8 +755,8 @@ public final class Record {
 		String fps = rendered == 0 ? "measuring..." : interpolate ? shown() + " fps (" + rendered + " rendered)" : rendered + " fps";
 		lines[0] = "Minecraft 26.3 Cadence Record (Metal " + (MetalBridge.metal4() ? "4" : "3") + ")";
 		lines[1] = fps;
-		lines[2] = String.format(java.util.Locale.ROOT, "XYZ: %.3f / %.5f / %.3f", eye.x, eye.y - mc.player.getEyeHeight(), eye.z);
-		lines[3] = String.format(java.util.Locale.ROOT, "Facing: %s (%.1f / %.1f)", mc.player.getDirection().getSerializedName(), yaw, pitch);
+		lines[2] = String.format(java.util.Locale.ROOT, "XYZ: %.3f / %.5f / %.3f", mc.player.getX(), mc.player.getY(), mc.player.getZ());
+		lines[3] = String.format(java.util.Locale.ROOT, "Facing: %s (%.1f / %.1f)", mc.player.getDirection().getSerializedName(), net.minecraft.util.Mth.wrapDegrees(mc.player.getYRot()), mc.player.getXRot());
 		double gpu = RecordNative.gpuMicros();
 		if (gpu > 0) gpuUs = gpu;
 		lines[4] = String.format(java.util.Locale.ROOT, "%dx%d, %d chunks, GPU %.0f us/frame", w, h, world.w / 32, gpuUs);

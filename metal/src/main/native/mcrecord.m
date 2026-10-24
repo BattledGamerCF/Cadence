@@ -24,7 +24,7 @@ typedef struct {
 	id<MTLTexture> color[3], depth[3], mid;  // the last three frames (this one, and the two the in-between frame is made from)
 	int w, h, cur;
 	long frames;
-	void *lastCb;               // (not retained: only compared) the command buffer of the last frame
+	id<MTLCommandBuffer> lastCb;  // (retained, so no new one can reuse its address) the command buffer of the last frame
 	_Atomic int *sampledFrames;  // the record frames in it, when it's being sampled
 	long lastSample;
 } Rec;
@@ -79,19 +79,20 @@ void mcrm_size(void *rec, Ctx *ctx, int w, int h) {
 	dropTextures(r);
 	for (int k = 0; k < 3; k++) {
 		r->color[k] = tex(ctx, MTLPixelFormatRGBA8Unorm, w, h);
-		r->depth[k] = tex(ctx, MTLPixelFormatR32Float, w, h);
+		r->depth[k] = tex(ctx, MTLPixelFormatR16Float, w, h);  // (half: ample for reprojection within 28 blocks; sky is +inf)
 	}
 	r->mid = tex(ctx, MTLPixelFormatRGBA8Unorm, w, h);
 	r->w = w;
 	r->h = h;
 	r->frames = 0;
+	r->lastSample = -64;
 }
 
 
 // One frame on the frame's command buffer: one dispatch traces it and, with interpolation on (the game passes it in the
 // frame's flags), makes the in-between frame of the last two. Returns the texture to present: this frame's colour.
 id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLength, id<MTLBuffer> grid, id<MTLBuffer> pal,
-	id<MTLBuffer> entities, id<MTLBuffer> hud, id<MTLBuffer> occ, id<MTLBuffer> light, id<MTLBuffer> cells, id<MTLTexture> atlas, int interpolate) {
+	id<MTLBuffer> entities, id<MTLBuffer> hud, id<MTLBuffer> occ, id<MTLBuffer> light, int interpolate) {
 	(void) interpolate;  // (in the frame's flags)
 	Rec *r = rec;
 	if (!r->color[0]) return nil;
@@ -102,7 +103,6 @@ id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLengt
 		[c setComputePipelineState:r->trace];
 		[c setTexture:r->color[cur] atIndex:0];
 		[c setTexture:r->depth[cur] atIndex:1];
-		[c setTexture:atlas atIndex:2];
 		[c setTexture:r->color[a] atIndex:4];
 		[c setTexture:r->depth[a] atIndex:5];
 		[c setTexture:r->color[b] atIndex:6];
@@ -116,12 +116,12 @@ id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLengt
 		[c setBuffer:occ offset:0 atIndex:6];
 		[c setBuffer:light offset:0 atIndex:7];
 		[c setBuffer:entities offset:32 * 48 atIndex:8];  // (the entity tiles' masks, after the boxes: Record.ENTITY_REGION)
-		[c setBuffer:cells offset:0 atIndex:9];           // (the height field's cells)
 		[c dispatchThreads:MTLSizeMake(r->w, r->h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		[c endEncoding];
-		if ((void *) cb != r->lastCb) {
+		if (cb != r->lastCb) {
 			// the first record frame in this command buffer: sampled when one is due (its time over its record frames)
-			r->lastCb = (void *) cb;
+			[r->lastCb release];
+			r->lastCb = [cb retain];
 			r->sampledFrames = NULL;
 			if (r->frames - r->lastSample >= 64) {
 				r->lastSample = r->frames;
@@ -145,10 +145,17 @@ id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLengt
 	return r->color[cur];
 }
 
+// The in-between frame (frame interpolation's), presented every other present; nil before there is one.
+id<MTLTexture> mcrm_mid(void *rec) {
+	Rec *r = rec;
+	return r && r->frames > 2 ? r->mid : nil;
+}
+
 void mcrm_release(void *rec) {
 	Rec *r = rec;
 	if (!r) return;
 	dropTextures(r);
+	[r->lastCb release];
 	[r->trace release];
 	free(r);
 }
