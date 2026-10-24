@@ -36,8 +36,8 @@ import org.jspecify.annotations.Nullable;
  * tints it (grass, foliage, water by biome, or a constant). Learned once per block state from its baked model and the
  * texture files, on whichever thread asks first.
  */
-final class LodColors {
-	static final int TINT_NONE = 0, TINT_GRASS = 1, TINT_FOLIAGE = 2, TINT_WATER = 3, TINT_DRY_FOLIAGE = 4, TINT_CONSTANT = 5;
+public final class LodColors {
+	public static final int TINT_NONE = 0, TINT_GRASS = 1, TINT_FOLIAGE = 2, TINT_WATER = 3, TINT_DRY_FOLIAGE = 4, TINT_CONSTANT = 5;
 
 	/**
 	 * top / side: RGB of the textures (untinted); tint kind and, for constants, its RGB; the two sprites' rectangles in the
@@ -45,7 +45,7 @@ final class LodColors {
 	 * model is a plant's crossed quads (grass, ferns, flowers; side is their sprite); profile: per sixteenth of the side
 	 * sprite's width, how high (sixteenths) its opaque texels reach, a byte each, four to an int.
 	 */
-	record Look(int top, int side, int topTint, int sideTint, int constant, float[] topUv, float[] sideUv, boolean cross, int[] profile) {
+	public record Look(int top, int side, int topTint, int sideTint, int constant, float[] topUv, float[] sideUv, boolean cross, int[] profile) {
 	}
 
 	private static final ConcurrentHashMap<BlockState, Look> LOOKS = new ConcurrentHashMap<>();
@@ -59,7 +59,7 @@ final class LodColors {
 	/** Counts resource reloads: what was worked out from the textures before one isn't kept (a worker can be midway). */
 	private static volatile int epoch;
 
-	static Look look(BlockState state) {
+	public static Look look(BlockState state) {
 		Look l = LOOKS.get(state);
 		if (l != null) return l;
 		int e = epoch;
@@ -91,7 +91,7 @@ final class LodColors {
 		return tint(l.side, l.sideTint, l.constant, b, x, z);
 	}
 
-	static int tint(int rgb, int kind, int constant, Biome b, int x, int z) {
+	public static int tint(int rgb, int kind, int constant, Biome b, int x, int z) {
 		int t = switch (kind) {
 			case TINT_GRASS -> b.getGrassColor(x, z);
 			case TINT_FOLIAGE -> b.getFoliageColor();

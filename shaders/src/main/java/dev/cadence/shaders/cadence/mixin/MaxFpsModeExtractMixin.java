@@ -12,6 +12,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class MaxFpsModeExtractMixin {
 	@Inject(method = "extract", at = @At("HEAD"), cancellable = true)
 	private void cadence$maxFps(CallbackInfo ci) {
-		if (MaxFpsMode.on()) ci.cancel();
+		if (MaxFpsMode.on() || dev.cadence.metal.record.Record.active()) ci.cancel();
 	}
 }

@@ -42,6 +42,9 @@ final class MetalEncoder implements CommandEncoderBackend {
 	 */
 	private static final int MAX_FPS_IN_FLIGHT = Integer.getInteger("cadence.metal.maxFpsInFlight", 5);
 	static volatile boolean maxFps;
+	/** Record Mode: frames in flight while it's chosen (its frames are compute only; the GPU's per-frame latency is the limit). */
+	private static final int RECORD_IN_FLIGHT = Integer.getInteger("cadence.record.inFlight", 16);
+	static volatile boolean record;
 	/**
 	 * -Dcadence.metal.trace=N prints every encoder operation of submit N, the tool for finding pass boundaries worth removing,
 	 * and the average per-encoder GPU time of submits N to N + PROFILE_FRAMES - 1. Traced runs are a few % slower; don't bench them.
@@ -256,7 +259,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 			Native.passTest(this.enc, PASS_TEST_N, PASS_TEST_MODE);
 			this.passTestPending = false;
 		}
-		int depth = maxFps ? Math.max(MAX_IN_FLIGHT, MAX_FPS_IN_FLIGHT) : MAX_IN_FLIGHT;
+		int depth = record ? Math.max(MAX_IN_FLIGHT, RECORD_IN_FLIGHT) : maxFps ? Math.max(MAX_IN_FLIGHT, MAX_FPS_IN_FLIGHT) : MAX_IN_FLIGHT;
 		while (this.inFlight.size() > depth) this.retire(this.inFlight.poll(), WaitStats.INFLIGHT);
 		if (STATS) this.stats();
 		if (WaitStats.ON) WaitStats.frame(this.submitIndex - 1);
@@ -876,6 +879,14 @@ final class MetalEncoder implements CommandEncoderBackend {
 		} finally {
 			MetalEvents.end(event);
 		}
+	}
+
+	/** Record Mode: its frame's own texture (a native MTLTexture) presented instead of the game's target. */
+	void presentHandle(long drawable, long texture) {
+		this.presentedThisSubmit = true;
+		if (GPU_TIMES) GpuTimes.present(this.submitIndex, drawable);
+		Native.present(this.enc, drawable, texture);
+		this.statPresents++;
 	}
 
 	void presentTexture(long drawable, GpuTextureView view) {

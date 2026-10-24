@@ -170,6 +170,17 @@ public final class MetalBridge {
 		MetalEncoder.maxFps = on;
 	}
 
+	/** Record Mode (dev.cadence.metal.record): uncapped presentation and a deep queue of frames in flight while it's chosen. */
+	public static void recordPresent(boolean on) {
+		MetalEncoder.record = on;
+		uncappedPresent(on);
+	}
+
+	/** Whether the backend runs on Metal 4 (-Dcadence.metal4=true and the device has it). */
+	public static boolean metal4() {
+		return Native.metal4();
+	}
+
 	public static long useBuffer(Object encoder, GpuBuffer buffer) {
 		return ((MetalEncoder) encoder).use(buffer).handle;
 	}

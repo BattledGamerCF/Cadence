@@ -18,6 +18,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class MaxFpsModeHudMixin {
 	@Inject(method = "extractRenderState", at = @At("HEAD"), cancellable = true)
 	private void cadence$maxFps(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker, CallbackInfo ci) {
+		if (dev.cadence.metal.record.Record.active()) {
+			ci.cancel();
+			return;
+		}
 		if (!MaxFpsMode.on()) return;
 		MaxFpsMode.frame();
 		var font = Minecraft.getInstance().font;

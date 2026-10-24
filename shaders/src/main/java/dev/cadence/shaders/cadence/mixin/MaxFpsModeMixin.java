@@ -22,12 +22,12 @@ public abstract class MaxFpsModeMixin {
 
 	@Inject(method = "renderLevel", at = @At("HEAD"), cancellable = true)
 	private void cadence$maxFps(CallbackInfo ci) {
-		if (MaxFpsMode.on()) ci.cancel();
+		if (MaxFpsMode.on() || dev.cadence.metal.record.Record.active()) ci.cancel();
 	}
 
 	@Inject(method = "extractCamera", at = @At("HEAD"), cancellable = true)
 	private void cadence$maxFpsCamera(CallbackInfo ci) {
-		if (MaxFpsMode.on()) ci.cancel();
+		if (MaxFpsMode.on() || dev.cadence.metal.record.Record.active()) ci.cancel();
 	}
 
 	@ModifyArg(method = "render", at = @At(value = "INVOKE",

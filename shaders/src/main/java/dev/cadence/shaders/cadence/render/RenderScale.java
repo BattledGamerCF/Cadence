@@ -48,6 +48,9 @@ public final class RenderScale {
 	}
 
 	public static float get() {
+		// (Record Mode and Render Max FPS: no upscaling at all, the frame drawn at its own size; the player's scale comes back
+		// when they're off. Nothing is saved.)
+		if (fastModes()) return MAX;
 		return scale;
 	}
 
@@ -103,7 +106,12 @@ public final class RenderScale {
 	}
 
 	public static boolean metalFx() {
-		return upscaler == UPSCALE_APPLE;
+		return upscaler == UPSCALE_APPLE && !fastModes();
+	}
+
+	/** Record Mode or Render Max FPS is on: the frame isn't scaled (and MetalFX doesn't run). */
+	public static boolean fastModes() {
+		return MaxFpsMode.chosen() || dev.cadence.metal.record.Record.chosen();
 	}
 
 	public static boolean fastUpscale() {

@@ -756,6 +756,17 @@ public final class CadenceSelfTest {
 					long[] p = dev.cadence.metal.MacSystem.presentStats();
 					LOGGER.info("[selftest] presents: {} intervals, {} longer than 1.5 refreshes ({})", p[0], p[1],
 						p[0] == 0 ? "no presented times" : String.format(java.util.Locale.ROOT, "%.2f%%", 100.0 * p[1] / p[0]));
+				} else if (lower.startsWith("recordmode=")) {
+					// "recordmode=on|off": Record Mode (dev.cadence.metal.record.Record)
+					boolean on = lower.endsWith("on");
+					mc.execute(() -> {
+						if (on) dev.cadence.shaders.cadence.render.MaxFpsMode.set(false);
+						dev.cadence.metal.record.Record.set(on);
+					});
+				} else if (lower.startsWith("recordinterp=")) {
+					dev.cadence.metal.record.Record.interpolate = lower.endsWith("on");
+				} else if (lower.startsWith("recordheight=")) {
+					dev.cadence.metal.record.Record.height = Integer.parseInt(lower.substring(13));
 				} else if (lower.startsWith("maxfpsmode=")) {
 					// "maxfpsmode=on|off": Render Max FPS (MaxFpsMode)
 					MaxFpsMode.set(lower.endsWith("on"));
@@ -996,7 +1007,12 @@ public final class CadenceSelfTest {
 		double avg = last.stream().mapToInt(Integer::intValue).average().orElse(0);
 		LOGGER.info("[selftest] {} {}: fps last 10 s min {} avg {} max {} (scale {}{})", index, step, min, String.format(Locale.ROOT, "%.0f", avg), max,
 			RenderScale.get(), (RenderScale.isAuto() ? " auto, " : ", ") + RenderScale.lastWindow() + "; " + RenderScale.stutter());
+		if (dev.cadence.metal.record.Record.chosen())
+			LOGGER.info("[selftest] {} {}: record {} fps ({} rendered), best {}, GPU {} us/frame", index, step, dev.cadence.metal.record.Record.shown(),
+				dev.cadence.metal.record.Record.rendered(), dev.cadence.metal.record.Record.best(), Math.round(dev.cadence.metal.record.Record.gpuMicros()));
 		String label = "selftest-" + index + "-" + step.replaceAll("[^A-Za-z0-9._-]", "_");
+		if (dev.cadence.metal.record.Record.chosen())  // (the record frame itself: the game's own target isn't drawn then)
+			mc.execute(() -> dev.cadence.metal.record.Record.snapshot(mc.gameDirectory.toPath().resolve("screenshots").resolve(label + "-record.png")));
 		mc.execute(() -> {
 			SwitchProbe.log(mc, "selftest " + index + " " + step, settle);
 			LOGGER.info("[selftest] {} {}: memory {}", index, step, MemoryProbe.summary(mc.levelRenderer.sectionRenderDispatcher()));
