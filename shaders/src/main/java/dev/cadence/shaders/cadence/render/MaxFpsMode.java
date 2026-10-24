@@ -1,8 +1,16 @@
 package dev.cadence.shaders.cadence.render;
 
 /**
- * Cadence: "Render Max FPS" (Video Settings), for curiosity: how fast can Minecraft draw frames at all? A black screen with two
- * numbers, and as little work per frame as the game allows:
+ * Cadence: "Render Max FPS" (Video Settings): the game at the highest frame rate this Mac can render it while it stays playable,
+ * by the FPS-record rules (Hone: a playable resolution, every block and entity drawn, every frame really rendered). All of it is
+ * automatic: the world is drawn by Record Mode (dev.cadence.metal.record.Record), one compute dispatch a frame: every block
+ * texture as one colour (its average: a 1x1 texture), shaded as vanilla's flat lighting shades it (face direction, sky and
+ * block light, time of day, the Brightness option), entities as lit boxes, the HUD (hotbar, health, food, crosshair, F3 text);
+ * upscaling off (RenderScale), no frame limit or vsync, input read at 1 kHz, and frame interpolation counted apart. Any screen
+ * (pause, inventory, chat) draws the game as usual over it. Without the Metal backend the game draws as usual, uncapped.
+ *
+ * <p>-Dcadence.maxfps.blank=true: the old curiosity instead (not record-legal), a black screen with two numbers, and as little
+ * work per frame as the game allows:
  * <ul>
  * <li>the world isn't drawn or gathered for drawing (GameRenderer.renderLevel, LevelExtractor.extract), nor the camera and fog
  * worked out for it (GameRenderer.extractCamera); a shader pack runs none of its passes;</li>
@@ -16,6 +24,8 @@ package dev.cadence.shaders.cadence.render;
  */
 public final class MaxFpsMode {
 	private static volatile boolean on;
+	/** The black-screen variant (-Dcadence.maxfps.blank=true); else Record Mode draws the world. */
+	public static final boolean BLANK = Boolean.getBoolean("cadence.maxfps.blank");
 
 	private MaxFpsMode() {
 	}
@@ -23,7 +33,7 @@ public final class MaxFpsMode {
 	public static boolean on() {
 		// (not while a world or dimension is loading: the loading screen waits for the player's chunk to be built, which needs
 		// the world gathered and drawn; skipped, it held "Loading terrain..." for vanilla's full 30 s timeout at every join)
-		return on && !(net.minecraft.client.Minecraft.getInstance().gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);
+		return on && BLANK && !(net.minecraft.client.Minecraft.getInstance().gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);
 	}
 
 	/** The button's setting (on even while a world loads). */
@@ -40,7 +50,8 @@ public final class MaxFpsMode {
 		bucketFrames = 0;
 		bucketStart = 0;
 		try {
-			dev.cadence.metal.MetalBridge.uncappedPresent(value);
+			if (BLANK) dev.cadence.metal.MetalBridge.uncappedPresent(value);
+			else dev.cadence.metal.record.Record.set(value);
 		} catch (RuntimeException | LinkageError e) {
 			// not on the Metal backend: vsync stays as the option says
 		}

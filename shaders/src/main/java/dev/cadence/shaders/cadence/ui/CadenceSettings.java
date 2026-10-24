@@ -263,35 +263,16 @@ public final class CadenceSettings {
 		ShaderToggle.saveKey("benchmarkDetails", on ? "detailed" : "simple");
 	}
 
-	/** Render Max FPS (MaxFpsMode): the world not drawn at all, for the highest frame rate possible. Not saved. */
+	/** Render Max FPS (MaxFpsMode): the game at the highest frame rate it can render while playable. Not saved. */
 	public static Button maxFpsButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(maxFpsLabel(), b -> {
 			MaxFpsMode.set(!MaxFpsMode.chosen());
-			if (MaxFpsMode.chosen()) dev.cadence.metal.record.Record.set(false);
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("For curiosity: the most frames a second Minecraft can draw on this Mac.",
-			"#A black screen with the peak frame rate of this visit and the best of the session. The world, the HUD and shader packs aren't drawn, and no frame limit, VSync or Heat Control holds it back while it's on (the game keeps running underneath). Off again after a restart.")).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The most frames a second this Mac can render Minecraft, still playable.",
+			"#Everything is set for you: each block drawn in one colour (a 1x1 texture), lit and shaded as Minecraft's flat lighting does, entities as boxes, the hotbar, health, food and an F3 counter, at a low resolution with no upscaling, frame limit or VSync. Frame interpolation doubles the frames shown; the counter shows both. Any open screen draws the game as usual. Off again after a restart.")).build();
 		onRefresh(() -> self[0].setMessage(maxFpsLabel()));
 		return self[0];
-	}
-
-	/** Record Mode (dev.cadence.metal.record.Record): the world rendered as fast as it can be, by the FPS-record rules. Not saved. */
-	public static Button recordButton() {
-		Button[] self = new Button[1];
-		self[0] = Button.builder(recordLabel(), b -> {
-			boolean on = !dev.cadence.metal.record.Record.chosen();
-			if (on && MaxFpsMode.chosen()) MaxFpsMode.set(false);
-			dev.cadence.metal.record.Record.set(on);
-			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Chasing the Minecraft FPS record: the world and its entities rendered every frame, as fast as this Mac can.",
-			"#Every frame is ray-traced on the GPU at a low resolution (blocks textured, entities as boxes) with an F3-style counter. Frame interpolation doubles the frames made and the counter shows both. Any open screen draws the game as usual. Off again after a restart.")).build();
-		onRefresh(() -> self[0].setMessage(recordLabel()));
-		return self[0];
-	}
-
-	private static Component recordLabel() {
-		return Component.literal("Record Mode: " + (dev.cadence.metal.record.Record.chosen() ? "On" : "Off"));
 	}
 
 	private static Component maxFpsLabel() {

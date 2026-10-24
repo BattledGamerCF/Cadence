@@ -30,7 +30,7 @@ public final class Record {
 	public static volatile int height = Integer.getInteger("cadence.record.height", 180);
 	/** The voxel window's width, log2 (6: 64 blocks, 2 chunks each way, the game's smallest render distance). */
 	private static final int WLOG = Integer.getInteger("cadence.record.window", 6);
-	private static final int ENTITY_MAX = 32, ENTITY_BYTES = 48, TEXT_LINES = 8, FRAME_BYTES = 4 * 64 + 9 * 16;  // record.metal Frame
+	private static final int ENTITY_MAX = 32, ENTITY_BYTES = 48, TEXT_LINES = 11, FRAME_BYTES = 4 * 64 + 12 * 16;  // record.metal Frame
 
 	private static long rec, ctx, encObj, entities, text, frameBuf;
 	private static Object encoder;
@@ -135,7 +135,7 @@ public final class Record {
 			}
 			writeFrame(mc, cam, eye, partial);
 			long atlas = atlasHandle(mc);
-			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.bricks, world.palette, entities, text, world.occ, atlas,
+			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.bricks, world.palette, entities, text, world.occ, world.light, atlas,
 				interpolate ? 1 : 0);
 			if (tex == 0) return false;
 			presentHandle = tex;
@@ -255,29 +255,56 @@ public final class Record {
 		System.arraycopy(camA, 0, camB, 0, 5);
 		set(camA, eye, yaw, pitch);
 		camsKnown = Math.min(3, camsKnown + 1);
-		MemoryUtil.memPutInt(f + 336, interpolate && camsKnown >= 3 ? 1 : 0);
-		writeHud(mc, f + 352);
-		f += 64;  // (the fields below were laid out for three cameras: they follow the fourth)
-		// sky and fog (a clear day: Record Mode is for the counter, the sky's own work isn't drawn)
-		putRgb(f + 192, 0x78A7FF);
-		putRgb(f + 208, 0xC0D8FF);
+		// sky and fog: a plain day sky, darkened with the time of day as the blocks' sky light is
+		darken = mc.level.getSkyDarken();
+		gamma = mc.options.gamma().get().floatValue();
+		float day = Math.max(0.06f, 1 - darken / 12f);
+		putRgb(f + 256, 0x78A7FF, day);
+		putRgb(f + 272, 0xC0D8FF, day);
 		float fogEnd = (wd.w >> 1) - 4;
-		MemoryUtil.memPutFloat(f + 208 + 12, fogEnd);
+		MemoryUtil.memPutFloat(f + 284, fogEnd);
 		int mask = wd.w - 1;
-		MemoryUtil.memPutInt(f + 224, wd.wlog);
-		MemoryUtil.memPutInt(f + 228, wd.h);
-		MemoryUtil.memPutInt(f + 232, wd.ox & mask);
-		MemoryUtil.memPutInt(f + 236, wd.oz & mask);
-		int count = writeEntities(mc, cam, partial, frameBuf);
+		MemoryUtil.memPutInt(f + 288, wd.wlog);
+		MemoryUtil.memPutInt(f + 292, wd.h);
+		MemoryUtil.memPutInt(f + 296, wd.ox & mask);
+		MemoryUtil.memPutInt(f + 300, wd.oz & mask);
+		int count = writeEntities(mc, cam, partial, f);
 		int lines = writeText(mc, eye, yaw, pitch);
-		MemoryUtil.memPutInt(f + 240, w);
-		MemoryUtil.memPutInt(f + 244, h);
-		MemoryUtil.memPutInt(f + 248, count);
-		MemoryUtil.memPutInt(f + 252, lines);
-		MemoryUtil.memPutFloat(f + 256, atlasMips);
-		MemoryUtil.memPutFloat(f + 260, Math.max(1, h / 240));
-		MemoryUtil.memPutFloat(f + 264, fogEnd * 0.6f);
-		MemoryUtil.memPutFloat(f + 268, Math.max(1, wd.top));
+		MemoryUtil.memPutInt(f + 304, w);
+		MemoryUtil.memPutInt(f + 308, h);
+		MemoryUtil.memPutInt(f + 312, count);
+		MemoryUtil.memPutInt(f + 316, lines);
+		MemoryUtil.memPutFloat(f + 320, atlasMips);
+		MemoryUtil.memPutFloat(f + 324, Math.max(1, h / 240));
+		MemoryUtil.memPutFloat(f + 328, fogEnd * 0.6f);
+		MemoryUtil.memPutFloat(f + 332, Math.max(1, wd.top));
+		MemoryUtil.memPutInt(f + 336, interpolate && camsKnown >= 3 ? 1 : 0);
+		MemoryUtil.memPutInt(f + 340, darken);
+		MemoryUtil.memPutFloat(f + 344, gamma);
+		writeHud(mc, f + 352);
+		// the block the crosshair is on, and how far it's broken
+		int tw = 0;
+		if (mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult bh && bh.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+			var bp = bh.getBlockPos();
+			MemoryUtil.memPutInt(f + 400, bp.getX() - wd.ox);
+			MemoryUtil.memPutInt(f + 404, bp.getY() - wd.minY);
+			MemoryUtil.memPutInt(f + 408, bp.getZ() - wd.oz);
+			tw = 2 + (mc.gameMode != null && mc.gameMode.isDestroying() ? mc.gameMode.getDestroyStage() : -1);
+		}
+		MemoryUtil.memPutInt(f + 412, tw);
+		// air, hurt, the fluid the eye is in, XP; the latest chat lines
+		var p = mc.player;
+		int air = p.getAirSupply(), maxAir = Math.max(1, p.getMaxAirSupply());
+		var eyePos = net.minecraft.core.BlockPos.containing(eye);
+		var fluid = mc.level.getFluidState(eyePos);
+		int in = 0;
+		if (!fluid.isEmpty() && eye.y < eyePos.getY() + fluid.getHeight(mc.level, eyePos))
+			in = fluid.is(net.minecraft.tags.FluidTags.WATER) ? 1 : fluid.is(net.minecraft.tags.FluidTags.LAVA) ? 2 : 0;
+		MemoryUtil.memPutInt(f + 416, air < maxAir || in == 1 ? Math.clamp(air * 20 / maxAir, 0, 20) : 255);
+		MemoryUtil.memPutInt(f + 420, Math.clamp(p.hurtTime, 0, 10));
+		MemoryUtil.memPutInt(f + 424, in);
+		MemoryUtil.memPutInt(f + 428, Math.clamp((int) (p.experienceProgress * 1000), 0, 1000));
+		MemoryUtil.memPutInt(f + 432, chatLines);
 		frames++;
 	}
 
@@ -324,14 +351,32 @@ public final class Record {
 		c[4] = pitch;
 	}
 
-	private static void putRgb(long at, int rgb) {
-		MemoryUtil.memPutFloat(at, ((rgb >> 16) & 255) / 255f);
-		MemoryUtil.memPutFloat(at + 4, ((rgb >> 8) & 255) / 255f);
-		MemoryUtil.memPutFloat(at + 8, (rgb & 255) / 255f);
+	private static void putRgb(long at, int rgb, float k) {
+		MemoryUtil.memPutFloat(at, ((rgb >> 16) & 255) / 255f * k);
+		MemoryUtil.memPutFloat(at + 4, ((rgb >> 8) & 255) / 255f * k);
+		MemoryUtil.memPutFloat(at + 8, (rgb & 255) / 255f * k);
+	}
+
+	private static int darken;
+	private static float gamma = 0.5f;
+
+	/** record.metal brightness(): a light level (sky << 4 | block) as vanilla's lightmap makes it brightness. */
+	static float brightness(int sky, int block) {
+		float lv = Math.max(Math.max(sky - darken, 0), block) / 15f;
+		float b = lv / (4 - 3 * lv), nb = 1 - b;
+		b += (1 - nb * nb * nb * nb - b) * gamma;
+		return b * 0.96f + 0.04f;
+	}
+
+	/** An rgb colour times k. */
+	private static int scaled(int rgb, float k) {
+		int r = Math.min(255, (int) (((rgb >> 16) & 255) * k)), g = Math.min(255, (int) (((rgb >> 8) & 255) * k)), b = Math.min(255, (int) ((rgb & 255) * k));
+		return r << 16 | g << 8 | b;
 	}
 
 	private static final Entity[] NEAR = new Entity[ENTITY_MAX];
 	private static final double[] NEAR_D = new double[ENTITY_MAX];
+	private static final int[] NEAR_LIT = new int[ENTITY_MAX];  // their colours, lit where they stand
 
 	/** The nearest entities within the window as boxes, each with the screen rectangle it can cover. Their count. */
 	private static int writeEntities(Minecraft mc, Entity cam, float partial, long f) {
@@ -360,6 +405,11 @@ public final class Record {
 			}
 		}
 		for (int i = n; i < ENTITY_MAX; i++) NEAR[i] = null;
+		for (int i = 0; i < n; i++) {
+			var at = NEAR[i].blockPosition();
+			NEAR_LIT[i] = scaled(colorOf(NEAR[i]), brightness(mc.level.getBrightness(net.minecraft.world.level.LightLayer.SKY, at),
+				mc.level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, at)));
+		}
 		chosenCount = n;
 		return placeEntities(cam, partial, f, n);
 	}
@@ -381,7 +431,7 @@ public final class Record {
 			MemoryUtil.memPutFloat(at, (float) x0);
 			MemoryUtil.memPutFloat(at + 4, (float) y0);
 			MemoryUtil.memPutFloat(at + 8, (float) z0);
-			MemoryUtil.memPutInt(at + 12, colorOf(e));
+			MemoryUtil.memPutInt(at + 12, NEAR_LIT[i]);
 			MemoryUtil.memPutFloat(at + 16, (float) x1);
 			MemoryUtil.memPutFloat(at + 20, (float) y1);
 			MemoryUtil.memPutFloat(at + 24, (float) z1);
@@ -474,6 +524,36 @@ public final class Record {
 		return gpuUs;
 	}
 
+	private static final int CHAT_MAX = TEXT_LINES - 8;
+	private static final String[] CHAT = new String[CHAT_MAX];
+	private static final long[] CHAT_AT = new long[CHAT_MAX];
+	private static int chatLines;
+	/** How long a chat line shows (vanilla's 10 s; -Dcadence.record.chatSeconds, for tests). */
+	private static final long CHAT_NANOS = Long.getLong("cadence.record.chatSeconds", 10) * 1_000_000_000L;
+
+	/** A chat message arrived (ChatComponent.addMessage): shown bottom left for 10 seconds, the newest last. Render thread. */
+	public static void chat(String message) {
+		if (!chosen) return;
+		for (String part : message.split("\n")) {
+			System.arraycopy(CHAT, 1, CHAT, 0, CHAT_MAX - 1);
+			System.arraycopy(CHAT_AT, 1, CHAT_AT, 0, CHAT_MAX - 1);
+			CHAT[CHAT_MAX - 1] = part;
+			CHAT_AT[CHAT_MAX - 1] = System.nanoTime();
+		}
+		textAt = 0;
+	}
+
+	/** A line as the font's code page (ascii.png: 256 glyphs), at most 64 of them; others as '?'. */
+	private static byte[] ascii(String line) {
+		int n = Math.min(64, line.length());
+		byte[] b = new byte[n];
+		for (int i = 0; i < n; i++) {
+			char c = line.charAt(i);
+			b[i] = (byte) (c > 0 && c < 256 ? c : '?');
+		}
+		return b;
+	}
+
 	private static int writeText(Minecraft mc, Vec3 eye, float yaw, float pitch) {
 		long now = System.nanoTime();
 		if (now - textAt < BUCKET && lines[0] != null) return 7;
@@ -489,6 +569,14 @@ public final class Record {
 		lines[5] = "Best: " + best + " fps" + (interpolate ? " (incl. interpolated)" : "");
 		lines[6] = interpolate ? "Interpolated frames counted apart" : "Every frame rendered";
 		long t = RecordNative.contents(text);
+		// the chat lines still showing (10 s), oldest first, in text lines 8..
+		chatLines = 0;
+		for (int i = 0; i < CHAT_MAX; i++)
+			if (CHAT[i] != null && now - CHAT_AT[i] < CHAT_NANOS) {
+				byte[] b = ascii(CHAT[i]);
+				for (int k = 0; k < 64; k++) MemoryUtil.memPutByte(t + (8L + chatLines) * 64 + k, k < b.length ? b[k] : 0);
+				chatLines++;
+			}
 		for (int i = 0; i < 7; i++) {
 			byte[] b = lines[i].getBytes(StandardCharsets.US_ASCII);
 			for (int k = 0; k < 64; k++) MemoryUtil.memPutByte(t + i * 64L + k, k < b.length ? b[k] : 0);

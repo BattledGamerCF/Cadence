@@ -80,7 +80,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addHeader(heading("Cadence: Extras"));
 		this.list.addSmall(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.fpsCounterButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.messagesButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.maxFpsButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.javaButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.recordButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.javaButton(), null);
 	}
 
 	/**

@@ -18,8 +18,12 @@ struct Frame {
 	uint4 grid;               // x: window width log2 (x and z), y: height, z: x offset & mask (toroidal), w: z offset
 	uint4 size;               // x, y: output size; z: entity count; w: text lines
 	float4 misc;              // x: atlas max mip; y: text scale; z: fog start; w: the window's top (above every block)
-	uint4 flags;              // x: make the in-between frame of the last two (frame interpolation) in this dispatch
+	uint4 flags;              // x: make the in-between frame of the last two (frame interpolation) in this dispatch;
+	                          // y: the sky's darkening (Level.getSkyDarken, 0..11 at night); z: the brightness option (float bits)
 	uint4 hud[3];             // the HUD: 9 hotbar slot colours (0: empty); then the selected slot, health and food (0..20)
+	int4 target;              // the block the crosshair is on (window-relative); w: 0 none, else 2 + its breaking stage (-1..9)
+	uint4 status;             // x: air (0..20; 255: not shown), y: hurt (0..10), z: eye in water (1) or lava (2), w: XP progress (0..1000)
+	uint4 chat;               // x: chat lines shown (text lines 8.., bottom left)
 };
 
 // A palette entry (RecordWorld.PALETTE_STRIDE words): top uv rect, side uv rect, then tints, average colours, flags, shape.
@@ -59,6 +63,27 @@ static inline bool occupiedAt(device const uint *bits, int3 v, constant Frame &f
 	return (bits[brick * 16 + (local >> 5)] >> (local & 31)) & 1u;
 }
 
+// The light where a face looks out (vanilla's flat lighting, Smooth Lighting off): per voxel sky light << 4 | block light,
+// laid out as the grid. Above the window's blocks it's open sky; below the world, dark.
+static inline uint lightAt(device const uchar *light, int3 v, constant Frame &f) {
+	if (v.y >= int(f.grid.y)) return 0xF0u;
+	if (v.y < 0) return 0u;
+	uint w = 1u << f.grid.x, m = w - 1, bw = w >> 3;
+	uint ix = (uint(v.x) + f.grid.z) & m, iz = (uint(v.z) + f.grid.w) & m, iy = uint(v.y);
+	uint brick = ((iy >> 3) * bw + (iz >> 3)) * bw + (ix >> 3);
+	return light[brick * 512 + (((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7))];
+}
+
+// A light level as vanilla's lightmap makes it brightness: the sky's part darkened for the time of day, the brighter of sky
+// and block light, vanilla's curve (no ambient light), the Brightness option, and the lightmap's floor.
+static inline float brightness(uint l, constant Frame &f) {
+	float lv = max(max(float(l >> 4) - float(f.flags.y), 0.0f), float(l & 15u)) / 15.0f;
+	float b = lv / (4.0f - 3.0f * lv);
+	float nb = 1.0f - b;
+	b = mix(b, 1.0f - nb * nb * nb * nb, as_type<float>(f.flags.z));
+	return b * 0.96f + 0.04f;
+}
+
 // Per 8^3 brick: 0 when it holds a block, else its distance (Chebyshev, in bricks, at most 8) to the nearest brick that does.
 static inline uint brickAt(device const uchar *bricks, int3 b, constant Frame &f) {
 	uint bw = (1u << f.grid.x) >> 3, m = bw - 1;
@@ -76,6 +101,23 @@ static inline float4 sampleFace(texture2d<float> atlas, float4 rect, float2 uv, 
 	return atlas.sample(atlasSampler, p, level(lod));
 }
 
+// One pixel of a block of text lines (the game's font, 6-pixel advance, a dark box behind each line): `first` the block's
+// first line in the text buffer, `origin` its top left.
+static inline float3 textPixel(uint2 gid, int2 origin, uint first, uint count, uint scale, device const uchar *text, texture2d<float> font,
+	float3 color) {
+	int2 p = int2(gid) - origin;
+	uint lineH = 10 * scale, adv = 6 * scale;
+	if (p.x < 0 || p.y < 0) return color;
+	uint line = uint(p.y) / lineH, col = uint(p.x) / adv;
+	if (line >= count || col >= 64) return color;
+	uint ch = text[(first + line) * 64 + col];
+	if (ch == 0) return color;
+	color *= 0.45f;
+	uint lx = (uint(p.x) % adv) / scale, ly = (uint(p.y) % lineH) / scale;
+	if (lx < 8 && ly >= 1 && ly < 9 && font.read(uint2((ch & 15) * 8 + lx, (ch >> 4) * 8 + (ly - 1))).a > 0.5f) color = float3(1);
+	return color;
+}
+
 // (the in-between frame for one pixel, from the last two frames: see record_interp)
 static float3 interpolated(uint2 gid, constant Frame &f, texture2d<float> colorA, texture2d<float> depthA, texture2d<float> colorB,
 	texture2d<float> depthB);
@@ -86,6 +128,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	texture2d<float, access::write> outMid [[texture(8)]], constant Frame &f [[buffer(0)]],
 	device const ushort *grid [[buffer(1)]], device const uchar *bricks [[buffer(2)]], device const Pal *pal [[buffer(3)]],
 	device const Entity *entities [[buffer(4)]], device const uchar *text [[buffer(5)]], device const uint *occ [[buffer(6)]],
+	device const uchar *light [[buffer(7)]],
 	uint2 gid [[thread_position_in_grid]]) {
 	if (gid.x >= f.size.x || gid.y >= f.size.y) return;
 	float2 ndc = (float2(gid) + 0.5f) / float2(f.size.xy) * 2.0f - 1.0f;
@@ -125,6 +168,8 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 			float tIn = t;
 			for (int k = 0; k < 28; k++) {
 				uint id = occupiedAt(occ, v, f) ? voxelAt(grid, v, f) : 0;
+				// (the eye in water or lava: fluid seen through, as the game draws it from inside)
+				if (id != 0 && f.status.z != 0 && (pal[id].flags & 2)) id = 0;
 				if (id != 0) {
 					Pal e = pal[id];
 					float3 hp = ro + rd * tIn;
@@ -149,7 +194,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 							// (1x1 textures: the plant's average colour over the whole quad)
 							hit = true;
 							tHit = tq;
-							color = rgb(e.sideAvg) * rgb(e.sideTint) * 0.85f;
+							color = rgb(e.sideAvg) * rgb(e.sideTint) * 0.85f * brightness(lightAt(light, v, f), f);
 						}
 						if (hit) {
 							hitT = tHit;
@@ -183,7 +228,15 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 							// 1x1 textures (the record's rules allow them): each face its texture's average colour, tinted
 							float3 c = rgb(topFace ? e.topAvg : e.sideAvg) * rgb(topFace ? e.topTint : e.sideTint);
 							float shade = n.y > 0 ? 1.0f : n.y < 0 ? 0.5f : n.x != 0 ? 0.6f : 0.8f;
-							color = c * shade;
+							// (a full cube's face is lit by the block it faces; a smaller shape or a fluid by its own voxel)
+							int3 lv = (e.flags & 6) ? v : v + int3(n);
+							color = c * shade * brightness(lightAt(light, lv, f), f);
+							if (f.target.w != 0 && all(v == f.target.xyz)) {
+								// the targeted block: vanilla's dark outline along its edges, and darker as it breaks
+								float2 e2 = min(uv, 1.0f - uv);
+								if (min(e2.x, e2.y) < 0.035f) color *= 0.3f;
+								color *= 1.0f - 0.055f * float(max(f.target.w - 1, 0));
+							}
 							hitT = tHit;
 							done = true;
 							break;
@@ -217,22 +270,15 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	float3 sky = mix(f.fog.rgb, f.sky.rgb, saturate(rd.y * 1.6f + 0.1f));
 	if (hitT >= 1e8f) color = sky;
 	else color = mix(color, f.fog.rgb, smoothstep(f.misc.z, f.fog.w, hitT));
-	// the HUD text (F3 lines): the game's font, 6-pixel advance, a dark box behind each line
+	// in water or lava: the view tinted as the game's fog tints it; hurt: a red flash
+	if (f.status.z == 1) color = mix(color * float3(0.45f, 0.6f, 1.0f), float3(0.02f, 0.06f, 0.25f), smoothstep(2.0f, 20.0f, hitT));
+	else if (f.status.z == 2) color = mix(color, float3(0.9f, 0.3f, 0.05f), 0.85f);
+	if (f.status.y > 0) color = mix(color, float3(0.8f, 0.0f, 0.0f), float(f.status.y) * 0.035f);
+	// the HUD text: the F3 lines (top left) and the latest chat (bottom left)
 	uint scale = uint(f.misc.y);
-	uint lineH = 10 * scale, adv = 6 * scale;
-	uint line = (gid.y - 2 * scale) / lineH;
-	if (gid.y >= 2 * scale && line < f.size.w) {
-		uint col = (gid.x - 2 * scale) / adv;
-		uint ch = gid.x >= 2 * scale && col < 64 ? text[line * 64 + col] : 0;
-		if (ch != 0) {
-			color = color * 0.45f;
-			uint lx = ((gid.x - 2 * scale) % adv) / scale, ly = ((gid.y - 2 * scale) % lineH) / scale;
-			if (lx < 8 && ly >= 1 && ly < 9) {
-				uint2 g = uint2((ch & 15) * 8 + lx, (ch >> 4) * 8 + (ly - 1));
-				if (font.read(g).a > 0.5f) color = float3(1);
-			}
-		}
-	}
+	color = textPixel(gid, int2(2 * scale), 0, f.size.w, scale, text, font, color);
+	if (f.chat.x > 0)
+		color = textPixel(gid, int2(2 * scale, int(f.size.y) - int((24 + 10 * f.chat.x) * scale)), 8, f.chat.x, scale, text, font, color);
 	// the HUD, the most basic way: the hotbar's nine slots (each its item's colour, the selected one outlined), health and food
 	{
 		int slot = int(10 * scale), barW = slot * 9;
@@ -245,8 +291,16 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 			bool edge = lx < int(scale) || lx >= slot - int(scale) || py < int(scale) || py >= slot - int(scale);
 			color = edge ? (k == f.hud[2].y ? float3(1) : float3(0.25f)) : item != 0 ? rgb(item) : color * 0.5f;
 		}
+		// the XP bar just above the hotbar
+		if (py == -int(scale) && px >= 0 && px < barW) color = px < barW * int(f.status.w) / 1000 ? float3(0.5f, 1.0f, 0.2f) : float3(0.15f);
+		// air (underwater) above the food bar
+		int ay = y0 - int(7 * scale), bh = int(2 * scale);
+		if (f.status.x != 255 && int(gid.y) >= ay && int(gid.y) < ay + bh) {
+			int halfW = barW / 2 - int(2 * scale), qx = px - (barW - halfW);
+			if (qx >= 0 && qx < halfW) color = qx >= halfW - halfW * int(f.status.x) / 20 ? float3(0.6f, 0.8f, 1.0f) : float3(0.2f);
+		}
 		// health (left) and food (right) above the hotbar: a bar each, 0..20
-		int by = y0 - int(4 * scale), bh = int(2 * scale);
+		int by = y0 - int(4 * scale);
 		if (int(gid.y) >= by && int(gid.y) < by + bh) {
 			int halfW = barW / 2 - int(2 * scale);
 			if (px >= 0 && px < halfW) color = px < halfW * int(f.hud[2].z) / 20 ? float3(0.85f, 0.1f, 0.1f) : float3(0.2f);

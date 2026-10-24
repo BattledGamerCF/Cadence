@@ -98,7 +98,7 @@ void mcrm_font(void *rec, Ctx *ctx, const void *rgba, int w, int h) {
 // One frame on the frame's command buffer: one dispatch traces it and, with interpolation on (the game passes it in the
 // frame's flags), makes the in-between frame of the last two. Returns the texture to present: this frame's colour.
 id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLength, id<MTLBuffer> grid, id<MTLBuffer> bricks, id<MTLBuffer> pal,
-	id<MTLBuffer> entities, id<MTLBuffer> text, id<MTLBuffer> occ, id<MTLTexture> atlas, int interpolate) {
+	id<MTLBuffer> entities, id<MTLBuffer> text, id<MTLBuffer> occ, id<MTLBuffer> light, id<MTLTexture> atlas, int interpolate) {
 	(void) interpolate;  // (in the frame's flags)
 	Rec *r = rec;
 	if (!r->color[0] || !r->font) return nil;
@@ -123,6 +123,7 @@ id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLengt
 		[c setBuffer:entities offset:0 atIndex:4];
 		[c setBuffer:text offset:0 atIndex:5];
 		[c setBuffer:occ offset:0 atIndex:6];
+		[c setBuffer:light offset:0 atIndex:7];
 		[c dispatchThreads:MTLSizeMake(r->w, r->h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		[c endEncoding];
 		if ((r->frames & 63) == 0)

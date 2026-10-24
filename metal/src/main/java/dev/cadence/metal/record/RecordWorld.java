@@ -5,10 +5,12 @@ import java.util.ArrayDeque;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.AABB;
@@ -18,13 +20,16 @@ import org.lwjgl.system.MemoryUtil;
  * Record Mode's world: the client's loaded blocks in a window of W x H x W voxels around the camera (all of the level's
  * height), as palette numbers (ushort, 0 = air) in a shared buffer the trace reads, and per 8^3 brick whether it holds any
  * block (empty bricks are skipped whole). The window is toroidal: as the player crosses chunks it moves by whole chunk
- * columns, and only the columns it gains are written. Block changes come from the game's own section updates.
+ * columns, and only the columns it gains are written. Block changes come from the game's own section updates. Beside each voxel
+ * its light (sky << 4 | block, from the game's own light engine; light changes mark sections for rebuilding too), for vanilla's
+ * flat lighting.
  */
 final class RecordWorld {
 	static final int PALETTE_MAX = 4096, PALETTE_STRIDE = 64;  // bytes per entry (record.metal Pal)
 	final int wlog, w, h, minY;
-	final long grid, bricks, palette, occ;
-	private final long gridAddr, brickAddr, paletteAddr, occAddr;
+	final long grid, bricks, palette, occ, light;
+	private final long gridAddr, brickAddr, paletteAddr, occAddr, lightAddr;
+	private final boolean skyLight;
 	/** Per brick whether it holds a block (the distance field in `bricks` is made from it); whether it changed since. */
 	private final byte[] occupied;
 	private boolean fieldDirty;
@@ -64,6 +69,10 @@ final class RecordWorld {
 		this.occAddr = RecordNative.contents(this.occ);
 		MemoryUtil.memSet(this.occAddr, 0, (long) this.bw * this.bw * this.bh * 64);
 		MemoryUtil.memSet(this.gridAddr, 0, (long) this.w * this.w * this.h * 2);
+		this.light = RecordNative.buffer(ctx, (long) this.w * this.w * this.h);
+		this.lightAddr = RecordNative.contents(this.light);
+		this.skyLight = level.dimensionType().hasSkyLight();
+		MemoryUtil.memSet(this.lightAddr, this.skyLight ? 0xF0 : 0, (long) this.w * this.w * this.h);
 		this.columns = new long[(this.w >> 4) * (this.w >> 4)];
 		java.util.Arrays.fill(this.columns, Long.MIN_VALUE);
 	}
@@ -73,6 +82,7 @@ final class RecordWorld {
 		RecordNative.releaseObject(this.bricks);
 		RecordNative.releaseObject(this.palette);
 		RecordNative.releaseObject(this.occ);
+		RecordNative.releaseObject(this.light);
 	}
 
 	// ---- the window ----
@@ -155,6 +165,12 @@ final class RecordWorld {
 		int y0 = si << 4;
 		int[] counts = new int[8];
 		int bwv = this.w >> 3;
+		// the section's light (null: no data kept there; open sky, or no block light)
+		var pos = net.minecraft.core.SectionPos.of(sx, sy, sz);
+		var engine = this.level.getLightEngine();
+		DataLayer skyData = this.skyLight ? engine.getLayerListener(LightLayer.SKY).getDataLayerData(pos) : null;
+		DataLayer blockData = engine.getLayerListener(LightLayer.BLOCK).getDataLayerData(pos);
+		int skyFill = this.skyLight ? 15 : 0;
 		for (int y = 0; y < 16; y++) {
 			int iy = y0 + y;
 			for (int z = 0; z < 16; z++) {
@@ -166,6 +182,8 @@ final class RecordWorld {
 					long brick = ((long) (iy >> 3) * bwv + (iz >> 3)) * bwv + (ix >> 3);
 					int local = ((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7);
 					MemoryUtil.memPutShort(this.gridAddr + (brick * 512 + local) * 2, (short) id);
+					int sl = skyData != null ? skyData.get(x, y, z) : skyFill, bl = blockData != null ? blockData.get(x, y, z) : 0;
+					MemoryUtil.memPutByte(this.lightAddr + brick * 512 + local, (byte) (sl << 4 | bl));
 					long word = this.occAddr + (brick * 16 + (local >> 5)) * 4;
 					int bit = 1 << (local & 31);
 					int old = MemoryUtil.memGetInt(word);

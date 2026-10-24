@@ -84,6 +84,7 @@
     "HiZProjectionMixin",
     "RecordModeMixin",
     "RecordSectionMixin",
+    "RecordChatMixin",
     "FastPollMixin"
   ],
   "injectors": {
