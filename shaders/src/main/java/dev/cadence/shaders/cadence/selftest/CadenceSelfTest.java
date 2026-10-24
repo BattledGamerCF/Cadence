@@ -765,6 +765,11 @@ public final class CadenceSelfTest {
 					});
 				} else if (lower.startsWith("recordinterp=")) {
 					dev.cadence.metal.record.Record.interpolate = lower.endsWith("on");
+				} else if (lower.startsWith("recorddump=")) {
+					// "recorddump=name": the record frame's inputs into results-able files (tools/record_bench.m)
+					String name = lower.substring(11);
+					mc.execute(() -> LOGGER.info("[selftest] record dump {}: {}", name,
+						dev.cadence.metal.record.Record.dump(mc.gameDirectory.toPath().resolve("screenshots").resolve("dump-" + name))));
 				} else if (lower.startsWith("recordheight=")) {
 					dev.cadence.metal.record.Record.height = Integer.parseInt(lower.substring(13));
 				} else if (lower.startsWith("maxfpsmode=")) {
@@ -1008,8 +1013,9 @@ public final class CadenceSelfTest {
 		LOGGER.info("[selftest] {} {}: fps last 10 s min {} avg {} max {} (scale {}{})", index, step, min, String.format(Locale.ROOT, "%.0f", avg), max,
 			RenderScale.get(), (RenderScale.isAuto() ? " auto, " : ", ") + RenderScale.lastWindow() + "; " + RenderScale.stutter());
 		if (dev.cadence.metal.record.Record.chosen())
-			LOGGER.info("[selftest] {} {}: record {} fps ({} rendered), best {}, GPU {} us/frame", index, step, dev.cadence.metal.record.Record.shown(),
-				dev.cadence.metal.record.Record.rendered(), dev.cadence.metal.record.Record.best(), Math.round(dev.cadence.metal.record.Record.gpuMicros()));
+			LOGGER.info("[selftest] {} {}: record {} fps ({} rendered), best {}, GPU {} us/frame, {}", index, step, dev.cadence.metal.record.Record.shown(),
+				dev.cadence.metal.record.Record.rendered(), dev.cadence.metal.record.Record.best(), Math.round(dev.cadence.metal.record.Record.gpuMicros()),
+				dev.cadence.metal.record.Record.cpuSplit());
 		String label = "selftest-" + index + "-" + step.replaceAll("[^A-Za-z0-9._-]", "_");
 		if (dev.cadence.metal.record.Record.chosen())  // (the record frame itself: the game's own target isn't drawn then)
 			mc.execute(() -> dev.cadence.metal.record.Record.snapshot(mc.gameDirectory.toPath().resolve("screenshots").resolve(label + "-record.png")));

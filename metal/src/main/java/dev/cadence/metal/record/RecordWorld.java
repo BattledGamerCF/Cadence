@@ -18,21 +18,18 @@ import org.lwjgl.system.MemoryUtil;
 
 /**
  * Record Mode's world: the client's loaded blocks in a window of W x H x W voxels around the camera (all of the level's
- * height), as palette numbers (ushort, 0 = air) in a shared buffer the trace reads, and per 8^3 brick whether it holds any
- * block (empty bricks are skipped whole). The window is toroidal: as the player crosses chunks it moves by whole chunk
+ * height), as palette numbers (ushort, 0 = air) in a shared buffer the trace reads, laid out brick-major (8^3 voxels
+ * together), with an occupancy bit per voxel. The window is toroidal: as the player crosses chunks it moves by whole chunk
  * columns, and only the columns it gains are written. Block changes come from the game's own section updates. Beside each voxel
  * its light (sky << 4 | block, from the game's own light engine; light changes mark sections for rebuilding too), for vanilla's
  * flat lighting.
  */
 final class RecordWorld {
-	static final int PALETTE_MAX = 4096, PALETTE_STRIDE = 64;  // bytes per entry (record.metal Pal)
+	static final int PALETTE_MAX = 4096, PALETTE_STRIDE = 16;  // bytes per entry (record.metal: a uint4)
 	final int wlog, w, h, minY;
-	final long grid, bricks, palette, occ, light;
-	private final long gridAddr, brickAddr, paletteAddr, occAddr, lightAddr;
+	final long grid, palette, occ, light;
+	private final long gridAddr, paletteAddr, occAddr, lightAddr;
 	private final boolean skyLight;
-	/** Per brick whether it holds a block (the distance field in `bricks` is made from it); whether it changed since. */
-	private final byte[] occupied;
-	private boolean fieldDirty;
 	private final int bw, bh;
 	/** One above the highest block written (window-relative y): rays above it are sky. Only grows. */
 	int top;
@@ -56,15 +53,11 @@ final class RecordWorld {
 		this.minY = level.getMinY();
 		this.h = level.getHeight();
 		this.grid = RecordNative.buffer(ctx, (long) this.w * this.w * this.h * 2);
-		this.bricks = RecordNative.buffer(ctx, (long) (this.w >> 3) * (this.w >> 3) * (this.h >> 3));
 		this.palette = RecordNative.buffer(ctx, (long) PALETTE_MAX * PALETTE_STRIDE);
 		this.bw = this.w >> 3;
 		this.bh = this.h >> 3;
-		this.occupied = new byte[this.bw * this.bw * this.bh];
 		this.gridAddr = RecordNative.contents(this.grid);
-		this.brickAddr = RecordNative.contents(this.bricks);
 		this.paletteAddr = RecordNative.contents(this.palette);
-		MemoryUtil.memSet(this.brickAddr, 8, (long) this.bw * this.bw * this.bh);
 		this.occ = RecordNative.buffer(ctx, (long) this.bw * this.bw * this.bh * 64);
 		this.occAddr = RecordNative.contents(this.occ);
 		MemoryUtil.memSet(this.occAddr, 0, (long) this.bw * this.bw * this.bh * 64);
@@ -79,7 +72,6 @@ final class RecordWorld {
 
 	void release() {
 		RecordNative.releaseObject(this.grid);
-		RecordNative.releaseObject(this.bricks);
 		RecordNative.releaseObject(this.palette);
 		RecordNative.releaseObject(this.occ);
 		RecordNative.releaseObject(this.light);
@@ -163,7 +155,7 @@ final class RecordWorld {
 		boolean empty = sec == null || sec.hasOnlyAir();
 		int m = this.w - 1;
 		int y0 = si << 4;
-		int[] counts = new int[8];
+		boolean any = false;
 		int bwv = this.w >> 3;
 		// the section's light (null: no data kept there; open sky, or no block light)
 		var pos = net.minecraft.core.SectionPos.of(sx, sy, sz);
@@ -188,71 +180,11 @@ final class RecordWorld {
 					int bit = 1 << (local & 31);
 					int old = MemoryUtil.memGetInt(word);
 					MemoryUtil.memPutInt(word, id != 0 ? old | bit : old & ~bit);
-					if (id != 0) counts[(y >> 3) << 2 | (z >> 3) << 1 | (x >> 3)]++;
+					any |= id != 0;
 				}
 			}
-		}
-		int bm = this.bw - 1;
-		boolean any = false;
-		for (int k = 0; k < 8; k++) {
-			int bx = (((sx << 4) >> 3) + (k & 1)) & bm, bz = (((sz << 4) >> 3) + ((k >> 1) & 1)) & bm, by = (y0 >> 3) + (k >> 2);
-			byte o = (byte) (counts[k] > 0 ? 1 : 0);
-			int at = (by * this.bw + bz) * this.bw + bx;
-			if (this.occupied[at] != o) {
-				this.occupied[at] = o;
-				this.fieldDirty = true;
-			}
-			any |= counts[k] > 0;
 		}
 		if (any) this.top = Math.max(this.top, y0 + 16);
-	}
-
-	// ---- the brick distance field ----
-
-	private byte[] dist, tmp;
-
-	/**
-	 * The bricks' distance field again if any brick filled or emptied: per brick 0 if it holds a block, else the Chebyshev
-	 * distance in bricks to the nearest one that does (at most 8), so a ray crosses that much empty space in one step. Eight
-	 * dilations, each a 3 x 3 x 3 minimum done as three 1-D passes (toroidal like the window; the window's edge is no
-	 * barrier, which only ever makes a distance smaller).
-	 */
-	void updateField() {
-		if (!this.fieldDirty) return;
-		this.fieldDirty = false;
-		int n = this.occupied.length;
-		if (this.dist == null) {
-			this.dist = new byte[n];
-			this.tmp = new byte[n];
-		}
-		byte[] d = this.dist, t = this.tmp;
-		for (int i = 0; i < n; i++) d[i] = (byte) (this.occupied[i] != 0 ? 0 : 8);
-		int bw = this.bw, bh = this.bh, m = bw - 1;
-		for (int it = 0; it < 8; it++) {
-			// x
-			for (int y = 0; y < bh; y++)
-				for (int z = 0; z < bw; z++) {
-					int row = (y * bw + z) * bw;
-					for (int x = 0; x < bw; x++)
-						t[row + x] = (byte) Math.min(d[row + x], Math.min(d[row + ((x + 1) & m)], d[row + ((x - 1) & m)]) + 1);
-				}
-			// z
-			for (int y = 0; y < bh; y++)
-				for (int z = 0; z < bw; z++)
-					for (int x = 0; x < bw; x++) {
-						int at = (y * bw + z) * bw + x;
-						d[at] = (byte) Math.min(t[at], Math.min(t[(y * bw + ((z + 1) & m)) * bw + x], t[(y * bw + ((z - 1) & m)) * bw + x]) + 1);
-					}
-			// y (no wrap: the window has the level's whole height)
-			for (int y = 0; y < bh; y++)
-				for (int i = 0; i < bw * bw; i++) {
-					int at = y * bw * bw + i;
-					int up = y + 1 < bh ? d[at + bw * bw] : 8, down = y > 0 ? d[at - bw * bw] : 8;
-					t[at] = (byte) Math.min(d[at], Math.min(up, down) + 1);
-				}
-			System.arraycopy(t, 0, d, 0, n);
-		}
-		for (int i = 0; i < n; i++) MemoryUtil.memPutByte(this.brickAddr + i, (byte) Math.min(8, d[i]));
 	}
 
 	// ---- the palette ----
@@ -282,28 +214,16 @@ final class RecordWorld {
 		this.tintZ = z;
 	}
 
+	/** A palette entry (record.metal): the top's and sides' colours (1x1 textures: average colour times tint), flags, shape box. */
 	private void writeEntry(int id, BlockState s, boolean fluid) {
 		long at = this.paletteAddr + (long) id * PALETTE_STRIDE;
 		LodColors.Look l = LodColors.look(s);
 		var biome = this.level.getBiome(BlockPos.containing(this.tintX, 64, this.tintZ)).value();
 		int bx = (int) this.tintX, bz = (int) this.tintZ;
-		float[] top = fluid ? new float[4] : l.topUv(), side = fluid ? new float[4] : l.sideUv();
-		for (int i = 0; i < 4; i++) {
-			MemoryUtil.memPutFloat(at + i * 4L, top[i]);
-			MemoryUtil.memPutFloat(at + 16 + i * 4L, side[i]);
-		}
 		int topTint = l.topTint() == LodColors.TINT_NONE ? 0xFFFFFF : LodColors.tint(0xFFFFFF, l.topTint(), l.constant(), biome, bx, bz);
 		int sideTint = l.sideTint() == LodColors.TINT_NONE ? 0xFFFFFF : LodColors.tint(0xFFFFFF, l.sideTint(), l.constant(), biome, bx, bz);
-		int topAvg = l.top(), sideAvg = l.side();
-		if (fluid) {
-			// water and lava: their flat colours (no sprite)
-			topAvg = sideAvg = s.getFluidState().is(net.minecraft.tags.FluidTags.LAVA) ? 0xD96415 : 0x3F76E4;
-			topTint = sideTint = 0xFFFFFF;
-		}
-		MemoryUtil.memPutInt(at + 32, topTint);
-		MemoryUtil.memPutInt(at + 36, sideTint);
-		MemoryUtil.memPutInt(at + 40, topAvg);
-		MemoryUtil.memPutInt(at + 44, sideAvg);
+		int top = times(l.top(), topTint), side = times(l.side(), sideTint);
+		if (fluid) top = side = s.getFluidState().is(net.minecraft.tags.FluidTags.LAVA) ? 0xD96415 : 0x3F76E4;  // (their flat colours)
 		int flags = 0, box = 0;
 		if (l.cross() && !fluid) flags |= 1;
 		if (fluid) flags |= 2;
@@ -318,8 +238,16 @@ final class RecordWorld {
 				}
 			}
 		}
-		MemoryUtil.memPutInt(at + 48, flags);
-		MemoryUtil.memPutInt(at + 52, box);
+		MemoryUtil.memPutInt(at, top);
+		MemoryUtil.memPutInt(at + 4, side);
+		MemoryUtil.memPutInt(at + 8, flags);
+		MemoryUtil.memPutInt(at + 12, box);
+	}
+
+	/** Two rgb colours multiplied, channel by channel. */
+	private static int times(int a, int b) {
+		int r = ((a >> 16) & 255) * ((b >> 16) & 255) / 255, g = ((a >> 8) & 255) * ((b >> 8) & 255) / 255, bl = (a & 255) * (b & 255) / 255;
+		return r << 16 | g << 8 | bl;
 	}
 
 	private static int q(double v) {

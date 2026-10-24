@@ -30,7 +30,7 @@ public final class Record {
 	public static volatile int height = Integer.getInteger("cadence.record.height", 180);
 	/** The voxel window's width, log2 (6: 64 blocks, 2 chunks each way, the game's smallest render distance). */
 	private static final int WLOG = Integer.getInteger("cadence.record.window", 6);
-	private static final int ENTITY_MAX = 32, ENTITY_BYTES = 48, TEXT_LINES = 11, FRAME_BYTES = 4 * 64 + 12 * 16;  // record.metal Frame
+	private static final int ENTITY_MAX = 32, ENTITY_BYTES = 48, TEXT_LINES = 11, FRAME_BYTES = 4 * 64 + 16 * 16;  // record.metal Frame
 
 	private static long rec, ctx, encObj, entities, text, frameBuf;
 	private static Object encoder;
@@ -106,10 +106,66 @@ public final class Record {
 		}
 	}
 
+	/**
+	 * (testing) The last frame's inputs as files in dir, for tools/record_bench.m: frame.bin (the Frame struct), grid,
+	 * palette, occ, light, entities, text (the shared buffers as they are now). Render thread. Whether written.
+	 */
+	public static boolean dump(java.nio.file.Path dir) {
+		RecordWorld wd = world;
+		if (rec == 0 || wd == null) return false;
+		try {
+			java.nio.file.Files.createDirectories(dir);
+			long cells = (long) wd.w * wd.w * wd.h, bricks = cells / 512;
+			write(dir.resolve("frame.bin"), frameBuf, FRAME_BYTES);
+			write(dir.resolve("grid.bin"), RecordNative.contents(wd.grid), cells * 2);
+			write(dir.resolve("palette.bin"), RecordNative.contents(wd.palette), (long) RecordWorld.PALETTE_MAX * RecordWorld.PALETTE_STRIDE);
+			write(dir.resolve("occ.bin"), RecordNative.contents(wd.occ), bricks * 64);
+			write(dir.resolve("light.bin"), RecordNative.contents(wd.light), cells);
+			write(dir.resolve("entities.bin"), RecordNative.contents(entities), (long) ENTITY_MAX * ENTITY_BYTES);
+			write(dir.resolve("text.bin"), RecordNative.contents(text), TEXT_LINES * 64L);
+			return true;
+		} catch (java.io.IOException e) {
+			System.out.println("[cadence] record dump failed: " + e);
+			return false;
+		}
+	}
+
+	private static void write(java.nio.file.Path file, long address, long length) throws java.io.IOException {
+		try (var ch = java.nio.channels.FileChannel.open(file, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE,
+			java.nio.file.StandardOpenOption.TRUNCATE_EXISTING)) {
+			var buf = MemoryUtil.memByteBuffer(address, (int) length);
+			while (buf.hasRemaining()) ch.write(buf);
+		}
+	}
+
 	// ---- the frame ----
 
 	/** GameRenderer.render's turn (the game's own drawing skipped): this frame, compute only. False: not drawn here. */
 	public static boolean frame() {
+		long t0 = System.nanoTime();
+		if (lastEnd != 0) outsideNanos += t0 - lastEnd;
+		try {
+			return frame0();
+		} finally {
+			lastEnd = System.nanoTime();
+			insideNanos += lastEnd - t0;
+			timedFrames++;
+		}
+	}
+
+	// (the frame's CPU time, in Record.frame and in the rest of the game's loop between two of them; read by the self-test)
+	private static long lastEnd, insideNanos, outsideNanos, timedFrames;
+
+	/** "cpu 12.3 us in the record frame + 20.1 us in the game loop" since the last call; resets. */
+	public static String cpuSplit() {
+		long n = Math.max(1, timedFrames);
+		String r = String.format(java.util.Locale.ROOT, "cpu %.1f us in the record frame + %.1f us in the game loop", insideNanos / 1000.0 / n,
+			outsideNanos / 1000.0 / n);
+		insideNanos = outsideNanos = timedFrames = 0;
+		return r;
+	}
+
+	private static boolean frame0() {
 		Minecraft mc = Minecraft.getInstance();
 		try {
 			if (!init(mc)) return false;
@@ -126,7 +182,6 @@ public final class Record {
 			world.follow(eye.x, eye.z);
 			// window upkeep: a little of it at most frames (it's done in a few seconds after joining or moving far)
 			if ((frames & 15) == 0) world.work(400_000);
-			if ((frames & 31) == 0) world.updateField();
 			int[] size = size(mc);
 			if (size[0] != w || size[1] != h) {
 				w = size[0];
@@ -135,7 +190,7 @@ public final class Record {
 			}
 			writeFrame(mc, cam, eye, partial);
 			long atlas = atlasHandle(mc);
-			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.bricks, world.palette, entities, text, world.occ, world.light, atlas,
+			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.palette, entities, text, world.occ, world.light, atlas,
 				interpolate ? 1 : 0);
 			if (tex == 0) return false;
 			presentHandle = tex;
@@ -153,11 +208,15 @@ public final class Record {
 	private static ClientLevel worldLevel;
 	private static long frames;
 
+	private static final int[] SIZE = new int[2];
+
 	private static int[] size(Minecraft mc) {
 		var win = mc.getWindow();
 		double aspect = Math.max(0.5, (double) win.getWidth() / Math.max(1, win.getHeight()));
 		int hh = Math.max(90, height);
-		return new int[] {Math.max(160, (int) Math.round(hh * aspect)) & ~1, hh};
+		SIZE[0] = Math.max(160, (int) Math.round(hh * aspect)) & ~1;
+		SIZE[1] = hh;
+		return SIZE;
 	}
 
 	private static boolean init(Minecraft mc) {
@@ -252,6 +311,8 @@ public final class Record {
 		double dyaw = ((camA[3] - camB[3]) % 360 + 540) % 360 - 180;
 		camera(f + 192, (camA[0] + camB[0]) / 2 - wd.ox, (camA[1] + camB[1]) / 2 - wd.minY, (camA[2] + camB[2]) / 2 - wd.oz, (float) (camB[3] + dyaw / 2),
 			(float) ((camA[4] + camB[4]) / 2), tanX, tanY);
+		// (the in-between frame's two cameras the same: no reprojection needed)
+		boolean still = java.util.Arrays.equals(camA, camB);
 		System.arraycopy(camA, 0, camB, 0, 5);
 		set(camA, eye, yaw, pitch);
 		camsKnown = Math.min(3, camsKnown + 1);
@@ -278,7 +339,7 @@ public final class Record {
 		MemoryUtil.memPutFloat(f + 324, Math.max(1, h / 240));
 		MemoryUtil.memPutFloat(f + 328, fogEnd * 0.6f);
 		MemoryUtil.memPutFloat(f + 332, Math.max(1, wd.top));
-		MemoryUtil.memPutInt(f + 336, interpolate && camsKnown >= 3 ? 1 : 0);
+		MemoryUtil.memPutInt(f + 336, interpolate && camsKnown >= 3 ? still ? 2 : 1 : 0);
 		MemoryUtil.memPutInt(f + 340, darken);
 		MemoryUtil.memPutFloat(f + 344, gamma);
 		writeHud(mc, f + 352);
@@ -305,6 +366,7 @@ public final class Record {
 		MemoryUtil.memPutInt(f + 424, in);
 		MemoryUtil.memPutInt(f + 428, Math.clamp((int) (p.experienceProgress * 1000), 0, 1000));
 		MemoryUtil.memPutInt(f + 432, chatLines);
+		for (int l = 0; l < 16; l++) MemoryUtil.memPutFloat(f + 448 + l * 4L, curve(l));
 		frames++;
 	}
 
@@ -362,7 +424,12 @@ public final class Record {
 
 	/** record.metal brightness(): a light level (sky << 4 | block) as vanilla's lightmap makes it brightness. */
 	static float brightness(int sky, int block) {
-		float lv = Math.max(Math.max(sky - darken, 0), block) / 15f;
+		return curve(Math.max(Math.max(sky - darken, 0), block));
+	}
+
+	/** A light level 0..15 as brightness: vanilla's lightmap curve (no ambient light), the Brightness option, its floor. */
+	private static float curve(int level) {
+		float lv = level / 15f;
 		float b = lv / (4 - 3 * lv), nb = 1 - b;
 		b += (1 - nb * nb * nb * nb - b) * gamma;
 		return b * 0.96f + 0.04f;
@@ -422,9 +489,11 @@ public final class Record {
 		for (int i = 0; i < n; i++) {
 			Entity e = NEAR[i];
 			if (e == null || e.isRemoved()) continue;
-			Vec3 p = e.getPosition(partial);
-			AABB b = e.getBoundingBox().move(p.x - e.getX(), p.y - e.getY(), p.z - e.getZ());
-			double x0 = b.minX - wd.ox, y0 = b.minY - wd.minY, z0 = b.minZ - wd.oz, x1 = b.maxX - wd.ox, y1 = b.maxY - wd.minY, z1 = b.maxZ - wd.oz;
+			// (the box where the entity is this frame, between its last two ticks: no Vec3/AABB made, 32 a frame at 20k frames)
+			AABB b = e.getBoundingBox();
+			double mx = (e.xo - e.getX()) * (1 - partial) - wd.ox, my = (e.yo - e.getY()) * (1 - partial) - wd.minY,
+				mz = (e.zo - e.getZ()) * (1 - partial) - wd.oz;
+			double x0 = b.minX + mx, y0 = b.minY + my, z0 = b.minZ + mz, x1 = b.maxX + mx, y1 = b.maxY + my, z1 = b.maxZ + mz;
 			int[] rect = screenRect(f, x0, y0, z0, x1, y1, z1);
 			if (rect == null) continue;
 			long at = RecordNative.contents(entities) + (long) out * ENTITY_BYTES;
@@ -441,27 +510,71 @@ public final class Record {
 		return out;
 	}
 
-	/** The pixels a box can cover (the camera at f), null when off screen; the whole screen when a corner is behind the eye. */
+	private static final double[] CX = new double[8], CY = new double[8], CZ = new double[8];  // (screenRect's corners; render thread)
+
+	/**
+	 * The pixels a box can cover (the camera at f), null when off screen. A box partly behind the eye is clipped at the near
+	 * plane (its edges' crossings projected with its corners in front), so only a box the eye is inside covers the whole
+	 * screen: every pixel in a box's rectangle tests it, a test per pixel for a whole-screen one.
+	 */
 	private static int[] screenRect(long f, double x0, double y0, double z0, double x1, double y1, double z1) {
 		float px = MemoryUtil.memGetFloat(f), py = MemoryUtil.memGetFloat(f + 4), pz = MemoryUtil.memGetFloat(f + 8);
+		if (px >= x0 && px <= x1 && py >= y0 && py <= y1 && pz >= z0 && pz <= z1) return rect(0, 0, w - 1, h - 1);
 		float fx = MemoryUtil.memGetFloat(f + 16), fy = MemoryUtil.memGetFloat(f + 20), fz = MemoryUtil.memGetFloat(f + 24), tx = MemoryUtil.memGetFloat(f + 28);
 		float rx = MemoryUtil.memGetFloat(f + 32), rz = MemoryUtil.memGetFloat(f + 40), ty = MemoryUtil.memGetFloat(f + 44);
 		float ux = MemoryUtil.memGetFloat(f + 48), uy = MemoryUtil.memGetFloat(f + 52), uz = MemoryUtil.memGetFloat(f + 56);
-		double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+		// the corners in camera space (right, up, forward)
+		double[] cx = CX, cy = CY, cz = CZ;
 		for (int k = 0; k < 8; k++) {
 			double vx = ((k & 1) == 0 ? x0 : x1) - px, vy = ((k & 2) == 0 ? y0 : y1) - py, vz = ((k & 4) == 0 ? z0 : z1) - pz;
-			double z = vx * fx + vy * fy + vz * fz;
-			if (z < 0.05) return new int[] {0, 0, w - 1, h - 1};
-			double sx = (vx * rx + vz * rz) / (z * tx), sy = (vx * ux + vy * uy + vz * uz) / (z * ty);
-			minX = Math.min(minX, sx);
-			maxX = Math.max(maxX, sx);
-			minY = Math.min(minY, sy);
-			maxY = Math.max(maxY, sy);
+			cx[k] = vx * rx + vz * rz;
+			cy[k] = vx * ux + vy * uy + vz * uz;
+			cz[k] = vx * fx + vy * fy + vz * fz;
 		}
+		final double near = 0.05;
+		double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+		boolean any = false;
+		for (int k = 0; k < 8; k++) {
+			if (cz[k] >= near) {
+				double sx = cx[k] / (cz[k] * tx), sy = cy[k] / (cz[k] * ty);
+				minX = Math.min(minX, sx);
+				maxX = Math.max(maxX, sx);
+				minY = Math.min(minY, sy);
+				maxY = Math.max(maxY, sy);
+				any = true;
+			}
+			// the edges to the corners one bit up: where one crosses the near plane
+			for (int bit = 1; bit < 8; bit <<= 1) {
+				if ((k & bit) != 0) continue;
+				int j = k | bit;
+				if ((cz[k] < near) == (cz[j] < near)) continue;
+				double s = (near - cz[k]) / (cz[j] - cz[k]);
+				double sx = (cx[k] + (cx[j] - cx[k]) * s) / (near * tx), sy = (cy[k] + (cy[j] - cy[k]) * s) / (near * ty);
+				minX = Math.min(minX, sx);
+				maxX = Math.max(maxX, sx);
+				minY = Math.min(minY, sy);
+				maxY = Math.max(maxY, sy);
+			}
+		}
+		if (!any) return null;  // (wholly behind the eye)
 		if (maxX < -1 || minX > 1 || maxY < -1 || minY > 1) return null;
+		minX = Math.max(-1.5, minX);
+		maxX = Math.min(1.5, maxX);
+		minY = Math.max(-1.5, minY);
+		maxY = Math.min(1.5, maxY);
 		int a = (int) Math.floor((minX * 0.5 + 0.5) * w) - 1, b = (int) Math.floor((0.5 - maxY * 0.5) * h) - 1;
 		int c = (int) Math.ceil((maxX * 0.5 + 0.5) * w) + 1, d = (int) Math.ceil((0.5 - minY * 0.5) * h) + 1;
-		return new int[] {Math.max(0, a), Math.max(0, b), Math.min(w - 1, c), Math.min(h - 1, d)};
+		return rect(Math.max(0, a), Math.max(0, b), Math.min(w - 1, c), Math.min(h - 1, d));
+	}
+
+	private static final int[] RECT = new int[4];  // (screenRect's result, used at once; render thread)
+
+	private static int[] rect(int a, int b, int c, int d) {
+		RECT[0] = a;
+		RECT[1] = b;
+		RECT[2] = c;
+		RECT[3] = d;
+		return RECT;
 	}
 
 	private static int colorOf(Entity e) {

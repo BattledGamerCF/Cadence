@@ -18,22 +18,19 @@ struct Frame {
 	uint4 grid;               // x: window width log2 (x and z), y: height, z: x offset & mask (toroidal), w: z offset
 	uint4 size;               // x, y: output size; z: entity count; w: text lines
 	float4 misc;              // x: atlas max mip; y: text scale; z: fog start; w: the window's top (above every block)
-	uint4 flags;              // x: make the in-between frame of the last two (frame interpolation) in this dispatch;
+	uint4 flags;              // x: make the in-between frame of the last two (frame interpolation) in this dispatch (2: the
+	                          // camera didn't move between them, so no reprojection: the two frames' blend);
 	                          // y: the sky's darkening (Level.getSkyDarken, 0..11 at night); z: the brightness option (float bits)
 	uint4 hud[3];             // the HUD: 9 hotbar slot colours (0: empty); then the selected slot, health and food (0..20)
 	int4 target;              // the block the crosshair is on (window-relative); w: 0 none, else 2 + its breaking stage (-1..9)
 	uint4 status;             // x: air (0..20; 255: not shown), y: hurt (0..10), z: eye in water (1) or lava (2), w: XP progress (0..1000)
 	uint4 chat;               // x: chat lines shown (text lines 8.., bottom left)
+	float4 light[4];          // brightness of light levels 0..15 (vanilla's lightmap curve and the Brightness option)
 };
 
-// A palette entry (RecordWorld.PALETTE_STRIDE words): top uv rect, side uv rect, then tints, average colours, flags, shape.
-struct Pal {
-	float4 top, side;
-	uint topTint, sideTint, topAvg, sideAvg;
-	uint flags;  // 1: crossed plant (two alpha-tested diagonal quads), 2: fluid, 4: shape box (not a full cube)
-	uint box;    // shape box: min x,y,z, max x,y,z, 5 bits each (0..16)
-	uint pad0, pad1;
-};
+// A palette entry (RecordWorld.PALETTE_STRIDE bytes), a uint4: x the top's colour, y the sides' (each its texture's average,
+// tinted: 1x1 textures); z flags (1: crossed plant, 2: fluid, 4: shape box, not a full cube); w the shape box (min x,y,z, max
+// x,y,z, 5 bits each, 0..16).
 
 struct Entity {
 	float4 lo;    // xyz min (window-relative); w: colour bits
@@ -41,7 +38,6 @@ struct Entity {
 	int4 rect;    // screen rectangle the box covers (pixels, inclusive), from the CPU
 };
 
-constexpr sampler atlasSampler(filter::nearest, mip_filter::nearest, address::clamp_to_edge);
 
 static inline float3 rgb(uint c) { return float3((c >> 16) & 255, (c >> 8) & 255, c & 255) / 255.0f; }
 
@@ -74,32 +70,21 @@ static inline uint lightAt(device const uchar *light, int3 v, constant Frame &f)
 	return light[brick * 512 + (((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7))];
 }
 
-// A light level as vanilla's lightmap makes it brightness: the sky's part darkened for the time of day, the brighter of sky
-// and block light, vanilla's curve (no ambient light), the Brightness option, and the lightmap's floor.
+// A light level (sky << 4 | block) as vanilla's lightmap makes it brightness: the sky's part darkened for the time of day,
+// the brighter of the two, then the table the game's side fills (Record.brightness: vanilla's curve, the Brightness option).
 static inline float brightness(uint l, constant Frame &f) {
-	float lv = max(max(float(l >> 4) - float(f.flags.y), 0.0f), float(l & 15u)) / 15.0f;
-	float b = lv / (4.0f - 3.0f * lv);
-	float nb = 1.0f - b;
-	b = mix(b, 1.0f - nb * nb * nb * nb, as_type<float>(f.flags.z));
-	return b * 0.96f + 0.04f;
+#ifdef RB_NO_LIGHT
+	return 1.0f;
+#endif
+	uint lv = max(uint(max(int(l >> 4) - int(f.flags.y), 0)), l & 15u);
+	return f.light[lv >> 2][lv & 3];
 }
 
-// Per 8^3 brick: 0 when it holds a block, else its distance (Chebyshev, in bricks, at most 8) to the nearest brick that does.
-static inline uint brickAt(device const uchar *bricks, int3 b, constant Frame &f) {
-	uint bw = (1u << f.grid.x) >> 3, m = bw - 1;
-	uint ix = ((uint(b.x) + (f.grid.z >> 3)) & m), iz = ((uint(b.z) + (f.grid.w >> 3)) & m);
-	return bricks[(uint(b.y) * bw + iz) * bw + ix];
-}
 
 static inline float3 rayDir(Camera c, float2 ndc) {
 	return normalize(c.fwd.xyz + c.right.xyz * (ndc.x * c.fwd.w) + c.up.xyz * (ndc.y * c.right.w));
 }
 
-// The atlas texel of a face: sprite rect, face-local uv, level of detail from the distance.
-static inline float4 sampleFace(texture2d<float> atlas, float4 rect, float2 uv, float lod) {
-	float2 p = mix(rect.xy, rect.zw, clamp(uv, 0.001f, 0.999f));
-	return atlas.sample(atlasSampler, p, level(lod));
-}
 
 // One pixel of a block of text lines (the game's font, 6-pixel advance, a dark box behind each line): `first` the block's
 // first line in the text buffer, `origin` its top left.
@@ -107,7 +92,7 @@ static inline float3 textPixel(uint2 gid, int2 origin, uint first, uint count, u
 	float3 color) {
 	int2 p = int2(gid) - origin;
 	uint lineH = 10 * scale, adv = 6 * scale;
-	if (p.x < 0 || p.y < 0) return color;
+	if (p.x < 0 || p.y < 0 || uint(p.y) >= count * lineH || uint(p.x) >= 64 * adv) return color;  // (no divisions outside the block)
 	uint line = uint(p.y) / lineH, col = uint(p.x) / adv;
 	if (line >= count || col >= 64) return color;
 	uint ch = text[(first + line) * 64 + col];
@@ -126,8 +111,8 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	texture2d<float> atlas [[texture(2)]], texture2d<float> font [[texture(3)]], texture2d<float> colorA [[texture(4)]],
 	texture2d<float> depthA [[texture(5)]], texture2d<float> colorB [[texture(6)]], texture2d<float> depthB [[texture(7)]],
 	texture2d<float, access::write> outMid [[texture(8)]], constant Frame &f [[buffer(0)]],
-	device const ushort *grid [[buffer(1)]], device const uchar *bricks [[buffer(2)]], device const Pal *pal [[buffer(3)]],
-	device const Entity *entities [[buffer(4)]], device const uchar *text [[buffer(5)]], device const uint *occ [[buffer(6)]],
+	device const ushort *grid [[buffer(1)]], device const uint4 *pal [[buffer(3)]],
+	constant Entity *entities [[buffer(4)]], device const uchar *text [[buffer(5)]], device const uint *occ [[buffer(6)]],
 	device const uchar *light [[buffer(7)]],
 	uint2 gid [[thread_position_in_grid]]) {
 	if (gid.x >= f.size.x || gid.y >= f.size.y) return;
@@ -143,117 +128,115 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	float hitT = 1e9f;
 	float3 color = float3(0);
 	int3 stepv = int3(sign(rd));
+#ifdef RB_NO_TRACE
+	tExit = -1;
+#endif
 	if (tEnter < tExit) {
 		float t = tEnter;
 		int axis = tn.x >= tn.y && tn.x >= tn.z ? 0 : tn.y >= tn.z ? 1 : 2;
 		bool done = false;
-		for (int it = 0; it < 96 && !done && t < tExit; it++) {
-			float3 p = ro + rd * (t + 1e-4f);
-			int3 v = int3(floor(p));
-			if (any(v < 0) || v.x >= W || v.y >= H || v.z >= W) break;
-			int3 b = v >> 3;
-			uint dist = brickAt(bricks, b, f);
-			if (dist > 0) {
-				// every brick within dist - 1 of this one is empty (the brick distance field): to the far side of that cube
-				float3 bmin = float3((b - int(dist - 1)) * 8), bmax = float3((b + int(dist)) * 8);
-				float3 tb = (select(bmin, bmax, rd > 0) - ro) * inv;
-				float tn2 = min(min(tb.x, tb.y), tb.z);
-				axis = tb.x <= tb.y && tb.x <= tb.z ? 0 : tb.y <= tb.z ? 1 : 2;
-				t = max(tn2, t + 1e-4f);
-				continue;
-			}
-			// voxels within the brick
-			float3 tMax = (float3(v) + float3(rd > 0) - ro) * inv;
-			float3 tDelta = abs(inv);
+		uint4 hitE = uint4(0);  // the block hit: its palette entry, voxel, face axis (3: a crossed plant)
+		int3 hitV = int3(0);
+		int hitAx = 0;
+#ifdef RB_STEPS
+		uint innerSteps = 0;
+#endif
+		// The voxels along the ray one by one (Amanatides & Woo), as far as the fog is total: beyond it every block is the fog's
+		// colour. (Within a window of 64 blocks, fog total at 28, a ray crosses at most ~50 voxels: no empty-space skipping.)
+		{
+			float tEnd = min(tExit, f.fog.w);
+			int3 v = int3(floor(ro + rd * (t + 1e-4f)));
+			float3 tMax = (float3(v) + float3(rd > 0) - ro) * inv, tDelta = abs(inv);
 			float tIn = t;
-			for (int k = 0; k < 28; k++) {
+			for (int k = 0; k < 96 && tIn < tEnd; k++) {
+				// (x and z can't leave the window before tEnd, and wrap if rounding says otherwise; y is checked: it indexes memory)
+				if (uint(v.y) >= uint(H)) break;
+#ifdef RB_STEPS
+				innerSteps++;
+#endif
 				uint id = occupiedAt(occ, v, f) ? voxelAt(grid, v, f) : 0;
-				// (the eye in water or lava: fluid seen through, as the game draws it from inside)
-				if (id != 0 && f.status.z != 0 && (pal[id].flags & 2)) id = 0;
 				if (id != 0) {
-					Pal e = pal[id];
-					float3 hp = ro + rd * tIn;
-					float3 n = float3(0);
-					n[axis] = -float(stepv[axis]);
-					float tHit = tIn;
-					bool hit = true;
-					float2 uv;
-					if (e.flags & 1) {
-						// crossed plant: the two diagonal planes, alpha-tested
-						hit = false;
+					uint4 e = pal[id];
+#ifdef RB_SIMPLE_HIT
+					hitE = e; hitV = v; hitAx = axis; hitT = tIn; done = true; break;
+#endif
+					if (f.status.z != 0 && (e.z & 2)) {
+						// (the eye in water or lava: fluid seen through, as the game draws it from inside)
+					} else if (e.z & 1) {
+						// crossed plant: the two diagonal planes x - z = 0 and x + z = 1, the plant's colour over the whole quad
 						float3 o = ro - float3(v);
-						for (int q = 0; q < 2 && !hit; q++) {
-							// plane x - z = 0 (q 0) or x + z = 1 (q 1)
+						for (int q = 0; q < 2 && !done; q++) {
 							float3 pn = q == 0 ? float3(1, 0, -1) : float3(1, 0, 1);
-							float pd = q == 0 ? 0.0f : 1.0f;
 							float den = dot(pn, rd);
 							if (abs(den) < 1e-6f) continue;
-							float tq = (pd - dot(pn, o)) / den;
+							float tq = (float(q) - dot(pn, o)) / den;
 							float3 lp = o + rd * tq;
 							if (tq < tIn - 1e-4f || any(lp < 0.0f) || any(lp > 1.0f)) continue;
-							// (1x1 textures: the plant's average colour over the whole quad)
-							hit = true;
-							tHit = tq;
-							color = rgb(e.sideAvg) * rgb(e.sideTint) * 0.85f * brightness(lightAt(light, v, f), f);
+							hitE = e; hitV = v; hitAx = 3; hitT = tq; done = true;
 						}
-						if (hit) {
-							hitT = tHit;
-							done = true;
+						if (done) break;
+					} else if (e.z & 4) {
+						// a shape smaller than the cube: its box within the voxel
+						float3 bl = float3(e.w & 31, (e.w >> 5) & 31, (e.w >> 10) & 31) / 16.0f;
+						float3 bh = float3((e.w >> 15) & 31, (e.w >> 20) & 31, (e.w >> 25) & 31) / 16.0f;
+						float3 o = ro - float3(v);
+						float3 a0 = (bl - o) * inv, a1 = (bh - o) * inv;
+						float3 an = min(a0, a1), af = max(a0, a1);
+						float te = max(max(an.x, an.y), an.z), tx = min(min(af.x, af.y), af.z);
+						if (te <= tx && tx >= 0) {
+							hitE = e; hitV = v; hitAx = an.x >= an.y && an.x >= an.z ? 0 : an.y >= an.z ? 1 : 2; hitT = max(te, tIn); done = true;
 							break;
 						}
 					} else {
-						if (e.flags & 4) {
-							// a shape smaller than the cube: its box within the voxel
-							float3 bl = float3(e.box & 31, (e.box >> 5) & 31, (e.box >> 10) & 31) / 16.0f;
-							float3 bh = float3((e.box >> 15) & 31, (e.box >> 20) & 31, (e.box >> 25) & 31) / 16.0f;
-							float3 o = ro - float3(v);
-							float3 a0 = (bl - o) * inv, a1 = (bh - o) * inv;
-							float3 an = min(a0, a1), af = max(a0, a1);
-							float te = max(max(an.x, an.y), an.z), tx = min(min(af.x, af.y), af.z);
-							if (te > tx || tx < 0) hit = false;
-							else {
-								tHit = max(te, tIn);
-								int ax = an.x >= an.y && an.x >= an.z ? 0 : an.y >= an.z ? 1 : 2;
-								n = float3(0);
-								n[ax] = -float(stepv[ax]);
-								hp = ro + rd * tHit;
-							}
-						}
-						if (hit) {
-							float3 fr = fract(hp + n * 1e-3f);
-							if (n.y != 0) uv = fr.xz;
-							else if (n.x != 0) uv = float2(fr.z, 1.0f - fr.y);
-							else uv = float2(fr.x, 1.0f - fr.y);
-							bool topFace = n.y != 0;
-							// 1x1 textures (the record's rules allow them): each face its texture's average colour, tinted
-							float3 c = rgb(topFace ? e.topAvg : e.sideAvg) * rgb(topFace ? e.topTint : e.sideTint);
-							float shade = n.y > 0 ? 1.0f : n.y < 0 ? 0.5f : n.x != 0 ? 0.6f : 0.8f;
-							// (a full cube's face is lit by the block it faces; a smaller shape or a fluid by its own voxel)
-							int3 lv = (e.flags & 6) ? v : v + int3(n);
-							color = c * shade * brightness(lightAt(light, lv, f), f);
-							if (f.target.w != 0 && all(v == f.target.xyz)) {
-								// the targeted block: vanilla's dark outline along its edges, and darker as it breaks
-								float2 e2 = min(uv, 1.0f - uv);
-								if (min(e2.x, e2.y) < 0.035f) color *= 0.3f;
-								color *= 1.0f - 0.055f * float(max(f.target.w - 1, 0));
-							}
-							hitT = tHit;
-							done = true;
-							break;
-						}
+						hitE = e; hitV = v; hitAx = axis; hitT = tIn; done = true;
+						break;
 					}
 				}
-				// next voxel
+#ifdef RB_BRANCHY
 				if (tMax.x < tMax.y && tMax.x < tMax.z) { tIn = tMax.x; v.x += stepv.x; tMax.x += tDelta.x; axis = 0; }
 				else if (tMax.y < tMax.z) { tIn = tMax.y; v.y += stepv.y; tMax.y += tDelta.y; axis = 1; }
 				else { tIn = tMax.z; v.z += stepv.z; tMax.z += tDelta.z; axis = 2; }
-				if (any(v < 0) || v.x >= W || v.y >= H || v.z >= W) { t = tExit; break; }
-				if (any((v >> 3) != b)) { t = tIn; break; }
+#else
+				// the next voxel, branch-free: along the axis whose boundary comes first
+				bool3 m = tMax <= min(tMax.yzx, tMax.zxy);
+				axis = m.x ? 0 : m.y ? 1 : 2;
+				tIn = min(min(tMax.x, tMax.y), tMax.z);
+				v += select(int3(0), stepv, m);
+				tMax += select(float3(0), tDelta, m);
+#endif
 			}
 		}
+		if (done) {
+			// the hit's colour: its face's 1x1 texture (the average colour, tinted), shaded as vanilla's flat lighting does
+			if (hitAx == 3) color = rgb(hitE.y) * 0.85f * brightness(lightAt(light, hitV, f), f);
+			else {
+				float3 n = float3(0);
+				n[hitAx] = -float(stepv[hitAx]);
+				float shade = n.y > 0 ? 1.0f : n.y < 0 ? 0.5f : n.x != 0 ? 0.6f : 0.8f;
+				// (a full cube's face is lit by the block it faces; a smaller shape or a fluid by its own voxel)
+				int3 lv = (hitE.z & 6) ? hitV : hitV + int3(n);
+				color = rgb(n.y != 0 ? hitE.x : hitE.y) * shade * brightness(lightAt(light, lv, f), f);
+				if (f.target.w != 0 && all(hitV == f.target.xyz)) {
+					// the targeted block: vanilla's dark outline along its edges, and darker as it breaks
+					float3 fr = fract(ro + rd * hitT + n * 1e-3f);
+					float2 uv = n.y != 0 ? fr.xz : n.x != 0 ? fr.zy : fr.xy;
+					float2 e2 = min(uv, 1.0f - uv);
+					if (min(e2.x, e2.y) < 0.035f) color *= 0.3f;
+					color *= 1.0f - 0.055f * float(max(f.target.w - 1, 0));
+				}
+			}
+		}
+#ifdef RB_STEPS
+		outColor.write(float4(0, float(innerSteps) / 255.0f, 0, 1), gid);
+		return;
+#endif
 	}
 	// entities: boxes, only those whose screen rectangle holds this pixel
+#ifdef RB_NO_ENT
+	for (uint i = 0; i < 0; i++) {
+#else
 	for (uint i = 0; i < f.size.z; i++) {
+#endif
 		Entity e = entities[i];
 		if (int(gid.x) < e.rect.x || int(gid.x) > e.rect.z || int(gid.y) < e.rect.y || int(gid.y) > e.rect.w) continue;
 		float3 a0 = (e.lo.xyz - ro) * inv, a1 = (e.hi.xyz - ro) * inv;
@@ -274,6 +257,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	if (f.status.z == 1) color = mix(color * float3(0.45f, 0.6f, 1.0f), float3(0.02f, 0.06f, 0.25f), smoothstep(2.0f, 20.0f, hitT));
 	else if (f.status.z == 2) color = mix(color, float3(0.9f, 0.3f, 0.05f), 0.85f);
 	if (f.status.y > 0) color = mix(color, float3(0.8f, 0.0f, 0.0f), float(f.status.y) * 0.035f);
+#ifndef RB_NO_HUD
 	// the HUD text: the F3 lines (top left) and the latest chat (bottom left)
 	uint scale = uint(f.misc.y);
 	color = textPixel(gid, int2(2 * scale), 0, f.size.w, scale, text, font, color);
@@ -312,6 +296,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	int2 cc = int2(gid) - int2(f.size.xy / 2);
 	int arm = int(4 * scale), thick = int(max(1u, scale / 2));
 	if ((abs(cc.x) <= arm && abs(cc.y) < thick) || (abs(cc.y) <= arm && abs(cc.x) < thick)) color = 1.0f - color;
+#endif
 	outColor.write(float4(color, 1), gid);
 	outDepth.write(float4(hitT), gid);
 	// frame interpolation, in the same dispatch: the frame halfway between the last two (one frame behind this one)
@@ -324,6 +309,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 // mean).
 static float3 interpolated(uint2 gid, constant Frame &f, texture2d<float> colorA, texture2d<float> depthA, texture2d<float> colorB,
 	texture2d<float> depthB) {
+	if (f.flags.x == 2) return (colorA.read(gid).rgb + colorB.read(gid).rgb) * 0.5f;
 	float2 size = float2(f.size.xy);
 	float2 ndc = (float2(gid) + 0.5f) / size * 2.0f - 1.0f;
 	ndc.y = -ndc.y;
