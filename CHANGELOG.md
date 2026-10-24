@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased (after 0.4.0-beta.15)
+## 0.4.0-beta.16 / shaders 0.3.15 (2026-10-24)
 
 Render Max FPS is now playable, and it is Cadence's run at the Minecraft FPS record (Hone's rules: a playable resolution,
 every block and entity rendered, every frame really rendered). All of it is automatic when the button is on:
