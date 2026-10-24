@@ -770,6 +770,8 @@ public final class CadenceSelfTest {
 					String name = lower.substring(11);
 					mc.execute(() -> LOGGER.info("[selftest] record dump {}: {}", name,
 						dev.cadence.metal.record.Record.dump(mc.gameDirectory.toPath().resolve("screenshots").resolve("dump-" + name))));
+				} else if (lower.startsWith("recordextract=")) {
+					dev.cadence.metal.record.Record.skipExtract = lower.endsWith("skip");
 				} else if (lower.startsWith("recordbatch=")) {
 					dev.cadence.metal.MetalBridge.recordBatch(Integer.parseInt(lower.substring(12)));
 				} else if (lower.startsWith("recordheight=")) {

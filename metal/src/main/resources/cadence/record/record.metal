@@ -146,6 +146,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 					if (f.status.z != 0 && (e.z & 2)) {
 						// (the eye in water or lava: fluid seen through, as the game draws it from inside)
 					} else if (e.z & 1) {
+#ifndef RB_NO_PLANTS
 						// crossed plant: the two diagonal planes x - z = 0 and x + z = 1, the plant's colour over the whole quad
 						float3 o = ro - float3(v);
 						for (int q = 0; q < 2; q++) {  // (both: the nearer one hit counts)
@@ -158,6 +159,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 							hitE = e; hitV = v; hitAx = 3; hitT = tq; done = true;
 						}
 						if (done) break;
+#endif
 					} else if (e.z & 4) {
 						// a shape smaller than the cube: its box within the voxel
 						float3 bl = float3(e.w & 31, (e.w >> 5) & 31, (e.w >> 10) & 31) / 16.0f;

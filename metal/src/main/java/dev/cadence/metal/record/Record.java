@@ -24,6 +24,8 @@ import org.lwjgl.system.MemoryUtil;
  */
 public final class Record {
 	private static volatile boolean chosen;
+	/** (testing, in-run A/B) GameRenderer.extract skipped in record frames (RecordExtractMixin). */
+	public static volatile boolean skipExtract = true;
 	/** Frame interpolation (-Dcadence.record.interpolate=false: off). */
 	public static volatile boolean interpolate = !"false".equals(System.getProperty("cadence.record.interpolate"));
 	/** The record resolution's height (16:9 width); -Dcadence.record.height. */
@@ -34,6 +36,8 @@ public final class Record {
 
 	private static long rec, ctx, encObj, entities, entitiesAddr, frameBuf;
 	private static RecordHud hud;
+	private static long hudBuffer;
+	private static int hudW, hudH;
 	private static final int[] HUD_STATE = new int[RecordHud.STATE];
 	private static Object encoder;
 	private static RecordWorld world;
@@ -238,7 +242,11 @@ public final class Record {
 				RecordNative.size(rec, ctx, w, h);
 			}
 			writeFrame(mc, cam, eye, partial);
-			long hudBuffer = hud.frame(frames, w, h, Math.max(1, h / 240), lines, 7, CHAT_SHOWN, chatLines, HUD_STATE);
+			if ((frames & 31) == 1 || hudBuffer == 0 || hudW != w || hudH != h) {  // (the HUD state is new on frames & 31 == 0)
+				hudBuffer = hud.frame(frames, w, h, Math.max(1, h / 240), lines, 7, CHAT_SHOWN, chatLines, HUD_STATE);
+				hudW = w;
+				hudH = h;
+			}
 			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.palette, entities, hudBuffer, world.occ, world.light,
 				interpolate ? 1 : 0);
 			if (tex == 0) return false;
@@ -391,7 +399,10 @@ public final class Record {
 		MemoryUtil.memPutInt(f + 336, interpolate && camsKnown >= 3 ? still ? 2 : 1 : 0);
 		MemoryUtil.memPutInt(f + 340, darken);
 		MemoryUtil.memPutFloat(f + 344, gamma);
-		writeHud(mc, f + 352);
+		// (the HUD's values, the player's air, hurt and XP, the fluid at the eye: every 32nd frame, ~1.5 ms; they change at
+		// the game's tick rate, 50 ms. Every frame they were a tenth of the render thread at 25k frames a second)
+		boolean hudNow = (frames & 31) == 0 || hudBuffer == 0;
+		if (hudNow) writeHud(mc, f + 352);
 		// the block the crosshair is on, and how far it's broken
 		int tw = 0;
 		if (mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult bh && bh.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
@@ -403,6 +414,11 @@ public final class Record {
 		}
 		MemoryUtil.memPutInt(f + 412, tw);
 		// air, hurt, the fluid the eye is in, XP; the latest chat lines
+		if (hudNow) status(mc, eye, f);
+		frames++;
+	}
+
+	private static void status(Minecraft mc, Vec3 eye, long f) {
 		var p = mc.player;
 		int air = p.getAirSupply(), maxAir = Math.max(1, p.getMaxAirSupply());
 		var eyePos = net.minecraft.core.BlockPos.containing(eye);
@@ -417,7 +433,6 @@ public final class Record {
 		MemoryUtil.memPutInt(f + 424, in);
 		MemoryUtil.memPutInt(f + 428, Math.clamp((int) (p.experienceProgress * 1000), 0, 1000));
 		MemoryUtil.memPutInt(f + 432, chatLines);
-		frames++;
 	}
 
 	/** A camera (record.metal Camera): window-relative eye, forward + tan(half h fov), right + tan(half v fov), up. */
@@ -613,6 +628,22 @@ public final class Record {
 		float fx = MemoryUtil.memGetFloat(f + 16), fy = MemoryUtil.memGetFloat(f + 20), fz = MemoryUtil.memGetFloat(f + 24), tx = MemoryUtil.memGetFloat(f + 28);
 		float rx = MemoryUtil.memGetFloat(f + 32), rz = MemoryUtil.memGetFloat(f + 40), ty = MemoryUtil.memGetFloat(f + 44);
 		float ux = MemoryUtil.memGetFloat(f + 48), uy = MemoryUtil.memGetFloat(f + 52), uz = MemoryUtil.memGetFloat(f + 56);
+		// the box's bounding sphere, when wholly in front of the eye: its rectangle from one projection (conservative). Eight
+		// corners projected and twelve edges clipped for each of 32 boxes was a third of the render thread at 25k frames.
+		{
+			double mx = (x0 + x1) * 0.5 - px, my = (y0 + y1) * 0.5 - py, mz = (z0 + z1) * 0.5 - pz;
+			double r = 0.5 * Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0) + (z1 - z0) * (z1 - z0));
+			double z = mx * fx + my * fy + mz * fz;
+			if (z - r > 0.05) {
+				// (over the sphere's box in camera space, sideways L - r..L + r at depth z - r..z + r: the extremes of side / depth)
+				double lx = mx * rx + mz * rz, ly = mx * ux + my * uy + mz * uz, near = z - r, far = z + r;
+				double maxX = (lx + r) / (lx + r > 0 ? near : far) / tx, minX = (lx - r) / (lx - r < 0 ? near : far) / tx;
+				double maxY = (ly + r) / (ly + r > 0 ? near : far) / ty, minY = (ly - r) / (ly - r < 0 ? near : far) / ty;
+				if (maxX < -1 || minX > 1 || maxY < -1 || minY > 1) return null;
+				return pixels(Math.max(-1.5, minX), Math.min(1.5, maxX), Math.max(-1.5, minY), Math.min(1.5, maxY));
+			}
+			if (z + r < 0.05) return null;  // (wholly behind the eye)
+		}
 		// the corners in camera space (right, up, forward)
 		double[] cx = CX, cy = CY, cz = CZ;
 		for (int k = 0; k < 8; k++) {
@@ -648,10 +679,11 @@ public final class Record {
 		}
 		if (!any) return null;  // (wholly behind the eye)
 		if (maxX < -1 || minX > 1 || maxY < -1 || minY > 1) return null;
-		minX = Math.max(-1.5, minX);
-		maxX = Math.min(1.5, maxX);
-		minY = Math.max(-1.5, minY);
-		maxY = Math.min(1.5, maxY);
+		return pixels(Math.max(-1.5, minX), Math.min(1.5, maxX), Math.max(-1.5, minY), Math.min(1.5, maxY));
+	}
+
+	/** A rectangle in normalised screen coordinates as the pixels it covers (a pixel's margin), clamped to the frame. */
+	private static int[] pixels(double minX, double maxX, double minY, double maxY) {
 		int a = (int) Math.floor((minX * 0.5 + 0.5) * w) - 1, b = (int) Math.floor((0.5 - maxY * 0.5) * h) - 1;
 		int c = (int) Math.ceil((maxX * 0.5 + 0.5) * w) + 1, d = (int) Math.ceil((0.5 - minY * 0.5) * h) + 1;
 		return rect(Math.max(0, a), Math.max(0, b), Math.min(w - 1, c), Math.min(h - 1, d));
