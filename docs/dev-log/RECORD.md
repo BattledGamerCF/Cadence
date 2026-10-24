@@ -86,3 +86,44 @@ It reproduces the game's GPU time per frame within a few percent.
 | entity tiles, HUD overlay | 74 |
 
 In game (moderately warm Mac, north view, 320 x 180, interpolation on): 12.6k rendered / 25.2k shown, GPU 72 us a frame.
+
+## Review (docs/dev-log/RECORD-REVIEW.md) and what came of it
+
+A read-only Sonnet review found, among others: the record frame was presented over every screen (pause, inventory, death
+showed a frozen world); the record image was presented **upside down** (the game's targets are stored bottom row first and
+the present flips them; the self-test's snapshot read the texture raw, so it looked right); F5 filled the screen with the
+player's box; the window reached only 16 blocks in +x/+z; off/on kept a stale world; the level leaked after leaving it; tile
+masks were zeroed under in-flight frames. All fixed (commit 14d3ede); third person now pulls the eye back as vanilla does.
+Also: every other present shows the interpolated frame (it was made but never shown).
+
+Tried and dropped: see-through glass, ice and water. Every variant (in the walk, a second walk after the hit, packed state)
+cost every ray 7-15% (register pressure: this kernel's speed follows its register count), so water and glass are opaque, in
+their average colour.
+
+## Where it stands (cool M2 MacBook Air, 8 GB, macOS 27.0, 320 x 180, interpolation on)
+
+| View | rendered fps | shown fps | GPU us/frame |
+|---|---|---|---|
+| looking straight down (ground) | 25,300 (best reading 26,300) | 50,700 (best 52,556) | 33 |
+| forest, looking 60 degrees down | 14,500 | 29,000 | 64 (bench) |
+| forest, looking south / north | 15,200-16,100 | 30,400-32,300 | 56-59 |
+| 160 x 90 (not playable: the CPU's limit) | 51,000-65,000 | | 13-17 |
+
+- The CPU's own frame is ~15 us (4 us in Record, ~11 in the game's loop): at 320 x 180 the GPU is the limit, and the
+  trace's cost follows the slowest ray in each 32-pixel SIMD group (~8 voxel steps a ray in a forest, ~2 looking down).
+- The M2 Air's GPU throttles within a minute or two of full load (the same view 61 -> 140 us/frame hot). The counter's
+  "Best" (a 1-second window) keeps the peak.
+
+## A record attempt
+
+1. Let the Mac cool (lid open, nothing else running, ~20 minutes idle); plugged in.
+2. In a world: Video Settings > Cadence: Extras > Render Max FPS: On. Leave the menu.
+3. Look straight down (or at the simplest view you want to show), stand still, wait ~5 s.
+4. The F3 text shows "N fps (M rendered)" and "Best": record both and a screenshot/video. Rendered frames alone count against
+   the record; the interpolated frames are counted apart.
+
+Disclosure for Hone (R02): MacBook Air M2 (8-core GPU), 8 GB, macOS 27.0; Minecraft 26.3, Fabric, Cadence (native Metal
+backend) with Render Max FPS: every frame one GPU compute pass ray-tracing the loaded world (2 chunks each way) at 320 x 180,
+each block face its texture's average colour (1x1 textures) with vanilla's flat lighting, entities as boxes, the HUD drawn
+by the CPU when it changes; no upscaling; frame interpolation counted separately; frames past one a refresh aren't presented
+(as with VSync off), and 4 frames are committed to a command buffer (each its own dispatch and image).

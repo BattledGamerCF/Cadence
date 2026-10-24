@@ -2,6 +2,23 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased (after 0.4.0-beta.15)
+
+Render Max FPS is now playable, and it is Cadence's run at the Minecraft FPS record (Hone's rules: a playable resolution,
+every block and entity rendered, every frame really rendered). All of it is automatic when the button is on:
+- **The world drawn by Record Mode**: one compute dispatch a frame, no render pass. The loaded blocks around you (2 chunks
+  each way) are ray-traced at 320 x 180 with no upscaling. Each block face is drawn as one colour, its texture's average (a
+  1x1 texture), and lit as Minecraft's flat lighting lights it: sky and block light, time of day, the Brightness option,
+  darker sides and bottoms. Plants are drawn as their crossed quads, slabs and similar as their shape, entities as lit boxes.
+- **Everything still works**: the targeted block's outline and break progress, the hotbar, health, food, XP, air
+  underwater, the hurt flash, water and lava views, chat, F3-style text, third person (F5), and night and the dimensions'
+  skies. Any screen (pause, inventory, death) draws the game as usual.
+- **Frame interpolation**: the frame halfway between each two is made too, and every other present shows one. The counter
+  shows the frames made and, of them, the frames rendered.
+- **On an M2 MacBook Air (cool), looking down**: 25,300 fps rendered, 50,700 shown (best 52,556). The Hone record is 21,632.
+  Looking around a forest: 14,000-16,000 rendered (28,000-32,000 shown).
+- The old black-screen mode is behind `-Dcadence.maxfps.blank=true`.
+
 ## 0.4.0-beta.15 / shaders 0.3.14 (2026-10-23)
 
 (0.4.0-beta.14 was a pre-release build for an audit, docs/dev-log/BUG-HUNT-10-23.md; everything in it is listed here,
