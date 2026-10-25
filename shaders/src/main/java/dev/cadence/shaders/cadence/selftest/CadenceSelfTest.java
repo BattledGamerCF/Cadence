@@ -116,6 +116,17 @@ public final class CadenceSelfTest {
 				} else if (lower.equals("photo")) {
 					// "photo": Photo Mode's shot, as F9 takes it
 					mc.execute(() -> dev.cadence.shaders.cadence.render.PhotoMode.take(mc));
+				} else if (lower.startsWith("watts=")) {
+					// "watts=S": the whole Mac's draw averaged over S seconds (sampled 4 times a second)
+					int seconds = Integer.parseInt(lower.substring(6));
+					double sum = 0;
+					int n = 0;
+					for (int k = 0; k < seconds * 4; k++) {
+						double w = dev.cadence.metal.MacSystem.systemWatts();
+						if (w > 0) { sum += w; n++; }
+						sleep(250);
+					}
+					LOGGER.info("[selftest] watts: {} W over {} s ({} samples), fps {}", String.format(Locale.ROOT, "%.2f", n > 0 ? sum / n : -1), seconds, n, mc.getFps());
 				} else if (lower.equals("batteryinfo")) {
 					// "batteryinfo": the battery estimate's inputs (energy left, the Mac's draw) and its text
 					LOGGER.info("[selftest] batteryinfo: {} Wh left, Mac draws {} W, on battery {}, Low Power Mode {}, estimate '{}'",
@@ -209,7 +220,8 @@ public final class CadenceSelfTest {
 					// fall wholly in each state (thermal drift is slow next to 2 s, so both states see the same Mac)
 					String[] a = lower.substring(3).split(":");
 					dev.cadence.shaders.cadence.mesh.MeshStateCache.drawListModes();
-					abTest(mc, a[0], Integer.parseInt(a[1]));
+					// ("ab=FEATURE:SECONDS:PERIOD": each state PERIOD seconds, its first half not counted: features that rebuild chunks)
+					abTest(mc, a[0], Integer.parseInt(a[1]), a.length > 2 ? Integer.parseInt(a[2]) : 2);
 					LOGGER.info("[selftest] ab {} draw lists: {}", a[0], dev.cadence.shaders.cadence.mesh.MeshStateCache.drawListModes());
 				} else if (lower.startsWith("join=")) {
 					// "join=WORLD": open a singleplayer world from the title screen (after "leave")
@@ -432,6 +444,10 @@ public final class CadenceSelfTest {
 				} else if (lower.equals("leaves=smart") || lower.equals("leaves=detailed")) {
 					boolean smart = lower.endsWith("smart");
 					mc.execute(() -> dev.cadence.shaders.cadence.mesh.SmartLeaves.setEnabled(smart));
+				} else if (lower.startsWith("smartleaves=")) {
+					// "smartleaves=on|off": Leaves: Smart (chunks rebuilt; saved like the button)
+					boolean on = lower.endsWith("on");
+					mc.execute(() -> dev.cadence.shaders.cadence.mesh.SmartLeaves.setEnabled(on));
 				} else if (lower.startsWith("leaves=")) {
 					// "leaves=fancy|fast": the game's See-Through Leaves option (cutoutLeaves), chunks rebuilt
 					boolean cut = lower.endsWith("fancy");
@@ -953,6 +969,10 @@ public final class CadenceSelfTest {
 		mc.execute(() -> {
 			switch (feature) {
 				case "facecull" -> dev.cadence.shaders.cadence.facecull.FaceCull.enabled = on;
+				// (measurement: what the HUD and hand, the clouds cost: "on" = shown)
+				case "smartleaves" -> dev.cadence.shaders.cadence.mesh.SmartLeaves.setEnabled(on);
+				case "hud" -> { if (mc.gui.hud.isHidden() == on) mc.gui.hud.toggle(); }
+				case "clouds" -> mc.options.cloudStatus().set(on ? net.minecraft.client.CloudStatus.FANCY : net.minecraft.client.CloudStatus.OFF);
 				case "hiz" -> dev.cadence.shaders.cadence.hiz.HiZ.enabled = on;
 				case "hizvanilla" -> dev.cadence.shaders.cadence.hiz.HiZ.vanilla = on;
 				case "packeddraws" -> dev.cadence.shaders.cadence.alloc.PackedDraws.enabled = on;
@@ -994,7 +1014,7 @@ public final class CadenceSelfTest {
 		});
 	}
 
-	private static void abTest(Minecraft mc, String feature, int seconds) {
+	private static void abTest(Minecraft mc, String feature, int seconds, int period) {
 		double[] cpuMs = new double[2];
 		int[] cpuN = new int[2];
 		double[] gpu = new double[2], interval = new double[2];
@@ -1005,9 +1025,10 @@ public final class CadenceSelfTest {
 			on = !on;
 			abSet(mc, feature, on);
 			long w0 = RenderScale.windows(), wStart = w0;
-			long until = System.nanoTime() + 2_000_000_000L;
-			// the render thread's CPU time per frame in this state (after 300 ms to settle): CPU work shows even when the GPU sets the pace
-			sleep(300);
+			long until = System.nanoTime() + period * 1_000_000_000L;
+			// the render thread's CPU time per frame in this state (after 300 ms to settle, or half a long period): CPU work shows even when the GPU sets the pace
+			sleep(period > 2 ? period * 500L : 300);
+			w0 = RenderScale.windows();
 			java.lang.management.ThreadMXBean mx = java.lang.management.ManagementFactory.getThreadMXBean();
 			long tid = RenderScale.renderThreadId, cpu0 = tid >= 0 ? mx.getThreadCpuTime(tid) : -1, f0 = RenderScale.frameCount;
 			while (System.nanoTime() < until) {
