@@ -48,23 +48,17 @@ static inline uint cellIndex(int3 v, constant Frame &f) {
 	return (uint(v.y) << (2 * f.grid.x)) | (((uint(v.z) + f.grid.w) & m) << f.grid.x) | ((uint(v.x) + f.grid.z) & m);
 }
 
-static inline uint voxelAt(device const ushort *grid, int3 v, constant Frame &f) {
-	return grid[cellIndex(v, f)];
-}
+// A voxel's word (RecordWorld): air: its light (sky << 4 | block); a full block (FULL): its top and side colours, RGB555, its
+// tint in them; a smaller or special block (SPECIAL: plants, shapes, fluids): its palette entry and its own light (bits 12..19).
+// A ray reads one word a step; the air it was in before a full block's face is that face's light (vanilla's flat lighting),
+// so a full block's hit reads nothing more (a palette entry and a light byte after the walk were a third of the frame).
+#define FULL 0x40000000u
+#define SPECIAL 0x80000000u
 
-// An occupancy bit per voxel, so a ray crossing air tests one bit a step and reads the block id only where there is a block.
-static inline bool occupiedAt(device const uint *bits, int3 v, constant Frame &f) {
-	uint i = cellIndex(v, f);
-	return (bits[i >> 5] >> (i & 31)) & 1u;
-}
+static inline float3 rgb555(uint c) { return float3((c >> 10) & 31, (c >> 5) & 31, c & 31) * (1.0f / 31.0f); }
 
-// The light where a face looks out (vanilla's flat lighting, Smooth Lighting off): per voxel sky light << 4 | block light,
-// laid out as the grid. Above the window's blocks it's open sky; below the world, dark.
-static inline uint lightAt(device const uchar *light, int3 v, constant Frame &f) {
-	if (v.y >= int(f.grid.y)) return 0xF0u;
-	if (v.y < 0) return 0u;
-	return light[cellIndex(v, f)];
-}
+// The light a word holds: air's, or a special block's own.
+static inline uint wordLight(uint w) { return (w & SPECIAL) ? (w >> 12) & 255u : w & 255u; }
 
 // A light level (sky << 4 | block) as vanilla's lightmap makes it brightness: the sky's part darkened for the time of day,
 // the brighter of the two, vanilla's curve (as Record.curve).
@@ -95,9 +89,9 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	texture2d<float> colorA [[texture(4)]],
 	texture2d<float> depthA [[texture(5)]], texture2d<float> colorB [[texture(6)]], texture2d<float> depthB [[texture(7)]],
 	texture2d<float, access::write> outMid [[texture(8)]], constant Frame &f [[buffer(0)]],
-	device const ushort *grid [[buffer(1)]], device const uint4 *pal [[buffer(3)]],
-	constant Entity *entities [[buffer(4)]], device const uint *hud [[buffer(5)]], device const uint *occ [[buffer(6)]],
-	device const uchar *light [[buffer(7)]], device const uint *tiles [[buffer(8)]],
+	device const uint *grid [[buffer(1)]], device const uint4 *pal [[buffer(3)]],
+	constant Entity *entities [[buffer(4)]], device const uint *hud [[buffer(5)]], device const uint *tiles [[buffer(8)]],
+	device const uint *cells [[buffer(9)]],
 	uint2 gid [[thread_position_in_grid]]) {
 	if (gid.x >= f.size.x || gid.y >= f.size.y) return;
 #ifdef RB_FLOOR
@@ -127,7 +121,8 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 		float t = tEnter;
 		int axis = tn.x >= tn.y && tn.x >= tn.z ? 0 : tn.y >= tn.z ? 1 : 2;
 		bool done = false;
-		uint4 hitE = uint4(0);  // the block hit: its palette entry, voxel, face axis (3: a crossed plant)
+		// the block hit: its top and side colours (RGB888), the light its face gets, voxel, face axis (3: a crossed plant)
+		uint hitTop = 0, hitSide = 0, hitLight = 0;
 		int3 hitV = int3(0);
 		int hitAx = 0;
 #ifdef RB_STEPS
@@ -140,22 +135,49 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 			int3 v = int3(floor(ro + rd * (t + 1e-4f)));
 			float3 tMax = (float3(v) + float3(rd > 0) - ro) * inv, tDelta = abs(inv);
 			float tIn = t;
+			uint prev = 0xF0u;  // (the last voxel's word: at first open sky, the camera above the window)
+#ifndef RB_NO_CELLS
+			// Above the height field (RecordWorld: the highest block of each 8 x 8-column cell) a ray crosses a cell in one step: to
+			// where it leaves the cell sideways or, going down, reaches the cell's top; the voxel walk takes over below it. Sky
+			// views 3.5x faster, ground views about the same.
+			for (int k = 0; k < 24 && tIn < tEnd; k++) {
+				if (uint(v.y) >= uint(H)) break;
+				uint cm = (1u << f.grid.x) - 1;
+				int ctop = int(cells[(((uint(v.z) + f.grid.w) & cm) >> 3) * (uint(W) >> 3) + (((uint(v.x) + f.grid.z) & cm) >> 3)]);
+				if (v.y < ctop) break;
+				float2 lo = float2(v.xz & ~7), ts = (select(lo, lo + 8.0f, rd.xz > 0) - ro.xz) * inv.xz;
+				float tj = min(ts.x, ts.y);
+				int ax = ts.x <= ts.y ? 0 : 2;
+				if (rd.y < 0) {
+					float td = (float(ctop) - ro.y) * inv.y;
+					if (td < tj) { tj = td; ax = 1; }
+				}
+				tIn = max(tj, tIn);
+				v = int3(floor(ro + rd * (tIn + 1e-4f)));
+				tMax = (float3(v) + float3(rd > 0) - ro) * inv;
+				axis = ax;
+			}
+#endif
 			for (int k = 0; k < 96 && tIn < tEnd; k++) {
 				// (x and z can't leave the window before tEnd, and wrap if rounding says otherwise; y is checked: it indexes memory)
 				if (uint(v.y) >= uint(H)) break;
 #ifdef RB_STEPS
 				innerSteps++;
 #endif
-				uint id = occupiedAt(occ, v, f) ? voxelAt(grid, v, f) : 0;
-				if (id != 0) {
-					uint4 e = pal[id];
-#ifdef RB_SIMPLE_HIT
-					hitE = e; hitV = v; hitAx = axis; hitT = tIn; done = true; break;
-#endif
+				uint word = grid[cellIndex(v, f)];
+				if (word & FULL) {
+					// a full block: its face, lit by the air the ray came through
+					hitTop = word;
+					hitSide = word >> 15;
+					hitLight = wordLight(prev);
+					hitV = v; hitAx = axis; hitT = tIn; done = true;
+					break;
+				}
+				if (word & SPECIAL) {
+					uint4 e = pal[word & 0xFFFu];
 					if (f.status.z != 0 && (e.z & 2)) {
 						// (the eye in water or lava: fluid seen through, as the game draws it from inside)
 					} else if (e.z & 1) {
-#ifndef RB_NO_PLANTS
 						// crossed plant: the two diagonal planes x - z = 0 and x + z = 1, the plant's colour over the whole quad
 						float3 o = ro - float3(v);
 						for (int q = 0; q < 2; q++) {  // (both: the nearer one hit counts)
@@ -165,12 +187,15 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 							float tq = (float(q) - dot(pn, o)) / den;
 							float3 lp = o + rd * tq;
 							if (tq < tIn - 1e-4f || any(lp < 0.0f) || any(lp > 1.0f) || (done && tq >= hitT)) continue;
-							hitE = e; hitV = v; hitAx = 3; hitT = tq; done = true;
+							hitV = v; hitAx = 3; hitT = tq; done = true;
 						}
-						if (done) break;
-#endif
+						if (done) {
+							hitSide = e.y;
+							hitLight = wordLight(word);
+							break;
+						}
 					} else if (e.z & 4) {
-						// a shape smaller than the cube: its box within the voxel
+						// a shape smaller than the cube: its box within the voxel, lit by its own voxel
 						float3 bl = float3(e.w & 31, (e.w >> 5) & 31, (e.w >> 10) & 31) / 16.0f;
 						float3 bh = float3((e.w >> 15) & 31, (e.w >> 20) & 31, (e.w >> 25) & 31) / 16.0f;
 						float3 o = ro - float3(v);
@@ -178,14 +203,18 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 						float3 an = min(a0, a1), af = max(a0, a1);
 						float te = max(max(an.x, an.y), an.z), tx = min(min(af.x, af.y), af.z);
 						if (te <= tx && tx >= 0) {
-							hitE = e; hitV = v; hitAx = an.x >= an.y && an.x >= an.z ? 0 : an.y >= an.z ? 1 : 2; hitT = max(te, tIn); done = true;
+							hitTop = e.x; hitSide = e.y; hitLight = wordLight(word);
+							hitV = v; hitAx = an.x >= an.y && an.x >= an.z ? 0 : an.y >= an.z ? 1 : 2; hitT = max(te, tIn); done = true;
 							break;
 						}
 					} else {
-						hitE = e; hitV = v; hitAx = axis; hitT = tIn; done = true;
+						// a fluid (as a full cube), lit by its own voxel
+						hitTop = e.x; hitSide = e.y; hitLight = wordLight(word);
+						hitV = v; hitAx = axis; hitT = tIn; done = true;
 						break;
 					}
 				}
+				prev = word;
 #ifdef RB_BRANCHY
 				if (tMax.x < tMax.y && tMax.x < tMax.z) { tIn = tMax.x; v.x += stepv.x; tMax.x += tDelta.x; axis = 0; }
 				else if (tMax.y < tMax.z) { tIn = tMax.y; v.y += stepv.y; tMax.y += tDelta.y; axis = 1; }
@@ -200,20 +229,17 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 #endif
 			}
 		}
-#if RB_STOP == 2
-		outColor.write(float4(hitT, float(hitE.x & 255), 0, 1), gid);
-		return;
-#endif
 		if (done) {
 			// the hit's colour: its face's 1x1 texture (the average colour, tinted), shaded as vanilla's flat lighting does
-			if (hitAx == 3) color = rgb(hitE.y) * 0.85f * brightness(lightAt(light, hitV, f), f);
+			float bright = brightness(hitLight, f);
+			if (hitAx == 3) color = rgb(hitSide) * 0.85f * bright;
 			else {
 				float3 n = float3(0);
 				n[hitAx] = -float(stepv[hitAx]);
 				float shade = n.y > 0 ? 1.0f : n.y < 0 ? 0.5f : n.x != 0 ? 0.6f : 0.8f;
-				// (a full cube's face is lit by the block it faces; a smaller shape or a fluid by its own voxel)
-				int3 lv = (hitE.z & 6) ? hitV : hitV + int3(n);
-				color = rgb(n.y != 0 ? hitE.x : hitE.y) * shade * brightness(lightAt(light, lv, f), f);
+				bool full = (hitTop & FULL) != 0;
+				float3 c = full ? rgb555(n.y != 0 ? hitTop : hitSide) : rgb(n.y != 0 ? hitTop : hitSide);
+				color = c * shade * bright;
 				if (f.target.w != 0 && all(hitV == f.target.xyz)) {
 					// the targeted block: vanilla's dark outline along its edges, and darker as it breaks
 					float3 fr = fract(ro + rd * hitT + n * 1e-3f);
@@ -265,7 +291,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 #ifndef RB_NO_HUD
 	if (f.flags.w == 0) {
 	// the HUD (RecordHud: text, hotbar, bars), drawn by the CPU when it changes, blended over the frame
-	uint o = hud[gid.y * f.size.x + gid.x];
+	uint o = hud[gid.y * f.size.x + gid.x];  // (unconditional: skipping the HUD's empty rows cost 14%, the load issued late)
 	if (o != 0) {
 		float4 hc = unpack_unorm4x8_to_float(o);
 		color = mix(color, hc.rgb, hc.a);
@@ -282,7 +308,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	outColor.write(float4(color, 1), st);
 	outDepth.write(float4(hitT), st);
 	// frame interpolation, in the same dispatch: the frame halfway between the last two (one frame behind this one)
-	if (f.flags.x != 0) outMid.write(float4(interpolated(gid, f, colorA, depthA, colorB, depthB), 1), st);
+	if (f.flags.x & 3) outMid.write(float4(interpolated(gid, f, colorA, depthA, colorB, depthB), 1), st);
 }
 
 // Frame interpolation: the frame halfway between the last two (a the newer, b the older), by reprojection. Each pixel's ray
@@ -292,7 +318,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 static float3 interpolated(uint2 gid, constant Frame &f, texture2d<float> colorA, texture2d<float> depthA, texture2d<float> colorB,
 	texture2d<float> depthB) {
 	uint2 st = uint2(gid.x, f.size.y - 1 - gid.y);  // (the textures' rows are bottom first: see record_trace)
-	if (f.flags.x == 2) return (colorA.read(st).rgb + colorB.read(st).rgb) * 0.5f;
+	if ((f.flags.x & 3) == 2) return (colorA.read(st).rgb + colorB.read(st).rgb) * 0.5f;
 	float2 size = float2(f.size.xy);
 	float2 ndc = (float2(gid) + 0.5f) / size * 2.0f - 1.0f;
 	ndc.y = -ndc.y;

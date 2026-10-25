@@ -70,7 +70,10 @@ int main(int argc, char **argv) {
 		int tgx = 8, tgy = 8, batch = getenv("RB_BATCH") ? atoi(getenv("RB_BATCH")) : 1;
 		if (getenv("RB_TG")) sscanf(getenv("RB_TG"), "%dx%d", &tgx, &tgy);
 		id<MTLBuffer> grid = load(d, dir, @"grid.bin"), pal = load(d, dir, @"palette.bin"),
-			occ = load(d, dir, @"occ.bin"), light = load(d, dir, @"light.bin"), ents = load(d, dir, @"entities.bin");
+			ents = load(d, dir, @"entities.bin");
+		// (the occupancy bits, when the dump has them: RB_HYBRID)
+		NSData *occData = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"occ.bin"]];
+		id<MTLBuffer> occ = occData ? [d newBufferWithBytes:occData.bytes length:occData.length options:MTLResourceStorageModeShared] : nil;
 		// the entity tile masks (Record.placeEntities), made again from the dump's rectangles (older dumps have none)
 		int tilesX = (w + 7) >> 3, tilesY = (h + 7) >> 3, nEnt = *(uint32_t *) ((char *) frame.mutableBytes + 312);
 		*(uint32_t *) ((char *) frame.mutableBytes + 436) = tilesX;
@@ -81,24 +84,29 @@ int main(int argc, char **argv) {
 			for (int ty = r[1] >> 3; ty <= r[3] >> 3 && ty < tilesY; ty++)
 				for (int tx = r[0] >> 3; tx <= r[2] >> 3 && tx < tilesX; tx++) ((uint32_t *) tiles.contents)[ty * tilesX + tx] |= 1u << i;
 		}
-		if (getenv("RB_TOLINEAR")) {
-			// (the dump's brick-major buffers as x-fastest linear ones, for the RB_LINEAR layout)
-			uint32_t *gi = (uint32_t *) ((char *) frame.mutableBytes + 288);
-			int W0 = 1 << gi[0], H0 = gi[1], bw0 = W0 >> 3;
-			NSMutableData *g2 = [NSMutableData dataWithLength:grid.length], *l2 = [NSMutableData dataWithLength:light.length], *o2 = [NSMutableData dataWithLength:occ.length];
-			for (int iy = 0; iy < H0; iy++)
-				for (int iz = 0; iz < W0; iz++)
-					for (int ix = 0; ix < W0; ix++) {
-						int bi = (((iy >> 3) * bw0 + (iz >> 3)) * bw0 + (ix >> 3)) * 512 + ((iy & 7) * 8 + (iz & 7)) * 8 + (ix & 7);
-						int li = (iy * W0 + iz) * W0 + ix;
-						((uint16_t *) g2.mutableBytes)[li] = ((uint16_t *) grid.contents)[bi];
-						((uint8_t *) l2.mutableBytes)[li] = ((uint8_t *) light.contents)[bi];
-						if ((((uint32_t *) occ.contents)[bi >> 5] >> (bi & 31)) & 1) ((uint32_t *) o2.mutableBytes)[li >> 5] |= 1u << (li & 31);
-					}
-			memcpy(grid.contents, g2.bytes, grid.length);
-			memcpy(light.contents, l2.bytes, light.length);
-			memcpy(occ.contents, o2.bytes, occ.length);
+		// the column tops (RB_COLTOP): per x, z the highest block's y + 1, made from the voxel words; above them air in open sky
+		uint32_t *gi2 = (uint32_t *) ((char *) frame.mutableBytes + 288);
+		int Wc = 1 << gi2[0], Hc = gi2[1];
+		id<MTLBuffer> colTop = [d newBufferWithLength:(NSUInteger) Wc * Wc * 2 options:MTLResourceStorageModeShared];
+		for (int col = 0; col < Wc * Wc; col++) {
+			uint16_t t = 0;
+			for (int y = Hc - 1; y >= 0; y--)
+				if (((uint32_t *) grid.contents)[(size_t) y * Wc * Wc + col] & 0xC0000000u) { t = y + 1; break; }
+			((uint16_t *) colTop.contents)[col] = t;
 		}
+		*(uint32_t *) ((char *) frame.mutableBytes + 320) = 0xF0;  // (misc.x: the air word above the columns)
+		id<MTLBuffer> cells = [d newBufferWithLength:(NSUInteger) (Wc / 8) * (Wc / 8) * 4 options:MTLResourceStorageModeShared];
+		memset(cells.contents, 0, cells.length);
+		for (int col = 0; col < Wc * Wc; col++) {
+			int x = col % Wc, z = col / Wc;
+			uint32_t *c = &((uint32_t *) cells.contents)[(z / 8) * (Wc / 8) + x / 8];
+			uint16_t t = ((uint16_t *) colTop.contents)[col];
+			if (t > *c) *c = t;
+		}
+		// (RB_HUD_ROWS: the rows between the HUD's top and bottom parts, left empty; RB_MOVING: depth written)
+		((uint32_t *) ((char *) frame.mutableBytes + 432))[2] = 74;
+		((uint32_t *) ((char *) frame.mutableBytes + 432))[3] = h - 50;
+		if (getenv("RB_MOVING")) *(uint32_t *) ((char *) frame.mutableBytes + 336) |= 4;
 		// the HUD overlay (RecordHud): the dump's when it has one, else none drawn
 		NSData *hudData = [NSData dataWithContentsOfFile:[dir stringByAppendingPathComponent:@"hud.bin"]];
 		id<MTLBuffer> text = [d newBufferWithLength:(NSUInteger) w * h * 4 options:MTLResourceStorageModeShared];
@@ -154,9 +162,9 @@ int main(int argc, char **argv) {
 							[c setBuffer:pal offset:0 atIndex:3];
 							[c setBuffer:ents offset:0 atIndex:4];
 							[c setBuffer:text offset:0 atIndex:5];
-							[c setBuffer:occ offset:0 atIndex:6];
-							[c setBuffer:light offset:0 atIndex:7];
 							[c setBuffer:tiles offset:0 atIndex:8];
+							[c setBuffer:colTop offset:0 atIndex:6];
+							[c setBuffer:cells offset:0 atIndex:9];
 							int a = (cur + ring - lagA) % ring, b = (cur + ring - lagB) % ring;
 							[c setTexture:(ring == 4 ? mids[cur] : mid) atIndex:8];
 							[c setTexture:color[cur] atIndex:0];
@@ -207,7 +215,8 @@ int main(int argc, char **argv) {
 				id<MTLTexture> ts[9] = {color[cur], depth[cur], atlas, font, color[a], depth[a], color[b], depth[b], mid};
 				for (int k = 0; k < 9; k++) [c setTexture:ts[k] atIndex:k];
 				[c setBytes:frame.bytes length:frame.length atIndex:0];
-				id<MTLBuffer> bs[9] = {nil, grid, nil, pal, ents, text, occ, light, tiles};
+				id<MTLBuffer> bs[9] = {nil, grid, nil, pal, ents, text, colTop, nil, tiles};
+				[c setBuffer:cells offset:0 atIndex:9];
 				for (int k = 1; k < 9; k++) if (bs[k]) [c setBuffer:bs[k] offset:0 atIndex:k];
 				[c dispatchThreads:MTLSizeMake(w, getenv("RB_HALFH") ? (h + 1) / 2 : h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
 				[c endEncoding];

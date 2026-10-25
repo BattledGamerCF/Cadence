@@ -108,7 +108,7 @@ void mcrm_size(void *rec, Ctx *ctx, int w, int h) {
 // One frame on the frame's command buffer: one dispatch traces it and, with interpolation on (the game passes it in the
 // frame's flags), makes the in-between frame of the last two. Returns the texture to present: this frame's colour.
 id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLength, id<MTLBuffer> grid, id<MTLBuffer> pal,
-	id<MTLBuffer> entities, id<MTLBuffer> hud, id<MTLBuffer> occ, id<MTLBuffer> light, int interpolate) {
+	id<MTLBuffer> entities, id<MTLBuffer> hud, id<MTLBuffer> cells, int interpolate) {
 	(void) interpolate;  // (in the frame's flags)
 	Rec *r = rec;
 	if (!r->color[0]) return nil;
@@ -133,9 +133,8 @@ id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLengt
 		[c setBuffer:pal offset:0 atIndex:3];
 		[c setBuffer:entities offset:0 atIndex:4];
 		[c setBuffer:hud offset:0 atIndex:5];
-		[c setBuffer:occ offset:0 atIndex:6];
-		[c setBuffer:light offset:0 atIndex:7];
 		[c setBuffer:entities offset:32 * 48 atIndex:8];  // (the entity tiles' masks, after the boxes: Record.ENTITY_REGION)
+		[c setBuffer:cells offset:0 atIndex:9];
 		[c dispatchThreads:MTLSizeMake(r->w, r->h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		if (r->fence[0]) [c updateFence:r->fence[cur]];
 		[c endEncoding];

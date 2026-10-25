@@ -169,12 +169,11 @@ public final class Record {
 		if (rec == 0 || wd == null) return false;
 		try {
 			java.nio.file.Files.createDirectories(dir);
-			long cells = (long) wd.w * wd.w * wd.h, bricks = cells / 512;
+			long cells = (long) wd.w * wd.w * wd.h;
 			write(dir.resolve("frame.bin"), frameBuf, FRAME_BYTES);
-			write(dir.resolve("grid.bin"), RecordNative.contents(wd.grid), cells * 2);
+			write(dir.resolve("grid.bin"), RecordNative.contents(wd.grid), cells * 4);
+			write(dir.resolve("cells.bin"), RecordNative.contents(wd.cells), (long) (wd.w >> 3) * (wd.w >> 3) * 4);
 			write(dir.resolve("palette.bin"), RecordNative.contents(wd.palette), (long) RecordWorld.PALETTE_MAX * RecordWorld.PALETTE_STRIDE);
-			write(dir.resolve("occ.bin"), RecordNative.contents(wd.occ), bricks * 64);
-			write(dir.resolve("light.bin"), RecordNative.contents(wd.light), cells);
 			write(dir.resolve("entities.bin"), entitiesAddr, ENTITY_REGION + (long) TILES_MAX * 4);
 			write(dir.resolve("hud.bin"), hud.address(), hud.bytes());
 			return true;
@@ -272,8 +271,7 @@ public final class Record {
 				hudW = w;
 				hudH = h;
 			}
-			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.palette, entities, hudBuffer, world.occ, world.light,
-				interpolate ? 1 : 0);
+			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.palette, entities, hudBuffer, world.cells, interpolate ? 1 : 0);
 			if (tex == 0) return false;
 			if (!screen) {
 				// (under a screen the game draws the frame, and presents its own target)
