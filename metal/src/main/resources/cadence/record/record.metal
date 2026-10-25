@@ -164,26 +164,29 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 			// One budget of 96 voxels for both.
 			for (int k = 0; k < 96 && !done;) {
 				uint spec = 0;
+				// (each voxel's word is loaded a step ahead: the next load is in flight while this one is tested, 5-9% in forest
+				// views; the look-ahead's y is clamped, it may leave the window)
+				uint word = grid[cellIndex(int3(v.x, clamp(v.y, 0, H - 1), v.z), f)];
 				for (; k < 96 && tIn < tEnd; k++) {
 					// (x and z can't leave the window before tEnd, and wrap if rounding says otherwise; y is checked: it indexes memory)
 					if (uint(v.y) >= uint(H)) break;
 #ifdef RB_STEPS
 					innerSteps++;
 #endif
-					uint word = grid[cellIndex(v, f)];
+					// the next voxel, branch-free: along the axis whose boundary comes first
+					bool3 m = tMax <= min(tMax.yzx, tMax.zxy);
+					int3 nv = v + select(int3(0), stepv, m);
+					uint next = grid[cellIndex(int3(nv.x, clamp(nv.y, 0, H - 1), nv.z), f)];
 					if (word & (FULL | SPECIAL)) {
 						spec = word;
 						break;
 					}
 					prev = word;
-					{
-						// the next voxel, branch-free: along the axis whose boundary comes first
-						bool3 m = tMax <= min(tMax.yzx, tMax.zxy);
-						axis = m.x ? 0 : m.y ? 1 : 2;
-						tIn = min(min(tMax.x, tMax.y), tMax.z);
-						v += select(int3(0), stepv, m);
-						tMax += select(float3(0), tDelta, m);
-					}
+					axis = m.x ? 0 : m.y ? 1 : 2;
+					tIn = min(min(tMax.x, tMax.y), tMax.z);
+					v = nv;
+					tMax += select(float3(0), tDelta, m);
+					word = next;
 				}
 				if (spec == 0) break;
 				if (spec & FULL) {

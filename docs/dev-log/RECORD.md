@@ -191,7 +191,11 @@ for pixel, in 7 dumped views (tools/record_bench.m, RB_PNG).
 | north, open | 26.0 | 27.3 |
 | pillar sky | 14.5 | 14.2 |
 
-Tried with it and dropped: the next voxel worked out while the load is in flight (1-4%, within the noise).
+Then each voxel's word loaded a step ahead (the next load issued before this one is tested): 5-9% in forest and ground
+views, the same image (in game: looking down 14,800 -> 16,000 rendered, level 14,000 -> 14,900). Tried and dropped: only the
+next step's arithmetic moved ahead (1-4%, noise); the voxel words as a private 3D texture (the GPU's tiled layout) instead of
+the linear buffer (no change: the walk is not limited by cache locality; ~7 voxels a ray looking down, ~13 in a forest, about
+170 GPU lane-cycles each).
 
 In game (1025-011556, the same poses as above):
 
@@ -199,7 +203,7 @@ In game (1025-011556, the same poses as above):
 |---|---|---|
 | 80 degrees up from the pillar (sky) | 65,900 | 131,900 |
 | 30 degrees up from the pillar (sky and treetops) | 30,700 (was 21,000-22,400) | 61,300 |
-| straight down into the forest | 14,800 (was 13,200) | 29,700 |
+| straight down into the forest | 16,000 with the look-ahead (14,800 before it; 13,200 before the split) | 32,000 |
 | 60 degrees down | 15,200 | 30,500 |
 | forest, level, south / north | 14,000 / 11,200-11,500 | 28,000 / 22,400-23,000 |
 
