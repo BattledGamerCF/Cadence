@@ -2,6 +2,21 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.18 / shaders 0.3.17 (2026-10-25)
+
+Far terrain:
+- **Far Distance** slider in Video Settings, beside Far Terrain (and on the Far Terrain page): how far the far terrain reaches,
+  64 to 2,048 chunks, like Render Distance for the real chunks. It applies while you play: within the clipmap's levels at
+  once, else the far terrain is built again once the slider stands still (a second or two; the tiles come back from the
+  disk cache). It used to be a Distance button that took effect at the next launch.
+- Quality **Auto** picks Low on GPUs with 8 cores or fewer (base M1/M2/M3 chips), as the Quality tooltip recommended:
+  far terrain costs about half (M2 Air, 150 blocks up: 2.3 -> 1.0 ms a frame, 333 -> 570 fps); the cells from ~190 blocks
+  out are 2 blocks. Medium and High stay one click away.
+
+Docs: the README says what Cadence replaces (Sodium, Iris, Lithium, Entity Culling, Distant Horizons, dynamic lights) and
+its measured frame rates; the research notes and development diaries are gone from the tree (they stay in the git
+history); Render Max FPS has one page, docs/RENDER-MAX-FPS.md.
+
 ## 0.4.0-beta.17 / shaders 0.3.16 (2026-10-25)
 
 Render Max FPS:

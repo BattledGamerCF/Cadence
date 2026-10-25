@@ -40,19 +40,17 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 	@Override
 	protected void addOptions() {
 		boolean on = chosen();
-		this.list.addHeader(Component.literal(on == running() ? "Changes take effect at the next launch"
+		this.list.addHeader(Component.literal(on == running() ? (on ? "Far Distance and Look apply now, the rest at the next launch" : "Changes take effect at the next launch")
 			: "Restart Minecraft to turn Far Terrain " + (on ? "on" : "off")).withStyle(on == running() ? ChatFormatting.GRAY : ChatFormatting.YELLOW));
 		this.list.addSmall(cycle("Far Terrain", "farTerrain", "off", new String[] {"off", "on"}, new String[] {"Off", "On"},
 				Tips.of("The world drawn far past your render distance, like the Distant Horizons mod (experimental).",
 					"#Generated from the world's own terrain and trees, replaced by the real chunks as you explore. Uses some memory "
 						+ "and power while it fills in; takes effect at the next launch.")),
-			cycle("Distance", "farTerrain.distance", "512", new String[] {"128", "256", "512", "1024"},
-				new String[] {"128 Chunks", "256 Chunks", "512 Chunks", "1024 Chunks"},
-				Tips.of("How far the far terrain reaches.", "#512 chunks is 8 km. Farther costs a little more memory and fill-in time.")));
+			distanceSlider());
 		this.list.addSmall(cycle("Quality", "farTerrain.quality", "auto", new String[] {"auto", "low", "medium", "high"},
 				new String[] {"Auto", "Low", "Medium", "High"},
 				Tips.of("Detail in the distance, and the memory it takes.",
-					"Auto|Medium on Macs with up to 16 GB, High above",
+					"Auto|Low on GPUs with 8 cores or fewer, Medium on Macs with up to 16 GB, High above",
 					"Low|about 150 MB: for 8-core GPUs and below",
 					"Medium|about 270 MB: as sharp as High on a laptop screen",
 					"High|about 580 MB: for 5K displays")),
@@ -185,6 +183,61 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		String now = ShaderToggle.configValue(key, def).strip().toLowerCase(java.util.Locale.ROOT);
 		int i = java.util.Arrays.asList(values).indexOf(now);
 		return labels[i < 0 ? java.util.Arrays.asList(values).indexOf(def) : i];
+	}
+
+	/** Far Distance's stops, in chunks (512: the default). */
+	private static final int[] DISTANCES = {64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048};
+
+	/** The saved Far Distance, in chunks. */
+	static int distance() {
+		try {
+			return Math.clamp(Integer.parseInt(ShaderToggle.configValue("farTerrain.distance", "512").strip()), 64, 2048);
+		} catch (NumberFormatException e) {
+			return 512;
+		}
+	}
+
+	/**
+	 * Far Distance: how far the far terrain reaches, like Render Distance for the real chunks. Saved, and applied live while far
+	 * terrain runs (Lod follows LodConfig.requestRadius; a reach that needs more or fewer clipmap levels builds the far terrain
+	 * again once the slider stands still).
+	 */
+	public static net.minecraft.client.gui.components.AbstractWidget distanceSlider() {
+		boolean on = chosen();
+		var slider = new net.minecraft.client.gui.components.AbstractSliderButton(0, 0, Button.DEFAULT_WIDTH, 20, Component.empty(), 0) {
+			{
+				int now = distance(), best = 0;
+				for (int i = 0; i < DISTANCES.length; i++) if (Math.abs(DISTANCES[i] - now) < Math.abs(DISTANCES[best] - now)) best = i;
+				this.value = (double) best / (DISTANCES.length - 1);
+				this.updateMessage();
+			}
+
+			private int chunks() {
+				return DISTANCES[(int) Math.round(this.value * (DISTANCES.length - 1))];
+			}
+
+			@Override
+			protected void updateMessage() {
+				// (as vanilla's "Render Distance: 12 Chunks"; the distance in km is in the tooltip: a longer label scrolled)
+				this.setMessage(Component.literal("Far Distance: " + this.chunks() + " Chunks"));
+			}
+
+			@Override
+			protected void applyValue() {
+				int c = this.chunks();
+				if (c == distance()) return;
+				ShaderToggle.saveKey("farTerrain.distance", Integer.toString(c));
+				if (running()) dev.cadence.metal.lod.LodConfig.requestRadius(c);
+			}
+		};
+		slider.active = on;
+		slider.setTooltip(on
+			? Tips.of("How far the far terrain reaches, like Render Distance for the real chunks (512 chunks: 8 km).",
+				"#Applies now" + (running() ? "" : " (at the next launch: Far Terrain starts then)") + ". Farther takes a little more memory and "
+					+ "time to fill in; a big change builds the far terrain again (a second or two, from the disk cache).")
+			: Tips.of("Turn Far Terrain on first (the button beside this one).",
+				"#Then this sets how far it reaches, like Render Distance."));
+		return slider;
 	}
 
 	/** The Video Settings button that opens this page. */

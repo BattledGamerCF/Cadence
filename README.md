@@ -39,7 +39,7 @@ apart); about 30,000 with the land in view. See [docs/RENDER-MAX-FPS.md](docs/RE
 | **Iris** | Shader packs (Iris/OptiFine format: compute passes, custom images, buffer objects, Distant Horizons programs), per-pack options in the same files Iris uses, live switching |
 | **Lithium** | Cadence Logic: entity searches up to 22x faster, mob brains and villager sensors without per-tick garbage, block entities ticked only when they need it. Exact: the game plays the same ([docs/GAME-LOGIC.md](docs/GAME-LOGIC.md)) |
 | **Entity Culling** | Entities, block entities and particles behind walls aren't drawn |
-| **Distant Horizons** | Far Terrain (experimental): land past the render distance, generated from the world's own generator or from explored land on servers, drawn by shader packs that support Distant Horizons |
+| **Distant Horizons** | Far Terrain (experimental): land past the render distance, out to a **Far Distance** of up to 2,048 chunks (32 km; a slider in Video Settings, applied while you play), generated from the world's own generator or from explored land on servers, drawn by shader packs that support Distant Horizons |
 | **LambDynamicLights** | Dynamic Lights: held torches and glowing entities light the world around them, on the GPU |
 | **More Culling / Cull Leaves** | Smart Leaves (opt-in): leaf faces hidden inside a canopy skipped |
 | **Sodium's options, Reese's Sodium Options** | Everything in Options > Video Settings, with tooltips and a Performance preset |

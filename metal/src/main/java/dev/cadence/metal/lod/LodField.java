@@ -125,7 +125,12 @@ final class LodField {
 			this.threads.add(t);
 		}
 		System.out.printf("cadence-lod: field ready: reach %d chunks, %d levels of %d x %d cells (%.0f MB), switch at %s, %d workers, cache %s%n",
-			LodConfig.RADIUS_CHUNKS, clip.levels, clip.n, clip.n, clip.bytes() / 1048576.0, java.util.Arrays.toString(clip.switchDist), LodConfig.THREADS, cache);
+			LodConfig.radiusChunks(), clip.levels, clip.n, clip.n, clip.bytes() / 1048576.0, java.util.Arrays.toString(clip.switchDist), LodConfig.THREADS, cache);
+	}
+
+	/** The reach changed (Far Distance) within the levels there are: the next update scans for the tiles it needs now. */
+	void reachChanged() {
+		this.dirty = true;
 	}
 
 	void close() {

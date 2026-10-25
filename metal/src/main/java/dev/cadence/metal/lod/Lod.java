@@ -361,6 +361,46 @@ public final class Lod {
 		}
 	}
 
+	/** A Far Distance change waiting to stand still before the far terrain is built again for it (-1: none), and since when. */
+	private int pendingRadius = -1;
+	private long pendingSince;
+
+	/**
+	 * Follows Video Settings > Far Distance: a reach the clipmap's levels cover applies at once (the draw, the fog and the tile
+	 * requests follow it); one that needs more or fewer levels, once the slider has stood still half a second, drops the
+	 * world's far terrain so ensureWorld builds it again this frame (as at a dimension change; the tiles come back from the
+	 * disk cache).
+	 */
+	private void followRadius() {
+		int want = LodConfig.requestedRadius();
+		if (want == LodConfig.radiusChunks()) {
+			this.pendingRadius = -1;
+			return;
+		}
+		if (this.clip == null) {
+			LodConfig.applyRadius(want);
+			return;
+		}
+		if (LodClip.levelsFor(this.clip.n, want * 16.0) == this.clip.levels) {
+			LodConfig.applyRadius(want);
+			if (this.field != null) this.field.reachChanged();
+			this.pendingRadius = -1;
+			return;
+		}
+		long now = System.nanoTime();
+		if (want != this.pendingRadius) {
+			this.pendingRadius = want;
+			this.pendingSince = now;
+			return;
+		}
+		if (now - this.pendingSince < 500_000_000L) return;
+		this.pendingRadius = -1;
+		LodConfig.applyRadius(want);
+		System.out.println("cadence-lod: far distance " + want + " chunks: far terrain built again with " + LodClip.levelsFor(this.clip.n, want * 16.0) + " levels");
+		this.dropWorld(false);
+		this.worldOwner = null;
+	}
+
 	private void begin(CameraRenderState camera) {
 		Minecraft mc = Minecraft.getInstance();
 		// (released buffers go RING level frames after their last use, also in a dimension without far terrain: they waited
@@ -368,6 +408,7 @@ public final class Lod {
 		this.releaseClock++;
 		while (!this.releaseLater.isEmpty() && this.releaseClock - this.releaseLater.peek()[0] >= RING) LodNative.release(this.releaseLater.poll()[1]);
 		if (LodResources.takeReload(mc)) this.resourcesReloaded(mc);
+		this.followRadius();
 		this.ensureWorld(mc);
 		if (this.field == null) {
 			activeReach = 0;
@@ -1656,7 +1697,7 @@ public final class Lod {
 		Lod l = instance;
 		if (l == null || l.field == null || l.clip == null) return m;
 		LodField w = l.field;
-		m.put("reachChunks", LodConfig.RADIUS_CHUNKS);
+		m.put("reachChunks", LodConfig.radiusChunks());
 		m.put("n", l.clip.n);
 		m.put("levels", l.clip.levels);
 		m.put("clipMb", l.clip.bytes() / 1048576.0);

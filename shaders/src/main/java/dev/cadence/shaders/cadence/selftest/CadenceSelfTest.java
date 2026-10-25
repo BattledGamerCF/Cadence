@@ -108,6 +108,9 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("upscaler=")) {
 					String mode = lower.substring(9);
 					mc.execute(() -> RenderScale.applyUpscaler(mode));
+				} else if (lower.startsWith("fardistance=")) {
+					// "fardistance=N": Video Settings > Far Distance moved to N chunks (live while far terrain runs; not saved)
+					dev.cadence.metal.lod.LodConfig.requestRadius(Integer.parseInt(lower.substring(12)));
 				} else if (lower.startsWith("rd=")) {
 					// "rd=N": change the render distance as the options screen does (vanilla rebuilds the view area)
 					int rd = Integer.parseInt(lower.substring(3));

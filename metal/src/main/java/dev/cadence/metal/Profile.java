@@ -139,7 +139,12 @@ public final class Profile {
 			case "low" -> set.put("cadence.lod.small", "true");
 			case "medium" -> set.put("cadence.lod.n", "1024");
 			case "high" -> set.put("cadence.lod.n", "2048");
-			default -> { }  // auto: by the Mac's memory (LodConfig.defaultN)
+			// auto: Low on GPUs of 8 cores or fewer (measured on an 8-core M2 Air, 150 blocks up: far terrain 2.3 ms a frame at
+			// Medium, 1.0 at Low, 333 -> 570 fps; the cells from ~190 blocks are 2 blocks), else by the Mac's memory (LodConfig.defaultN)
+			default -> {
+				int gpu = gpuCores();
+				if (gpu > 0 && gpu <= 8) set.put("cadence.lod.small", "true");
+			}
 		}
 		int cores = Runtime.getRuntime().availableProcessors();
 		switch (ui.getProperty("farTerrain.cpu", "balanced").strip().toLowerCase(java.util.Locale.ROOT)) {

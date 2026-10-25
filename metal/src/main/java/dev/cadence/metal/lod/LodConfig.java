@@ -2,7 +2,7 @@
 package dev.cadence.metal.lod;
 
 /**
- * Far terrain switches, all read once at startup. Off unless -Dcadence.lod=true (or any -Dcadence.lod.radius): then nothing of
+ * Far terrain switches, read once at startup (the reach and the look also change live, from Video Settings). Off unless -Dcadence.lod=true (or any -Dcadence.lod.radius): then nothing of
  * this package loads and the mixins that call into it are rejected by LodMixinPlugin.
  */
 public final class LodConfig {
@@ -62,8 +62,37 @@ public final class LodConfig {
 	static float curvatureDrop() {
 		return curvature <= 0 ? 0 : (float) (curvature / (2 * 6_371_000.0));
 	}
-	/** -Dcadence.lod.radius=N: how far the far terrain reaches, in chunks (to the edge of the coarsest tiles drawn). */
-	public static final int RADIUS_CHUNKS = Integer.getInteger("cadence.lod.radius", 512);
+	/** The Far Distance range, in chunks. */
+	public static final int MIN_RADIUS = 64, MAX_RADIUS = 2048;
+	/**
+	 * How far the far terrain reaches, in chunks (to the edge of the coarsest tiles drawn): -Dcadence.lod.radius=N at launch
+	 * (Video Settings > Far Distance, saved), then live: the slider asks for a new one (requestRadius) and Lod.begin applies it,
+	 * at once when the clipmap's levels cover it, else by building the world's far terrain again (its tiles come back from
+	 * the disk cache).
+	 */
+	private static volatile int radiusChunks = clampRadius(Integer.getInteger("cadence.lod.radius", 512)), requestedChunks = radiusChunks;
+
+	static int clampRadius(int chunks) {
+		return Math.clamp(chunks, MIN_RADIUS, MAX_RADIUS);
+	}
+
+	/** The reach in use, in chunks. */
+	public static int radiusChunks() {
+		return radiusChunks;
+	}
+
+	/** Video Settings > Far Distance moved: the reach asked for, applied by the next far-terrain frame. */
+	public static void requestRadius(int chunks) {
+		requestedChunks = clampRadius(chunks);
+	}
+
+	static int requestedRadius() {
+		return requestedChunks;
+	}
+
+	static void applyRadius(int chunks) {
+		radiusChunks = clampRadius(chunks);
+	}
 	/**
 	 * -Dcadence.lod.n=N: cells across each clipmap level's window (a power of two). Level L's cells are 2^L blocks and it is drawn
 	 * out to (N / 2 - 64) x 2^L blocks, so on screen a cell is never more than about twice what a real block at that distance
@@ -183,8 +212,8 @@ public final class LodConfig {
 	private LodConfig() {
 	}
 
-	/** The reach in blocks. */
+	/** The reach in use, in blocks. */
 	public static double reachBlocks() {
-		return RADIUS_CHUNKS * 16.0;
+		return radiusChunks * 16.0;
 	}
 }

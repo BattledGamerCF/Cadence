@@ -105,6 +105,13 @@ final class LodClip {
 	/** Told of a resident tile just before its slot is cleared (the window moved off it): LodField saves it if real chunks changed it. */
 	java.util.function.@org.jspecify.annotations.Nullable LongConsumer evicting;
 
+	/** The levels a clipmap of n cells a side needs to reach `reach` blocks. */
+	static int levelsFor(int n, double reach) {
+		int lv = 1;
+		while ((n / 2.0 - TILE - MARGIN) * (1L << (lv - 1)) < reach && lv < 12) lv++;
+		return lv;
+	}
+
 	LodClip(long ctx, int n, double reach) {
 		if (Integer.bitCount(n) != 1 || n < 256) throw new IllegalArgumentException("cadence.lod.n must be a power of two >= 256: " + n);
 		this.n = n;
@@ -112,8 +119,7 @@ final class LodClip {
 		this.tilesPerSide = n / TILE;
 		// a ray stays inside level L's window up to (N / 2 - TILE) cells from the camera, wherever it is in its tile; the walk
 		// leaves a level at the first boundary aligned to the next past its switch distance (up to 2 cells on): 4 cells to spare
-		int lv = 1;
-		while ((n / 2.0 - TILE - MARGIN) * (1L << (lv - 1)) < reach && lv < 12) lv++;
+		int lv = levelsFor(n, reach);
 		this.levels = lv;
 		this.switchDist = new float[lv];
 		for (int l = 0; l < lv; l++) this.switchDist[l] = (float) ((n / 2.0 - TILE - MARGIN) * (1L << l));
