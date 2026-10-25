@@ -82,6 +82,7 @@
 		"ui.MinecraftShaderKeysMixin",
 		"ui.OptionsShaderKeysMixin",
 		"ui.PackCheckTextureMixin",
+		"ui.PerformanceOverlayMixin",
 		"ui.QuickSetupOfferMixin",
 		"ui.VideoSettingsShadersMixin",
 		"worldgen.ChunkLoadSlotsMixin",

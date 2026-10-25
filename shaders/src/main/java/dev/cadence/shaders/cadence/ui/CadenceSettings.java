@@ -257,6 +257,20 @@ public final class CadenceSettings {
 		return self[0];
 	}
 
+	public static Button overlayButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(overlayLabel(), b -> {
+			dev.cadence.shaders.cadence.render.PerformanceOverlay.toggle();
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("A few lines under the fps counter: frames shown and rendered, frame and GPU time, the Mac's heat and power, battery time left.")).build();
+		onRefresh(() -> self[0].setMessage(overlayLabel()));
+		return self[0];
+	}
+
+	private static Component overlayLabel() {
+		return Component.literal("Performance Overlay: " + (dev.cadence.shaders.cadence.render.PerformanceOverlay.on() ? "On" : "Off"));
+	}
+
 	private static Component fpsCounterLabel() {
 		return Component.literal("FPS Counter: " + ("false".equals(System.getProperty("cadence.fpsCounter")) ? "Off" : "On"));
 	}
