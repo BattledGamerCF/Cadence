@@ -22,6 +22,10 @@ Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
 - **Works next to other mods (compatibility layers).** Where another mod hooks code Cadence replaces, Cadence uses
   Minecraft's own code in that one area and keeps every other optimization. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 - **Faster chunk meshing, startup and memory use**, plus an fps counter (Cadence HUD).
+- **Render Max FPS.** The game at the highest frame rate this Mac can render it while still playable: the world ray-traced
+  on the GPU at 320 x 180, each block one colour with Minecraft's lighting, with the HUD, and frame interpolation counted
+  apart. 66,000 frames rendered a second on an M2 MacBook Air looking at the sky (see
+  [docs/dev-log/RECORD.md](docs/dev-log/RECORD.md)).
 
 ## Requirements
 
@@ -121,6 +125,7 @@ For the development and test tools, see [CONTRIBUTING.md](CONTRIBUTING.md).
 | [`packaging/`](packaging) | Release README, Modrinth page text, project icon |
 
 New to the code? [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) maps every package: what it does and where to start.
+Reviewing it for a mod platform? [docs/FOR-REVIEWERS.md](docs/FOR-REVIEWERS.md): native code, network (none), files written.
 
 ## Credits and license
 
