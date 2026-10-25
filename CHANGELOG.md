@@ -2,13 +2,14 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased (after 0.4.0-beta.16)
+## 0.4.0-beta.17 / shaders 0.3.16 (2026-10-25)
 
 Render Max FPS:
 - The world stays as it was under the inventory, chat, pause and any other screen (it glitched: the game's own world
   drawing took over with a stale world). The game's HUD and the screen are drawn over Max FPS's frame.
-- Much faster at the sky: 51,000-66,000 frames rendered a second (101,000-133,000 shown with interpolation) looking up from a
-  pillar above the trees, 21,000 at 30 degrees up (it was 5,000), 13,000 looking down into a forest (M2 MacBook Air).
+- Much faster: 66,000 frames rendered a second (132,000 shown with interpolation) looking up from a pillar above the trees,
+  30,700 at 30 degrees up with the land in view (it was 5,000), 14,800 looking down into a forest, 11,000-15,000 in a forest
+  (M2 MacBook Air). The ray walk crosses air in a loop of its own (10-40% faster with terrain in view, the same image).
 - **Correction**: looking straight up or down (exactly 90 degrees) drew one flat colour: the camera's sideways direction had
   no length there. Fixed. The earlier "looking down: 25,300 rendered" (beta.15 and beta.16 notes) was measured on that flat
   frame; the real figure is about 13,000 (docs/dev-log/RECORD.md, "10-25 correction").
