@@ -29,7 +29,7 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 | `compat/` | Compatibility layers: where another mod hooks code Cadence replaces, Minecraft's own code runs there. |
 | `alloc/` | Allocation-free data structures used by the hot paths, and entity render states kept between frames (`EntityStates`). |
 | `rec/` | An opt-in video recorder for development. |
-| `mixin/<area>/` | The mixins for each area above, one mixin config per area (`cadence-metal-<area>.mixins.json`), each with a plugin that decides whether it applies. |
+| `mixin/<area>/` | The mixins for each area above, one mixin config per area (`cadence-metal-<area>.mixins.json`), each with a plugin that decides whether it applies. Areas without a package of their own: `ownmesh` (own terrain's meshing), `gen` (world-generation buffers and QoS), `qos` (thread priorities), `startup` (faster start), `edge` (the opt-in frame cap while terrain generates, `EdgeCap`). The mixins directly in `mixin/` are the backend's (`cadence-metal.mixins.json`). |
 | `src/main/native/` | The Objective-C/C native library: `mcmetal.m` (the backend), `mcown.m` (own terrain), `mccull.m` (Hi-Z), `mcfx.m` (MetalFX), `mcsys.m` (system signals), `mcpack.m` (shader-pack helpers), `mcbench.m` (Quick Setup's GPU test), `mclod.m`/`lod*.c` (far terrain), `mcrecord.m` (Render Max FPS), `mcm4.m` (the opt-in Metal 4 path), `rec.m`. Built by clang from Gradle. |
 | `src/main/resources/cadence/` | Metal shaders: `own/terrain.metal`, `native/` (Minecraft's own shaders rewritten in Metal: `common.metal` plus one file per program), `lod/`, `rec/`. |
 

@@ -8,8 +8,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+/** Edge cap (-Dcadence.edgeCap, EdgeCap): the frame rate capped while the integrated server generates terrain near the player. */
 @Mixin(FramerateLimitTracker.class)
-abstract class FramerateCapMixin {
+abstract class EdgeFramerateCapMixin {
 	@Inject(method = "getFramerateLimit", at = @At("RETURN"), cancellable = true)
 	private void cadence$edgeCap(CallbackInfoReturnable<Integer> cir) {
 		int limit = cir.getReturnValueI(), capped = EdgeCap.limit(limit);

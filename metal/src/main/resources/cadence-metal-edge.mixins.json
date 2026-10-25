@@ -4,6 +4,6 @@
 	"plugin": "dev.cadence.metal.mixin.edge.EdgeMixinPlugin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": ["GenSignalMixin"],
-	"client": ["FramerateCapMixin"],
+	"client": ["EdgeFramerateCapMixin"],
 	"injectors": { "defaultRequire": 1 }
 }
