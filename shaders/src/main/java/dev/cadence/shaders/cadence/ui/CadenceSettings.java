@@ -325,6 +325,24 @@ public final class CadenceSettings {
 			? " (" + dev.cadence.metal.framegen.FrameGen.renderedRate() + " -> " + 2 * dev.cadence.metal.framegen.FrameGen.renderedRate() + ")" : ""));
 	}
 
+	/** Render Distance: Auto (AutoRenderDistance). */
+	public static Button autoRenderDistanceButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(autoRdLabel(), b -> {
+			dev.cadence.shaders.cadence.render.AutoRenderDistance.toggle();
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Lowers the render distance when your Mac can't hold its frame rate, and raises it again when it can.",
+			"#With a shader pack and Auto resolution, once the resolution is as low as Auto takes it: 2 chunks at a time, not below 8 and never past the distance you chose; "
+				+ "changes are rare (each makes the game build the nearby chunks again). Far terrain still reaches past it. Off: your distance always.")).build();
+		onRefresh(() -> self[0].setMessage(autoRdLabel()));
+		return self[0];
+	}
+
+	private static Component autoRdLabel() {
+		int held = dev.cadence.shaders.cadence.render.AutoRenderDistance.holding();
+		return Component.literal("Auto Render Distance: " + (dev.cadence.shaders.cadence.render.AutoRenderDistance.on() ? held > 0 ? "On (" + held + ")" : "On" : "Off"));
+	}
+
 	public static Button dynamicLightsButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(dynamicLightsLabel(), b -> {

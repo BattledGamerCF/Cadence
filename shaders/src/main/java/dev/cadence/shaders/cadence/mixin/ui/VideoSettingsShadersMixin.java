@@ -76,6 +76,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		// (Far Distance beside Far Terrain, as Render Distance is a slider of its own)
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.FarTerrainScreen.button(self), dev.cadence.shaders.cadence.ui.FarTerrainScreen.distanceSlider());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.frameGenButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.dynamicLightsButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.autoRenderDistanceButton(), null);
 		this.list.addHeader(heading("Cadence: Power & Heat"));
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.batteryButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.backgroundButton(), null);

@@ -14,6 +14,7 @@ public abstract class FramerateCapMixin {
 	@ModifyReturnValue(method = "getFramerateLimit", at = @At("RETURN"))
 	private int cadence$heatCap(int limit) {
 		if (dev.cadence.shaders.cadence.setup.QuickSetup.testing) return Math.min(limit, 10);
+		dev.cadence.shaders.cadence.render.AutoRenderDistance.check();
 		if ((dev.cadence.shaders.cadence.render.MaxFpsMode.on() || dev.cadence.metal.record.Record.chosen())
 			&& net.minecraft.client.Minecraft.getInstance().level != null) {
 			// Render Max FPS: nothing holds the frame rate back (Max Framerate, Heat Control, On Battery) while the game is the

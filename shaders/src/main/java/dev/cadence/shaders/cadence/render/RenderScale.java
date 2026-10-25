@@ -337,6 +337,8 @@ public final class RenderScale {
 		// added the upscale's cost and blur, and Auto, seeing no gain, kept lowering it. A fixed scale is still the player's.
 		else next = MAX;
 		next = Math.round(next * 100f) / 100f;
+		// (Auto Render Distance: once the resolution can't come down further)
+		AutoRenderDistance.window(intervalMs, gpuMs, targetMs, scale > autoMin + 0.001f, chunksBuilding, nowNanos);
 		if (next != scale) {
 			boolean down = next < scale;
 			if (down && lastChangeWasRise && nowNanos - lastChangeAt < 30_000_000_000L) {
