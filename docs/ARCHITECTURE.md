@@ -21,15 +21,16 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 |---|---|
 | `dev.cadence.metal` (root) | The Metal backend: Minecraft's `renderpearl` device/encoder/buffer/texture API implemented on Metal (`MetalDevice`, `MetalEncoder`, `MetalRenderPass`, `MetalBuffer`, `MetalTexture`, `MetalSurface`), `Native` (every native call, through Java's foreign-function API), `MacSystem` (thermal state, battery, fans, display, sysctl), `Profile` and `JvmDefaults` (startup settings), `Vivace` (restarting on the Vivace Java build when the player chose it), `PlatformCheck` (Apple Silicon, macOS, Rosetta). Kept as one package: the backend's classes share package-private state, as in mcopt. |
 | `own/` | Cadence's own terrain renderer: chunk meshes in one arena, GPU culling (`OwnFrag`, Hi-Z), the opaque/cutout draw path, dynamic lights. |
-| `lod/` | Far terrain (experimental, off by default). |
+| `lod/` | Far terrain (experimental, off by default). GPU code: `src/main/resources/cadence/lod/columns.metal`. |
+| `record/` | Render Max FPS (Record Mode): the compute-only renderer for the FPS record (`Record`, `RecordWorld`, `RecordHud`); GPU code `src/main/resources/cadence/record/record.metal`, native `mcrecord.m`, offline bench `tools/record_bench.m` (docs/dev-log/RECORD.md). |
 | `chunk/`, `chunkio/` | Opt-in chunk pipeline and save-file changes (each behind a `-Dcadence.chunk.*` switch). |
 | `logic/` | Cadence Logic: the game-logic optimizations that replace Lithium (see docs/GAME-LOGIC.md). |
 | `cpu/` | Render-thread CPU work: model and item vertex writers, text, A/B timers. |
 | `compat/` | Compatibility layers: where another mod hooks code Cadence replaces, Minecraft's own code runs there. |
-| `alloc/` | Allocation-free data structures used by the hot paths. |
+| `alloc/` | Allocation-free data structures used by the hot paths, and entity render states kept between frames (`EntityStates`). |
 | `rec/` | An opt-in video recorder for development. |
 | `mixin/<area>/` | The mixins for each area above, one mixin config per area (`cadence-metal-<area>.mixins.json`), each with a plugin that decides whether it applies. |
-| `src/main/native/` | The Objective-C/C native library: `mcmetal.m` (the backend), `mcown.m` (own terrain), `mccull.m` (Hi-Z), `mcfx.m` (MetalFX), `mcsys.m` (system signals), `mcpack.m` (shader-pack helpers), `mcbench.m` (Quick Setup's GPU test), `mclod.m`/`lod*.c` (far terrain), `rec.m`. Built by clang from Gradle. |
+| `src/main/native/` | The Objective-C/C native library: `mcmetal.m` (the backend), `mcown.m` (own terrain), `mccull.m` (Hi-Z), `mcfx.m` (MetalFX), `mcsys.m` (system signals), `mcpack.m` (shader-pack helpers), `mcbench.m` (Quick Setup's GPU test), `mclod.m`/`lod*.c` (far terrain), `mcrecord.m` (Render Max FPS), `mcm4.m` (the opt-in Metal 4 path), `rec.m`. Built by clang from Gradle. |
 | `src/main/resources/cadence/` | Metal shaders: `own/terrain.metal`, `native/` (Minecraft's own shaders rewritten in Metal: `common.metal` plus one file per program), `lod/`, `rec/`. |
 
 ## shaders/ (dev.cadence.shaders, dev.cadence.scene, dev.cadence.sceneoptimizer)
@@ -67,6 +68,7 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 
 ## Where to look next
 
+- [FOR-REVIEWERS.md](FOR-REVIEWERS.md): for mod-platform reviewers: native code, network (none), files written, licences.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): building, the test harness, the rules for changes (exact or switch-gated, measured).
 - [tools/README.md](../tools/README.md): the scripts.
 - [dev-log/](dev-log): why things are the way they are, with the measurements.
