@@ -41,9 +41,11 @@ All inside the Minecraft game directory unless noted:
 ## Code that changes Minecraft
 
 Mixins, listed in each module's `*.mixins.json`. Optimizations that are not on by default sit behind `-Dcadence.*` switches
-checked by the mixin plugins (`*MixinPlugin.java`): with a switch off, its mixins are not applied. One `@Overwrite`
-exists (entity model vertex writing, `dev.cadence.metal.mixin.cpu.ModelCubeWriteMixin`), with compatibility layers for
-mods that touch the same code (`dev.cadence.metal.compat`).
+checked by the mixin plugins (`*MixinPlugin.java`): with a switch off, its mixins are not applied. `@Overwrite` is used
+where a method is replaced whole: entity model vertex writing (`mixin.cpu.ModelCubeWriteMixin`), Cadence Logic's
+game-logic replacements (`mixin.logic`: brains, POI sensors, path-type cache, block-entity ticking, entity sections) and
+one opt-in server tick change (`mixin.chunk.ServerLevelTickMixin`). `dev.cadence.metal.compat` hands each of those back to
+Minecraft's own code when another mod hooks the same method.
 
 ## Licences and origins
 
