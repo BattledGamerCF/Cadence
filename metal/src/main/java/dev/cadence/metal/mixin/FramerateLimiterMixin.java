@@ -29,7 +29,14 @@ abstract class FramerateLimiterMixin {
 		long interval = 1_000_000_000L / framerateLimit, deadline = lastFrameTime + interval, now = System.nanoTime();
 		long remaining = deadline - now;
 		if (remaining > 0) {
-			FrameWait.sleep(remaining);
+			// Frame Generation (Responsive): a frame made halfway through the wait, from the input read then
+			long mid = dev.cadence.metal.framegen.FrameGen.responsiveAt(remaining);
+			if (mid > 0) {
+				FrameWait.sleep(mid);
+				dev.cadence.metal.framegen.FrameGen.responsiveFrame();
+				remaining = deadline - System.nanoTime();
+			}
+			if (remaining > 0) FrameWait.sleep(remaining);
 			lastFrameTime = deadline;
 		} else {
 			lastFrameTime = -remaining > interval ? now : deadline;

@@ -20,6 +20,7 @@ public abstract class FramerateCapMixin {
 			// active app; In Background still applies when another app is (no frame rate is measured then that matters).
 			// Only in a world: the title screen and menus keep the usual limits (BH3 minor: they ran uncapped, hot, for nothing)
 			int background = dev.cadence.shaders.cadence.system.BackgroundFps.fpsCap();
+			dev.cadence.metal.framegen.FrameGen.target(0, 0);
 			dev.cadence.shaders.cadence.system.FramePacing.cap(background);
 			return background;
 		}
@@ -30,7 +31,33 @@ public abstract class FramerateCapMixin {
 		// (a pack is installed: "a pack frame is being drawn" was never true here, the limit is read after the frame)
 		if (DISPLAY_CAP && dev.cadence.shaders.runtime.ShaderRuntime.get() != null && HeatControl.refreshHz() <= 60)
 			cap = Math.min(cap, HeatControl.refreshHz());
+		// Frame Generation: render at the base rate (Battery Saver 30, else 60, lower when another cap is) and show twice that, up
+		// to the display's rate; only where that is more than the base (on a 60 Hz screen: Battery Saver 30 -> 60, the others a
+		// true 60). Not with Max FPS (as many real frames as the Mac makes) or outside a world.
+		if (dev.cadence.metal.framegen.FrameGen.mode() != dev.cadence.metal.framegen.FrameGen.Mode.OFF
+			&& net.minecraft.client.Minecraft.getInstance().level != null) {
+			long now = System.nanoTime();
+			if (now - cadence$presetChecked > 500_000_000L) {
+				cadence$presetChecked = now;
+				var preset = dev.cadence.shaders.cadence.ui.CadenceSettings.current();
+				cadence$fgAllowed = preset != dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.MAX_FPS;
+				cadence$saver = preset == dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.BATTERY
+					|| dev.cadence.shaders.cadence.system.BatteryMode.saving() || dev.cadence.metal.MacSystem.lowPowerMode();
+			}
+			int forced = dev.cadence.metal.framegen.FrameGen.forceBase;
+			int hz = HeatControl.refreshHz(), base = Math.min(forced > 0 ? forced : cadence$saver ? 30 : 60, cap), shown = Math.min(2 * base, hz);
+			dev.cadence.metal.framegen.FrameGen.target(cadence$fgAllowed ? base : 0, shown);
+			if (dev.cadence.metal.framegen.FrameGen.running()) {
+				dev.cadence.shaders.cadence.system.FramePacing.cap(shown);
+				return base;
+			}
+		} else {
+			dev.cadence.metal.framegen.FrameGen.target(0, 0);
+		}
 		dev.cadence.shaders.cadence.system.FramePacing.cap(cap);
 		return cap;
 	}
+
+	@org.spongepowered.asm.mixin.Unique private static long cadence$presetChecked;
+	@org.spongepowered.asm.mixin.Unique private static boolean cadence$fgAllowed = true, cadence$saver;
 }

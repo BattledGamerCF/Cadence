@@ -26,16 +26,42 @@ abstract class HudMixin {
 	// The count changes once a second; the label is rebuilt only then, not every frame.
 	@Unique private int cadenceFps$shown = -1;
 	@Unique private String cadenceFps$label = "";
+	@Unique private int cadenceFps$onScreenShown = -1;
+	/** Cadence's FrameGen.shownFps(int), looked up once (this mod doesn't depend on Cadence's own: null without it). */
+	@Unique private static java.lang.invoke.MethodHandle cadenceFps$frameGen;
+	@Unique private static boolean cadenceFps$looked;
+
+	@Unique
+	private static int cadenceFps$onScreen(int rendered) {
+		if (!cadenceFps$looked) {
+			cadenceFps$looked = true;
+			try {
+				cadenceFps$frameGen = java.lang.invoke.MethodHandles.publicLookup().findStatic(Class.forName("dev.cadence.metal.framegen.FrameGen"), "shownFps",
+					java.lang.invoke.MethodType.methodType(int.class, int.class));
+			} catch (ReflectiveOperationException | LinkageError e) {
+				cadenceFps$frameGen = null;
+				System.out.println("[cadence-hud] no frame generation counter: " + e);
+			}
+		}
+		if (cadenceFps$frameGen == null) return rendered;
+		try {
+			return (int) cadenceFps$frameGen.invokeExact(rendered);
+		} catch (Throwable t) {
+			return rendered;
+		}
+	}
 
 	@Inject(method = "extractRenderState", at = @At("TAIL"))
 	private void cadenceFps$draw(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker, CallbackInfo ci) {
 		if ("false".equals(System.getProperty("cadence.fpsCounter")) || this.isHidden() || this.minecraft.getDebugOverlay().showDebugScreen() || this.minecraft.gui.screen() instanceof LevelLoadingScreen) {
 			return;
 		}
-		int fps = this.minecraft.getFps();
-		if (fps != this.cadenceFps$shown) {
+		int fps = this.minecraft.getFps(), onScreen = cadenceFps$onScreen(fps);
+		if (fps != this.cadenceFps$shown || onScreen != this.cadenceFps$onScreenShown) {
 			this.cadenceFps$shown = fps;
-			this.cadenceFps$label = fps + " fps";
+			this.cadenceFps$onScreenShown = onScreen;
+			// (Frame Generation: the frames on screen, and of them the frames rendered)
+			this.cadenceFps$label = onScreen > fps ? onScreen + " fps (" + fps + " rendered)" : fps + " fps";
 		}
 		graphics.text(this.minecraft.font, this.cadenceFps$label, 2, 2, 0xFFFFFFFF, true);
 	}

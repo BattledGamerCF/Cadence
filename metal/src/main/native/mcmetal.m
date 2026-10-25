@@ -1829,6 +1829,13 @@ static void presentAt(id<MTLCommandBuffer> b, id<CAMetalDrawable> drawable) {
 	else [b presentDrawable:drawable];
 }
 
+// Frame Generation (mcfg.m): a generated frame's present, through the same minimum-duration present as the real frames.
+static void paceWatch(id<CAMetalDrawable> drawable);
+void mc_present_drawable(id<MTLCommandBuffer> b, id<CAMetalDrawable> drawable) {
+	paceWatch(drawable);
+	presentAt(b, drawable);
+}
+
 // ---- present pacing ----
 // Minecraft renders far more frames than the display shows, and every present costs the copy pass in mc_present plus
 // WindowServer work. Paced, only the last frame that can still make the next refresh is presented; the others render in

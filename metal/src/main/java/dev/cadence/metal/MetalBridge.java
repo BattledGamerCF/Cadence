@@ -195,6 +195,15 @@ public final class MetalBridge {
 		MetalEncoder.recordFrame = true;
 	}
 
+	/**
+	 * Frame Generation: the window's next drawable (a +1 reference: the native present releases it), 0 when there is none (no
+	 * window yet, or it's hidden).
+	 */
+	public static long nextDrawable() {
+		long layer = MetalSurface.currentLayer();
+		return layer == 0 ? 0 : Native.layerNext(layer);
+	}
+
 	/** Whether the backend runs on Metal 4 (-Dcadence.metal4=true and the device has it). */
 	public static boolean metal4() {
 		return Native.metal4();

@@ -59,6 +59,7 @@ public final class CadenceSettings {
 	public static void apply(Preset preset) {
 		switch (preset) {
 			case BATTERY -> {
+				dev.cadence.shaders.cadence.render.FrameGenSetting.set(dev.cadence.metal.framegen.FrameGen.Mode.SMOOTH);
 				ShaderToggle.setRetina(true);  // (back on after Max FPS; at the next launch, as the button says)
 				RenderScale.setAutoTarget(40);
 				RenderScale.setAuto();
@@ -67,6 +68,7 @@ public final class CadenceSettings {
 				RenderScale.setUpscaler(RenderScale.UPSCALE_APPLE);
 			}
 			case BALANCED -> {
+				dev.cadence.shaders.cadence.render.FrameGenSetting.set(dev.cadence.metal.framegen.FrameGen.Mode.SMOOTH);
 				ShaderToggle.setRetina(true);  // (back on after Max FPS; at the next launch, as the button says)
 				RenderScale.setAutoTarget(60);
 				RenderScale.setAuto();
@@ -75,6 +77,7 @@ public final class CadenceSettings {
 				RenderScale.setUpscaler(RenderScale.UPSCALE_APPLE);
 			}
 			case QUALITY -> {
+				dev.cadence.shaders.cadence.render.FrameGenSetting.set(dev.cadence.metal.framegen.FrameGen.Mode.SMOOTH);
 				ShaderToggle.setRetina(true);  // (back on after Max FPS; at the next launch, as the button says)
 				RenderScale.setAutoTarget(60);
 				RenderScale.set(1.0f);
@@ -86,6 +89,7 @@ public final class CadenceSettings {
 			// (with fewer pixels a lower world scale only adds the upscale), the cheapest upscale for a shader pack's own
 			// scaling, shadows every 2nd frame, no cooling cap.
 			case MAX_FPS -> {
+				dev.cadence.shaders.cadence.render.FrameGenSetting.set(dev.cadence.metal.framegen.FrameGen.Mode.OFF);
 				ShaderToggle.setRetina(false);
 				RenderScale.set(1.0f);
 				HeatControl.setEnabled(false);
@@ -299,6 +303,28 @@ public final class CadenceSettings {
 	}
 
 	/** Dynamic Lights (DynamicLights): Off, Held Items, All. */
+	/** Frame Generation (FrameGenSetting, FrameGen): Smooth, Responsive, Off. */
+	public static Button frameGenButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(frameGenLabel(), b -> {
+			dev.cadence.shaders.cadence.render.FrameGenSetting.cycle();
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Twice the frames on screen for the frames your Mac renders: a frame made between each two.",
+			"Smooth|the frame halfway between the last two, shown before the newest (one frame later on screen)",
+			"Responsive|the newest frame turned to where your mouse looks now: no added delay, a little blur at moving edges",
+			"Off|every frame rendered",
+			"#Only where it adds frames your screen can show: Battery Saver renders 30 and shows 60; Recommended and Max Quality render "
+				+ "60 and show 120 on a 120 Hz screen. Not with Max FPS. The fps counter shows both (\"120 fps (60 rendered)\").")).build();
+		onRefresh(() -> self[0].setMessage(frameGenLabel()));
+		return self[0];
+	}
+
+	private static Component frameGenLabel() {
+		var mode = dev.cadence.metal.framegen.FrameGen.mode();
+		return Component.literal("Frame Generation: " + mode.label + (mode != dev.cadence.metal.framegen.FrameGen.Mode.OFF && dev.cadence.metal.framegen.FrameGen.running()
+			? " (" + dev.cadence.metal.framegen.FrameGen.renderedRate() + " -> " + 2 * dev.cadence.metal.framegen.FrameGen.renderedRate() + ")" : ""));
+	}
+
 	public static Button dynamicLightsButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(dynamicLightsLabel(), b -> {

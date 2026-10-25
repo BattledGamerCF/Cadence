@@ -57,6 +57,11 @@ public final class BatteryMode {
 		ShaderToggle.saveKey("batteryMode", mode.name().toLowerCase(Locale.ROOT));
 	}
 
+	/** Whether Saver is holding the frame rate now (the Mac on its battery, the mode Saver). */
+	public static boolean saving() {
+		return mode() == Mode.SAVER && onBattery();
+	}
+
 	/** Whether the Mac is on its battery (cached for two seconds; render thread). */
 	public static boolean onBattery() {
 		if (fakeBattery) return true;

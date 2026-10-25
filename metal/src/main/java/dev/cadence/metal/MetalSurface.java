@@ -49,6 +49,12 @@ final class MetalSurface implements GpuSurfaceBackend {
 
 	/** The window's surface (one per game) and its last configuration, for the vsync override. Render thread. */
 	private static MetalSurface current;
+
+	/** The window's CAMetalLayer (0 before the first configure). */
+	static long currentLayer() {
+		MetalSurface s = current;
+		return s == null ? 0 : s.layer;
+	}
 	private GpuSurface.Configuration lastConfig;
 	/** Render Max FPS: no vsync while it's on, whatever the option says (MetalBridge.uncappedPresent). */
 	private static boolean immediate;
@@ -96,7 +102,10 @@ final class MetalSurface implements GpuSurfaceBackend {
 		// cadence.rec hook: the opt-in recorder (-Dcadence.rec, dev.cadence.metal.rec) takes the finished frame, GUI included. Rec.ON is a constant false without it.
 		if (dev.cadence.metal.rec.Rec.ON) dev.cadence.metal.rec.Rec.frame(this.encoder, textureView);
 		long t0 = WaitStats.ON ? System.nanoTime() : 0;
-		if (this.paced && !Native.pace(PACE_MARGIN_S)) {
+		// Frame Generation: every real frame is presented (the cap times them), Smooth's generated one first
+		boolean fg = dev.cadence.metal.framegen.FrameGen.running() && !MetalEncoder.PRESENT_ACQUIRE;
+		if (fg) dev.cadence.metal.framegen.FrameGen.beforePresent(((MetalTexture.View) textureView).handle);
+		if (!fg && this.paced && !Native.pace(PACE_MARGIN_S)) {
 			if (WaitStats.ON) WaitStats.wait(WaitStats.PACE, System.nanoTime() - t0, 0);
 			return;
 		}

@@ -27,6 +27,7 @@ public final class ShaderLoaderMod implements ClientModInitializer {
 		// (the HUD's FPS Counter reads cadence.fpsCounter from the first frame: set from the saved setting now)
 		dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed();
     dev.cadence.shaders.cadence.memory.HeapTrim.apply();
+    dev.cadence.shaders.cadence.render.FrameGenSetting.load();
     dev.cadence.shaders.cadence.memory.GcPolicy.start();
     // Cadence: the render thread's scheduling role, and the heat/memory monitor (Heat Control, memory guard)
     dev.cadence.shaders.cadence.system.ThreadRoles.renderThread();

@@ -1,0 +1,8 @@
+{
+	"required": true,
+	"package": "dev.cadence.metal.mixin.framegen",
+	"plugin": "dev.cadence.metal.mixin.framegen.FrameGenMixinPlugin",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["FrameGenCameraMixin", "FrameGenEventsAccess", "FrameGenProjectionMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

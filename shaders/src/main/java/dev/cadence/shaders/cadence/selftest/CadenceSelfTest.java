@@ -108,6 +108,46 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("upscaler=")) {
 					String mode = lower.substring(9);
 					mc.execute(() -> RenderScale.applyUpscaler(mode));
+				} else if (lower.startsWith("framegen=")) {
+					// "framegen=smooth|responsive|off": Frame Generation's mode (not saved)
+					dev.cadence.metal.framegen.FrameGen.setMode(switch (lower.substring(9)) {
+						case "responsive" -> dev.cadence.metal.framegen.FrameGen.Mode.RESPONSIVE;
+						case "off" -> dev.cadence.metal.framegen.FrameGen.Mode.OFF;
+						default -> dev.cadence.metal.framegen.FrameGen.Mode.SMOOTH;
+					});
+				} else if (lower.startsWith("fgbase=")) {
+					// "fgbase=N": Frame Generation renders N frames a second whatever the preset (0: as the preset says)
+					dev.cadence.metal.framegen.FrameGen.forceBase = Integer.parseInt(lower.substring(7));
+				} else if (lower.startsWith("fgcheck")) {
+					// "fgcheck=DEG[:DX]": the reprojection measured. Between two frames the view turns DEG degrees (and the player moves
+					// DX blocks east); the frame before the turn, reprojected to the camera after it, is compared with the real frame
+					// after it, pixel by pixel (and, for scale, the frame before unmoved)
+					String[] g = lower.contains("=") ? lower.substring(8).split(":") : new String[] {"2"};
+					float deg = Float.parseFloat(g[0]);
+					double dx = g.length > 1 ? Double.parseDouble(g[1]) : 0;
+					String[] r = new String[1];
+					long[] f0 = {-1};
+					mc.submit(() -> {
+						var p = mc.player;
+						if (p == null) return;
+						f0[0] = dev.cadence.metal.framegen.FrameGen.snapshots();
+						float yaw = p.getYRot() + deg;
+						p.setYRot(yaw);
+						p.yRotO = yaw;
+						if (dx != 0) {
+							p.setPos(p.getX() + dx, p.getY(), p.getZ());
+							p.xo = p.getX();
+							p.xOld = p.getX();
+						}
+					}).join();
+					// (the frame after the turn snapshotted: checked at the start of the next frame, before it renders)
+					long until = System.nanoTime() + 3_000_000_000L;
+					while (f0[0] >= 0 && dev.cadence.metal.framegen.FrameGen.snapshots() < f0[0] + 1 && System.nanoTime() < until) sleep(1);
+					if (f0[0] >= 0) mc.submit(() -> {
+						long n = dev.cadence.metal.framegen.FrameGen.snapshots();
+						r[0] = n == f0[0] + 1 ? dev.cadence.metal.framegen.FrameGen.check() : "missed the frame (" + (n - f0[0]) + " snapshots)";
+					}).join();
+					LOGGER.info("[selftest] fgcheck {}: {}", step, r[0]);
 				} else if (lower.startsWith("fardistance=")) {
 					// "fardistance=N": Video Settings > Far Distance moved to N chunks (live while far terrain runs; not saved)
 					dev.cadence.metal.lod.LodConfig.requestRadius(Integer.parseInt(lower.substring(12)));

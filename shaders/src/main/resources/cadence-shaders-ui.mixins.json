@@ -57,6 +57,7 @@
 		"render.FarCloudsMixin",
 		"render.FeatureDispatcherAccess",
 		"render.FeatureFrameAccess",
+		"render.FrameGenSnapshotMixin",
 		"render.GamePanoramaAccess",
 		"render.GameRendererHudTargetMixin",
 		"render.GameRendererWorldScaleMixin",

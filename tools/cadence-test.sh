@@ -69,6 +69,9 @@ echo "$(ts) START window=${CADENCE_W:-960}x${CADENCE_H:-540} rd=${CADENCE_RD:-6}
 # the dev run loads the shaders module from run/mods: always the jar just built
 J=$(ls -t "$ROOT"/shaders/build/libs/cadence-shaders-*.jar 2>/dev/null | grep -v sources | head -1)
 [ -z "$CADENCE_CLASSPATH" ] && [ -n "$J" ] && [ "$J" -nt "$RUN/mods/cadence-shaders.jar" ] && cp "$J" "$RUN/mods/cadence-shaders.jar" && echo "$(ts) mods/cadence-shaders.jar updated from $(basename "$J")"
+# (and the fps counter's: it stayed at an October build, so the counter's changes were never in the test game)
+H=$(ls -t "$ROOT"/fpshud/build/libs/cadence-hud-*.jar 2>/dev/null | grep -v sources | head -1)
+[ -z "$CADENCE_CLASSPATH" ] && [ -n "$H" ] && [ "$H" -nt "$RUN/mods/cadence-fpshud.jar" ] && cp "$H" "$RUN/mods/cadence-fpshud.jar" && echo "$(ts) mods/cadence-fpshud.jar updated from $(basename "$H")"
 cd "$RUN"
 # the shader config as it was: restored after the run even if the game crashes (the self-test restores it only on a clean exit)
 CFG_BACKUP=$(mktemp); cp config/cadence-shaders.properties "$CFG_BACKUP" 2>/dev/null
