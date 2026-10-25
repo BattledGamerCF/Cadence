@@ -9,6 +9,12 @@ built for Apple's GPUs and tested together.
 
 ## Why Cadence
 
+**Frame Generation.** Twice the frames on screen for the frames rendered, with and without shader packs: a frame made between
+each two by reprojecting the world (the HUD, chat and your hand stay sharp). Battery Saver renders 30 and shows 60, saving
+power; on a 120 Hz screen Recommended and Max Quality render 60 and show 120. Smooth (between the last two frames) or
+Responsive (the newest frame turned to where your mouse looks now: no added delay), or Off; the counter shows "60 fps
+(30 rendered)".
+
 **Shader packs on the base Macs.** The packs run on Metal (no OpenGL translation), and Cadence keeps them playable on an
 8-core M2 MacBook Air, the entry-level Apple Silicon GPU, where most packs hold 60 fps:
 - **Auto resolution:** the pack renders at a lower internal resolution when the Mac can't hold the target frame rate,
@@ -44,6 +50,10 @@ apart); about 30,000 with the land in view. See [docs/RENDER-MAX-FPS.md](docs/RE
 | **More Culling / Cull Leaves** | Smart Leaves (opt-in): leaf faces hidden inside a canopy skipped |
 | **Sodium's options, Reese's Sodium Options** | Everything in Options > Video Settings, with tooltips and a Performance preset |
 | **An fps counter** | Cadence HUD |
+
+Also: **Instant Replay** (the last 30 seconds saved as a video with F10, by the Mac's video encoder), **Photo Mode** (F9: a
+full-resolution, full-quality screenshot), a **Performance Overlay** (frames, GPU time, heat, power), **battery time left** at
+the current draw, macOS **Low Power Mode** followed as Battery Saver, and **Auto Render Distance** for shader packs.
 
 On top of that: a garbage-collection policy for games, faster startup (cached bootstrap data), lighter chunk storage,
 threads placed on the right kind of core, exact frame caps and even pacing, and the optional Vivace Java build. Where

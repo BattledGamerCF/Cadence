@@ -2,6 +2,26 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.19 / shaders 0.3.18 (2026-10-25)
+
+- **Frame Generation** (Video Settings: Smooth, Responsive, Off), with and without shader packs: a frame made between each two
+  by reprojecting a snapshot of the world (no motion vectors needed); the hand, HUD, chat and screens come from the newest
+  real frame as they are. Smooth: the camera halfway between the last two frames (one frame of added latency). Responsive:
+  the newest frame turned to where the mouse looks now, read between frames (no added latency). It runs where it adds frames
+  the screen shows: Battery Saver (and On Battery: Saver, Low Power Mode) renders 30 and shows 60; the others render 60 and
+  show 120 on a 120 Hz screen. Measured: a 3 degree turn rebuilt with 91% of pixels exact (47% without reprojection), 0.2
+  blocks of movement 71% (36%); with BSL 70% (34%) and 64% (41%).
+- **Instant Replay** (off by default; F10 saves the last 30 s to replays/, hardware H.264, no sound).
+- **Photo Mode** (F9): a full-resolution, full-quality screenshot (Auto resolution's scale set aside, HUD hidden).
+- **Performance Overlay** (off by default): frames shown and rendered, frame and GPU time, heat, power, battery.
+- **Battery time left** at the current draw in Video Settings and next to the fps counter, on battery.
+- **Low Power Mode**: followed as On Battery's Saver.
+- **Auto Render Distance** (off by default): with a shader pack and Auto resolution at its floor, the render distance comes
+  down 2 chunks at a time (not below 8) to hold the frame rate, and goes back up when there's room.
+- Measured, nothing to win, not built: a Metal pipeline archive and shader warm-up (the game's whole compile is ~0.2 s on
+  macOS's own shader cache, and a flight creates almost no new pipelines), a chunk-mesh disk cache (a rejoin builds its
+  chunks within a second), scoped barriers on the Metal 4 path (no change).
+
 ## 0.4.0-beta.18 / shaders 0.3.17 (2026-10-25)
 
 Far terrain:
