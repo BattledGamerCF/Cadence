@@ -50,6 +50,16 @@ public final class Cadence {
 		return ApiHooks.shaderPack;
 	}
 
+	/** Whether the shader pack's shadow pass is drawing now (only ever true while a pack is active). Render thread. */
+	public static boolean renderingShadowPass() {
+		return ApiHooks.shadowPass;
+	}
+
+	/** The active shader pack's sun path rotation in degrees, 0 without a pack. */
+	public static float sunPathRotation() {
+		return ApiHooks.sunPathRotation;
+	}
+
 	/** How far Cadence's far terrain reaches in this level, in blocks, or 0 when it isn't drawing (off, or a dimension without). */
 	public static float farTerrainReach() {
 		return dev.cadence.metal.lod.LodPackFrame.reach();

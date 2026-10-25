@@ -2,7 +2,7 @@
 """Build the single installable jar: the cadence-metal jar (mod id cadence) (natives inside) with the fps counter and the shader-pack
 loader nested through Fabric's jar-in-jar.
 
-  tools/bundle.py --metal METAL.jar --fps FPS.jar [--shaders SHADERS.jar] --out OUT.jar
+  tools/bundle.py --metal METAL.jar --fps FPS.jar [--shaders SHADERS.jar] [--iris IRIS-API.jar] --out OUT.jar
 
 The outer jar stays mod id cadence (java -jar still explains the install). It gains META-INF/jars/<fps jar>, a
 "jars" list in fabric.mod.json, and META-INF/licenses/cadence-hud/ with the nested jar's own licence files. Sodium is
@@ -18,6 +18,7 @@ def main():
     p.add_argument('--metal', required=True)
     p.add_argument('--fps', required=True)
     p.add_argument('--shaders')
+    p.add_argument('--iris', help='the Iris API answered by Cadence (mod iris 0.0.1+cadence; a real Iris replaces it)')
     p.add_argument('--out', required=True)
     p.add_argument('--native', action='store_true', help='the experimental native build: cadence/native/ENABLED (NativeShaders on by default), version +native')
     a = p.parse_args()
@@ -25,6 +26,8 @@ def main():
     nested = [('cadence-hud', os.path.basename(a.fps), open(a.fps, 'rb').read())]  # (slug, file name, bytes)
     if a.shaders:
         nested.append(('cadence-shaders', os.path.basename(a.shaders), open(a.shaders, 'rb').read()))
+    if a.iris:
+        nested.append(('cadence-iris-api', os.path.basename(a.iris), open(a.iris, 'rb').read()))
     licences = {}  # archive path -> bytes
     listing = []
     for slug, name, data in nested:

@@ -148,6 +148,26 @@ public final class ShaderToggle {
 		if (CadencePackGate.hooksApplied()) ShaderSwitcher.apply(pack);
 	}
 
+	/**
+	 * Shaders on or off as the K key does them (and the Iris API's setShadersEnabledAndApply): off remembers the pack; on brings
+	 * the last one back. False when there is none to bring back (K then opens the list).
+	 */
+	public static boolean setEnabled(boolean on) {
+		String now = selectedPack();
+		if (!on) {
+			if (!now.isEmpty()) {
+				saveKey("lastPack", now);
+				choose("");
+			}
+			return true;
+		}
+		if (!now.isEmpty()) return true;
+		String last = configValue("lastPack", "").strip();
+		if (last.isEmpty() || !choices().contains(last)) return false;
+		choose(last);
+		return true;
+	}
+
 	/** Video Settings' Shaders button: the pack in use, and the Shader Packs list behind it. */
 	public static Button packsButton(net.minecraft.client.gui.screens.Screen parent) {
 		String pack = CadencePackGate.hooksApplied() ? ShaderSwitcher.target() : saved();

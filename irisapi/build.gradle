@@ -1,0 +1,25 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+// The Iris API (net.irisshaders.iris.api.v0) answered by Cadence, for mods that ask Iris whether a shader pack is on. Nested in
+// Cadence's jar as mod "iris" 0.0.1+cadence: Fabric keeps the newest version of a mod id, so a real Iris always wins.
+base.archivesName = 'cadence-iris-api'
+version = '0.0.1+cadence'
+
+dependencies {
+	minecraft "com.mojang:minecraft:${minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${loader_version}"
+}
+
+processResources {
+	inputs.property 'version', version
+	filesMatching('fabric.mod.json') { expand 'version': version }
+}
+
+tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
+
+jar {
+	from(rootProject.file('LICENSE'))
+	from(rootProject.file('NOTICE'))
+}

@@ -207,6 +207,8 @@ public final class ShaderRuntime implements AutoCloseable {
   public static void install(ShaderRuntime runtime) {
     // (Cadence API: dev.cadence.api.Cadence#shaderPack)
     dev.cadence.metal.ApiHooks.shaderPack = runtime == null ? "" : dev.cadence.shaders.cadence.ui.ShaderToggle.selectedPack();
+    dev.cadence.metal.ApiHooks.shadowPass = false;
+    if (runtime == null) dev.cadence.metal.ApiHooks.sunPathRotation = 0;
     instance = runtime;
     // (Cadence: lazy clears are on with and without a pack now: MetalEncoder.LAZY_CLEARS)
   }
@@ -507,6 +509,7 @@ public final class ShaderRuntime implements AutoCloseable {
     suspend();
     profile("shadow.begin");
     shadow = true;
+    dev.cadence.metal.ApiHooks.shadowPass = true;
     frameBuffers.clear();
     return true;
   }
@@ -523,6 +526,7 @@ public final class ShaderRuntime implements AutoCloseable {
     suspend();
     profile("shadow.end");
     shadow = false;
+    dev.cadence.metal.ApiHooks.shadowPass = false;
     frameBuffers.clear();
     execute("shadowcomp");
     execute("prepare");

@@ -7,4 +7,4 @@ pluginManagement {
 }
 
 rootProject.name = 'cadence'
-include 'metal', 'fpshud', 'shaders'
+include 'metal', 'fpshud', 'shaders', 'irisapi'

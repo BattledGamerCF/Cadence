@@ -72,6 +72,8 @@ J=$(ls -t "$ROOT"/shaders/build/libs/cadence-shaders-*.jar 2>/dev/null | grep -v
 # (and the fps counter's: it stayed at an October build, so the counter's changes were never in the test game)
 H=$(ls -t "$ROOT"/fpshud/build/libs/cadence-hud-*.jar 2>/dev/null | grep -v sources | head -1)
 [ -z "$CADENCE_CLASSPATH" ] && [ -n "$H" ] && [ "$H" -nt "$RUN/mods/cadence-fpshud.jar" ] && cp "$H" "$RUN/mods/cadence-fpshud.jar" && echo "$(ts) mods/cadence-fpshud.jar updated from $(basename "$H")"
+I=$(ls -t "$ROOT"/irisapi/build/libs/cadence-iris-api-*.jar 2>/dev/null | grep -v sources | head -1)
+[ -z "$CADENCE_CLASSPATH" ] && [ -n "$I" ] && [ "$I" -nt "$RUN/mods/cadence-iris-api.jar" ] && cp "$I" "$RUN/mods/cadence-iris-api.jar" && echo "$(ts) mods/cadence-iris-api.jar updated from $(basename "$I")"
 cd "$RUN"
 # the shader config as it was: restored after the run even if the game crashes (the self-test restores it only on a clean exit)
 CFG_BACKUP=$(mktemp); cp config/cadence-shaders.properties "$CFG_BACKUP" 2>/dev/null

@@ -205,13 +205,18 @@ public final class Profile {
 	 * then stops at startup ("API doesn't match"). Then dev.cadence.metal defaults to false (OpenGL, exactly as -Dcadence.metal=false;
 	 * no own renderer). An explicit dev.cadence.metal wins. Without DH nothing here runs.
 	 */
+	/** Iris itself, not Cadence's own Iris API (the iris mod nested in Cadence, version 0.0.1+cadence). */
+	public static boolean realIris(net.fabricmc.loader.api.FabricLoader loader) {
+		return loader.getModContainer("iris").map(c -> !c.getMetadata().getVersion().getFriendlyString().contains("+cadence")).orElse(false);
+	}
+
 	private static void distantHorizonsOnOpenGl() {
 		if (System.getProperty("cadence.metal") != null) return;
 		String why;
 		try {
 			net.fabricmc.loader.api.FabricLoader loader = net.fabricmc.loader.api.FabricLoader.getInstance();
 			if (!loader.isModLoaded("distanthorizons")) return;
-			why = loader.isModLoaded("iris") ? "with Iris" : dhOpenGlEngine() ? "set to its OpenGL renderer" : null;
+			why = realIris(loader) ? "with Iris" : dhOpenGlEngine() ? "set to its OpenGL renderer" : null;
 		} catch (Throwable t) {
 			return;
 		}

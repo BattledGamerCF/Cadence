@@ -52,17 +52,9 @@ public final class ShaderKeys {
 		}
 		while (PACKS.consumeClick()) mc.gui.setScreen(new ShaderPacksScreen(null));
 		while (TOGGLE.consumeClick()) {
-			String now = ShaderToggle.selectedPack();
-			if (!now.isEmpty()) {
-				ShaderToggle.saveKey("lastPack", now);
-				ShaderToggle.choose("");
-			} else {
-				String last = ShaderToggle.configValue("lastPack", "").strip();
-				if (last.isEmpty() || !ShaderToggle.choices().contains(last)) {
-					mc.gui.setScreen(new ShaderPacksScreen(null));
-					continue;
-				}
-				ShaderToggle.choose(last);
+			if (!ShaderToggle.setEnabled(ShaderToggle.selectedPack().isEmpty())) {
+				mc.gui.setScreen(new ShaderPacksScreen(null));
+				continue;
 			}
 			// (without live switching this session the choice is only saved: say so, or K would seem to do nothing)
 			if (!dev.cadence.shaders.CadencePackGate.hooksApplied() && mc.player != null) {

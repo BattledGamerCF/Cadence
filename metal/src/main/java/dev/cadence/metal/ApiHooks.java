@@ -43,6 +43,12 @@ public final class ApiHooks {
 	/** The shaders module: the pack drawing now ("" none). */
 	public static volatile String shaderPack = "";
 
+	/** The shaders module: whether the pack's shadow pass is drawing now (render thread). */
+	public static volatile boolean shadowPass;
+
+	/** The shaders module: the pack's sunPathRotation in degrees (0 without a pack). */
+	public static volatile float sunPathRotation;
+
 	public static synchronized void add(RenderStage stage, RenderHook hook) {
 		RenderHook[] old = HOOKS[stage.ordinal()];
 		RenderHook[] now = java.util.Arrays.copyOf(old, old.length + 1);

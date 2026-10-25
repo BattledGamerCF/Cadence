@@ -1,0 +1,13 @@
+{
+	"schemaVersion": 1,
+	"id": "iris",
+	"version": "${version}",
+	"name": "Iris API (Cadence)",
+	"description": "The Iris API (net.irisshaders.iris.api.v0) answered by Cadence's own shader packs, for mods that ask Iris whether a pack is on. Not Iris: a real Iris, if installed, replaces it.",
+	"license": "Apache-2.0",
+	"custom": { "modmenu": { "parent": "cadence", "badges": ["library"] } },
+	"authors": ["Cadence authors"],
+	"contact": { "homepage": "https://github.com/BattledGamerCF/Cadence", "sources": "https://github.com/BattledGamerCF/Cadence", "issues": "https://github.com/BattledGamerCF/Cadence/issues" },
+	"environment": "client",
+	"depends": { "fabricloader": ">=0.19.5", "minecraft": "~26.3", "java": ">=25" }
+}
