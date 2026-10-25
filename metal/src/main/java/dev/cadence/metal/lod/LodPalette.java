@@ -66,6 +66,11 @@ final class LodPalette {
 		}
 		putRgb(at + 32, l.top());
 		putRgb(at + 48, l.side());
+		// (a plant's tallest opaque texel, blocks: its quads drawn no higher, columns.metal lod_mesh_plant_vs)
+		int highest = 0;
+		for (int i = 0; i < 4; i++)
+			for (int k = 0; k < 4; k++) highest = Math.max(highest, (l.profile()[i] >>> (k * 8)) & 255);
+		MemoryUtil.memPutFloat(at + 60, highest / 16.0F);
 		for (int i = 0; i < 4; i++) MemoryUtil.memPutInt(at + 64 + i * 4L, l.profile()[i]);
 	}
 

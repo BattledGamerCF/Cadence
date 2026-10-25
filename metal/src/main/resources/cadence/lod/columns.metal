@@ -88,7 +88,7 @@ struct ColFrame {
 // plants, how high the opaque texels reach in each sixteenth of the side sprite's width (sixteenths of a block, a byte each).
 struct PaletteEntry {
     float4 topUv, sideUv;   // u0 v0 u1 v1
-    float4 topAvg, sideAvg; // rgb
+    float4 topAvg, sideAvg; // rgb; sideAvg.w: a plant's tallest opaque texel (blocks, the profile's highest)
     uint4 profile;
 };
 
@@ -3136,7 +3136,8 @@ struct MeshPlantVOut {
 };
 
 vertex MeshPlantVOut lod_mesh_plant_vs(uint vid [[vertex_id]], uint iid [[instance_id]], constant CompFrame& f [[buffer(22)]],
-                                       device const MeshInstance* inst [[buffer(23)]], device const uint* arena [[buffer(24)]]) {
+                                       device const MeshInstance* inst [[buffer(23)]], device const uint* arena [[buffer(24)]],
+                                       device const uint* texWords [[buffer(20)]], device const PaletteEntry* palette [[buffer(21)]]) {
     uint4 in = inst[iid].a;
     uint q = vid >> 2, corner = vid & 3u;
     MeshPlantVOut o;
@@ -3156,7 +3157,13 @@ vertex MeshPlantVOut lod_mesh_plant_vs(uint vid [[vertex_id]], uint iid [[instan
     bool a = corner == 1u || corner == 2u;
     float sa = a ? 0.95 : 0.05;
     float lx = sa, lz = quad == 0 ? sa : 1.0 - sa;
-    float ly = corner >= 2u ? float(blocks) : 0.0;
+    // the quad only as tall as the plant's opaque texels reach (the fragment stage cuts to them; above, every fragment was
+    // shaded to be discarded: short grass is about half a block)
+    int logN = f.origin.w, n = 1 << logN, m = n - 1;
+    uint pa = texWords[uint(n) * uint(n) + uint(((az & m) << logN) | (ax & m))];
+    uint lower = pa & 1023u, upper = (pa >> 10) & 1023u;
+    float top = float(blocks - 1) + palette[upper != 0u ? upper : lower].sideAvg.w + 1.0 / 16.0;
+    float ly = corner >= 2u ? min(top, float(blocks)) : 0.0;
     float3 rel = float3(float(ax - f.origin.x) + lx + fox, float(y0 - f.origin.y) + foy + ly, float(az - f.origin.z) + lz + foz) - f.camFrac.xyz;
     o.position = meshClip(f, rel);
     o.info = uint(quad) | (uint(ax - f.origin.x) & 0x7FFFu) << 1 | (uint(az - f.origin.z) & 0xFFFFu) << 16;

@@ -521,6 +521,8 @@ int mcl_mesh_draw(LodCols *l, Enc *enc, int gbuffer, const void *comp, int compL
 		indirectBufferOffset:0];
 	[r setRenderPipelineState:ppso];
 	[r setCullMode:MTLCullModeNone];
+	[r setVertexBuffer:texWords offset:0 atIndex:20];  // (the plants' quads only as tall as their sprites: lod_mesh_plant_vs)
+	[r setVertexBuffer:palette offset:0 atIndex:21];
 	[r setVertexBuffer:plantInst offset:0 atIndex:23];
 	[r drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexType:MTLIndexTypeUInt16 indexBuffer:l->plantIdx indexBufferOffset:0 indirectBuffer:args
 		indirectBufferOffset:5 * 4];
