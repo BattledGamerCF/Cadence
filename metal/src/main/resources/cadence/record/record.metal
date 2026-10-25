@@ -158,23 +158,44 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 				axis = ax;
 			}
 #endif
-			for (int k = 0; k < 96 && tIn < tEnd; k++) {
-				// (x and z can't leave the window before tEnd, and wrap if rounding says otherwise; y is checked: it indexes memory)
-				if (uint(v.y) >= uint(H)) break;
+			// The walk in two loops: the inner one crosses air only (one load and one test a voxel: this kernel's speed follows its
+			// register count, and the shapes' tests inside the loop cost every step: 10-36% in forest views, the same image); the
+			// voxel that ends it is a full block (the hit) or another shape, tested here, the walk going on past it on a miss.
+			// One budget of 96 voxels for both.
+			for (int k = 0; k < 96 && !done;) {
+				uint spec = 0;
+				for (; k < 96 && tIn < tEnd; k++) {
+					// (x and z can't leave the window before tEnd, and wrap if rounding says otherwise; y is checked: it indexes memory)
+					if (uint(v.y) >= uint(H)) break;
 #ifdef RB_STEPS
-				innerSteps++;
+					innerSteps++;
 #endif
-				uint word = grid[cellIndex(v, f)];
-				if (word & FULL) {
+					uint word = grid[cellIndex(v, f)];
+					if (word & (FULL | SPECIAL)) {
+						spec = word;
+						break;
+					}
+					prev = word;
+					{
+						// the next voxel, branch-free: along the axis whose boundary comes first
+						bool3 m = tMax <= min(tMax.yzx, tMax.zxy);
+						axis = m.x ? 0 : m.y ? 1 : 2;
+						tIn = min(min(tMax.x, tMax.y), tMax.z);
+						v += select(int3(0), stepv, m);
+						tMax += select(float3(0), tDelta, m);
+					}
+				}
+				if (spec == 0) break;
+				if (spec & FULL) {
 					// a full block: its face, lit by the air the ray came through
-					hitTop = word;
-					hitSide = word >> 15;
+					hitTop = spec;
+					hitSide = spec >> 15;
 					hitLight = wordLight(prev);
 					hitV = v; hitAx = axis; hitT = tIn; done = true;
 					break;
 				}
-				if (word & SPECIAL) {
-					uint4 e = pal[word & 0xFFFu];
+				{
+					uint4 e = pal[spec & 0xFFFu];
 					if (f.status.z != 0 && (e.z & 2)) {
 						// (the eye in water or lava: fluid seen through, as the game draws it from inside)
 					} else if (e.z & 1) {
@@ -191,8 +212,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 						}
 						if (done) {
 							hitSide = e.y;
-							hitLight = wordLight(word);
-							break;
+							hitLight = wordLight(spec);
 						}
 					} else if (e.z & 4) {
 						// a shape smaller than the cube: its box within the voxel, lit by its own voxel
@@ -203,30 +223,26 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 						float3 an = min(a0, a1), af = max(a0, a1);
 						float te = max(max(an.x, an.y), an.z), tx = min(min(af.x, af.y), af.z);
 						if (te <= tx && tx >= 0) {
-							hitTop = e.x; hitSide = e.y; hitLight = wordLight(word);
+							hitTop = e.x; hitSide = e.y; hitLight = wordLight(spec);
 							hitV = v; hitAx = an.x >= an.y && an.x >= an.z ? 0 : an.y >= an.z ? 1 : 2; hitT = max(te, tIn); done = true;
-							break;
 						}
 					} else {
 						// a fluid (as a full cube), lit by its own voxel
-						hitTop = e.x; hitSide = e.y; hitLight = wordLight(word);
+						hitTop = e.x; hitSide = e.y; hitLight = wordLight(spec);
 						hitV = v; hitAx = axis; hitT = tIn; done = true;
-						break;
 					}
 				}
-				prev = word;
-#ifdef RB_BRANCHY
-				if (tMax.x < tMax.y && tMax.x < tMax.z) { tIn = tMax.x; v.x += stepv.x; tMax.x += tDelta.x; axis = 0; }
-				else if (tMax.y < tMax.z) { tIn = tMax.y; v.y += stepv.y; tMax.y += tDelta.y; axis = 1; }
-				else { tIn = tMax.z; v.z += stepv.z; tMax.z += tDelta.z; axis = 2; }
-#else
-				// the next voxel, branch-free: along the axis whose boundary comes first
-				bool3 m = tMax <= min(tMax.yzx, tMax.zxy);
-				axis = m.x ? 0 : m.y ? 1 : 2;
-				tIn = min(min(tMax.x, tMax.y), tMax.z);
-				v += select(int3(0), stepv, m);
-				tMax += select(float3(0), tDelta, m);
-#endif
+				if (done) break;
+				prev = spec;
+				k++;
+				{
+					// the next voxel, branch-free: along the axis whose boundary comes first
+					bool3 m = tMax <= min(tMax.yzx, tMax.zxy);
+					axis = m.x ? 0 : m.y ? 1 : 2;
+					tIn = min(min(tMax.x, tMax.y), tMax.z);
+					v += select(int3(0), stepv, m);
+					tMax += select(float3(0), tDelta, m);
+				}
 			}
 		}
 		if (done) {

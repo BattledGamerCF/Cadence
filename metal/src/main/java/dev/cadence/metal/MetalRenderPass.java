@@ -55,7 +55,8 @@ final class MetalRenderPass implements RenderPassBackend {
 	/** What the frontend set in the encoder besides uniforms, for MetalTerrain.OCC to put back after it splits the pass. */
 	private final int[] scissor = new int[4];
 	private final @Nullable GpuBufferSlice[] vertexBuffers = new GpuBufferSlice[4];
-	private final byte[] pushConstants = new byte[128];
+	/** The pass's push constants, kept for binding again after a split (MetalTerrain.OCC only: made then, 128 bytes a pass otherwise). */
+	private byte @Nullable [] pushConstants;
 	private int pushConstantsLength;
 
 	private final boolean hasDepth;
@@ -182,7 +183,7 @@ final class MetalRenderPass implements RenderPassBackend {
 		if (this.indexHandle != 0) Native.index(this.enc, this.indexHandle, this.indexInt);
 		if (this.pushConstantsLength > 0) {
 			try (MemoryStack stack = MemoryStack.stackPush()) {
-				ByteBuffer bytes = stack.malloc(this.pushConstantsLength).put(this.pushConstants, 0, this.pushConstantsLength).flip();
+				ByteBuffer bytes = stack.malloc(this.pushConstantsLength).put(Objects.requireNonNull(this.pushConstants), 0, this.pushConstantsLength).flip();
 				Native.bytes(this.enc, MetalConst.PUSH_CONSTANTS_INDEX, MemoryUtil.memAddress(bytes), this.pushConstantsLength);
 			}
 		}
@@ -201,7 +202,7 @@ final class MetalRenderPass implements RenderPassBackend {
 		}
 		if (this.pushConstantsLength == 0) return;
 		try (MemoryStack stack = MemoryStack.stackPush()) {
-			ByteBuffer bytes = stack.malloc(this.pushConstantsLength).put(this.pushConstants, 0, this.pushConstantsLength).flip();
+			ByteBuffer bytes = stack.malloc(this.pushConstantsLength).put(Objects.requireNonNull(this.pushConstants), 0, this.pushConstantsLength).flip();
 			Native.bytes(this.enc, MetalConst.PUSH_CONSTANTS_INDEX, MemoryUtil.memAddress(bytes), this.pushConstantsLength);
 		}
 	}
@@ -236,7 +237,8 @@ final class MetalRenderPass implements RenderPassBackend {
 			return;
 		}
 		Native.bytes(this.enc, MetalConst.PUSH_CONSTANTS_INDEX, MemoryUtil.memAddress(value), value.remaining());
-		if (MetalTerrain.OCC && value.remaining() <= this.pushConstants.length) {
+		if (MetalTerrain.OCC && value.remaining() <= 128) {
+			if (this.pushConstants == null) this.pushConstants = new byte[128];
 			this.pushConstantsLength = value.remaining();
 			value.get(value.position(), this.pushConstants, 0, this.pushConstantsLength);
 		}

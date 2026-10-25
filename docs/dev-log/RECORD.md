@@ -38,8 +38,8 @@ with frame interpolation, counted apart. The rules (hone.gg/fps-records/minecraf
 
 `tools/record_bench.m` times `record_trace` on a world dumped from the game: the self-test step `recorddump=name` writes
 `metal/run/screenshots/dump-name/` (frame, grid, palette, occupancy, light, entities, text). Variants by `-D` macros in
-record.metal (`RB_NO_TRACE`, `RB_NO_HUD`, `RB_NO_LIGHT`, `RB_NO_ENT`, `RB_STEPS`, `RB_SIMPLE_HIT`, `RB_MIN_TRACE`,
-`RB_BRANCHY`), alternated in rounds so the Mac's heat drifts across all of them; `RB_PNG` writes the frame.
+record.metal (today: `RB_NO_TRACE`, `RB_NO_HUD`, `RB_NO_LIGHT`, `RB_NO_ENT`, `RB_NO_CELLS`, `RB_STEPS`, `RB_STOP`, `RB_FLOOR`;
+earlier experiments' macros are gone with them), alternated in rounds so the Mac's heat drifts across all of them; `RB_PNG` writes the frame.
 
     clang -fobjc-arc -O2 -framework Metal -framework Foundation -framework ImageIO -framework CoreGraphics tools/record_bench.m -o /tmp/record_bench
     /tmp/record_bench metal/run/screenshots/dump-north metal/src/main/resources/cadence/record/record.metal 2000 3 - RB_NO_HUD
@@ -174,5 +174,35 @@ frame is the real view):
   in them stay under 25,000 rendered on this Mac; the honest ground number is ~13,000, not 25,000.
 - The GPU time per frame swings 2x between readings of the same view (the M2 Air's clocks under sustained load).
 
-The record attempt (corrected): stand on a pillar above everything around (any block, ~60 blocks up), look up (straight up or
-~80 degrees), stand still ~5 s, read the counter and "Best". Say in the submission that the view is the sky.
+### The walk in two loops (10-25)
+
+The voxel walk's loop held the tests of every shape (crossed plants, boxes, fluids): their registers were held across every
+step. Now the inner loop crosses air only (one load, one test a voxel); the voxel that stops it is either a full block (the
+hit) or a shape, tested outside the loop, and the walk goes on past it when the ray misses; one budget of 96 voxels for both
+(with a budget per loop, rays past 8 plants in a row gave up: a few sky pixels at the horizon). The image is the same, pixel
+for pixel, in 7 dumped views (tools/record_bench.m, RB_PNG).
+
+| Offline bench (same run, variants alternated) | before us/frame | after |
+|---|---|---|
+| forest, south | 76.5 | 58.9 |
+| forest, 60 degrees down | 68.4 | 58.7 |
+| forest, north | 60.3 | 53.7 |
+| under the canopy, 15 degrees up | 58.9 | 61.4 |
+| north, open | 26.0 | 27.3 |
+| pillar sky | 14.5 | 14.2 |
+
+Tried with it and dropped: the next voxel worked out while the load is in flight (1-4%, within the noise).
+
+In game (1025-011556, the same poses as above):
+
+| View | rendered fps | shown fps |
+|---|---|---|
+| 80 degrees up from the pillar (sky) | 65,900 | 131,900 |
+| 30 degrees up from the pillar (sky and treetops) | 30,700 (was 21,000-22,400) | 61,300 |
+| straight down into the forest | 14,800 (was 13,200) | 29,700 |
+| 60 degrees down | 15,200 | 30,500 |
+| forest, level, south / north | 14,000 / 11,200-11,500 | 28,000 / 22,400-23,000 |
+
+The record attempt (corrected): stand on a pillar above everything around (any block, ~60 blocks up), look up (~80 degrees or
+straight up), stand still ~5 s, read the counter and "Best". Say in the submission that the view is the sky. With terrain in
+view, 30 degrees up from the pillar: ~30,000 rendered, above the record (21,632) with the land in the picture.
