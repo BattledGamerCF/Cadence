@@ -136,7 +136,7 @@ fragment float4 fg_fs(VOut in [[stage_in]], constant Frame &f [[buffer(0)]],
 		float3 pa = f.a.pos.xyz + rayOf(f.a, ua) * ta;
 		t = max(dot(pa - f.m.pos.xyz, dir), 0.05f);
 	}
-	float2 ua, ub;
+	float2 ua = uv, ub = uv;  // (project() leaves them as they are behind the camera)
 	bool okA, okB;
 	if (sky) {
 		// open sky: only the direction matters (the sky has no parallax)

@@ -15,6 +15,9 @@ public abstract class FramerateCapMixin {
 	private int cadence$heatCap(int limit) {
 		if (dev.cadence.shaders.cadence.setup.QuickSetup.testing) return Math.min(limit, 10);
 		dev.cadence.shaders.cadence.render.AutoRenderDistance.check();
+		// (Photo Mode's countdown runs on ticks without a screen: one opening mid-countdown cancels the shot, BH4-14)
+		if (dev.cadence.shaders.cadence.render.PhotoMode.active() && net.minecraft.client.Minecraft.getInstance().gui.screen() != null)
+			dev.cadence.shaders.cadence.render.PhotoMode.cancel(net.minecraft.client.Minecraft.getInstance());
 		if ((dev.cadence.shaders.cadence.render.MaxFpsMode.on() || dev.cadence.metal.record.Record.chosen())
 			&& net.minecraft.client.Minecraft.getInstance().level != null) {
 			// Render Max FPS: nothing holds the frame rate back (Max Framerate, Heat Control, On Battery) while the game is the
@@ -40,7 +43,7 @@ public abstract class FramerateCapMixin {
 			&& net.minecraft.client.Minecraft.getInstance().level != null
 			&& ((FramerateLimitTracker) (Object) this).getThrottleReason() == FramerateLimitTracker.FramerateThrottleReason.NONE) {
 			long now = System.nanoTime();
-			if (now - cadence$presetChecked > 500_000_000L) {
+			if (now - cadence$presetChecked > 2_000_000_000L) {  // (reads the config file: every 2 s, BH4-13)
 				cadence$presetChecked = now;
 				var preset = dev.cadence.shaders.cadence.ui.CadenceSettings.current();
 				cadence$fgAllowed = preset != dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.MAX_FPS;
@@ -48,7 +51,11 @@ public abstract class FramerateCapMixin {
 					|| dev.cadence.shaders.cadence.system.BatteryMode.saving();
 			}
 			int forced = dev.cadence.metal.framegen.FrameGen.forceBase;
-			int hz = HeatControl.refreshHz(), base = Math.min(forced > 0 ? forced : cadence$saver ? 30 : 60, cap), shown = Math.min(2 * base, hz);
+			int hz = HeatControl.refreshHz(), base = Math.min(forced > 0 ? forced : cadence$saver ? 30 : 60, cap), shown = 2 * base;
+			// (shown exactly twice the frames rendered, and only where the screen shows that many: otherwise every frame rendered.
+			// A rate between, 90 shown of 60 rendered on a 90 Hz screen, gave real and generated frames uneven times on screen,
+			// BUG-HUNT BH4-05; on a 60 Hz screen Recommended stays a true 60)
+			if (shown > hz) shown = base;
 			dev.cadence.metal.framegen.FrameGen.target(cadence$fgAllowed ? base : 0, shown);
 			if (dev.cadence.metal.framegen.FrameGen.running()) {
 				dev.cadence.shaders.cadence.system.FramePacing.cap(shown);

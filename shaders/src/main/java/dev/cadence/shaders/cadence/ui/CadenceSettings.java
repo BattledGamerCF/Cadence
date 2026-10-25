@@ -260,7 +260,7 @@ public final class CadenceSettings {
 	public static Button replayButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(replayLabel(), b -> {
-			boolean on = !dev.cadence.metal.rec.Replay.enabled();
+			boolean on = !dev.cadence.metal.rec.Replay.wanted();
 			dev.cadence.metal.rec.Replay.setEnabled(on);
 			ShaderToggle.saveKey("instantReplay", Boolean.toString(on));
 			refreshAll();
@@ -573,9 +573,11 @@ public final class CadenceSettings {
 		if (MemoryGuard.level() > 0) lines.add(Component.literal(MemoryGuard.shortDescribe()).withStyle(ChatFormatting.YELLOW));
 		// on battery: how long it lasts at the Mac's draw now (and Low Power Mode, which Cadence follows as Battery Saver)
 		String battery = dev.cadence.metal.MacSystem.batteryTimeLeft();
-		if (!battery.isEmpty() || dev.cadence.shaders.cadence.system.BatteryMode.lowPower())
+		// (Low Power Mode said only while it saves: with On Battery Off it doesn't, BH4-15)
+		boolean lpm = dev.cadence.shaders.cadence.system.BatteryMode.lowPower() && dev.cadence.shaders.cadence.system.BatteryMode.saving();
+		if (!battery.isEmpty() || lpm)
 			lines.add(Component.literal((battery.isEmpty() ? "" : "Battery: about " + battery + " left at this rate")
-				+ (dev.cadence.shaders.cadence.system.BatteryMode.lowPower() ? (battery.isEmpty() ? "" : " · ") + "Low Power Mode: saving like Battery Saver" : ""))
+				+ (lpm ? (battery.isEmpty() ? "" : " · ") + "Low Power Mode: saving like Battery Saver" : ""))
 				.withStyle(ChatFormatting.AQUA));
 		Component farTerrain = FarTerrainScreen.packNote();
 		if (farTerrain != null) lines.add(farTerrain);

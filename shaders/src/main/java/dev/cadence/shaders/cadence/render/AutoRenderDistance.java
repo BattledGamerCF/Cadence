@@ -15,12 +15,14 @@ import net.minecraft.client.Minecraft;
 public final class AutoRenderDistance {
 	private static final int MIN = 8, STEP = 2;
 	private static volatile boolean on = "true".equalsIgnoreCase(ShaderToggle.configValue("autoRenderDistance", "false").strip());
-	/** The distance the player chose (Video Settings' slider): the ceiling. */
-	private static int chosen = -1;
+	/**
+	 * The distance Auto holds the view to (-1: none). Only the effective distance is lowered (Options.getEffectiveRenderDistance,
+	 * AutoRenderDistanceMixin), never the player's option: lowered there, it was saved to options.txt with the next options
+	 * screen and stayed after a restart (BUG-HUNT BH4-03).
+	 */
+	private static volatile int cap = -1;
 	private static int slowWindows, calmWindows;
 	private static long lastChange;
-	/** The distance this set last (a different one in the options means the player moved the slider: their new choice). */
-	private static int applied = -1;
 
 	private AutoRenderDistance() {
 	}
@@ -32,10 +34,13 @@ public final class AutoRenderDistance {
 	public static void toggle() {
 		on = !on;
 		ShaderToggle.saveKey("autoRenderDistance", Boolean.toString(on));
-		if (!on && chosen > 0) set(chosen);
-		chosen = -1;
-		applied = -1;
-		slowWindows = calmWindows = 0;
+		release();
+	}
+
+	/** Options.getEffectiveRenderDistance's value with Auto's cap. */
+	public static int effective(int distance) {
+		int c = cap;
+		return c > 0 && c < distance ? c : distance;
 	}
 
 	/**
@@ -46,47 +51,44 @@ public final class AutoRenderDistance {
 		if (!on) return;
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null) return;
-		int rd = mc.options.renderDistance().get();
-		if (chosen < 0 || rd != applied) chosen = rd;  // (the player's choice, or a new one they made with the slider)
+		int chosen = mc.options.renderDistance().get(), rd = effective(mc.options.getEffectiveRenderDistance());
 		boolean slow = intervalMs > targetMs * 1.10 && gpuMs > targetMs * 0.85 && !resolutionCanDrop;
 		boolean calm = gpuMs < targetMs * 0.55 && intervalMs < targetMs * 1.05;
 		slowWindows = slow ? slowWindows + 1 : 0;
 		calmWindows = calm ? calmWindows + 1 : 0;
 		if (chunksBuilding) return;
 		if (slowWindows >= 3 && rd > MIN && now - lastChange > 20_000_000_000L) {
-			set(Math.max(MIN, rd - STEP));
+			set(Math.max(MIN, rd - STEP), chosen);
 			lastChange = now;
 			slowWindows = calmWindows = 0;
-		} else if (calmWindows >= 60 && rd < chosen && now - lastChange > 20_000_000_000L) {
-			set(Math.min(chosen, rd + STEP));
+		} else if (calmWindows >= 60 && cap > 0 && now - lastChange > 20_000_000_000L) {
+			set(rd + STEP, chosen);
 			lastChange = now;
 			calmWindows = 0;
 		}
 	}
 
-	private static void set(int rd) {
-		Minecraft mc = Minecraft.getInstance();
-		mc.options.renderDistance().set(rd);
-		applied = rd;
-		System.out.println("[cadence] Auto Render Distance: " + rd + " chunks");
+	private static void set(int rd, int chosen) {
+		cap = rd >= chosen ? -1 : rd;
+		System.out.println("[cadence] Auto Render Distance: " + Math.min(rd, chosen) + " chunks");
+	}
+
+	/** The player's distance again (off, no pack, a world closed). */
+	private static void release() {
+		cap = -1;
+		slowWindows = calmWindows = 0;
 	}
 
 	/**
-	 * Twice a second (FramerateCapMixin): with no shader pack running, Auto has nothing to measure (it follows Auto resolution's
-	 * pack frames): a distance it lowered goes back to the player's.
+	 * Once a frame (FramerateCapMixin): with no shader pack running, Auto has nothing to measure (it follows Auto resolution's
+	 * pack frames): the player's distance comes back.
 	 */
 	public static void check() {
-		if (!on || chosen < 0 || applied < 0 || dev.cadence.shaders.runtime.ShaderRuntime.get() != null) return;
-		Minecraft mc = Minecraft.getInstance();
-		if (mc.level != null && mc.options.renderDistance().get() == applied && applied < chosen) set(chosen);
-		chosen = -1;
-		applied = -1;
+		if (cap > 0 && (!on || dev.cadence.shaders.runtime.ShaderRuntime.get() == null || Minecraft.getInstance().level == null)) release();
 	}
 
 	/** The distance in use while Auto holds it under the player's (for the button), or -1. */
 	public static int holding() {
-		Minecraft mc = Minecraft.getInstance();
-		int rd = mc.options.renderDistance().get();
-		return on && chosen > 0 && rd < chosen ? rd : -1;
+		return cap;
 	}
 }

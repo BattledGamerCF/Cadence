@@ -63,6 +63,8 @@ public final class FrameGen {
 	private static final double[][] slotPos = new double[2][3];
 	private static final float[][] slotLook = new float[2][2];  // the player's yaw and pitch (getYRot/getXRot) at the snapshot
 	private static final long[] slotFrame = {-10, -10};
+	/** When each snapshot was taken (nanoTime): an older one isn't the frame before (FG paused, a hitch, a menu). */
+	private static final long[] slotTime = new long[2];
 	private static volatile long frames;
 	private static int slot = -1;
 	private static int width, height;
@@ -96,14 +98,24 @@ public final class FrameGen {
 	 * frame). Running only when shown is above rendered.
 	 */
 	public static void target(int renderedRate, int shownRate) {
-		if (metal4 < 0) metal4 = MetalBridge.metal4() ? 1 : 0;
+		long now = System.nanoTime();
+		boolean wanted = mode != Mode.OFF && !failed && HOOKS && renderedRate > 0 && shownRate > renderedRate
+			&& (mode != Mode.RESPONSIVE || dev.cadence.metal.FrameWait.ENABLED);
+		// (the backend is up whenever this is asked for in a world: read once then)
+		if (wanted && metal4 < 0) metal4 = MetalBridge.metal4() ? 1 : 0;
 		// (no snapshots lately, World Resolution below 100% for one: not running for a few seconds, so the cap isn't halved for
 		// nothing; then tried again)
-		boolean idle = System.nanoTime() < idleUntil;
-		boolean on = mode != Mode.OFF && !failed && !idle && renderedRate > 0 && shownRate > renderedRate && metal4 == 0;
+		boolean on = wanted && metal4 == 0 && now >= idleUntil;
 		rendered = on ? renderedRate : 0;
 		shown = on ? shownRate : 0;
+		// (off for 5 s: the snapshots' memory goes, 70-180 MB at Retina sizes; made again when it runs)
+		if (on) lastRunning = now;
+		else if (width != 0 && now - lastRunning > 5_000_000_000L) reset();
 	}
+
+	/** -Dcadence.fg=false: the hooks aren't applied (FrameGenMixinPlugin), so nothing is ever generated: never halve the cap. */
+	private static final boolean HOOKS = !"false".equals(System.getProperty("cadence.fg"));
+	private static long lastRunning;
 
 	/** Whether frames are being generated now. */
 	public static boolean running() {
@@ -196,6 +208,7 @@ public final class FrameGen {
 		slotLook[s][0] = yawAt;
 		slotLook[s][1] = pitchAt;
 		slotFrame[s] = ++frames;
+		slotTime[s] = System.nanoTime();
 		hand = handDistance;
 	}
 
@@ -224,7 +237,7 @@ public final class FrameGen {
 			responsiveFor = frames;  // the limiter's wait makes this frame's in-between one
 			return;
 		}
-		if (slotFrame[b] != frames - 1) return;
+		if (!consecutive(a, b)) return;
 		try {
 			smooth(a, b, latestTexture);
 		} catch (RuntimeException | LinkageError e) {
@@ -260,13 +273,24 @@ public final class FrameGen {
 	/** Responsive's frame: input read now, the newest snapshot seen from where the mouse has turned the camera since. */
 	public static void responsiveFrame() {
 		responsiveFor = -1;
+		try {
+			responsive();
+		} catch (RuntimeException | LinkageError e) {
+			System.out.println("cadence-fg: responsive frame failed: " + e);
+		}
+	}
+
+	private static void responsive() {
 		if (fg == 0 || slot < 0 || latest == 0) return;
 		Minecraft mc = Minecraft.getInstance();
-		var player = mc.player;
-		if (player == null) return;
+		if (mc.player == null) return;
 		FrameGenInput.poll(mc);
+		// (the poll runs the game's input handlers: a click may have left the world (WorldClosed reset the snapshots), opened a
+		// screen or changed the window: then no frame now, BUG-HUNT BH4-01)
+		var player = mc.player;
+		if (player == null || mc.level == null || fg == 0 || slot < 0 || latest == 0 || mc.gui.screen() != null) return;
 		int a = slot, b = slot ^ 1;
-		boolean haveB = slotFrame[b] == slotFrame[a] - 1;
+		boolean haveB = consecutive(a, b);
 		// the turn since the snapshot, applied to its rotation (as Camera turns: yaw about world up, pitch about the camera's x)
 		float dYaw = player.getYRot() - slotLook[a][0], dPitch = player.getXRot() - slotLook[a][1];
 		boolean firstPerson = mc.options.getCameraType().isFirstPerson();
@@ -283,6 +307,18 @@ public final class FrameGen {
 		if (drawable == 0) return;
 		FrameGenNative.presentAlone(fg, ctx, drawable, latest, frameBuf, FRAME_BYTES);
 		if (genCount++ == 0) System.out.println("[cadence] frame generation: first frame generated (" + mode.label + ")");
+	}
+
+	/**
+	 * Whether snapshot b is the frame right before a: the one before in count, taken just before (under 100 ms), the camera not
+	 * moved more than 16 blocks or turned more than 60 degrees (a teleport, a respawn): else b is some older picture
+	 * (FG paused for Photo Mode, a toggle, a menu, a dimension change) and reprojecting it would show a garbage frame.
+	 */
+	private static boolean consecutive(int a, int b) {
+		if (slotFrame[b] != slotFrame[a] - 1 || slotTime[a] - slotTime[b] > 100_000_000L) return false;
+		double dx = slotPos[a][0] - slotPos[b][0], dy = slotPos[a][1] - slotPos[b][1], dz = slotPos[a][2] - slotPos[b][2];
+		if (dx * dx + dy * dy + dz * dz > 256) return false;
+		return Math.abs(slotLook[a][0] - slotLook[b][0]) < 60 && Math.abs(slotLook[a][1] - slotLook[b][1]) < 60;
 	}
 
 	private static void writeFrame(int a, int b, boolean haveB, double mx, double my, double mz, Matrix4fc mProj, Matrix4fc mRot, boolean responsive) {

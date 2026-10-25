@@ -34,6 +34,7 @@ public final class Replay {
 	private static long lastCapture;
 	private static volatile boolean saving;
 	private static boolean failed;
+	private static int misses;
 
 	private Replay() {
 	}
@@ -45,6 +46,11 @@ public final class Replay {
 
 	public static boolean enabled() {
 		return wanted && !failed;
+	}
+
+	/** The setting itself (the button toggles this: after a failure enabled() is false, and the player must still be able to turn it off). */
+	public static boolean wanted() {
+		return wanted;
 	}
 
 	/** MetalSurface.blitFromTexture (render thread): the frame about to be presented, GUI included. */
@@ -62,9 +68,11 @@ public final class Replay {
 		lastCapture = now;
 		try {
 			int r = (int) CAPTURE.invokeExact(replay, MetalBridge.enc(encoder), MetalBridge.viewHandle(view), params, PARAMS_BYTES, gridW, gridH);
-			if (r == -1) {
+			// (one failed capture is skipped; only many in a row turn replay off for the session, BH4-17)
+			misses = r == -1 ? misses + 1 : 0;
+			if (misses >= 120) {
 				failed = true;
-				System.out.println("[cadence] instant replay: this frame can't be read; replay off");
+				System.out.println("[cadence] instant replay: frames can't be read; replay off");
 			}
 		} catch (Throwable t) {
 			failed = true;
@@ -84,7 +92,7 @@ public final class Replay {
 			try {
 				Path dir = gameDir.resolve("replays");
 				Files.createDirectories(dir);
-				Path file = dir.resolve("replay-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss")) + ".mp4");
+				Path file = dir.resolve("replay-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")) + ".mp4");
 				long path = MemoryUtil.nmemAlloc(file.toString().length() * 3L + 1), err = MemoryUtil.nmemAlloc(512);
 				try {
 					MemoryUtil.memUTF8(file.toString(), true, MemoryUtil.memByteBuffer(path, file.toString().length() * 3 + 1));
@@ -140,12 +148,19 @@ public final class Replay {
 		}
 	}
 
-	/** The source of w x h fitted into the video (rec.metal RecParams; the window's aspect: no bars). */
+	/**
+	 * The source of w x h fitted into the video (rec.metal RecParams): the video keeps the aspect the window had when replay
+	 * started; a window of another aspect since is fitted inside it with black bars (it was stretched, BH4-10).
+	 */
 	private static void fit(int w, int h) {
 		srcW = w;
 		srcH = h;
-		int tapsX = Math.clamp((int) Math.ceil((double) w / outW / 2 - 0.01), 1, 4), tapsY = Math.clamp((int) Math.ceil((double) h / outH / 2 - 0.01), 1, 4);
-		int[] v = {outW, outH, 0, 0, outW, outH, tapsX, tapsY, outW * outH, 0, 0, 0};
+		int rw = outW, rh = outH;
+		if ((long) w * outH > (long) h * outW) rh = Math.min(outH, (int) Math.round((double) outW * h / w) & ~1);
+		else rw = Math.min(outW, (int) Math.round((double) outH * w / h) & ~1);
+		int rx = ((outW - rw) / 2) & ~1, ry = ((outH - rh) / 2) & ~1;
+		int tapsX = Math.clamp((int) Math.ceil((double) w / rw / 2 - 0.01), 1, 4), tapsY = Math.clamp((int) Math.ceil((double) h / rh / 2 - 0.01), 1, 4);
+		int[] v = {outW, outH, rx, ry, rw, rh, tapsX, tapsY, outW * outH, 0, 0, 0};
 		for (int i = 0; i < v.length; i++) MemoryUtil.memPutInt(params + 4L * i, v[i]);
 		float[] crop = {0, 0, 1, 1};
 		for (int i = 0; i < 4; i++) MemoryUtil.memPutFloat(params + 48 + 4L * i, crop[i]);

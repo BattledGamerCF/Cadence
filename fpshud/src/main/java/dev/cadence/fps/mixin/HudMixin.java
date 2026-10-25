@@ -27,6 +27,7 @@ abstract class HudMixin {
 	@Unique private int cadenceFps$shown = -1;
 	@Unique private String cadenceFps$label = "";
 	@Unique private int cadenceFps$onScreenShown = -1;
+	@Unique private String cadenceFps$batteryShown = "";
 	/** Cadence's FrameGen.shownFps(int), looked up once (this mod doesn't depend on Cadence's own: null without it). */
 	@Unique private static java.lang.invoke.MethodHandle cadenceFps$frameGen;
 	@Unique private static boolean cadenceFps$looked;
@@ -73,13 +74,14 @@ abstract class HudMixin {
 			return;
 		}
 		int fps = this.minecraft.getFps(), onScreen = cadenceFps$onScreen(fps);
-		if (fps != this.cadenceFps$shown || onScreen != this.cadenceFps$onScreenShown) {
+		// (on battery: how long it lasts at this rate, as Cadence works it out; its own change rebuilds the label too)
+		String battery = cadenceFps$battery();
+		if (fps != this.cadenceFps$shown || onScreen != this.cadenceFps$onScreenShown || !battery.equals(this.cadenceFps$batteryShown)) {
 			this.cadenceFps$shown = fps;
 			this.cadenceFps$onScreenShown = onScreen;
+			this.cadenceFps$batteryShown = battery;
 			// (Frame Generation: the frames on screen, and of them the frames rendered)
 			this.cadenceFps$label = onScreen > fps ? onScreen + " fps (" + fps + " rendered)" : fps + " fps";
-			// (on battery: how long it lasts at this rate, as Cadence works it out)
-			String battery = cadenceFps$battery();
 			if (!battery.isEmpty()) this.cadenceFps$label += " · " + battery;
 		}
 		graphics.text(this.minecraft.font, this.cadenceFps$label, 2, 2, 0xFFFFFFFF, true);

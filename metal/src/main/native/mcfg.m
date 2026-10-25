@@ -40,8 +40,12 @@ void *mcfg_new(Ctx *ctx, const char *source, char *err, int errCap) {
 		g->vs = [lib newFunctionWithName:@"fg_vs"];
 		g->fs = [lib newFunctionWithName:@"fg_fs"];
 		[lib release];
-		if (!g->snap || !g->snapF) {
+		if (!g->snap || !g->snapF || !g->vs || !g->fs) {
 			copyErr(e, err, errCap);
+			[g->snap release];
+			[g->snapF release];
+			[g->vs release];
+			[g->fs release];
 			free(g);
 			return NULL;
 		}
@@ -104,7 +108,7 @@ int mcfg_snapshot(void *fg, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth
 }
 
 static id<MTLRenderPipelineState> genPipeline(Fg *g, Ctx *ctx, MTLPixelFormat format) {
-	if (g->gen && g->genFormat == format) return g->gen;
+	if (g->genFormat == format) return g->gen;  // (nil: this format failed before)
 	@autoreleasepool {
 		MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor new] autorelease];
 		d.vertexFunction = g->vs;
@@ -113,7 +117,11 @@ static id<MTLRenderPipelineState> genPipeline(Fg *g, Ctx *ctx, MTLPixelFormat fo
 		NSError *e = nil;
 		id<MTLRenderPipelineState> p = [ctx->device newRenderPipelineStateWithDescriptor:d error:&e];
 		if (!p) {
+			// (once: the format is remembered, so a failing one isn't compiled and logged again every frame)
 			NSLog(@"cadence-fg: pipeline: %@", e);
+			[g->gen release];
+			g->gen = nil;
+			g->genFormat = format;
 			return nil;
 		}
 		[g->gen release];
@@ -123,9 +131,10 @@ static id<MTLRenderPipelineState> genPipeline(Fg *g, Ctx *ctx, MTLPixelFormat fo
 	}
 }
 
-static void encodeGen(Fg *g, Ctx *ctx, id<MTLCommandBuffer> cb, id<CAMetalDrawable> drawable, id<MTLTexture> latest, const void *frame, int len) {
+// Returns whether the frame was drawn (no pipeline for the drawable's format: nothing, and nothing to present).
+static int encodeGen(Fg *g, Ctx *ctx, id<MTLCommandBuffer> cb, id<CAMetalDrawable> drawable, id<MTLTexture> latest, const void *frame, int len) {
 	id<MTLRenderPipelineState> p = genPipeline(g, ctx, drawable.texture.pixelFormat);
-	if (!p) return;
+	if (!p) return 0;
 	MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
 	rp.colorAttachments[0].texture = drawable.texture;
 	rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
@@ -142,6 +151,7 @@ static void encodeGen(Fg *g, Ctx *ctx, id<MTLCommandBuffer> cb, id<CAMetalDrawab
 	[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 	[r endEncoding];
 	g->generated++;
+	return 1;
 }
 
 // Smooth: the generated frame drawn and presented on the frame's command buffer, before the real frame's own present.
@@ -150,10 +160,7 @@ void mcfg_present_in_frame(void *fg, Enc *enc, id<CAMetalDrawable> drawable, id<
 	Fg *g = fg;
 	@autoreleasepool {
 		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
-		if (g->color[0] && latest) {
-			encodeGen(g, enc->ctx, cb, drawable, latest, frame, len);
-			mc_present_drawable(cb, drawable);
-		}
+		if (g->color[0] && latest && encodeGen(g, enc->ctx, cb, drawable, latest, frame, len)) mc_present_drawable(cb, drawable);
 		[cb addCompletedHandler:^(id<MTLCommandBuffer> done) { [drawable release]; }];
 	}
 }
@@ -163,10 +170,7 @@ void mcfg_present_alone(void *fg, Ctx *ctx, id<CAMetalDrawable> drawable, id<MTL
 	Fg *g = fg;
 	@autoreleasepool {
 		id<MTLCommandBuffer> cb = [ctx->queue commandBuffer];
-		if (g->color[0] && latest) {
-			encodeGen(g, ctx, cb, drawable, latest, frame, len);
-			mc_present_drawable(cb, drawable);
-		}
+		if (g->color[0] && latest && encodeGen(g, ctx, cb, drawable, latest, frame, len)) mc_present_drawable(cb, drawable);
 		[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
 			if (done.GPUEndTime > done.GPUStartTime) {
 				g->gpuSum += (done.GPUEndTime - done.GPUStartTime) * 1e6;

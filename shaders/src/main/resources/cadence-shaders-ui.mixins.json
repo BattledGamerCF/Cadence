@@ -53,6 +53,7 @@
 		"mesh.MeshTimingMixin",
 		"mesh.MeshTintCacheMixin",
 		"mesh.SmartLeavesMixin",
+		"render.AutoRenderDistanceMixin",
 		"render.CubeMapLocationAccess",
 		"render.FarCloudsMixin",
 		"render.FeatureDispatcherAccess",

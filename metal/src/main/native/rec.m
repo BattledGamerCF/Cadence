@@ -560,7 +560,20 @@ typedef struct {
 	CFMutableArrayRef keys;   // kCFBooleanTrue for keyframes, parallel to ring
 	_Atomic int pending;
 	_Atomic int64_t encoded, dropped, failed;
+	double lastAt, offset;  // (render thread) the last capture's time, and the pauses taken out of the timestamps so far
 } Replay;
+
+static void replayFree(Replay *r) {
+	if (r->vt) { pVTInvalidate(r->vt); CFRelease(r->vt); }
+	if (r->ring) CFRelease(r->ring);
+	if (r->keys) CFRelease(r->keys);
+	if (r->pool) CVPixelBufferPoolRelease(r->pool);
+	if (r->cache) CFRelease(r->cache);
+	if (r->aux) CFRelease(r->aux);
+	[r->pso release];
+	if (r->q) dispatch_release(r->q);
+	free(r);
+}
 
 static double ptsSeconds(CMSampleBufferRef sb) {
 	CMTime t = pCMPts(sb);
@@ -625,6 +638,7 @@ Replay *mcrp_open(Ctx *ctx, const char *source, int w, int h, int fps, int64_t b
 		r->keys = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
 		if (CVMetalTextureCacheCreate(NULL, NULL, ctx->device, NULL, &r->cache) != kCVReturnSuccess) {
 			snprintf(err, errCap, "CVMetalTextureCacheCreate failed");
+			replayFree(r);
 			return NULL;
 		}
 		NSDictionary *pb = @{
@@ -634,12 +648,15 @@ Replay *mcrp_open(Ctx *ctx, const char *source, int w, int h, int fps, int64_t b
 		};
 		if (CVPixelBufferPoolCreate(NULL, (CFDictionaryRef) @{(id) kCVPixelBufferPoolMinimumBufferCountKey: @4}, (CFDictionaryRef) pb, &r->pool) != kCVReturnSuccess) {
 			snprintf(err, errCap, "CVPixelBufferPoolCreate failed");
+			replayFree(r);
 			return NULL;
 		}
 		r->aux = (CFDictionaryRef) [@{(id) kCVPixelBufferPoolAllocationThresholdKey: @8} retain];
 		OSStatus st = pVTCreate(NULL, w, h, kCMVideoCodecType_H264, (CFDictionaryRef) @{(id) kRequireHw: @YES}, NULL, NULL, replayOutput, r, &r->vt);
 		if (st != noErr) {
 			snprintf(err, errCap, "VTCompressionSessionCreate: %d", (int) st);
+			r->vt = NULL;
+			replayFree(r);
 			return NULL;
 		}
 		pVTSet(r->vt, kRealTime, kCFBooleanTrue);
@@ -684,7 +701,12 @@ int mcrp_capture(Replay *r, Enc *enc, id<MTLTexture> src, const void *params, in
 		CVPixelBufferRelease(pb);
 		return -1;
 	}
-	double at = CACurrentMediaTime();
+	// (a pause in the frames, the window minimised or the Mac asleep, is taken out of the timestamps: it played as one frozen
+	// picture for the whole pause, BH4-08)
+	double now = CACurrentMediaTime();
+	if (r->lastAt > 0 && now - r->lastAt > 0.25) r->offset += now - r->lastAt - 1.0 / 60;
+	r->lastAt = now;
+	double at = now - r->offset;
 	@autoreleasepool {
 		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
 		id<MTLComputeCommandEncoder> ce = [cb computeCommandEncoder];
@@ -700,6 +722,11 @@ int mcrp_capture(Replay *r, Enc *enc, id<MTLTexture> src, const void *params, in
 		Replay *rr = r;
 		[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
 			int ok = done.status == MTLCommandBufferStatusCompleted;
+			// (Metal 4: the residency set lets go of the pixel buffer's textures now, as the recorder does, BH4-11)
+			if (mc4On) {
+				mc4_unpin(yt);
+				mc4_unpin(uvt);
+			}
 			CFRelease(ty);
 			CFRelease(tuv);
 			dispatch_async(rr->q, ^{
@@ -753,9 +780,10 @@ double mcrp_save(Replay *r, const char *path, char *err, int errCap) {
 		[writer addInput:input];
 		[writer startWriting];
 		[writer startSessionAtSourceTime:pCMPts(first)];
-		for (CFIndex i = 0; i < n; i++) {
-			while (!input.readyForMoreMediaData) usleep(1000);
-			if (![input appendSampleBuffer:(CMSampleBufferRef) CFArrayGetValueAtIndex(frames, i)]) break;
+		// (a writer that failed never becomes ready again: checked, and at most 10 s waited per frame, BH4-07)
+		for (CFIndex i = 0; i < n && writer.status == AVAssetWriterStatusWriting; i++) {
+			for (int k = 0; k < 10000 && !input.readyForMoreMediaData && writer.status == AVAssetWriterStatusWriting; k++) usleep(1000);
+			if (!input.readyForMoreMediaData || ![input appendSampleBuffer:(CMSampleBufferRef) CFArrayGetValueAtIndex(frames, i)]) break;
 		}
 		[input markAsFinished];
 		dispatch_semaphore_t done = dispatch_semaphore_create(0);
@@ -786,18 +814,11 @@ void mcrp_stats(Replay *r, int64_t *out) {
 
 // Not the render thread: the GPU's last captures (at most 2 s), the encoder, the ring and everything with it let go.
 void mcrp_close(Replay *r) {
-	for (int i = 0; i < 200 && atomic_load(&r->pending) > 0; i++) usleep(10000);
+	// (a capture still on the GPU after 10 s: left allocated rather than freed under its completion handler, BH4-17)
+	for (int i = 0; i < 1000 && atomic_load(&r->pending) > 0; i++) usleep(10000);
+	if (atomic_load(&r->pending) > 0) return;
 	dispatch_sync(r->q, ^{
 	});
 	pVTComplete(r->vt, noTime);
-	pVTInvalidate(r->vt);
-	CFRelease(r->vt);
-	CFRelease(r->ring);
-	CFRelease(r->keys);
-	CVPixelBufferPoolRelease(r->pool);
-	CFRelease(r->cache);
-	CFRelease(r->aux);
-	[r->pso release];
-	dispatch_release(r->q);
-	free(r);
+	replayFree(r);
 }

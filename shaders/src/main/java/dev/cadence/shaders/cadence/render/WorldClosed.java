@@ -19,6 +19,7 @@ public final class WorldClosed {
 			dev.cadence.shaders.cadence.shadow.ShadowProxies.release();
 			dev.cadence.metal.record.Record.worldClosed();
 			dev.cadence.metal.framegen.FrameGen.reset();
+			PhotoMode.cancel(net.minecraft.client.Minecraft.getInstance());
 			dev.cadence.metal.lod.LodPackFrame.worldClosed();
 			dev.cadence.shaders.cadence.hiz.HiZ.release();
 			dev.cadence.shaders.runtime.ShadowRenderer.releaseWorld();

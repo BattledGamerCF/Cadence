@@ -14,7 +14,7 @@ import net.minecraft.network.chat.Component;
 public final class PhotoMode {
 	/** Frames left before the shot (the scale change takes a frame to reach the pack's targets), 0: not taking one. */
 	private static int countdown;
-	private static boolean hudWasHidden;
+	private static boolean hudWasHidden, frozeScale;
 
 	private PhotoMode() {
 	}
@@ -25,22 +25,37 @@ public final class PhotoMode {
 	}
 
 	public static void take(Minecraft mc) {
-		if (countdown > 0 || mc.level == null) return;
+		if (countdown > 0 || mc.level == null || dev.cadence.metal.record.Record.active()) return;  // (Render Max FPS: not its frame)
 		hudWasHidden = mc.gui.hud.isHidden();
 		if (!hudWasHidden) mc.gui.hud.toggle();
+		// (only lifted again if this set it: a pack check's freeze stays, BH4-14)
+		frozeScale = !RenderScale.frozen;
 		RenderScale.frozen = true;
 		countdown = 4;  // (ticks: ~0.2 s for the full-size frame to reach the screen)
+	}
+
+	/** A screen opened or the world closed during the countdown: no shot, everything as it was (WorldClosed, ShaderKeys). */
+	public static void cancel(Minecraft mc) {
+		if (countdown <= 0) return;
+		countdown = 0;
+		restore(mc);
+	}
+
+	private static void restore(Minecraft mc) {
+		if (frozeScale) RenderScale.frozen = false;
+		frozeScale = false;
+		if (!hudWasHidden && mc.gui.hud.isHidden()) mc.gui.hud.toggle();
 	}
 
 	/** Once a tick (ShaderKeys.tick, from handleKeybinds: in a world, no screen open): the countdown, then the shot. */
 	public static void frame(Minecraft mc) {
 		if (countdown <= 0) return;
 		if (--countdown > 0) return;
-		String name = "cadence-photo-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss")) + ".png";
+		// (milliseconds in the name: two shots in one second overwrote the first)
+		String name = "cadence-photo-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")) + ".png";
 		Screenshot.grab(mc.gameDirectory, name, mc.gameRenderer.mainRenderTarget(), 1, message -> mc.execute(() -> {
 			if (mc.player != null) mc.player.sendSystemMessage(Component.literal("Photo Mode: ").append(message));
 		}));
-		RenderScale.frozen = false;
-		if (!hudWasHidden && mc.gui.hud.isHidden()) mc.gui.hud.toggle();
+		restore(mc);
 	}
 }
