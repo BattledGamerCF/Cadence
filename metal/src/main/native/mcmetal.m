@@ -397,6 +397,13 @@ id<MTLSamplerState> mc_sampler_new_compare(Ctx *ctx, int addressU, int addressV,
 
 // ---- pipelines ----
 
+// Compile time (measurement: mc_compile_stats): seconds in library compiles and pipeline creation, and how many of each.
+static _Atomic double compileLibSec, compilePsoSec;
+static _Atomic long compileLibs, compilePsos;
+void mc_compile_stats(double *out) {
+	out[0] = compileLibSec; out[1] = compileLibs; out[2] = compilePsoSec; out[3] = compilePsos;
+}
+
 // Cadence: one compile with an explicit arithmetic policy. flags & 3: 0 Safe, 1 Relaxed, 2 Fast (mc_library_new's mode);
 // flags & 4: preserveInvariance (shader packs draw the same geometry in paired depth/colour passes: positions marked
 // [[invariant]] must come out bit-identical, or the passes z-fight). Used for the shader loader's pipelines only.
@@ -409,7 +416,9 @@ id<MTLLibrary> mc_library_new_mode(Ctx *ctx, const char *source, int flags, char
 		o.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsFast;
 		if (flags & 4) o.preserveInvariance = YES;
 		NSError *e = nil;
+		double t0 = CACurrentMediaTime();
 		id<MTLLibrary> lib = [ctx->device newLibraryWithSource:[NSString stringWithUTF8String:source] options:o error:&e];
+		compileLibSec += CACurrentMediaTime() - t0; compileLibs++;
 		if (!lib) copyError(e, err, errCap);
 		return lib;
 	}
@@ -421,7 +430,9 @@ id<MTLLibrary> mc_library_new(Ctx *ctx, const char *source, char *err, int errCa
 		o.languageVersion = MTLLanguageVersion3_0;
 		o.mathMode = MTLMathModeFast;
 		NSError *e = nil;
+		double t0 = CACurrentMediaTime();
 		id<MTLLibrary> lib = [ctx->device newLibraryWithSource:[NSString stringWithUTF8String:source] options:o error:&e];
+		compileLibSec += CACurrentMediaTime() - t0; compileLibs++;
 		if (!lib) copyError(e, err, errCap);
 		return lib;
 	}
@@ -480,7 +491,9 @@ id<MTLRenderPipelineState> mc_pipeline_new(Ctx *ctx, id<MTLLibrary> vlib, const 
 		pd.depthAttachmentPixelFormat = (MTLPixelFormat) desc[i++];
 		pd.inputPrimitiveTopology = (MTLPrimitiveTopologyClass) desc[i++];
 		NSError *e = nil;
+		double t0 = CACurrentMediaTime();
 		id<MTLRenderPipelineState> pso = [ctx->device newRenderPipelineStateWithDescriptor:pd error:&e];
+		compilePsoSec += CACurrentMediaTime() - t0; compilePsos++;
 		if (!pso) copyError(e, err, errCap);
 		return pso;
 	}

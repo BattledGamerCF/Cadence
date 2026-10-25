@@ -522,6 +522,12 @@ public final class CadenceSettings {
 		if (ShaderToggle.retinaConfigured() != dev.cadence.metal.Retina.on())
 			lines.add(Component.literal("Restart Minecraft to turn Retina " + (ShaderToggle.retinaConfigured() ? "on" : "off")).withStyle(ChatFormatting.YELLOW));
 		if (MemoryGuard.level() > 0) lines.add(Component.literal(MemoryGuard.shortDescribe()).withStyle(ChatFormatting.YELLOW));
+		// on battery: how long it lasts at the Mac's draw now (and Low Power Mode, which Cadence follows as Battery Saver)
+		String battery = dev.cadence.metal.MacSystem.batteryTimeLeft();
+		if (!battery.isEmpty() || dev.cadence.shaders.cadence.system.BatteryMode.lowPower())
+			lines.add(Component.literal((battery.isEmpty() ? "" : "Battery: about " + battery + " left at this rate")
+				+ (dev.cadence.shaders.cadence.system.BatteryMode.lowPower() ? (battery.isEmpty() ? "" : " · ") + "Low Power Mode: saving like Battery Saver" : ""))
+				.withStyle(ChatFormatting.AQUA));
 		Component farTerrain = FarTerrainScreen.packNote();
 		if (farTerrain != null) lines.add(farTerrain);
 		Component java = javaStatus();

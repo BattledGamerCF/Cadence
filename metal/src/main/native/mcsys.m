@@ -7,6 +7,7 @@
 #include <stdatomic.h>
 #include <IOKit/ps/IOPowerSources.h>
 #include <IOKit/ps/IOPSKeys.h>
+#include <IOKit/IOKitLib.h>
 
 // NSProcessInfoThermalState: 0 nominal, 1 fair, 2 serious, 3 critical.
 int mc_thermal_state(void) {
@@ -66,6 +67,33 @@ int mc_on_battery(void) {
 	int battery = type && CFStringCompare(type, CFSTR(kIOPMBatteryPowerKey), 0) == kCFCompareEqualTo;
 	CFRelease(info);
 	return battery;
+}
+
+// The energy left in the battery, watt-hours (its remaining charge times its voltage, from the AppleSmartBattery IORegistry
+// entry), or -1 without a battery or if it can't be read.
+double mc_battery_wh(void) {
+	io_service_t svc = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"));
+	if (!svc) return -1;
+	double wh = -1;
+	CFNumberRef mah = IORegistryEntryCreateCFProperty(svc, CFSTR("AppleRawCurrentCapacity"), kCFAllocatorDefault, 0);
+	if (!mah) {
+		// (newer macOS: the charge left is in BatteryData's RemainingCapacity, mAh)
+		CFDictionaryRef data = IORegistryEntryCreateCFProperty(svc, CFSTR("BatteryData"), kCFAllocatorDefault, 0);
+		if (data && CFGetTypeID(data) == CFDictionaryGetTypeID()) {
+			CFNumberRef r = CFDictionaryGetValue(data, CFSTR("RemainingCapacity"));
+			if (r) mah = CFRetain(r);
+		}
+		if (data) CFRelease(data);
+	}
+	CFNumberRef mv = IORegistryEntryCreateCFProperty(svc, CFSTR("Voltage"), kCFAllocatorDefault, 0);
+	long a = 0, v = 0;
+	if (mah && mv && CFGetTypeID(mah) == CFNumberGetTypeID() && CFGetTypeID(mv) == CFNumberGetTypeID()
+		&& CFNumberGetValue(mah, kCFNumberLongType, &a) && CFNumberGetValue(mv, kCFNumberLongType, &v) && a > 0 && v > 0)
+		wh = a * (double) v / 1e6;
+	if (mah) CFRelease(mah);
+	if (mv) CFRelease(mv);
+	IOObjectRelease(svc);
+	return wh;
 }
 
 // The screen the game's window is on (its only window), whether or not the game is the active app; mainScreen (the screen

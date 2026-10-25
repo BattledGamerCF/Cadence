@@ -305,7 +305,10 @@ public final class RenderScale {
 			busySum = 0;
 			return;
 		}
-		double targetMs = 1000.0 / autoTarget;
+		// (Frame Generation renders at its own rate, under the goal Battery Saver sets: that rate is the goal then, or a capped 30
+		// read as too slow for 40 lowered the resolution for nothing)
+		int goal = dev.cadence.metal.framegen.FrameGen.running() ? Math.min(autoTarget, dev.cadence.metal.framegen.FrameGen.renderedRate()) : autoTarget;
+		double targetMs = 1000.0 / goal;
 		float next = scale;
 		QualityHint.window(scale, intervalMs, gpuMs, targetMs);
 		boolean slow = intervalMs > targetMs * 1.10 && gpuMs > targetMs * 0.85;

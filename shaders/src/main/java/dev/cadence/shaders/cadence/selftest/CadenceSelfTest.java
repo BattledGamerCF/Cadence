@@ -108,6 +108,15 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("upscaler=")) {
 					String mode = lower.substring(9);
 					mc.execute(() -> RenderScale.applyUpscaler(mode));
+				} else if (lower.equals("batteryinfo")) {
+					// "batteryinfo": the battery estimate's inputs (energy left, the Mac's draw) and its text
+					LOGGER.info("[selftest] batteryinfo: {} Wh left, Mac draws {} W, on battery {}, Low Power Mode {}, estimate '{}'",
+						String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.batteryWh()), String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.systemWatts()),
+						dev.cadence.metal.MacSystem.onBattery(), dev.cadence.metal.MacSystem.lowPowerMode(), dev.cadence.metal.MacSystem.batteryTimeLeft());
+				} else if (lower.equals("compilestats")) {
+					// "compilestats": time spent compiling shader libraries and creating pipelines since the start
+					double[] c = dev.cadence.metal.MetalBridge.compileStats();
+					LOGGER.info("[selftest] compilestats: {} libraries in {} ms, {} pipelines in {} ms", (long) c[1], Math.round(c[0] * 1000), (long) c[3], Math.round(c[2] * 1000));
 				} else if (lower.startsWith("framegen=")) {
 					// "framegen=smooth|responsive|off": Frame Generation's mode (not saved)
 					dev.cadence.metal.framegen.FrameGen.setMode(switch (lower.substring(9)) {

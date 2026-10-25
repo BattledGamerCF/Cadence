@@ -57,9 +57,26 @@ public final class BatteryMode {
 		ShaderToggle.saveKey("batteryMode", mode.name().toLowerCase(Locale.ROOT));
 	}
 
-	/** Whether Saver is holding the frame rate now (the Mac on its battery, the mode Saver). */
+	/**
+	 * Whether Saver is holding the frame rate now: the Mac on its battery with the mode Saver, or macOS's Low Power Mode on
+	 * (the player asked the whole Mac to save power: Saver whatever the mode, on battery or not, unless the mode is Off).
+	 */
 	public static boolean saving() {
-		return mode() == Mode.SAVER && onBattery();
+		return mode() == Mode.SAVER && onBattery() || mode() != Mode.OFF && lowPower();
+	}
+
+	private static boolean lowPower, lowPowerChecked;
+	private static long lowPowerAt;
+
+	/** macOS Low Power Mode (cached for two seconds). */
+	public static boolean lowPower() {
+		long now = System.nanoTime();
+		if (!lowPowerChecked || now - lowPowerAt > CHECK_NS) {
+			lowPowerChecked = true;
+			lowPowerAt = now;
+			lowPower = MacSystem.lowPowerMode();
+		}
+		return lowPower;
 	}
 
 	/** Whether the Mac is on its battery (cached for two seconds; render thread). */
@@ -78,6 +95,7 @@ public final class BatteryMode {
 	/** The frame-rate limit this asks for, or Integer.MAX_VALUE for none. */
 	public static int fpsCap() {
 		Mode m = mode;
+		if (m != Mode.OFF && lowPower()) return SAVER_FPS;
 		if (m == Mode.OFF || !onBattery()) return Integer.MAX_VALUE;
 		// (the display rate HeatControl polls every 2 s: this runs every frame, and asking macOS each time cost a native call)
 		return m == Mode.SAVER ? SAVER_FPS : Math.max(30, HeatControl.displayHz());

@@ -70,6 +70,45 @@ public final class MacSystem {
 		}
 	}
 
+	// (the battery estimate: the Mac's draw averaged over the last ~half minute, refreshed at most every 2 s)
+	private static double drawWatts = -1;
+	private static long batteryAt;
+	private static String batteryText = "";
+
+	/**
+	 * On battery: how long the battery lasts at the Mac's current draw ("about 3 h 10 min left"), from the energy left in it
+	 * and the whole Mac's power use averaged over the last half minute; "" on AC power or when either can't be read. Cheap to
+	 * ask every frame (worked out at most every 2 seconds).
+	 */
+	public static synchronized String batteryTimeLeft() {
+		long now = System.nanoTime();
+		if (now - batteryAt < 2_000_000_000L) return batteryText;
+		batteryAt = now;
+		if (!onBattery()) {
+			drawWatts = -1;
+			return batteryText = "";
+		}
+		double w = systemWatts(), wh;
+		try {
+			wh = Native.batteryWh();
+		} catch (Throwable t) {
+			wh = -1;
+		}
+		if (w > 0) drawWatts = drawWatts < 0 ? w : drawWatts + (w - drawWatts) * 0.07;
+		if (wh <= 0 || drawWatts <= 0.5) return batteryText = "";
+		long minutes = Math.round(wh / drawWatts * 60);
+		return batteryText = minutes >= 60 ? (minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min";
+	}
+
+	/** The energy left in the battery (watt-hours), -1 without one. */
+	public static double batteryWh() {
+		try {
+			return Native.batteryWh();
+		} catch (Throwable t) {
+			return -1;
+		}
+	}
+
 	/** Whether the Mac is running on its battery now (false on AC power, without a battery, or if it can't be read). */
 	public static boolean onBattery() {
 		try {

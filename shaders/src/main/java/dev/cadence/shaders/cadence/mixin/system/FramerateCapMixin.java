@@ -34,15 +34,17 @@ public abstract class FramerateCapMixin {
 		// Frame Generation: render at the base rate (Battery Saver 30, else 60, lower when another cap is) and show twice that, up
 		// to the display's rate; only where that is more than the base (on a 60 Hz screen: Battery Saver 30 -> 60, the others a
 		// true 60). Not with Max FPS (as many real frames as the Mac makes) or outside a world.
+		// (and not while vanilla holds the rate down itself: idle (its Inactivity FPS Limit), minimized, menus)
 		if (dev.cadence.metal.framegen.FrameGen.mode() != dev.cadence.metal.framegen.FrameGen.Mode.OFF
-			&& net.minecraft.client.Minecraft.getInstance().level != null) {
+			&& net.minecraft.client.Minecraft.getInstance().level != null
+			&& ((FramerateLimitTracker) (Object) this).getThrottleReason() == FramerateLimitTracker.FramerateThrottleReason.NONE) {
 			long now = System.nanoTime();
 			if (now - cadence$presetChecked > 500_000_000L) {
 				cadence$presetChecked = now;
 				var preset = dev.cadence.shaders.cadence.ui.CadenceSettings.current();
 				cadence$fgAllowed = preset != dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.MAX_FPS;
 				cadence$saver = preset == dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.BATTERY
-					|| dev.cadence.shaders.cadence.system.BatteryMode.saving() || dev.cadence.metal.MacSystem.lowPowerMode();
+					|| dev.cadence.shaders.cadence.system.BatteryMode.saving();
 			}
 			int forced = dev.cadence.metal.framegen.FrameGen.forceBase;
 			int hz = HeatControl.refreshHz(), base = Math.min(forced > 0 ? forced : cadence$saver ? 30 : 60, cap), shown = Math.min(2 * base, hz);

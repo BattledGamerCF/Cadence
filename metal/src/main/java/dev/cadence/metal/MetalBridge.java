@@ -204,6 +204,11 @@ public final class MetalBridge {
 		return layer == 0 ? 0 : Native.layerNext(layer);
 	}
 
+	/** {library compile seconds, libraries, pipeline creation seconds, pipelines} since the start. */
+	public static double[] compileStats() {
+		return Native.compileStats();
+	}
+
 	/** Whether the backend runs on Metal 4 (-Dcadence.metal4=true and the device has it). */
 	public static boolean metal4() {
 		return Native.metal4();

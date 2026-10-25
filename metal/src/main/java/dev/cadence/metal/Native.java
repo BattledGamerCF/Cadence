@@ -80,6 +80,8 @@ final class Native {
 	private static final MethodHandle FAN_RPM = fn("mc_fan_rpm", false, JAVA_INT, JAVA_INT);
 	private static final MethodHandle SYS_POWER = fn("mc_system_power_mw", false, JAVA_INT);
 	private static final MethodHandle LOW_POWER = fn("mc_low_power", false, JAVA_INT);
+	private static final MethodHandle COMPILE_STATS = fn("mc_compile_stats", false, null, JAVA_LONG);
+	private static final MethodHandle BATTERY_WH = fn("mc_battery_wh", false, java.lang.foreign.ValueLayout.JAVA_DOUBLE);
 	private static final MethodHandle MEM_PRESSURE = fn("mc_memory_pressure", false, JAVA_INT);
 	private static final MethodHandle MEM_PRESSURE_EVENTS = fn("mc_memory_pressure_events", false, JAVA_LONG);
 	private static final MethodHandle SET_QOS = fn("mc_set_qos", false, JAVA_INT, JAVA_INT);
@@ -300,6 +302,21 @@ final class Native {
 	static int fanCount() { try { return (int) FAN_COUNT.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int systemPowerMw() { try { return (int) SYS_POWER.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int fanRpm(int i) { try { return (int) FAN_RPM.invokeExact(i); } catch (Throwable t) { throw rethrow(t); } }
+	/** {library compile seconds, libraries, pipeline creation seconds, pipelines} since the start (mc_compile_stats). */
+	public static double[] compileStats() {
+		try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+			long out = stack.nmalloc(8, 32);
+			COMPILE_STATS.invokeExact(out);
+			double[] r = new double[4];
+			for (int i = 0; i < 4; i++) r[i] = org.lwjgl.system.MemoryUtil.memGetDouble(out + i * 8L);
+			return r;
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	static double batteryWh() { try { return (double) BATTERY_WH.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+
 	static int lowPower() { try { return (int) LOW_POWER.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int memoryPressure() { try { return (int) MEM_PRESSURE.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static long memoryPressureEvents() { try { return (long) MEM_PRESSURE_EVENTS.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }

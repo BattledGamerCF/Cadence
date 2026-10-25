@@ -31,6 +31,20 @@ abstract class HudMixin {
 	@Unique private static java.lang.invoke.MethodHandle cadenceFps$frameGen;
 	@Unique private static boolean cadenceFps$looked;
 
+	@Unique private static java.lang.invoke.MethodHandle cadenceFps$batteryTime;
+
+	/** Cadence's MacSystem.batteryTimeLeft(), "" without it or on AC power. */
+	@Unique
+	private static String cadenceFps$battery() {
+		cadenceFps$onScreen(0);  // (the lookups)
+		if (cadenceFps$batteryTime == null) return "";
+		try {
+			return (String) cadenceFps$batteryTime.invokeExact();
+		} catch (Throwable t) {
+			return "";
+		}
+	}
+
 	@Unique
 	private static int cadenceFps$onScreen(int rendered) {
 		if (!cadenceFps$looked) {
@@ -38,6 +52,8 @@ abstract class HudMixin {
 			try {
 				cadenceFps$frameGen = java.lang.invoke.MethodHandles.publicLookup().findStatic(Class.forName("dev.cadence.metal.framegen.FrameGen"), "shownFps",
 					java.lang.invoke.MethodType.methodType(int.class, int.class));
+				cadenceFps$batteryTime = java.lang.invoke.MethodHandles.publicLookup().findStatic(Class.forName("dev.cadence.metal.MacSystem"), "batteryTimeLeft",
+					java.lang.invoke.MethodType.methodType(String.class));
 			} catch (ReflectiveOperationException | LinkageError e) {
 				cadenceFps$frameGen = null;
 				System.out.println("[cadence-hud] no frame generation counter: " + e);
@@ -62,6 +78,9 @@ abstract class HudMixin {
 			this.cadenceFps$onScreenShown = onScreen;
 			// (Frame Generation: the frames on screen, and of them the frames rendered)
 			this.cadenceFps$label = onScreen > fps ? onScreen + " fps (" + fps + " rendered)" : fps + " fps";
+			// (on battery: how long it lasts at this rate, as Cadence works it out)
+			String battery = cadenceFps$battery();
+			if (!battery.isEmpty()) this.cadenceFps$label += " · " + battery;
 		}
 		graphics.text(this.minecraft.font, this.cadenceFps$label, 2, 2, 0xFFFFFFFF, true);
 	}
