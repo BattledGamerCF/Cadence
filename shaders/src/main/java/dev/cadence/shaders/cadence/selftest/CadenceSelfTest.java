@@ -444,6 +444,15 @@ public final class CadenceSelfTest {
 				} else if (lower.equals("leaves=smart") || lower.equals("leaves=detailed")) {
 					boolean smart = lower.endsWith("smart");
 					mc.execute(() -> dev.cadence.shaders.cadence.mesh.SmartLeaves.setEnabled(smart));
+				} else if (lower.startsWith("preset=")) {
+					// "preset=battery|balanced|quality|maxfps": the Performance preset, as the button sets it
+					String name = lower.substring(7);
+					mc.execute(() -> dev.cadence.shaders.cadence.ui.CadenceSettings.apply(switch (name) {
+						case "battery" -> dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.BATTERY;
+						case "quality" -> dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.QUALITY;
+						case "maxfps" -> dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.MAX_FPS;
+						default -> dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.BALANCED;
+					}));
 				} else if (lower.startsWith("smartleaves=")) {
 					// "smartleaves=on|off": Leaves: Smart (chunks rebuilt; saved like the button)
 					boolean on = lower.endsWith("on");

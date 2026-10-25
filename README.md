@@ -32,6 +32,8 @@ Responsive (the newest frame turned to where your mouse looks now: no added dela
 | 1920 x 1080 | 6 chunks | 1,641 | 719 |
 | 1920 x 1080 | 12 chunks | 1,079 | 490 |
 | 2940 x 1846 (the Air's full Retina screen) | 6 chunks | 900 | 419 |
+| Fullscreen, Max FPS preset (Retina off, 1470 x 923, fast leaves, no clouds) | 6 chunks | 2,155 | 942 |
+| Fullscreen, Max FPS preset | 12 chunks | 1,598 | 680 |
 
 And **Render Max FPS** (Video Settings > Cadence: Extras) is Cadence's run at the Minecraft FPS record: a playable,
 lit, ray-traced 320 x 180 view at up to 66,000 frames rendered a second (132,000 shown with frame interpolation, counted

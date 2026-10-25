@@ -57,6 +57,8 @@ public final class CadenceSettings {
 	}
 
 	public static void apply(Preset preset) {
+		if (preset == Preset.MAX_FPS) maxFpsLooks();
+		else if (preset != Preset.CUSTOM) restoreLooks();
 		switch (preset) {
 			case BATTERY -> {
 				dev.cadence.shaders.cadence.render.FrameGenSetting.set(dev.cadence.metal.framegen.FrameGen.Mode.SMOOTH);
@@ -99,6 +101,42 @@ public final class CadenceSettings {
 			case CUSTOM -> {
 			}
 		}
+	}
+
+	/**
+	 * Max FPS: leaves drawn solid (vanilla's Leaves: Fast) and no clouds, the player's own choices kept in the config to come
+	 * back with any other preset. Measured on an M2 Air, fullscreen with Retina off, render distance 6, cooled runs: 1,781 fps
+	 * as the player had them, 2,095 with these (alpha-tested leaves turn off the GPU's hidden-surface removal; the clouds were 5%).
+	 */
+	private static void maxFpsLooks() {
+		var o = net.minecraft.client.Minecraft.getInstance().options;
+		if (ShaderToggle.configValue("maxFps.leaves", "").isEmpty()) {
+			ShaderToggle.saveKey("maxFps.leaves", Boolean.toString(o.cutoutLeaves().get()));
+			ShaderToggle.saveKey("maxFps.clouds", o.cloudStatus().get().name());
+		}
+		boolean rebuild = o.cutoutLeaves().get();
+		o.cutoutLeaves().set(false);
+		o.cloudStatus().set(net.minecraft.client.CloudStatus.OFF);
+		o.save();
+		if (rebuild && net.minecraft.client.Minecraft.getInstance().level != null) net.minecraft.client.Minecraft.getInstance().levelExtractor.allChanged();
+	}
+
+	/** Leaving Max FPS for another preset: the player's leaves and clouds as they were before it. */
+	private static void restoreLooks() {
+		String leaves = ShaderToggle.configValue("maxFps.leaves", "").strip(), clouds = ShaderToggle.configValue("maxFps.clouds", "").strip();
+		if (leaves.isEmpty()) return;
+		var o = net.minecraft.client.Minecraft.getInstance().options;
+		boolean cut = Boolean.parseBoolean(leaves), rebuild = o.cutoutLeaves().get() != cut;
+		o.cutoutLeaves().set(cut);
+		try {
+			o.cloudStatus().set(net.minecraft.client.CloudStatus.valueOf(clouds));
+		} catch (IllegalArgumentException e) {
+			o.cloudStatus().set(net.minecraft.client.CloudStatus.FANCY);
+		}
+		o.save();
+		ShaderToggle.saveKey("maxFps.leaves", "");
+		ShaderToggle.saveKey("maxFps.clouds", "");
+		if (rebuild && net.minecraft.client.Minecraft.getInstance().level != null) net.minecraft.client.Minecraft.getInstance().levelExtractor.allChanged();
 	}
 
 	private static void setShadows(int rate) {
@@ -169,7 +207,7 @@ public final class CadenceSettings {
 			"Battery Saver|coolest and quietest, aims for 40 fps",
 			"Recommended|smooth 60 fps, sharp whenever it can be",
 			"Max Quality|always full sharpness; the Mac may run hot",
-			"Max FPS|Retina off (crisp 2x2 pixels, about twice the fps; next launch), no limits",
+			"Max FPS|Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air",
 			"Custom|you changed something by hand",
 			"#Vanilla's Preset further down is separate: it sets Minecraft's own quality options.")).build();
 		onRefresh(() -> self[0].setMessage(presetLabel()));

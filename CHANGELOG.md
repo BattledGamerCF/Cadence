@@ -11,6 +11,9 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
   the screen shows: Battery Saver (and On Battery: Saver, Low Power Mode) renders 30 and shows 60; the others render 60 and
   show 120 on a 120 Hz screen. Measured: a 3 degree turn rebuilt with 91% of pixels exact (47% without reprojection), 0.2
   blocks of movement 71% (36%); with BSL 70% (34%) and 64% (41%).
+- **Max FPS preset: 2,000+ fps fullscreen.** It now also draws leaves solid (vanilla's Leaves: Fast) and turns clouds off,
+  your own choices coming back with any other preset. M2 MacBook Air, fullscreen (Retina off, 1470 x 923), render distance 6,
+  cooled runs: 2,155 fps (1,781 before); 1,598 at render distance 12.
 - **Instant Replay** (off by default; F10 saves the last 30 s to replays/, hardware H.264, no sound).
 - **Photo Mode** (F9): a full-resolution, full-quality screenshot (Auto resolution's scale set aside, HUD hidden).
 - **Performance Overlay** (off by default): frames shown and rendered, frame and GPU time, heat, power, battery.
@@ -18,6 +21,11 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
 - **Low Power Mode**: followed as On Battery's Saver.
 - **Auto Render Distance** (off by default): with a shader pack and Auto resolution at its floor, the render distance comes
   down 2 chunks at a time (not below 8) to hold the frame rate, and goes back up when there's room.
+- Fixes from a deep bug hunt of the new features (21 found, 19 fixed): a crash when a click left the world during Responsive
+  Frame Generation's in-between frame; Auto Render Distance no longer changes your saved Render Distance; Frame Generation
+  only where the screen shows exactly twice the frames, its memory freed when it stops, no frame from a stale picture after
+  a teleport; replays letterboxed after a window resize, pauses cut out, saves that can't hang; Photo Mode cancelled by a
+  screen; and smaller ones.
 - Measured, nothing to win, not built: a Metal pipeline archive and shader warm-up (the game's whole compile is ~0.2 s on
   macOS's own shader cache, and a flight creates almost no new pipelines), a chunk-mesh disk cache (a rejoin builds its
   chunks within a second), scoped barriers on the Metal 4 path (no change).
