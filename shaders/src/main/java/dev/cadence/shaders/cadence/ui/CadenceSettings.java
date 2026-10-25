@@ -257,6 +257,23 @@ public final class CadenceSettings {
 		return self[0];
 	}
 
+	public static Button replayButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(replayLabel(), b -> {
+			boolean on = !dev.cadence.metal.rec.Replay.enabled();
+			dev.cadence.metal.rec.Replay.setEnabled(on);
+			ShaderToggle.saveKey("instantReplay", Boolean.toString(on));
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Keeps the last 30 seconds of play; Save Replay (F10) saves them as a video in the replays folder.",
+			"#Recorded by your Mac's video encoder at 1280 wide (about 30 MB of memory, a small GPU cost each frame); no sound.")).build();
+		onRefresh(() -> self[0].setMessage(replayLabel()));
+		return self[0];
+	}
+
+	private static Component replayLabel() {
+		return Component.literal("Instant Replay: " + (dev.cadence.metal.rec.Replay.enabled() ? "On (F10 saves)" : "Off"));
+	}
+
 	public static Button overlayButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(overlayLabel(), b -> {

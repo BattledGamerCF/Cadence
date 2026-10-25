@@ -108,6 +108,11 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("upscaler=")) {
 					String mode = lower.substring(9);
 					mc.execute(() -> RenderScale.applyUpscaler(mode));
+				} else if (lower.startsWith("replay=")) {
+					// "replay=on|off": Instant Replay (not saved); "replaysave": the last 30 s saved, the result logged
+					dev.cadence.metal.rec.Replay.setEnabled(lower.endsWith("on"));
+				} else if (lower.equals("replaysave")) {
+					dev.cadence.metal.rec.Replay.save(mc.gameDirectory.toPath(), line -> LOGGER.info("[selftest] replaysave: {}", line));
 				} else if (lower.equals("photo")) {
 					// "photo": Photo Mode's shot, as F9 takes it
 					mc.execute(() -> dev.cadence.shaders.cadence.render.PhotoMode.take(mc));

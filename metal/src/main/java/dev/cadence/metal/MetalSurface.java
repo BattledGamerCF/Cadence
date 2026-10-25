@@ -101,6 +101,7 @@ final class MetalSurface implements GpuSurfaceBackend {
 	public void blitFromTexture(CommandEncoderBackend commandEncoder, GpuTextureView textureView) {
 		// cadence.rec hook: the opt-in recorder (-Dcadence.rec, dev.cadence.metal.rec) takes the finished frame, GUI included. Rec.ON is a constant false without it.
 		if (dev.cadence.metal.rec.Rec.ON) dev.cadence.metal.rec.Rec.frame(this.encoder, textureView);
+		dev.cadence.metal.rec.Replay.frame(this.encoder, textureView);  // (Instant Replay: nothing unless it's on)
 		long t0 = WaitStats.ON ? System.nanoTime() : 0;
 		// Frame Generation: every real frame is presented (the cap times them), Smooth's generated one first
 		boolean fg = dev.cadence.metal.framegen.FrameGen.running() && !MetalEncoder.PRESENT_ACQUIRE;

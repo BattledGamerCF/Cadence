@@ -15,23 +15,33 @@ public final class ShaderKeys {
 	static final KeyMapping PACKS = new KeyMapping("Shader Packs (Cadence)", InputConstants.Type.KEYBOARD, InputConstants.KEY_O, KeyMapping.Category.MISC);
 	static final KeyMapping TOGGLE = new KeyMapping("Toggle Shaders (Cadence)", InputConstants.Type.KEYBOARD, InputConstants.KEY_K, KeyMapping.Category.MISC);
 	static final KeyMapping PHOTO = new KeyMapping("Photo Mode (Cadence)", InputConstants.Type.KEYBOARD, InputConstants.KEY_F9, KeyMapping.Category.MISC);
+	static final KeyMapping REPLAY = new KeyMapping("Save Replay (Cadence)", InputConstants.Type.KEYBOARD, InputConstants.KEY_F10, KeyMapping.Category.MISC);
 
 	private ShaderKeys() {
+	}
+
+	/** Instant Replay's last 30 s to replays/ (a background thread), the result in chat. */
+	public static void saveReplay(Minecraft mc) {
+		dev.cadence.metal.rec.Replay.save(mc.gameDirectory.toPath(), line -> mc.execute(() -> {
+			if (mc.player != null) mc.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(line).withStyle(net.minecraft.ChatFormatting.GRAY));
+		}));
 	}
 
 	/** Options.load HEAD: the game's keys plus Cadence's (once). */
 	public static KeyMapping[] add(KeyMapping[] keys) {
 		if (Arrays.asList(keys).contains(PACKS)) return keys;
-		KeyMapping[] out = Arrays.copyOf(keys, keys.length + 3);
+		KeyMapping[] out = Arrays.copyOf(keys, keys.length + 4);
 		out[keys.length] = PACKS;
 		out[keys.length + 1] = TOGGLE;
 		out[keys.length + 2] = PHOTO;
+		out[keys.length + 3] = REPLAY;
 		return out;
 	}
 
 	/** Minecraft.handleKeybinds (in a world, no screen open). */
 	public static void tick(Minecraft mc) {
 		while (PHOTO.consumeClick()) dev.cadence.shaders.cadence.render.PhotoMode.take(mc);
+		while (REPLAY.consumeClick()) saveReplay(mc);
 		dev.cadence.shaders.cadence.render.PhotoMode.frame(mc);
 		if (!dev.cadence.shaders.CadencePackGate.metalBackend()) {
 			// (no shader packs this session: say why once per press instead of opening a list that can't work)
