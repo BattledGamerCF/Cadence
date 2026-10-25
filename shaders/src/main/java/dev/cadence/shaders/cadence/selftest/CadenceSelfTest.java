@@ -108,6 +108,9 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("upscaler=")) {
 					String mode = lower.substring(9);
 					mc.execute(() -> RenderScale.applyUpscaler(mode));
+				} else if (lower.equals("photo")) {
+					// "photo": Photo Mode's shot, as F9 takes it
+					mc.execute(() -> dev.cadence.shaders.cadence.render.PhotoMode.take(mc));
 				} else if (lower.equals("batteryinfo")) {
 					// "batteryinfo": the battery estimate's inputs (energy left, the Mac's draw) and its text
 					LOGGER.info("[selftest] batteryinfo: {} Wh left, Mac draws {} W, on battery {}, Low Power Mode {}, estimate '{}'",

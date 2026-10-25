@@ -14,6 +14,7 @@ import net.minecraft.client.Minecraft;
 public final class ShaderKeys {
 	static final KeyMapping PACKS = new KeyMapping("Shader Packs (Cadence)", InputConstants.Type.KEYBOARD, InputConstants.KEY_O, KeyMapping.Category.MISC);
 	static final KeyMapping TOGGLE = new KeyMapping("Toggle Shaders (Cadence)", InputConstants.Type.KEYBOARD, InputConstants.KEY_K, KeyMapping.Category.MISC);
+	static final KeyMapping PHOTO = new KeyMapping("Photo Mode (Cadence)", InputConstants.Type.KEYBOARD, InputConstants.KEY_F9, KeyMapping.Category.MISC);
 
 	private ShaderKeys() {
 	}
@@ -21,14 +22,17 @@ public final class ShaderKeys {
 	/** Options.load HEAD: the game's keys plus Cadence's (once). */
 	public static KeyMapping[] add(KeyMapping[] keys) {
 		if (Arrays.asList(keys).contains(PACKS)) return keys;
-		KeyMapping[] out = Arrays.copyOf(keys, keys.length + 2);
+		KeyMapping[] out = Arrays.copyOf(keys, keys.length + 3);
 		out[keys.length] = PACKS;
 		out[keys.length + 1] = TOGGLE;
+		out[keys.length + 2] = PHOTO;
 		return out;
 	}
 
 	/** Minecraft.handleKeybinds (in a world, no screen open). */
 	public static void tick(Minecraft mc) {
+		while (PHOTO.consumeClick()) dev.cadence.shaders.cadence.render.PhotoMode.take(mc);
+		dev.cadence.shaders.cadence.render.PhotoMode.frame(mc);
 		if (!dev.cadence.shaders.CadencePackGate.metalBackend()) {
 			// (no shader packs this session: say why once per press instead of opening a list that can't work)
 			boolean pressed = false;

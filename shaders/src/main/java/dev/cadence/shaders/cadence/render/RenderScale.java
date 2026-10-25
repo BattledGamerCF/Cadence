@@ -50,7 +50,7 @@ public final class RenderScale {
 	public static float get() {
 		// (Record Mode and Render Max FPS: no upscaling at all, the frame drawn at its own size; the player's scale comes back
 		// when they're off. Nothing is saved.)
-		if (fastModes()) return MAX;
+		if (fastModes() || PhotoMode.active()) return MAX;  // (Photo Mode: full size for the shot)
 		return scale;
 	}
 
