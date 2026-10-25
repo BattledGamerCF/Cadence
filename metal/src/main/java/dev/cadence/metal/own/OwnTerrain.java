@@ -62,6 +62,12 @@ public final class OwnTerrain {
 	 * (phase B). Exact: whatever shows in the frame is drawn in one phase or the other.
 	 */
 	private static final boolean OCC = Boolean.getBoolean("cadence.own.occ");
+	/**
+	 * Far Plants (the Max FPS preset; -Dcadence.own.farPlants=BLOCKS): cross-model plants (grass, flowers, ferns, saplings: the
+	 * cutout layer's any-facing units) of sections at least this far from the camera are left out by the cull; 0 draws them all.
+	 * Glass, panes, leaves and every axis-aligned cutout face are drawn as before. Read each frame (frag_cull FragFrame.farPlants).
+	 */
+	public static volatile float farPlantBlocks = Float.parseFloat(System.getProperty("cadence.own.farPlants", "0"));
 	private static final int OCC_FRAME_BYTES = 128;
 	/**
 	 * -Dcadence.own.probe=MS: in-run A/B probe. Every MS milliseconds the next of -Dcadence.own.probeModes (default draw,skip,graph)

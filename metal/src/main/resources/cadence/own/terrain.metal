@@ -397,6 +397,8 @@ struct FragFrame {
 	                      // F_TIE_CLOSE: a uint per record after those (TIE_PROMO: the frame a unit was promoted and appended to phase
 	                      // A), then one more (TIE_SEEN, -Dcadence.own.frag.tieCloseVerify)
 	uint capLimit;        // (fault injection, -Dcadence.own.frag.capFault=N) phase A and B lists hold at most N entries; 0 = their capacity
+	float farPlants;      // Far Plants (OwnTerrain.farPlantBlocks, the Max FPS preset): cutout units of the any-facing bucket (the cross
+	                      // models: grass, flowers, ferns, saplings) of sections this far or farther are not drawn; 0 = all drawn
 };
 
 // a list's entries this frame (fault injection: capLimit)
@@ -565,6 +567,7 @@ kernel void frag_cull(constant CullFrame &f [[buffer(0)]], device const Section 
 	uint end = s.recStart + s.recCount;
 	uint lean = 0;
 	uint bin = min(g.classes - 1, uint(length(o + 8.0) / g.binBlocks));
+	bool farPlants = g.farPlants > 0 && length(o + 8.0) >= g.farPlants;
 	// (flag 1024: phase A's units of a section this far or farther go to the second bank, drawn after the test)
 	uint aBank = (g.flags & 1024) != 0 && length(o + 8.0) >= g.nearBlocks ? g.lists / 2 : 0;
 	if ((g.flags & 1) != 0 && g.nowMs - s.uploadMs >= g.fadeMs) {
@@ -601,7 +604,7 @@ kernel void frag_cull(constant CullFrame &f [[buffer(0)]], device const Section 
 			case 5: vis = cam.z < plane + FACE_MARGIN; break;
 			default: vis = true; break;
 		}
-		if (!vis || layer > 1) continue;
+		if (!vis || layer > 1 || (layer == 1 && bucket == 6 && farPlants)) continue;
 		funnelFacing += (rec.meta & 63) + 1;
 		// (solid-section occlusion)
 		if (so.on != 0 && solidHidden(so, soTex, o + float3(int3(rec.lo & 255, (rec.lo >> 8) & 255, (rec.lo >> 16) & 255) - 16),
@@ -713,6 +716,7 @@ template <ushort W> static void fragCullS(constant CullFrame &f, device const Se
 	uint end = s.recStart + s.recCount;
 	uint lean = 0;
 	uint aBank = (g.flags & 1024) != 0 && length(o + 8.0) >= g.nearBlocks ? g.lists / 2 : 0;  // (flag 1024, as frag_cull)
+	bool farPlants = g.farPlants > 0 && length(o + 8.0) >= g.farPlants;  // (as frag_cull)
 	if ((g.flags & 1) != 0 && g.nowMs - s.uploadMs >= g.fadeMs) {
 		uint3 lo = uint3(255), hi = uint3(0);
 		for (uint r = s.recStart + sl; r < end; r += W) {
@@ -757,7 +761,7 @@ template <ushort W> static void fragCullS(constant CullFrame &f, device const Se
 				case 5: vis = cam.z < plane + FACE_MARGIN; break;
 				default: vis = true; break;
 			}
-			if (vis && layer <= 1) {
+			if (vis && layer <= 1 && !(layer == 1 && bucket == 6 && farPlants)) {
 				funnelFacing += quads;
 				float3 lo = o + float3(int3(rec.lo & 255, (rec.lo >> 8) & 255, (rec.lo >> 16) & 255) - 16);
 				float3 hi = o + float3(int3(rec.hi & 255, (rec.hi >> 8) & 255, (rec.hi >> 16) & 255) - 16);

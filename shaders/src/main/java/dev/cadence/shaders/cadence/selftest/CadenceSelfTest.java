@@ -69,7 +69,8 @@ public final class CadenceSelfTest {
 				LOGGER.info("[selftest] FAIL: no world after 300 s");
 				return;
 			}
-			LOGGER.info("[selftest] in world; pack={}", ShaderSwitcher.active().isEmpty() ? "off" : ShaderSwitcher.active());
+			LOGGER.info("[selftest] in world; pack={}; {} ms since the JVM started", ShaderSwitcher.active().isEmpty() ? "off" : ShaderSwitcher.active(),
+				java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime());
 			// Comparable numbers: the same noon light and clear sky for every step (night and rain change a pack's cost).
 			var server = mc.getSingleplayerServer();
 			if (server != null) {
@@ -132,6 +133,33 @@ public final class CadenceSelfTest {
 					LOGGER.info("[selftest] batteryinfo: {} Wh left, Mac draws {} W, on battery {}, Low Power Mode {}, estimate '{}'",
 						String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.batteryWh()), String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.systemWatts()),
 						dev.cadence.metal.MacSystem.onBattery(), dev.cadence.metal.MacSystem.lowPowerMode(), dev.cadence.metal.MacSystem.batteryTimeLeft());
+				} else if (lower.equals("serverchunks")) {
+					// "serverchunks": Keep Server Chunks' state (multiplayer guest checks): chunks loaded and kept, the distances
+					mc.execute(() -> LOGGER.info("[selftest] serverchunks: on {} loaded {} kept {} effective rd {} option rd {} pos {}",
+						dev.cadence.shaders.cadence.server.ServerChunks.on(), mc.level == null ? -1 : mc.level.getChunkSource().getLoadedChunksCount(),
+						dev.cadence.shaders.cadence.server.ServerChunks.kept(), mc.options.getEffectiveRenderDistance(), mc.options.renderDistance().get(),
+						mc.player == null ? "none" : mc.player.chunkPosition()));
+				} else if (lower.startsWith("keepchunks=")) {
+					// "keepchunks=on|off": Keep Server Chunks set for the following steps (saved, as the button)
+					boolean want = lower.endsWith("on");
+					mc.execute(() -> {
+						if (dev.cadence.shaders.cadence.server.ServerChunks.on() != want) dev.cadence.shaders.cadence.server.ServerChunks.toggle();
+					});
+				} else if (lower.equals("irisapi")) {
+					// "irisapi": what a mod asking the Iris API gets (the iris mod nested in Cadence, or a real Iris)
+					try {
+						Class<?> api = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+						Object iris = api.getMethod("getInstance").invoke(null);
+						Object config = api.getMethod("getConfig").invoke(iris);
+						LOGGER.info("[selftest] irisapi: {} revision {} packInUse {} shadowPass {} sunPath {} enabled {} screen {} realIris {}",
+							iris.getClass().getName(), api.getMethod("getMinorApiRevision").invoke(iris), api.getMethod("isShaderPackInUse").invoke(iris),
+							api.getMethod("isRenderingShadowPass").invoke(iris), api.getMethod("getSunPathRotation").invoke(iris),
+							config.getClass().getMethod("areShadersEnabled").invoke(config),
+							api.getMethod("openMainIrisScreenObj", Object.class).invoke(iris, (Object) null),
+							dev.cadence.metal.Profile.realIris(net.fabricmc.loader.api.FabricLoader.getInstance()));
+					} catch (ReflectiveOperationException | LinkageError e) {
+						LOGGER.info("[selftest] irisapi: unavailable: {}", e.toString());
+					}
 				} else if (lower.equals("compilestats")) {
 					// "compilestats": time spent compiling shader libraries and creating pipelines since the start
 					double[] c = dev.cadence.metal.MetalBridge.compileStats();
@@ -179,6 +207,13 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("fardistance=")) {
 					// "fardistance=N": Video Settings > Far Distance moved to N chunks (live while far terrain runs; not saved)
 					dev.cadence.metal.lod.LodConfig.requestRadius(Integer.parseInt(lower.substring(12)));
+				} else if (lower.startsWith("sd=")) {
+					// "sd=N": the simulation distance as the options screen sets it
+					int sd = Integer.parseInt(lower.substring(3));
+					mc.execute(() -> {
+						mc.options.simulationDistance().set(sd);
+						mc.options.save();
+					});
 				} else if (lower.startsWith("rd=")) {
 					// "rd=N": change the render distance as the options screen does (vanilla rebuilds the view area)
 					int rd = Integer.parseInt(lower.substring(3));
@@ -982,6 +1017,8 @@ public final class CadenceSelfTest {
 				case "smartleaves" -> dev.cadence.shaders.cadence.mesh.SmartLeaves.setEnabled(on);
 				case "hud" -> { if (mc.gui.hud.isHidden() == on) mc.gui.hud.toggle(); }
 				case "clouds" -> mc.options.cloudStatus().set(on ? net.minecraft.client.CloudStatus.FANCY : net.minecraft.client.CloudStatus.OFF);
+				case "farplants" -> dev.cadence.metal.own.OwnTerrain.farPlantBlocks = on ? Float.parseFloat(System.getProperty("cadence.test.farPlants", "96")) : 0;
+				case "entitydist" -> mc.options.entityDistanceScaling().set(on ? Double.parseDouble(System.getProperty("cadence.test.entityDist", "0.75")) : 1.0);
 				case "hiz" -> dev.cadence.shaders.cadence.hiz.HiZ.enabled = on;
 				case "hizvanilla" -> dev.cadence.shaders.cadence.hiz.HiZ.vanilla = on;
 				case "packeddraws" -> dev.cadence.shaders.cadence.alloc.PackedDraws.enabled = on;

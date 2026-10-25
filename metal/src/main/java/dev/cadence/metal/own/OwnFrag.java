@@ -767,6 +767,7 @@ final class OwnFrag {
 			MemoryUtil.memPutFloat(g + 48, splitNear());
 			MemoryUtil.memPutInt(g + 52, this.occVisCap);  // (FragFrame.recCap: bRedraw's marks follow occVis in its buffer)
 			MemoryUtil.memPutInt(g + 56, CAP_FAULT);  // (FragFrame.capLimit: 0 unless the capacity fault is injected)
+			MemoryUtil.memPutFloat(g + 60, OwnTerrain.farPlantBlocks);  // (FragFrame.farPlants: Far Plants, 0 = off)
 			MemoryUtil.memCopy(g, this.fragFrame, FRAG_FRAME_BYTES);  // (the unit test reads it at draw time)
 			// a1Exact: the cull writes A1's exact-count draws (mode 1); with only -Dcadence.own.stats the same kernel counts A1's real quads (mode 2)
 			// (not with tight / the oracle: their vertex paths read the list as records; not with cutfirst's reversed solid order)

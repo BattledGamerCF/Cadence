@@ -113,15 +113,38 @@ public final class CadenceSettings {
 		if (ShaderToggle.configValue("maxFps.leaves", "").isEmpty()) {
 			ShaderToggle.saveKey("maxFps.leaves", Boolean.toString(o.cutoutLeaves().get()));
 			ShaderToggle.saveKey("maxFps.clouds", o.cloudStatus().get().name());
+			ShaderToggle.saveKey("maxFps.entityDistance", Double.toString(o.entityDistanceScaling().get()));
 		}
 		boolean rebuild = o.cutoutLeaves().get();
 		o.cutoutLeaves().set(false);
 		o.cloudStatus().set(net.minecraft.client.CloudStatus.OFF);
+		o.entityDistanceScaling().set(Math.min(o.entityDistanceScaling().get(), MAX_FPS_ENTITY_DISTANCE));
 		o.save();
+		farPlants();
 		if (rebuild && net.minecraft.client.Minecraft.getInstance().level != null) net.minecraft.client.Minecraft.getInstance().levelExtractor.allChanged();
 	}
 
-	/** Leaving Max FPS for another preset: the player's leaves and clouds as they were before it. */
+	/**
+	 * Max FPS's entity distance (vanilla's Entity Distance option, 75%) and Far Plants (OwnTerrain.farPlantBlocks: grass, flowers
+	 * and ferns past 96 blocks not drawn; glass and every other cutout face still are). M2 Air, fullscreen, render and simulation
+	 * distance 16, in-run A/B: entity distance 100% -> 75% GPU -0.10 ms, render thread -0.06 ms; far plants GPU -0.04 ms, no
+	 * difference in the screenshots (a plant at 96 blocks is a few pixels, mostly behind the terrain in front of it).
+	 */
+	private static final double MAX_FPS_ENTITY_DISTANCE = 0.75;
+	private static final float FAR_PLANTS_BLOCKS = 96;
+
+	/** Far Plants on while Max FPS's looks are (the saved leaves mark them); at launch (ShaderLoaderMod) and on every preset change. */
+	public static void farPlants() {
+		boolean on = !ShaderToggle.configValue("maxFps.leaves", "").strip().isEmpty();
+		try {
+			dev.cadence.metal.own.OwnTerrain.farPlantBlocks = on && System.getProperty("cadence.own.farPlants") == null ? FAR_PLANTS_BLOCKS
+				: Float.parseFloat(System.getProperty("cadence.own.farPlants", "0"));
+		} catch (NumberFormatException | LinkageError e) {
+			// (a bad -D value or no Metal module: plants as usual)
+		}
+	}
+
+	/** Leaving Max FPS for another preset: the player's leaves, clouds and entity distance as they were before it. */
 	private static void restoreLooks() {
 		String leaves = ShaderToggle.configValue("maxFps.leaves", "").strip(), clouds = ShaderToggle.configValue("maxFps.clouds", "").strip();
 		if (leaves.isEmpty()) return;
@@ -133,9 +156,19 @@ public final class CadenceSettings {
 		} catch (IllegalArgumentException e) {
 			o.cloudStatus().set(net.minecraft.client.CloudStatus.FANCY);
 		}
+		String entities = ShaderToggle.configValue("maxFps.entityDistance", "").strip();
+		if (!entities.isEmpty()) {
+			try {
+				o.entityDistanceScaling().set(Double.parseDouble(entities));
+			} catch (NumberFormatException e) {
+				o.entityDistanceScaling().set(1.0);
+			}
+		}
 		o.save();
 		ShaderToggle.saveKey("maxFps.leaves", "");
 		ShaderToggle.saveKey("maxFps.clouds", "");
+		ShaderToggle.saveKey("maxFps.entityDistance", "");
+		farPlants();
 		if (rebuild && net.minecraft.client.Minecraft.getInstance().level != null) net.minecraft.client.Minecraft.getInstance().levelExtractor.allChanged();
 	}
 
@@ -405,6 +438,24 @@ public final class CadenceSettings {
 				+ "changes are rare (each makes the game build the nearby chunks again). Far terrain still reaches past it. Off: your distance always.")).build();
 		onRefresh(() -> self[0].setMessage(autoRdLabel()));
 		return self[0];
+	}
+
+	/** Keep Server Chunks (ServerChunks). */
+	public static Button keepServerChunksButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(keepChunksLabel(), b -> {
+			dev.cadence.shaders.cadence.server.ServerChunks.toggle();
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("On a server: your full render distance, not just the server's view distance.",
+			"#Chunks the server stops sending are kept while they're within your render distance (as they were when you last saw them; the server sends them "
+				+ "again when you come back), so the view fills in as you travel. Single player already sends everything. Uses memory for the extra chunks.")).build();
+		onRefresh(() -> self[0].setMessage(keepChunksLabel()));
+		return self[0];
+	}
+
+	private static Component keepChunksLabel() {
+		int kept = dev.cadence.shaders.cadence.server.ServerChunks.kept();
+		return Component.literal("Keep Server Chunks: " + (dev.cadence.shaders.cadence.server.ServerChunks.on() ? kept > 0 ? "On (" + kept + ")" : "On" : "Off"));
 	}
 
 	private static Component autoRdLabel() {
