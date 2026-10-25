@@ -476,7 +476,7 @@ public final class ShadowRenderer {
         if (proxyFrame)
           proxies.draw(
               pass,
-              ((dev.cadence.shaders.cadence.mixin.ChunkSectionsToRenderAccessor) chunks)
+              ((dev.cadence.shaders.cadence.mixin.shadow.ChunkSectionsToRenderAccessor) chunks)
                   .cadence$terrainTransform(),
               sampler,
               atlas);

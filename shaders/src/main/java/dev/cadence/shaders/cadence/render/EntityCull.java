@@ -178,7 +178,7 @@ public final class EntityCull {
 	 */
 	private static AABB cullBox(Minecraft mc, Entity entity, float partial) {
 		if (entity instanceof net.minecraft.world.entity.Leashable leashable && leashable.getLeashHolder() != null) return null;
-		var renderer = (dev.cadence.shaders.cadence.mixin.EntityRendererCullInvoker) mc.getEntityRenderDispatcher().getRenderer(entity);
+		var renderer = (dev.cadence.shaders.cadence.mixin.entity.EntityRendererCullInvoker) mc.getEntityRenderDispatcher().getRenderer(entity);
 		if (!renderer.cadence$affectedByCulling(entity)) return null;
 		AABB box = renderer.cadence$cullBox(entity, partial).inflate(0.5);
 		if (box.hasNaN() || box.getSize() == 0)

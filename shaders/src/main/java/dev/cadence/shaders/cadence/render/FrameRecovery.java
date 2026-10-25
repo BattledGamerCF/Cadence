@@ -1,8 +1,8 @@
 package dev.cadence.shaders.cadence.render;
 
-import dev.cadence.shaders.cadence.mixin.FeatureDispatcherAccess;
-import dev.cadence.shaders.cadence.mixin.FeatureFrameAccess;
-import dev.cadence.shaders.cadence.mixin.LevelRendererTargetsAccess;
+import dev.cadence.shaders.cadence.mixin.render.FeatureDispatcherAccess;
+import dev.cadence.shaders.cadence.mixin.render.FeatureFrameAccess;
+import dev.cadence.shaders.cadence.mixin.render.LevelRendererTargetsAccess;
 import net.minecraft.client.Minecraft;
 import org.slf4j.LoggerFactory;
 

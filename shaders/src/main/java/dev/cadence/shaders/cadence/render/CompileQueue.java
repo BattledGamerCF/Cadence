@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.render;
 
-import dev.cadence.shaders.cadence.mixin.SectionTaskAccessor;
+import dev.cadence.shaders.cadence.mixin.chunk.SectionTaskAccessor;
 import java.util.Arrays;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher.RenderSection.SectionTask;
 import net.minecraft.world.phys.Vec3;

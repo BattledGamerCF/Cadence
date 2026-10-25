@@ -70,8 +70,8 @@ public final class PanoramaTexture {
 	}
 
 	private static Identifier location(Minecraft mc) {
-		var gui = ((dev.cadence.shaders.cadence.mixin.GamePanoramaAccess) mc.gameRenderer).cadence$guiRenderer();
-		var cube = gui == null ? null : ((dev.cadence.shaders.cadence.mixin.GuiPanoramaAccess) gui).cadence$cubeMap();
-		return cube == null ? null : ((dev.cadence.shaders.cadence.mixin.CubeMapLocationAccess) cube).cadence$location();
+		var gui = ((dev.cadence.shaders.cadence.mixin.render.GamePanoramaAccess) mc.gameRenderer).cadence$guiRenderer();
+		var cube = gui == null ? null : ((dev.cadence.shaders.cadence.mixin.render.GuiPanoramaAccess) gui).cadence$cubeMap();
+		return cube == null ? null : ((dev.cadence.shaders.cadence.mixin.render.CubeMapLocationAccess) cube).cadence$location();
 	}
 }

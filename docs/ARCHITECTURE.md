@@ -57,7 +57,7 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 | `cadence/packcheck/` | Faster Shadows' picture test for a pack. |
 | `cadence/selftest/` | The development self-test driven by `tools/cadence-test.sh` (`-Dcadence.selftest=steps`). Not used in normal play. |
 | `cadence/alloc/`, `cadence/worldgen/`, `cadence/census/` | Allocation fixes, worldgen experiments, the offline pack census. |
-| `cadence/mixin/` | The mixins for all of the above. |
+| `cadence/mixin/<area>/` | The mixins for all of the above, by area: `maxfps`, `chunk`, `memory`, `mesh`, `hiz`, `shadow`, `light`, `entity`, `render`, `ui`, `system`, `worldgen` (one config, `cadence-shaders-ui.mixins.json`; `CadenceMixinPlugin` decides which apply). |
 
 ## Settings and switches
 
