@@ -15,5 +15,9 @@ Day-by-day notes written while building Cadence: what was measured, what changed
 - [DAY-10-18.md](DAY-10-18.md): the Shader Packs screen, 23 of 25 packs, dynamic lights, the memory pass, native shaders.
 - [DAY-10-19.md](DAY-10-19.md): native shaders, Benchmark, On Battery, frame pacing, Cadence Logic options.
 - [NIGHT-5.md](NIGHT-5.md): the settings regroup, edge cases and chips, the GC policy, the file layout.
+- [DAY-10-21.md](DAY-10-21.md): Vivace 27 and Cadence on it, the Java switch in Video Settings.
+- [METAL4-PLAN.md](METAL4-PLAN.md), [METAL4-REVIEW.md](METAL4-REVIEW.md): the opt-in Metal 4 path, its plan and review.
+- [RECORD.md](RECORD.md), [RECORD-REVIEW.md](RECORD-REVIEW.md): Render Max FPS (Record Mode), the FPS record attempt, its review and the 10-25 correction.
+- Bug hunts (read-only reviews and what came of them): [BUG-HUNT-10-21.md](BUG-HUNT-10-21.md), [BUG-HUNT-10-23.md](BUG-HUNT-10-23.md), [BUG-HUNT-10-24.md](BUG-HUNT-10-24.md).
 
 The shader-pack work is logged in [../SHADER-PACKS.md](../SHADER-PACKS.md).

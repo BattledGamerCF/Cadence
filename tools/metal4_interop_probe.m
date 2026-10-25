@@ -2,7 +2,7 @@
 // 1. Does a residency set keep its allocations alive (retain)?  2. A render pipeline made by the Metal 3 device API, drawing
 // through an MTL4 render encoder with an argument table (vertex buffer by address, fragment texture + sampler by resource id).
 // 3. A compute pipeline made by the Metal 3 API, dispatched through an MTL4 compute encoder.
-// Build: clang -fobjc-arc -O2 -framework Metal -framework Foundation tools/m4_probe2.m -o /tmp/m4_probe2
+// Build: clang -fobjc-arc -O2 -framework Metal -framework Foundation tools/metal4_interop_probe.m -o /tmp/metal4_interop_probe
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 

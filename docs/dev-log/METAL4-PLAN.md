@@ -16,7 +16,7 @@ terrain renderer), `mclod.m` (far terrain), `mccull.m` (HiZ/culling), `mcpack.m`
 `mccap.m`, `rec.m`, `mcbench.m`: ~6,500 lines that touch Metal.
 
 ## Phases
-0. **Probe** (`tools/m4_probe.m`, standalone): MTL4 queue + allocator + command buffer, argument table, residency set,
+0. **Probe** (`tools/metal4_interp_probe.m`, standalone): MTL4 queue + allocator + command buffer, argument table, residency set,
    present through `waitForDrawable/signalDrawable`, and `MTL4FXFrameInterpolator` on this M2 (one report says its encode
    is a silent no-op: check the output changes). Measure: empty-frame rate Metal 3 vs Metal 4 in the probe.
 1. **Backend on Metal 4** in `mcmetal.m`, behind `-Dcadence.metal4` (Metal 3 path kept as the fallback and A/B):
@@ -46,11 +46,11 @@ the residency set (page faults); interpolation base rate should be >= 30 fps and
   Render Max FPS (memory flat: residency released on completion). Sonnet review (METAL4-REVIEW.md): no missing barrier or
   residency on default paths; its bugs fixed (pipeline lifetimes, table clearing, recorder, tile, scaler, addon calls).
   Speed: parity with Metal 3 (Max FPS ~13k both, within thermal noise). Stays opt-in until a full bug hunt.
-- **Frame interpolation** (`tools/m4_probe.m`): MetalFX works on the M2 but costs 0.48 ms at 160x90 ... 28 ms at 2940x1912:
+- **Frame interpolation** (`tools/metal4_interp_probe.m`): MetalFX works on the M2 but costs 0.48 ms at 160x90 ... 28 ms at 2940x1912:
   useful for heavy shader-pack frames, far too slow for a record frame (budget 46 us). Record interpolation needs our own
   reprojection kernel.
 - **Where Max FPS time goes** (sample + JFR): the render thread waits 69% of the time in waitUntilCompleted: the GPU is the
-  limit, not the CPU. `tools/m4_floor.m`: a render pass has a fixed GPU cost of ~53 us on the M2 whatever its size (16.8k
+  limit, not the CPU. `tools/gpu_frame_floor.m`: a render pass has a fixed GPU cost of ~53 us on the M2 whatever its size (16.8k
   passes/s at 5 in flight, 21.1k at 32); a compute-only frame does 25.7k/s (5) and 37.2k/s (32 in flight) at 320x180.
 - **Record plan** (rules: Hone R01-R04, the world rendered, every frame really rendered; with interpolation, rendered
   frames alone must beat 21,632): a record mode whose frames have **no render pass**: the world (blocks and entities) drawn

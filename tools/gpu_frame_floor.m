@@ -1,6 +1,6 @@
 // The GPU's floor per frame on this Mac (no Minecraft): how many command buffers / render passes a second the GPU finishes,
 // for the frame shapes a record-mode frame could take. Metal 3 queue, as the game's default.
-// Build: clang -fobjc-arc -O2 -framework Metal -framework QuartzCore -framework AppKit -framework Foundation tools/m4_floor.m -o /tmp/m4_floor
+// Build: clang -fobjc-arc -O2 -framework Metal -framework QuartzCore -framework AppKit -framework Foundation tools/gpu_frame_floor.m -o /tmp/gpu_frame_floor
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>

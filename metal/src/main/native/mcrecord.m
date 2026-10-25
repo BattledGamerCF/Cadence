@@ -1,5 +1,5 @@
 // Cadence: Record Mode (dev.cadence.metal.record, record.metal): the frame as compute only. A render pass costs the M2's GPU
-// about 53 us whatever its size (tools/m4_floor.m), a compute dispatch far less, so the frame is one dispatch: the world traced
+// about 53 us whatever its size (tools/gpu_frame_floor.m), a compute dispatch far less, so the frame is one dispatch: the world traced
 // into this frame's colour and depth, the HUD overlay (RecordHud) blended in, and, with interpolation on, the in-between frame
 // of the last two. The game presents the colour texture at most once a refresh (Render Max FPS's uncapped presentation).
 #import <Foundation/Foundation.h>

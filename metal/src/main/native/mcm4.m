@@ -5,7 +5,7 @@
 // they encode into an MTL4CommandBuffer (from a pooled MTL4CommandAllocator) on one MTL4CommandQueue, and supply what Metal 3
 // did implicitly:
 // - bindings: set*Buffer/Texture/SamplerState write per-stage MTL4ArgumentTables (each draw keeps the bindings it was
-//   encoded with: tools/m4_probe2.m); set*Bytes copies into a per-command-buffer chunk of shared memory, bound by address;
+//   encoded with: tools/metal4_interop_probe.m); set*Bytes copies into a per-command-buffer chunk of shared memory, bound by address;
 // - residency: every resource bound, attached, copied or used indirectly joins one MTLResidencySet (it retains them), and
 //   leaves it a few seconds after its last use, when no GPU work can still reference it;
 // - hazards: Metal 4 doesn't track them. Each encoder starts with a barrier after all earlier work on the queue; a serial

@@ -1,6 +1,6 @@
 // Metal 4 probe (no Minecraft): MetalFX frame interpolation through Metal 3 and Metal 4 (does it write its output, what
 // it costs), and the CPU cost of submitting work on a Metal 3 vs a Metal 4 queue.
-// Build: clang -fobjc-arc -O2 -framework Metal -framework MetalFX -framework Foundation tools/m4_probe.m -o /tmp/m4_probe
+// Build: clang -fobjc-arc -O2 -framework Metal -framework MetalFX -framework Foundation tools/metal4_interp_probe.m -o /tmp/metal4_interp_probe
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import <MetalFX/MetalFX.h>

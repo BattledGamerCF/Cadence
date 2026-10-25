@@ -13,7 +13,7 @@ with frame interpolation, counted apart. The rules (hone.gg/fps-records/minecraf
 **Render Max FPS** (Video Settings > Cadence: Extras) turns it on; everything else is automatic:
 
 - every frame one compute dispatch (`record.metal`, `record_trace`), no render pass (a render pass alone costs the M2's GPU
-  ~53 us, tools/m4_floor.m);
+  ~53 us, tools/gpu_frame_floor.m);
 - the client's loaded blocks in a 64 x H x 64 voxel window around the camera (2 chunks each way: the game's smallest render
   distance), `RecordWorld`, kept up to date from the game's own section updates (block and light changes);
 - **1x1 textures**: each block face is its texture's average colour times its tint (grass, leaves, water by biome);
