@@ -127,3 +127,31 @@ backend) with Render Max FPS: every frame one GPU compute pass ray-tracing the l
 each block face its texture's average colour (1x1 textures) with vanilla's flat lighting, entities as boxes, the HUD drawn
 by the CPU when it changes; no upscaling; frame interpolation counted separately; frames past one a refresh aren't presented
 (as with VSync off), and 4 frames are committed to a command buffer (each its own dispatch and image).
+
+## 10-24 night: 66k rendered, the world under screens
+
+- **Screens**: Max FPS no longer hands the world to the game's own renderer when a screen opens (its world had gone stale:
+  the glitch with the inventory and chat). The record frame keeps being made and is drawn into the game's target
+  (`mcrm_draw`), and the game draws the screen and its own HUD over it. The game's clear of its target is deferred to its
+  next pass (the GUI's) by the backend, which wiped the frame: dropped first (`dropPendingClear`).
+- **One word a voxel**: air holds its light, a full block its top and side colours (RGB555), any other block its palette
+  entry and its own light. A full block's face is lit by the air word the ray just came through, so a hit reads nothing
+  more. (Occupancy bits and the light buffer are gone.)
+- **Height-field cells** (highest block per 8 x 8 columns) in a loop of their own before the voxel walk, and the window's
+  top from them: rays above the terrain cross a cell a step. Sky views 3.5x faster (30 degrees up: 5.4k -> 33k rendered),
+  ground views the same. (Tried before with the camera under a tree, where it never engaged.)
+- **Fences out**: the frames were made untracked and ordered by Metal fences so they could overlap; the bench, made faithful
+  to the fence waits (`RB_FENCE`), showed a fence wait costing ~25 us: 36k vs 65k rendered for a sky frame. Back to Metal's
+  own tracking (5-slot ring, the in-between frame from N-2 and N-3).
+- Tried and dropped: batched voxel loads (4 at a time: 40% slower, registers), a column-top table (no gain), thread
+  coarsening (2 pixels a thread: worse), skipping the HUD's empty rows (14% worse: the load issued late), depth only while
+  moving and a one-read in-between frame (no gain), a hybrid of occupancy bits and words (worse).
+
+| View (in game, M2 Air) | rendered fps | shown fps |
+|---|---|---|
+| sky, from a pillar above the trees | 66,200 | 132,900 (best 132,934) |
+| looking down | 24,000-27,000 | 48,000-54,000 |
+| 30 degrees up from a pillar | 33,000 | 66,000 |
+| forest views | 12,000-16,000 | 24,000-32,000 |
+
+The record attempt: stand on a pillar above everything around (any block, ~30 blocks up), look up, read "Best".

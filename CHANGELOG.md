@@ -2,6 +2,20 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased (after 0.4.0-beta.16)
+
+Render Max FPS:
+- The world stays as it was under the inventory, chat, pause and any other screen (it glitched: the game's own world
+  drawing took over with a stale world). The game's HUD and the screen are drawn over Max FPS's frame.
+- Much faster: 66,000 frames rendered a second (133,000 shown with interpolation) looking at the sky from up high, 24,000-
+  27,000 looking down, 12,000-16,000 in a forest (M2 MacBook Air). Upward views were slow (5,000): now 33,000.
+
+Everything else:
+- Entities' render states are kept from frame to frame instead of made new each frame: 8% less memory churn on the render
+  thread, fewer garbage-collection pauses.
+- Far terrain: plants' quads only as tall as the plants (the GPU shaded and threw away the rest): plants cost about nothing
+  now instead of ~13% of the far terrain's GPU time.
+
 ## 0.4.0-beta.16 / shaders 0.3.15 (2026-10-24)
 
 Render Max FPS is now playable, and it is Cadence's run at the Minecraft FPS record (Hone's rules: a playable resolution,
