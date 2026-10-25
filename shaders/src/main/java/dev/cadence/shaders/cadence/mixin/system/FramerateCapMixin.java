@@ -15,6 +15,7 @@ public abstract class FramerateCapMixin {
 	private int cadence$heatCap(int limit) {
 		if (dev.cadence.shaders.cadence.setup.QuickSetup.testing) return Math.min(limit, 10);
 		dev.cadence.shaders.cadence.render.AutoRenderDistance.check();
+		dev.cadence.shaders.cadence.server.ServerChunks.check();
 		// (Photo Mode's countdown runs on ticks without a screen: one opening mid-countdown cancels the shot, BH4-14)
 		if (dev.cadence.shaders.cadence.render.PhotoMode.active() && net.minecraft.client.Minecraft.getInstance().gui.screen() != null)
 			dev.cadence.shaders.cadence.render.PhotoMode.cancel(net.minecraft.client.Minecraft.getInstance());
