@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class RecordModeMixin {
 	@Inject(method = "render", at = @At("HEAD"), cancellable = true)
 	private void cadence$record(CallbackInfo ci) {
-		if (Record.active() && Record.frame()) ci.cancel();
+		// (under a screen the record frame is made, and the game goes on to draw the screen over it: MaxFpsModeMixin)
+		if (Record.active() && Record.frame() && !Record.screenOpen()) ci.cancel();
 	}
 }

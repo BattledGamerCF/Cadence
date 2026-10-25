@@ -21,6 +21,7 @@ static id<MTLBuffer> load(id<MTLDevice> d, NSString *dir, NSString *name) {
 
 static id<MTLTexture> tex(id<MTLDevice> d, MTLPixelFormat f, int w, int h, MTLStorageMode mode) {
 	MTLTextureDescriptor *t = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:f width:w height:h mipmapped:NO];
+	if (getenv("RB_UNTRACKED")) t.hazardTrackingMode = MTLHazardTrackingModeUntracked;
 	t.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
 	t.storageMode = mode;
 	return [d newTextureWithDescriptor:t];
@@ -103,12 +104,16 @@ int main(int argc, char **argv) {
 		id<MTLBuffer> text = [d newBufferWithLength:(NSUInteger) w * h * 4 options:MTLResourceStorageModeShared];
 		memset(text.contents, 0, text.length);
 		if (hudData.length == text.length) memcpy(text.contents, hudData.bytes, text.length);
-		id<MTLTexture> color[3], depth[3];
-		for (int k = 0; k < 3; k++) {
+		// RB_RING=4: four of each, the in-between frame made from frames N-2 and N-3, so frame N depends on no frame still
+		// running (consecutive frames can overlap on the GPU); else three, from N-1 and N-2
+		int ring = getenv("RB_RING") ? 4 : 3, lagA = ring == 4 ? 2 : 1, lagB = lagA + 1;
+		id<MTLTexture> color[4], depth[4], mids[4];
+		for (int k = 0; k < ring; k++) {
+			mids[k] = tex(d, MTLPixelFormatRGBA8Unorm, w, h, MTLStorageModePrivate);
 			color[k] = tex(d, MTLPixelFormatRGBA8Unorm, w, h, MTLStorageModePrivate);
 			depth[k] = tex(d, getenv("RB_DEPTH32") ? MTLPixelFormatR32Float : MTLPixelFormatR16Float, w, h, MTLStorageModePrivate);
 		}
-		id<MTLTexture> mid = tex(d, MTLPixelFormatRGBA8Unorm, w, h, MTLStorageModePrivate);
+		id<MTLTexture> mid = mids[0];
 		id<MTLTexture> font = tex(d, MTLPixelFormatRGBA8Unorm, 128, 128, MTLStorageModeShared);
 		id<MTLTexture> atlas = tex(d, MTLPixelFormatRGBA8Unorm, 16, 16, MTLStorageModeShared);
 		id<MTLComputePipelineState> pipes[16];
@@ -140,21 +145,20 @@ int main(int argc, char **argv) {
 					dispatch_semaphore_wait(inflight, DISPATCH_TIME_FOREVER);
 					@autoreleasepool {
 						id<MTLCommandBuffer> cb = [q commandBufferWithUnretainedReferences];
-						id<MTLComputeCommandEncoder> c = [cb computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
-						[c setComputePipelineState:pipes[v]];
-						[c setTexture:atlas atIndex:2];
-						[c setTexture:font atIndex:3];
-						[c setTexture:mid atIndex:8];
-						[c setBuffer:grid offset:0 atIndex:1];
-						[c setBuffer:pal offset:0 atIndex:3];
-						[c setBuffer:ents offset:0 atIndex:4];
-						[c setBuffer:text offset:0 atIndex:5];
-						[c setBuffer:occ offset:0 atIndex:6];
-						[c setBuffer:light offset:0 atIndex:7];
-						[c setBuffer:tiles offset:0 atIndex:8];
-						// (RB_BATCH frames to a command buffer: each its own dispatch into its own image, as the game would)
+						// (RB_BATCH frames to a command buffer, each its own encoder and dispatch into its own image, as the game does)
+						id<MTLComputeCommandEncoder> one = getenv("RB_CONC") ? [cb computeCommandEncoderWithDispatchType:MTLDispatchTypeConcurrent] : nil;
 						for (int j = 0; j < batch; j++) {
-							int a = (cur + 2) % 3, b = (cur + 1) % 3;
+							id<MTLComputeCommandEncoder> c = one ? one : [cb computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
+							[c setComputePipelineState:pipes[v]];
+							[c setBuffer:grid offset:0 atIndex:1];
+							[c setBuffer:pal offset:0 atIndex:3];
+							[c setBuffer:ents offset:0 atIndex:4];
+							[c setBuffer:text offset:0 atIndex:5];
+							[c setBuffer:occ offset:0 atIndex:6];
+							[c setBuffer:light offset:0 atIndex:7];
+							[c setBuffer:tiles offset:0 atIndex:8];
+							int a = (cur + ring - lagA) % ring, b = (cur + ring - lagB) % ring;
+							[c setTexture:(ring == 4 ? mids[cur] : mid) atIndex:8];
 							[c setTexture:color[cur] atIndex:0];
 							[c setTexture:depth[cur] atIndex:1];
 							[c setTexture:color[a] atIndex:4];
@@ -162,10 +166,11 @@ int main(int argc, char **argv) {
 							[c setTexture:color[b] atIndex:6];
 							[c setTexture:depth[b] atIndex:7];
 							[c setBytes:frame.bytes length:frame.length atIndex:0];
-							[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
-							cur = (cur + 1) % 3;
+							[c dispatchThreads:MTLSizeMake(w, getenv("RB_HALFH") ? (h + 1) / 2 : h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
+							if (!one) [c endEncoding];
+							cur = (cur + 1) % ring;
 						}
-						[c endEncoding];
+						if (one) [one endEncoding];
 						bool sample = ((i / batch) & 15) == 0;
 						[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
 							if (sample) {
@@ -197,23 +202,23 @@ int main(int argc, char **argv) {
 			for (int i = 0; i < 3; i++) {
 				id<MTLCommandBuffer> cb = [q commandBuffer];
 				id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
-				int a = (cur + 2) % 3, b = (cur + 1) % 3;
+				int a = (cur + ring - lagA) % ring, b = (cur + ring - lagB) % ring;
 				[c setComputePipelineState:pipes[0]];
 				id<MTLTexture> ts[9] = {color[cur], depth[cur], atlas, font, color[a], depth[a], color[b], depth[b], mid};
 				for (int k = 0; k < 9; k++) [c setTexture:ts[k] atIndex:k];
 				[c setBytes:frame.bytes length:frame.length atIndex:0];
 				id<MTLBuffer> bs[9] = {nil, grid, nil, pal, ents, text, occ, light, tiles};
 				for (int k = 1; k < 9; k++) if (bs[k]) [c setBuffer:bs[k] offset:0 atIndex:k];
-				[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
+				[c dispatchThreads:MTLSizeMake(w, getenv("RB_HALFH") ? (h + 1) / 2 : h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
 				[c endEncoding];
 				[cb commit];
 				[cb waitUntilCompleted];
-				cur = (cur + 1) % 3;
+				cur = (cur + 1) % ring;
 			}
 			id<MTLBuffer> out = [d newBufferWithLength:(NSUInteger) w * h * 4 options:MTLResourceStorageModeShared];
 			id<MTLCommandBuffer> cb = [q commandBuffer];
 			id<MTLBlitCommandEncoder> bl = [cb blitCommandEncoder];
-			[bl copyFromTexture:color[(cur + 2) % 3] sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(w, h, 1)
+			[bl copyFromTexture:color[(cur + ring - 1) % ring] sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(w, h, 1)
 				toBuffer:out destinationOffset:0 destinationBytesPerRow:w * 4 destinationBytesPerImage:w * h * 4];
 			[bl endEncoding];
 			[cb commit];

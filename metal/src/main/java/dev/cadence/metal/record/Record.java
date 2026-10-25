@@ -70,11 +70,29 @@ public final class Record {
 		if (!on) worldClosed();
 	}
 
-	/** Whether this frame is a record frame: chosen, in a world, nothing on screen over it. */
+	/**
+	 * Whether this frame is a record frame: chosen, in a world (not loading). With a screen open (inventory, chat, pause, death)
+	 * too: the record frame is drawn into the game's target (drawIntoGame) and the game draws the screen and its HUD over it,
+	 * so the world looks the same with a screen open as without (switching to the game's own world drawing glitched).
+	 */
 	public static boolean active() {
 		if (!chosen || failed) return false;
 		Minecraft mc = Minecraft.getInstance();
-		return mc.level != null && mc.player != null && mc.gui.screen() == null && mc.gui.overlay() == null;
+		return mc.level != null && mc.player != null && mc.gui.overlay() == null;
+	}
+
+	/** A screen is open over the game (the game draws it, and the HUD, over the record frame). */
+	public static boolean screenOpen() {
+		return Minecraft.getInstance().gui.screen() != null;
+	}
+
+	/** Under a screen: the last record frame drawn into the game's target (GameRenderer.renderLevel's turn). */
+	public static void drawIntoGame(com.mojang.renderpearl.api.textures.GpuTexture target) {
+		if (rec == 0 || target == null) return;
+		// (the game's clear of its target is deferred to the next pass on it, the GUI's, which would wipe the frame: dropped,
+		// as the frame covers all of the target)
+		MetalBridge.dropPendingClear(encoder, target);
+		RecordNative.draw(rec, encObj, ctx, MetalBridge.textureHandle(target));
 	}
 
 	/**
@@ -85,7 +103,7 @@ public final class Record {
 		long h = presentHandle;
 		presentHandle = 0;
 		if (h == 0 || !chosen) return 0;
-		if (interpolate && camsKnown >= 3 && (presents++ & 1) != 0) {
+		if (interpolate && camsKnown >= 4 && (presents++ & 1) != 0) {
 			long mid = RecordNative.mid(rec);
 			if (mid != 0) return mid;
 		}
@@ -93,6 +111,11 @@ public final class Record {
 	}
 
 	private static long presents;
+
+	/** The fence the present waits for before reading presentHandle's texture (the frames are untracked: mcrecord.m), 0: none. */
+	public static long presentFence() {
+		return rec != 0 ? RecordNative.fence(rec) : 0;
+	}
 
 	/** The game marked a section for rebuilding (LevelExtractor.setSectionDirty). */
 	public static void sectionDirty(int sx, int sy, int sz) {
@@ -241,7 +264,9 @@ public final class Record {
 				h = size[1];
 				RecordNative.size(rec, ctx, w, h);
 			}
+			boolean screen = mc.gui.screen() != null;
 			writeFrame(mc, cam, eye, partial);
+			MemoryUtil.memPutInt(frameBuf + 348, screen ? 1 : 0);  // (flags.w: no HUD of its own: the game's is drawn over it)
 			if ((frames & 31) == 1 || hudBuffer == 0 || hudW != w || hudH != h) {  // (the HUD state is new on frames & 31 == 0)
 				hudBuffer = hud.frame(frames, w, h, Math.max(1, h / 240), lines, 7, CHAT_SHOWN, chatLines, HUD_STATE);
 				hudW = w;
@@ -250,8 +275,11 @@ public final class Record {
 			long tex = RecordNative.frame(rec, encObj, frameBuf, FRAME_BYTES, world.grid, world.palette, entities, hudBuffer, world.occ, world.light,
 				interpolate ? 1 : 0);
 			if (tex == 0) return false;
-			MetalBridge.recordFrame();
-			presentHandle = tex;
+			if (!screen) {
+				// (under a screen the game draws the frame, and presents its own target)
+				MetalBridge.recordFrame();
+				presentHandle = tex;
+			}
 			count();
 			return true;
 		} catch (RuntimeException | LinkageError e) {
@@ -338,8 +366,11 @@ public final class Record {
 
 	// ---- the frame's parameters (record.metal Frame) ----
 
-	/** The last two frames' cameras (world coordinates): a the newer. */
-	private static final double[] camA = new double[5], camB = new double[5];
+	/**
+	 * The last three frames' cameras (world coordinates), the newest first. The in-between frame is made from frames N-2 and
+	 * N-3 (mcrecord.m: so frame N never reads what frame N-1 is still writing, and the two overlap on the GPU).
+	 */
+	private static final double[][] CAMS = new double[3][5];
 	private static int camsKnown;
 
 	private static void writeFrame(Minecraft mc, Entity cam, Vec3 eye, float partial) {
@@ -349,10 +380,9 @@ public final class Record {
 		float tanY = (float) Math.tan(Math.toRadians(fov) / 2), tanX = tanY * w / h;
 		long f = frameBuf;
 		camera(f, eye.x - wd.ox, eye.y - wd.minY, eye.z - wd.oz, yaw, pitch, tanX, tanY);
-		if (camsKnown == 0) {
-			set(camA, eye, yaw, pitch);
-			set(camB, eye, yaw, pitch);
-		}
+		if (camsKnown == 0)
+			for (double[] c : CAMS) set(c, eye, yaw, pitch);
+		double[] camA = CAMS[1], camB = CAMS[2];  // (frames N-2 and N-3)
 		camera(f + 64, camA[0] - wd.ox, camA[1] - wd.minY, camA[2] - wd.oz, (float) camA[3], (float) camA[4], tanX, tanY);
 		camera(f + 128, camB[0] - wd.ox, camB[1] - wd.minY, camB[2] - wd.oz, (float) camB[3], (float) camB[4], tanX, tanY);
 		// (the in-between frame's camera: halfway between b and a, the angle the short way round)
@@ -361,9 +391,12 @@ public final class Record {
 			(float) ((camA[4] + camB[4]) / 2), tanX, tanY);
 		// (the in-between frame's two cameras the same: no reprojection needed)
 		boolean still = java.util.Arrays.equals(camA, camB);
-		System.arraycopy(camA, 0, camB, 0, 5);
-		set(camA, eye, yaw, pitch);
-		camsKnown = Math.min(3, camsKnown + 1);
+		double[] oldest = CAMS[2];
+		CAMS[2] = CAMS[1];
+		CAMS[1] = CAMS[0];
+		CAMS[0] = oldest;
+		set(oldest, eye, yaw, pitch);
+		camsKnown = Math.min(4, camsKnown + 1);
 		// sky and fog: a plain day sky, darkened with the time of day as the blocks' sky light is
 		darken = mc.level.getSkyDarken();
 		gamma = mc.options.gamma().get().floatValue();
@@ -396,7 +429,7 @@ public final class Record {
 		MemoryUtil.memPutFloat(f + 324, Math.max(1, h / 240));
 		MemoryUtil.memPutFloat(f + 328, fogEnd * 0.6f);
 		MemoryUtil.memPutFloat(f + 332, Math.max(1, wd.top));
-		MemoryUtil.memPutInt(f + 336, interpolate && camsKnown >= 3 ? still ? 2 : 1 : 0);
+		MemoryUtil.memPutInt(f + 336, interpolate && camsKnown >= 4 ? still ? 2 : 1 : 0);
 		MemoryUtil.memPutInt(f + 340, darken);
 		MemoryUtil.memPutFloat(f + 344, gamma);
 		// (the HUD's values, the player's air, hurt and XP, the fluid at the eye: every 32nd frame, ~1.5 ms; they change at

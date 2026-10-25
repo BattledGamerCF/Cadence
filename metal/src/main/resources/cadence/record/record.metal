@@ -20,7 +20,8 @@ struct Frame {
 	float4 misc;              // x: atlas max mip; y: text scale; z: fog start; w: the window's top (above every block)
 	uint4 flags;              // x: make the in-between frame of the last two (frame interpolation) in this dispatch (2: the
 	                          // camera didn't move between them, so no reprojection: the two frames' blend);
-	                          // y: the sky's darkening (Level.getSkyDarken, 0..11 at night); z: the brightness option (float bits)
+	                          // y: the sky's darkening (Level.getSkyDarken, 0..11 at night); z: the brightness option (float bits);
+	                          // w: a screen is open (the game draws its HUD over this frame: none of its own)
 	uint4 hud[3];             // the HUD: 9 hotbar slot colours (0: empty); then the selected slot, health and food (0..20)
 	int4 target;              // the block the crosshair is on (window-relative); w: 0 none, else 2 + its breaking stage (-1..9)
 	uint4 status;             // x: air (0..20; 255: not shown), y: hurt (0..10), z: eye in water (1) or lava (2), w: XP progress (0..1000)
@@ -99,6 +100,10 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	device const uchar *light [[buffer(7)]], device const uint *tiles [[buffer(8)]],
 	uint2 gid [[thread_position_in_grid]]) {
 	if (gid.x >= f.size.x || gid.y >= f.size.y) return;
+#ifdef RB_FLOOR
+	outColor.write(float4(0.5f), gid);
+	return;
+#endif
 	float2 ndc = (float2(gid) + 0.5f) / float2(f.size.xy) * 2.0f - 1.0f;
 	ndc.y = -ndc.y;
 	float3 ro = f.cam.pos.xyz, rd = rayDir(f.cam, ndc);
@@ -108,6 +113,10 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	float3 t0 = (float3(0) - ro) * inv, t1 = (float3(W, H, W) - ro) * inv;
 	float3 tn = min(t0, t1), tf = max(t0, t1);
 	float tEnter = max(max(tn.x, tn.y), max(tn.z, 0.0f)), tExit = min(min(tf.x, tf.y), tf.z);
+#if RB_STOP == 1
+	outColor.write(float4(rd * tExit, 1), gid);
+	return;
+#endif
 	float hitT = 1e9f;
 	float3 color = float3(0);
 	int3 stepv = int3(sign(rd));
@@ -191,6 +200,10 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 #endif
 			}
 		}
+#if RB_STOP == 2
+		outColor.write(float4(hitT, float(hitE.x & 255), 0, 1), gid);
+		return;
+#endif
 		if (done) {
 			// the hit's colour: its face's 1x1 texture (the average colour, tinted), shaded as vanilla's flat lighting does
 			if (hitAx == 3) color = rgb(hitE.y) * 0.85f * brightness(lightAt(light, hitV, f), f);
@@ -216,6 +229,10 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 		return;
 #endif
 	}
+#if RB_STOP == 3
+	outColor.write(float4(color, 1), gid);
+	return;
+#endif
 	// entities: boxes, only those whose screen rectangle touches this pixel's 8 x 8 tile (a mask per tile from the CPU)
 #ifdef RB_NO_ENT
 	uint emask = 0;
@@ -246,6 +263,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	else if (f.status.z == 2) color = mix(color, float3(0.9f, 0.3f, 0.05f), 0.85f);
 	if (f.status.y > 0) color = mix(color, float3(0.8f, 0.0f, 0.0f), float(f.status.y) * 0.035f);
 #ifndef RB_NO_HUD
+	if (f.flags.w == 0) {
 	// the HUD (RecordHud: text, hotbar, bars), drawn by the CPU when it changes, blended over the frame
 	uint o = hud[gid.y * f.size.x + gid.x];
 	if (o != 0) {
@@ -257,6 +275,7 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	int2 cc = int2(gid) - int2(f.size.xy / 2);
 	int arm = int(4 * scale), thick = int(max(1u, scale / 2));
 	if ((abs(cc.x) <= arm && abs(cc.y) < thick) || (abs(cc.y) <= arm && abs(cc.x) < thick)) color = 1.0f - color;
+	}
 #endif
 	// (stored bottom row first, as the game's targets are: the present flips them; the image above is top row first)
 	uint2 st = uint2(gid.x, f.size.y - 1 - gid.y);
@@ -299,4 +318,21 @@ static float3 interpolated(uint2 gid, constant Frame &f, texture2d<float> colorA
 		wsum += w;
 	}
 	return wsum > 0 ? acc / wsum : colorA.read(st).rgb;
+}
+
+// The last frame drawn over a game texture (mcrm_draw: Record Mode under a screen). One triangle over the target; both are
+// stored bottom row first, so target row r reads frame row r (texture v = (1 - ndc.y) / 2).
+struct DrawOut { float4 pos [[position]]; float2 uv; };
+
+vertex DrawOut record_draw_vs(uint id [[vertex_id]]) {
+	float2 p = float2((id << 1) & 2, id & 2);
+	DrawOut o;
+	o.pos = float4(p * 2.0f - 1.0f, 0.0f, 1.0f);
+	o.uv = float2(p.x, 1.0f - p.y);
+	return o;
+}
+
+fragment float4 record_draw_fs(DrawOut in [[stage_in]], texture2d<float> frame [[texture(0)]]) {
+	constexpr sampler s(filter::nearest, address::clamp_to_edge);
+	return float4(frame.sample(s, in.uv).rgb, 1.0f);
 }

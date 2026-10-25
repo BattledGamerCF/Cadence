@@ -17,6 +17,8 @@ final class RecordNative {
 	private static final MethodHandle FRAME = fn("mcrm_frame", JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle MID = fn("mcrm_mid", JAVA_LONG, JAVA_LONG);
+	private static final MethodHandle FENCE = fn("mcrm_fence", JAVA_LONG, JAVA_LONG);
+	private static final MethodHandle DRAW = fn("mcrm_draw", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle RELEASE = fn("mcrm_release", null, JAVA_LONG);
 	private static final MethodHandle READ = fn("mcrm_read", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle GPU_US = fn("mcrm_gpu_us", java.lang.foreign.ValueLayout.JAVA_DOUBLE);
@@ -54,6 +56,14 @@ final class RecordNative {
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}
+	}
+
+	static int draw(long rec, long enc, long ctx, long target) {
+		try { return (int) DRAW.invokeExact(rec, enc, ctx, target); } catch (Throwable t) { throw rethrow(t); }
+	}
+
+	static long fence(long rec) {
+		try { return (long) FENCE.invokeExact(rec); } catch (Throwable t) { throw rethrow(t); }
 	}
 
 	static long mid(long rec) {

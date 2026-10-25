@@ -19,7 +19,8 @@ abstract class MaxFpsModeHudMixin {
 	@Inject(method = "extractRenderState", at = @At("HEAD"), cancellable = true)
 	private void cadence$maxFps(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker, CallbackInfo ci) {
 		if (dev.cadence.metal.record.Record.active()) {
-			ci.cancel();
+			// (the record frame draws its own HUD; under a screen the game's is drawn, over the record frame)
+			if (!dev.cadence.metal.record.Record.screenOpen()) ci.cancel();
 			return;
 		}
 		if (!MaxFpsMode.on()) return;

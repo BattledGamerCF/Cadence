@@ -16,6 +16,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class RecordExtractMixin {
 	@Inject(method = "extract(Lnet/minecraft/client/DeltaTracker;Z)V", at = @At("HEAD"), cancellable = true)
 	private void cadence$record(DeltaTracker deltaTracker, boolean advanceGameTime, CallbackInfo ci) {
-		if (Record.skipExtract && Record.active()) ci.cancel();
+		if (Record.skipExtract && Record.active() && !Record.screenOpen()) ci.cancel();  // (a screen needs the GUI's)
 	}
 }

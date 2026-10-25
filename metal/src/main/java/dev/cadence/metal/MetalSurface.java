@@ -116,7 +116,7 @@ final class MetalSurface implements GpuSurfaceBackend {
 		if (WaitStats.ON) WaitStats.wait(WaitStats.DRAWABLE, System.nanoTime() - t1, 0);
 		if (drawable == 0) return; // no drawable (window hidden): skip the frame's present
 		long record = dev.cadence.metal.record.Record.presentHandle();
-		if (record != 0) this.encoder.presentHandle(drawable, record);
+		if (record != 0) this.encoder.presentHandle(drawable, record, dev.cadence.metal.record.Record.presentFence());
 		else this.encoder.presentTexture(drawable, textureView);
 		this.encoder.afterGpuFinishes(() -> Native.release(drawable));
 	}

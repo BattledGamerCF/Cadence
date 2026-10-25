@@ -22,7 +22,11 @@ public abstract class MaxFpsModeMixin {
 
 	@Inject(method = "renderLevel", at = @At("HEAD"), cancellable = true)
 	private void cadence$maxFps(CallbackInfo ci) {
-		if (MaxFpsMode.on() || dev.cadence.metal.record.Record.active()) ci.cancel();
+		if (dev.cadence.metal.record.Record.active()) {
+			// (Record Mode under a screen: its frame is the world the screen is drawn over)
+			dev.cadence.metal.record.Record.drawIntoGame(((GameRenderer) (Object) this).mainRenderTarget().getColorTexture());
+			ci.cancel();
+		} else if (MaxFpsMode.on()) ci.cancel();
 	}
 
 	@Inject(method = "extractCamera", at = @At("HEAD"), cancellable = true)

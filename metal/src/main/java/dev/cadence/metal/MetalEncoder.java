@@ -894,11 +894,12 @@ final class MetalEncoder implements CommandEncoderBackend {
 		}
 	}
 
-	/** Record Mode: its frame's own texture (a native MTLTexture) presented instead of the game's target. */
-	void presentHandle(long drawable, long texture) {
+	/** Record Mode: its frame's own texture (a native MTLTexture) presented instead of the game's target, after its fence. */
+	void presentHandle(long drawable, long texture, long fence) {
 		this.presentedThisSubmit = true;
 		if (GPU_TIMES) GpuTimes.present(this.submitIndex, drawable);
-		Native.present(this.enc, drawable, texture);
+		if (fence != 0) Native.presentFenced(this.enc, drawable, texture, fence);
+		else Native.present(this.enc, drawable, texture);
 		this.statPresents++;
 	}
 

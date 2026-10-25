@@ -1960,6 +1960,39 @@ void mc_present(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src) {
 	}
 }
 
+// mc_present for a texture written by untracked work (Record Mode's frames): the draw waits for its fence first.
+void mc_present_fenced(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src, id<MTLFence> fence) {
+	endBlit(enc);
+	if ((bwFlags & 1) && enc->render && enc->depth) enc->dead |= DEAD_DEPTH;
+	endRender(enc);
+	@autoreleasepool {
+		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+		rp.colorAttachments[0].texture = drawable.texture;
+		rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+		rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+		id<MTLRenderCommandEncoder> r = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
+		if (fence) [r waitForFence:fence beforeStages:MTLRenderStageFragment];
+		[r setRenderPipelineState:enc->ctx->present];
+		[r setFragmentTexture:src atIndex:0];
+		[r setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
+		[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		[r endEncoding];
+		if (bwFlags & 2) {
+			id<MTLRenderCommandEncoder> r2 = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
+			if (fence) [r2 waitForFence:fence beforeStages:MTLRenderStageFragment];
+			[r2 setRenderPipelineState:enc->ctx->present];
+			[r2 setFragmentTexture:src atIndex:0];
+			[r2 setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
+			[r2 drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+			[r2 endEncoding];
+		}
+		double encodedAt = CACurrentMediaTime();
+		[cmd(enc) addCompletedHandler:^(id<MTLCommandBuffer> b) { gpuLatency += (CACurrentMediaTime() - encodedAt - gpuLatency) * 0.1; }];
+		paceWatch(drawable);
+		presentAt(cmd(enc), drawable);
+	}
+}
+
 // ---- present off the frame's command buffer (opt-in: -Dcadence.metal.presentQueue) ----
 // Idea: ByteV0rtex, noahdunnagan/mcopt#2. mc_present encodes the drawable's draw and presentDrawable into the frame's own
 // command buffer, so the frame's completion, which the render thread waits on (MAX_IN_FLIGHT retire, the uniform ring's

@@ -240,6 +240,7 @@ public final class CadenceSelfTest {
 					else if (lower.endsWith("pause")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.PauseScreen(true)));
 					else if (lower.endsWith("farterrain")) mc.execute(() -> mc.gui.setScreen(new dev.cadence.shaders.cadence.ui.FarTerrainScreen(null)));
 					else if (lower.endsWith("inventory")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player)));
+					else if (lower.endsWith("=chat")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.ChatScreen("hello", false)));
 					else if (lower.endsWith("benchmarkoffer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.offer(null)));
 					else if (lower.endsWith("benchmarkrun")) mc.execute(() -> dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.run(null));
 					else if (lower.endsWith("benchmarksave")) mc.execute(() -> dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.pressSave(mc.gui.screen()));
