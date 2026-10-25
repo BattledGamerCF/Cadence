@@ -395,6 +395,9 @@ final class LodNativeNoise {
 	static final class Natives {
 		private static final Linker LINKER = Linker.nativeLinker();
 		private static final MethodHandle NEW = fn("mcn_stack_new", false, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG);
+		private static final MethodHandle FREE = fn("mcn_stack_free", false, null, JAVA_LONG);
+		/** Frees a stack's native copy once its Java stack is unreachable (no worker can be using it then). */
+		private static final java.lang.ref.Cleaner CLEANER = java.lang.ref.Cleaner.create();
 		private static final MethodHandle VOLUME = fn("mcn_stack_volume", false, null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT,
 			JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_DOUBLE, JAVA_DOUBLE, JAVA_FLOAT, JAVA_INT, JAVA_INT);
 		private static final MethodHandle BLENDED = fn("mcn_blended_volume", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT,
@@ -416,7 +419,10 @@ final class LodNativeNoise {
 			return new IllegalStateException(t);
 		}
 
-		/** lodnoise.c's copy of the stack (kept for the session: a few hundred KB for the overworld's stacks). */
+		/**
+		 * lodnoise.c's copy of the stack, freed when the stack is collected (a few hundred KB for the overworld's stacks, made
+		 * for every world and dimension entered and kept for the session before: BUG-HUNT-10-24 BH3-06).
+		 */
 		static void attach(LodNoiseKernels.Stack s) {
 			try (Arena a = Arena.ofConfined()) {
 				MemorySegment perms = a.allocate(256L * s.n), params = a.allocate(8L * 5 * s.n, 8), amps = a.allocate(4L * s.n, 4);
@@ -434,6 +440,14 @@ final class LodNativeNoise {
 				throw rethrow(t);
 			}
 			if (s.handle == 0) throw new IllegalStateException("mcn_stack_new failed");
+			long handle = s.handle;
+			CLEANER.register(s, () -> {
+				try {
+					FREE.invokeExact(handle);
+				} catch (Throwable t) {
+					// (at worst the copy stays)
+				}
+			});
 		}
 
 		/** Per thread: the native side writes here, then the values are copied into the buffer's array. */

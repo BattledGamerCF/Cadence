@@ -78,7 +78,10 @@ public final class Record {
 	public static boolean active() {
 		if (!chosen || failed) return false;
 		Minecraft mc = Minecraft.getInstance();
-		return mc.level != null && mc.player != null && mc.gui.overlay() == null;
+		// (not while a world or dimension loads: its screen waits for the player's section to be compiled by the game's own
+		// world drawing, which a record frame skips: 30 s every join, BUG-HUNT-10-24 BH3-02)
+		return mc.level != null && mc.player != null && mc.gui.overlay() == null
+			&& !(mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);
 	}
 
 	/** A screen is open over the game (the game draws it, and the HUD, over the record frame). */
@@ -435,6 +438,7 @@ public final class Record {
 		// the game's tick rate, 50 ms. Every frame they were a tenth of the render thread at 25k frames a second)
 		boolean hudNow = (frames & 31) == 0 || hudBuffer == 0;
 		if (hudNow) writeHud(mc, f + 352);
+		dev.cadence.metal.lod.Lod.idle();
 		// the block the crosshair is on, and how far it's broken
 		int tw = 0;
 		if (mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult bh && bh.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
@@ -471,13 +475,26 @@ public final class Record {
 	private static void camera(long at, double x, double y, double z, float yaw, float pitch, float tanX, float tanY) {
 		double ry = Math.toRadians(yaw), rp = Math.toRadians(pitch);
 		double fx = -Math.sin(ry) * Math.cos(rp), fy = -Math.sin(rp), fz = Math.cos(ry) * Math.cos(rp);
-		// right = forward x world up, normalised; up = right x forward
-		double rx = -fz, rz = fx, rl = Math.max(1e-9, Math.sqrt(rx * rx + rz * rz));
-		rx /= rl;
-		rz /= rl;
+		// right from the yaw (forward x world up, normalised, at every pitch: made from forward, it collapsed to ~6e-8 at the
+		// +-90 degrees the mouse stops at, every pixel then the same ray, BUG-HUNT-10-24 BH3-01); up = right x forward
+		double rx = -Math.cos(ry), rz = -Math.sin(ry);
 		double ux = -rz * fy, uy = rz * fx - rx * fz, uz = rx * fy;
-		float[] v = {(float) x, (float) y, (float) z, 0, (float) fx, (float) fy, (float) fz, tanX, (float) rx, 0, (float) rz, tanY, (float) ux, (float) uy, (float) uz, 0};
-		for (int i = 0; i < 16; i++) MemoryUtil.memPutFloat(at + i * 4L, v[i]);
+		MemoryUtil.memPutFloat(at, (float) x);
+		MemoryUtil.memPutFloat(at + 4, (float) y);
+		MemoryUtil.memPutFloat(at + 8, (float) z);
+		MemoryUtil.memPutFloat(at + 12, 0);
+		MemoryUtil.memPutFloat(at + 16, (float) fx);
+		MemoryUtil.memPutFloat(at + 20, (float) fy);
+		MemoryUtil.memPutFloat(at + 24, (float) fz);
+		MemoryUtil.memPutFloat(at + 28, tanX);
+		MemoryUtil.memPutFloat(at + 32, (float) rx);
+		MemoryUtil.memPutFloat(at + 36, 0);
+		MemoryUtil.memPutFloat(at + 40, (float) rz);
+		MemoryUtil.memPutFloat(at + 44, tanY);
+		MemoryUtil.memPutFloat(at + 48, (float) ux);
+		MemoryUtil.memPutFloat(at + 52, (float) uy);
+		MemoryUtil.memPutFloat(at + 56, (float) uz);
+		MemoryUtil.memPutFloat(at + 60, 0);
 	}
 
 	/** The HUD's values (record.metal Frame.hud): nine slot colours, the selected slot, health and food. */

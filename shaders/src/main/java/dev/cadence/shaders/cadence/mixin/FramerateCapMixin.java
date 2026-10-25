@@ -14,9 +14,11 @@ public abstract class FramerateCapMixin {
 	@ModifyReturnValue(method = "getFramerateLimit", at = @At("RETURN"))
 	private int cadence$heatCap(int limit) {
 		if (dev.cadence.shaders.cadence.setup.QuickSetup.testing) return Math.min(limit, 10);
-		if (dev.cadence.shaders.cadence.render.MaxFpsMode.on() || dev.cadence.metal.record.Record.chosen()) {
+		if ((dev.cadence.shaders.cadence.render.MaxFpsMode.on() || dev.cadence.metal.record.Record.chosen())
+			&& net.minecraft.client.Minecraft.getInstance().level != null) {
 			// Render Max FPS: nothing holds the frame rate back (Max Framerate, Heat Control, On Battery) while the game is the
-			// active app; In Background still applies when another app is (no frame rate is measured then that matters)
+			// active app; In Background still applies when another app is (no frame rate is measured then that matters).
+			// Only in a world: the title screen and menus keep the usual limits (BH3 minor: they ran uncapped, hot, for nothing)
 			int background = dev.cadence.shaders.cadence.system.BackgroundFps.fpsCap();
 			dev.cadence.shaders.cadence.system.FramePacing.cap(background);
 			return background;

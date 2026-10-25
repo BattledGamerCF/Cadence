@@ -83,12 +83,25 @@ final class LodField {
 	/** A dimension without a floor (the End): real chunks' empty columns are void and their solid runs end (Lod sets it). */
 	volatile boolean floating;
 
-	/** A worker ran out of memory: no more jobs run in this world. */
-	private volatile boolean outOfMemory;
+	/**
+	 * When a worker last ran out of memory (nanoTime; 0: never): for a minute after it no tile is generated or pre-generated (the
+	 * real chunks' summaries and the saves still run: they are what the far terrain keeps), then generation tries again. It used
+	 * to stop every job for the rest of the world (BUG-HUNT-10-24 BH3-05).
+	 */
+	private volatile long outOfMemoryAt;
+	private static final long OOM_PAUSE_NANOS = 60_000_000_000L;
 
 	boolean outOfMemory() {
-		return this.outOfMemory;
+		long at = this.outOfMemoryAt;
+		return at != 0 && System.nanoTime() - at < OOM_PAUSE_NANOS;
 	}
+
+	/** Tiles whose generation failed, and how often: after FAIL_LIMIT failures a tile is left empty instead of tried again. */
+	private final ConcurrentHashMap<Long, Integer> failures = new ConcurrentHashMap<>();
+	private static final int FAIL_LIMIT = 3;
+	/** Failures logged with their stack trace (the first few in a world; the rest one line each, up to FAIL_LOG_LINES). */
+	private final java.util.concurrent.atomic.AtomicInteger failuresLogged = new java.util.concurrent.atomic.AtomicInteger();
+	private static final int FAIL_TRACES = 3, FAIL_LOG_LINES = 20;
 
 	/** Whether missing tiles are generated (a generator is at hand and Unexplored Terrain is Generate), else left for real chunks. */
 	final boolean generates;
@@ -135,22 +148,32 @@ final class LodField {
 				LodYield.idle();
 				continue;
 			}
-			if (this.outOfMemory) {
+			// generation and pre-generation (priority 1e12 and up) wait out a recent out-of-memory; the chunk summaries and saves run
+			boolean generation = j.task == null || j.priority >= 1e12;
+			if (generation && this.outOfMemory()) {
 				if (j.task == null) this.pending.remove(j.key);
+				else this.pregenKeys.remove(j.key);
 				continue;
 			}
 			try {
 				if (j.task != null) j.task.run();
 				else this.generate(j.key);
 			} catch (OutOfMemoryError e) {
-				// never again in this world: generation that runs the game out of memory would take the game down with it (the
-				// far terrain keeps what it has and what the disk and real chunks give)
-				if (!this.outOfMemory) System.out.println("cadence-lod: generation ran out of memory; far terrain generation stopped for this world");
-				this.outOfMemory = true;
+				// a pause: generation that runs the game out of memory would take the game down with it (the far terrain keeps what
+				// it has and what the disk and real chunks give meanwhile)
+				if (!this.outOfMemory()) System.out.println("cadence-lod: generation ran out of memory; far terrain generation paused for a minute");
+				this.outOfMemoryAt = Math.max(1, System.nanoTime());
 				if (j.task == null) this.pending.remove(j.key);
 			} catch (Throwable t) {
-				System.out.println("cadence-lod: job failed: " + t);
-				t.printStackTrace(System.out);
+				// (a tile that fails every time was queued again by every scan, a stack trace each time: 1,628 lines in four minutes)
+				int tries = j.task == null ? this.failures.merge(j.key, 1, Integer::sum) : 0;
+				int logged = this.failuresLogged.incrementAndGet();
+				if (logged <= FAIL_LOG_LINES) {
+					String what = j.task == null ? "tile L" + LodTile.levelOf(j.key) + " " + LodTile.txOf(j.key) + "," + LodTile.tzOf(j.key) + " (try " + tries + ")" : "job";
+					System.out.println("cadence-lod: " + what + " failed: " + t + (tries >= FAIL_LIMIT ? "; left empty" : "")
+						+ (logged == FAIL_LOG_LINES ? " (further failures not logged)" : ""));
+					if (logged <= FAIL_TRACES) t.printStackTrace(System.out);
+				}
 				if (j.task == null) this.pending.remove(j.key);
 			}
 		}
@@ -256,7 +279,7 @@ final class LodField {
 		int[] pl = level == 0 && this.clip.plants ? new int[2 * LodTile.CELLS] : null;
 		long start = System.nanoTime();
 		boolean fromDisk = LodConfig.DISK_CACHE && this.load(key, g, c, cr, tw, rn, pl);
-		if (!fromDisk && !this.generates) {
+		if (!fromDisk && (!this.generates || this.failures.getOrDefault(key, 0) >= FAIL_LIMIT)) {
 			// explored terrain only: an empty tile (every cell "no data"), so real chunks have a tile to patch into; not saved,
 			// so turning generation on later fills it
 			this.loaded.incrementAndGet();
@@ -359,6 +382,7 @@ final class LodField {
 			boolean hasTex = in.readBoolean();
 			if (hasTex) {
 				int n = in.readInt();
+				if (n < 0 || n > LodPalette.MAX) return false;   // a damaged file (saves write at most MAX names)
 				int[] ids = new int[n];
 				for (int k = 0; k < n; k++) ids[k] = LodPalette.idOf(in.readUTF());
 				for (int i = 0; i < LodTile.CELLS; i++) {
@@ -372,6 +396,7 @@ final class LodField {
 			boolean hasPlants = in.readBoolean();
 			if (hasPlants) {
 				int n = in.readInt();
+				if (n < 0 || n > LodPalette.MAX) return false;   // a damaged file (saves write at most MAX names)
 				int[] ids = new int[n];
 				for (int k = 0; k < n; k++) ids[k] = LodPalette.idOf(in.readUTF());
 				for (int i = 0; i < LodTile.CELLS; i++) {

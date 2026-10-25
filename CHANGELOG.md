@@ -7,12 +7,23 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
 Render Max FPS:
 - The world stays as it was under the inventory, chat, pause and any other screen (it glitched: the game's own world
   drawing took over with a stale world). The game's HUD and the screen are drawn over Max FPS's frame.
-- Much faster: 66,000 frames rendered a second (133,000 shown with interpolation) looking at the sky from up high, 24,000-
-  27,000 looking down, 12,000-16,000 in a forest (M2 MacBook Air). Upward views were slow (5,000): now 33,000.
+- Much faster at the sky: 51,000-66,000 frames rendered a second (101,000-133,000 shown with interpolation) looking up from a
+  pillar above the trees, 21,000 at 30 degrees up (it was 5,000), 13,000 looking down into a forest (M2 MacBook Air).
+- **Correction**: looking straight up or down (exactly 90 degrees) drew one flat colour: the camera's sideways direction had
+  no length there. Fixed. The earlier "looking down: 25,300 rendered" (beta.15 and beta.16 notes) was measured on that flat
+  frame; the real figure is about 13,000 (docs/dev-log/RECORD.md, "10-25 correction").
+- Joining a world or changing dimension with Render Max FPS on no longer waits 30 s on "Loading terrain".
+- The title screen and menus keep their usual frame-rate limit with Render Max FPS chosen.
 
 Everything else:
 - Entities' render states are kept from frame to frame instead of made new each frame: 8% less memory churn on the render
   thread, fewer garbage-collection pauses.
+- Far terrain fixes (bug hunt of 10-24): a re-created world with an old world's name no longer shows the old world's land
+  (the cache is kept per world seed; on a server per address and world); the cache of deleted worlds is removed; a tile
+  that fails to generate is tried 3 times, not forever; running out of memory pauses generation for a minute instead of
+  stopping all far-terrain updates; no native memory is left behind at each dimension change; a failure stops far terrain
+  in that world cleanly (it used to keep ~190 MB, or disconnect you from inside the chunk loading); its chunk work no longer
+  piles up while Render Max FPS is on; a server's dimension name can't place cache files outside the cache folder.
 - Far terrain: plants' quads only as tall as the plants (the GPU shaded and threw away the rest): plants cost about nothing
   now instead of ~13% of the far terrain's GPU time.
 
@@ -29,7 +40,8 @@ every block and entity rendered, every frame really rendered). All of it is auto
   skies. Any screen (pause, inventory, death) draws the game as usual.
 - **Frame interpolation**: the frame halfway between each two is made too, and every other present shows one. The counter
   shows the frames made and, of them, the frames rendered.
-- **On an M2 MacBook Air (cool), looking down**: 25,300 fps rendered, 50,700 shown (best 52,556). The Hone record is 21,632.
+- ~~On an M2 MacBook Air (cool), looking down: 25,300 fps rendered~~ (withdrawn 10-25: a flat-colour frame, see Unreleased).
+  The Hone record is 21,632.
   Looking around a forest: 14,000-16,000 rendered (28,000-32,000 shown).
 - The old black-screen mode is behind `-Dcadence.maxfps.blank=true`.
 

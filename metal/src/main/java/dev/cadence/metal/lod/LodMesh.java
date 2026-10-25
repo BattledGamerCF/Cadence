@@ -269,6 +269,17 @@ final class LodMesh implements LodClip.Listener {
 		// PAIRS: the tile and its 1-cell border copied here (geometry, crowns, runs, plants A and B), meshed from the copy
 		// (+ colours, a 6th plane: shader-pack mode's colour-aware merging)
 		long scratch = LodClip.PAIRS ? MemoryUtil.nmemCalloc(6L * SCRATCH * SCRATCH, 4) : 0;
+		try {
+			this.workLoop(header, quads, scratch);
+		} finally {
+			// (an idle worker leaves through the interrupt: its ~1.4 MB were never freed, at every world and dimension, BH3-06)
+			MemoryUtil.nmemFree(header);
+			MemoryUtil.nmemFree(quads);
+			if (scratch != 0) MemoryUtil.nmemFree(scratch);
+		}
+	}
+
+	private void workLoop(long header, long quads, long scratch) {
 		while (!this.closed) {
 			long[] job;
 			try {
@@ -338,9 +349,6 @@ final class LodMesh implements LodClip.Listener {
 				System.out.println("cadence-lod: mesh job failed: " + e);
 			}
 		}
-		MemoryUtil.nmemFree(header);
-		MemoryUtil.nmemFree(quads);
-		if (scratch != 0) MemoryUtil.nmemFree(scratch);
 	}
 
 	/**
@@ -799,10 +807,35 @@ final class LodMesh implements LodClip.Listener {
 		return this.jobs.size() + this.results.size();
 	}
 
+	/**
+	 * Stops the workers and waits for them (BUG-HUNT-10-24 BH3-08: one still inside copyRegion read the clipmap's buffers after
+	 * the owner released them), then frees this mesh's host memory: the frame and table copies and the results not yet
+	 * installed (BH3-06). Render thread; the GPU buffers are the owner's to release (buffers()).
+	 */
 	void close() {
 		this.closed = true;
 		for (Thread t : this.workers) t.interrupt();
 		this.clip.listener = null;
+		boolean joined = true;
+		for (Thread t : this.workers) {
+			try {
+				t.join(1000);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+			joined &= !t.isAlive();
+		}
+		long[] r;
+		while ((r = this.results.poll()) != null) MemoryUtil.nmemFree(r[2]);
+		while ((r = this.publishLater.poll()) != null) MemoryUtil.nmemFree(r[2]);
+		this.resultSnaps.clear();
+		// (a worker that didn't stop in a second may still use them: left, a small leak, rather than freed under it)
+		if (!joined) {
+			System.out.println("cadence-lod: a mesh worker didn't stop; its memory is left");
+			return;
+		}
+		MemoryUtil.nmemFree(this.frame);
+		MemoryUtil.nmemFree(this.tableHost);
 	}
 
 	/** GPU buffers, for release by the owner once frames in flight are done (the arena's current and old ones included). */

@@ -19,7 +19,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FogType;
-import net.minecraft.world.level.storage.LevelResource;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4d;
 import org.joml.Matrix4f;
@@ -70,6 +69,10 @@ public final class Lod {
 	/** The mesh's position-keyed lists (-Dcadence.lod.pk), else null. */
 	private @Nullable LodPk pk;
 	private @Nullable Object worldOwner;
+	/** Failures so far (fail): after STOP_AFTER the far terrain stays off for the session. */
+	private static int failures;
+	private static final int STOP_AFTER = 3;
+	private boolean stopped;
 	/** -Dcadence.lod.seam=DIR: the transition probe (LodSeam), else null. */
 	private final @Nullable LodSeam seam;
 	/** -Dcadence.lod.taa: the far terrain's temporal filter (LodTaa), else null. */
@@ -194,7 +197,57 @@ public final class Lod {
 	public static void beginLevel(CameraRenderState camera) {
 		Lod l = get();
 		if (l == null) return;
-		l.begin(camera);
+		try {
+			l.begin(camera);
+		} catch (RuntimeException | OutOfMemoryError e) {
+			fail("begin", e);
+		}
+	}
+
+	/**
+	 * Every entry point's handler (BUG-HUNT-10-24 BH3-07): a failure, or the GPU out of memory (an Error), stops the far terrain
+	 * in this world or dimension: its tiles saved, workers stopped and buffers released as when the world is left, and it starts
+	 * again in the next one (after STOP_AFTER failures: not for the rest of the session). It used to abandon all of it (draw:
+	 * ~190 MB and the workers kept), or reach the packet handler (the chunk hook: the player disconnected).
+	 */
+	private static void fail(String where, Throwable e) {
+		failures++;
+		System.out.println("cadence-lod: far terrain stopped " + (failures >= STOP_AFTER ? "for this session" : "in this world") + " (" + where + "): " + e);
+		if (failures <= STOP_AFTER) e.printStackTrace(System.out);
+		activeReach = 0;
+		Lod l = instance;
+		if (l == null) return;
+		l.haveFrame = false;
+		try {
+			l.dropWorld(false);  // (its buffers RING frames later, as at a dimension change: this may be in the middle of a frame)
+		} catch (RuntimeException | Error e2) {
+			System.out.println("cadence-lod: releasing the far terrain failed: " + e2);
+		}
+		l.worldOwner = Minecraft.getInstance().level;  // (ensureWorld makes nothing more for this level)
+		if (failures >= STOP_AFTER) l.stopped = true;
+	}
+
+	private static int idleCalls;
+
+	/**
+	 * A frame of Render Max FPS (which draws no level, so no beginLevel or draw runs): every 256th call the far terrain's finished
+	 * work is applied and its edits saved, as draw does. The chunk summaries of every chunk loaded and unloaded otherwise piled
+	 * up unbounded (~11 KB each, BUG-HUNT-10-24 BH3-03). Another world or dimension meanwhile: the old one's far terrain goes.
+	 */
+	public static void idle() {
+		if ((++idleCalls & 255) != 0) return;
+		Lod l = instance;
+		if (l == null || l.field == null) return;
+		if (l.worldOwner != Minecraft.getInstance().level) {
+			worldClosed();
+			return;
+		}
+		try {
+			l.field.integrate();
+			l.field.saveDirty(false);
+		} catch (RuntimeException | OutOfMemoryError e) {
+			fail("idle", e);
+		}
 	}
 
 	/** End of the level's opaque phase (after the real terrain and solid features): the far terrain. */
@@ -216,12 +269,8 @@ public final class Lod {
 		l.haveFrame = false;
 		try {
 			l.draw(forPack);
-		} catch (RuntimeException e) {
-			failed = true;
-			instance = null;
-			activeReach = 0;
-			System.out.println("cadence-lod: far terrain stopped: " + e);
-			e.printStackTrace(System.out);
+		} catch (RuntimeException | OutOfMemoryError e) {
+			fail("draw", e);
 		}
 	}
 
@@ -422,7 +471,7 @@ public final class Lod {
 		if (l == null) return;
 		try {
 			l.dropWorld(true);
-		} catch (RuntimeException e) {
+		} catch (RuntimeException | Error e) {
 			System.out.println("cadence-lod: releasing the far terrain failed: " + e);
 		}
 		l.worldOwner = null;
@@ -436,14 +485,14 @@ public final class Lod {
 		if (owner == this.worldOwner) return;
 		this.dropWorld(false);
 		this.worldOwner = owner;
-		if (owner == null) return;
+		if (owner == null || this.stopped) return;
 		// Cadence: single player (and a LAN host) generates the far terrain from the world's own generator; on a server (or a
 		// LAN guest) there is no generator at hand: the far terrain is the land this player has explored, kept on disk per
 		// server and dimension (as Distant Horizons does without its server plugin)
 		LodNoise noise = null;
-		String save;
+		ServerLevel sl = null;
 		if (server != null) {
-			ServerLevel sl = server.getLevel(level.dimension());
+			sl = server.getLevel(level.dimension());
 			if (sl == null) return;
 			if (level.dimensionType().hasCeiling()) {
 				System.out.println("cadence-lod: no far terrain in " + level.dimension().identifier() + " (a ceiling: the far view would be the roof)");
@@ -451,19 +500,16 @@ public final class Lod {
 			}
 			noise = LodNoise.of(sl);
 			if (noise == null) System.out.println("cadence-lod: " + level.dimension().identifier() + " isn't noise-generated: far terrain from explored land only");
-			save = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize().getFileName().toString();
 		} else {
 			if (level.dimensionType().hasCeiling()) {
 				System.out.println("cadence-lod: no far terrain in " + level.dimension().identifier() + " (a ceiling: the far view would be the roof)");
 				return;
 			}
-			var info = mc.getCurrentServer();
-			String address = info != null ? info.ip : "server";
-			save = "servers/" + address.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9._-]", "_");
 			System.out.println("cadence-lod: on a server: far terrain from explored land only");
 		}
 		Path root = LodConfig.CACHE_DIR != null ? Path.of(LodConfig.CACHE_DIR) : mc.gameDirectory.toPath().resolve("cadence-lod");
-		Path cache = root.resolve(save).resolve(level.dimension().identifier().getNamespace() + "_" + level.dimension().identifier().getPath());
+		Path cache = LodCacheDir.of(mc, level, sl, root);
+		if (cache == null) return;
 		// tiles cached under other crown or tree levels lack (or carry) data these levels need: their own directory
 		if (LodConfig.CROWN_LEVELS != 1 || LodConfig.TREE_LEVELS != 1) cache = cache.resolve("c" + LodConfig.CROWN_LEVELS + "t" + LodConfig.TREE_LEVELS);
 		this.clip = new LodClip(this.ctx, LodConfig.N, LodConfig.reachBlocks());
@@ -1476,9 +1522,13 @@ public final class Lod {
 	public static void chunk(net.minecraft.world.level.chunk.LevelChunk chunk) {
 		Lod l = instance;
 		if (l == null || l.field == null || chunk == null) return;
-		LodBeacons.chunk(chunk);
-		if (!LodConfig.CHUNKS) return;
-		l.field.chunk(chunk);
+		try {
+			LodBeacons.chunk(chunk);
+			if (!LodConfig.CHUNKS) return;
+			l.field.chunk(chunk);
+		} catch (RuntimeException | OutOfMemoryError e) {
+			fail("chunk", e);  // (inside the game's packet handling: a throw from here disconnected the player)
+		}
 	}
 
 	/** A beacon the game draws this frame (LodBeacons remembers it). */

@@ -3,7 +3,7 @@
 	"package": "dev.cadence.metal.mixin.lod",
 	"plugin": "dev.cadence.metal.mixin.lod.LodMixinPlugin",
 	"compatibilityLevel": "JAVA_25",
-	"mixins": ["LodMaterialContextAccess", "LodTruthChunkMapMixin"],
+	"mixins": ["LodBiomeSeedAccess", "LodMaterialContextAccess", "LodTruthChunkMapMixin"],
 	"client": ["LodBeaconSeenMixin", "LodCameraMixin", "LodClientLevelMixin", "LodFogMixin", "LodLevelRendererMixin", "LodTruthOptionsMixin"],
 	"injectors": { "defaultRequire": 1 }
 }

@@ -102,9 +102,10 @@ their average colour.
 
 ## Where it stands (cool M2 MacBook Air, 8 GB, macOS 27.0, 320 x 180, interpolation on)
 
+(The "looking straight down" row first written here, 25,300 rendered, was a flat-colour frame: see the 10-25 correction below.)
+
 | View | rendered fps | shown fps | GPU us/frame |
 |---|---|---|---|
-| looking straight down (ground) | 25,300 (best reading 26,300) | 50,700 (best 52,556) | 33 |
 | forest, looking 60 degrees down | 14,500 | 29,000 | 64 (bench) |
 | forest, looking south / north | 15,200-16,100 | 30,400-32,300 | 56-59 |
 | 160 x 90 (not playable: the CPU's limit) | 51,000-65,000 | | 13-17 |
@@ -118,7 +119,7 @@ their average colour.
 
 1. Let the Mac cool (lid open, nothing else running, ~20 minutes idle); plugged in.
 2. In a world: Video Settings > Cadence: Extras > Render Max FPS: On. Leave the menu.
-3. Look straight down (or at the simplest view you want to show), stand still, wait ~5 s.
+3. Look at the view you want to show, stand still, wait ~5 s (the recipe that follows the 10-25 correction is at the end).
 4. The F3 text shows "N fps (M rendered)" and "Best": record both and a screenshot/video. Rendered frames alone count against
    the record; the interpolated frames are counted apart.
 
@@ -147,11 +148,31 @@ by the CPU when it changes; no upscaling; frame interpolation counted separately
   coarsening (2 pixels a thread: worse), skipping the HUD's empty rows (14% worse: the load issued late), depth only while
   moving and a one-read in-between frame (no gain), a hybrid of occupancy bits and words (worse).
 
-| View (in game, M2 Air) | rendered fps | shown fps |
-|---|---|---|
-| sky, from a pillar above the trees | 66,200 | 132,900 (best 132,934) |
-| looking down | 24,000-27,000 | 48,000-54,000 |
-| 30 degrees up from a pillar | 33,000 | 66,000 |
-| forest views | 12,000-16,000 | 24,000-32,000 |
+The table first written here (sky 66,200, looking down 24,000-27,000) was measured at exactly +-90 degrees of pitch, where
+the camera was broken: see the correction below.
 
-The record attempt: stand on a pillar above everything around (any block, ~30 blocks up), look up, read "Best".
+## 10-25 correction: the camera at +-90 degrees, and the honest numbers
+
+The bug hunt of 10-24 (BUG-HUNT-10-24.md, BH3-01) found that the record camera's right vector was made from the forward vector,
+`normalize(forward x up)`, which has no length at a pitch of exactly +-90 degrees. Vanilla clamps the pitch to exactly that
+when you look all the way up or down, and the self-test's poses were `tp ... 0 90` and `tp ... 0 -90`. At those poses every
+pixel got the same ray, so the frame was one flat colour (the block below, or the sky). **Every "looking down" number above
+(25,300 and 24,000-27,000 rendered) was a flat-colour frame, and so was the first sky number.** The right vector is now made
+from the yaw (`(-cos yaw, 0, -sin yaw)`), which is exact at every pitch.
+
+Measured again (1025-004317, M2 Air warm after the night's runs, 320 x 180, interpolation on; screenshots checked: every
+frame is the real view):
+
+| View (in game) | rendered fps | shown fps | GPU us/frame |
+|---|---|---|---|
+| straight up from a pillar 60 blocks above the trees (the whole frame is sky, every ray traced to the window's edge) | 64,000-66,500 | 128,000-133,000 | 13-16 |
+| 80 degrees up from the pillar (sky) | 50,800-54,900 | 101,500-109,700 | 16-17 |
+| 30 degrees up from the pillar (sky and the treetops to the horizon) | 21,000-22,400 | 42,000-44,800 | 42-70 |
+| straight down / 85 degrees down in the forest (now the real canopy) | 13,200-13,400 | 26,400-26,900 | 68-160 |
+
+- Above 40,000 rendered: the sky views from the pillar (the frames the game itself shows there: open sky). Views with terrain
+  in them stay under 25,000 rendered on this Mac; the honest ground number is ~13,000, not 25,000.
+- The GPU time per frame swings 2x between readings of the same view (the M2 Air's clocks under sustained load).
+
+The record attempt (corrected): stand on a pillar above everything around (any block, ~60 blocks up), look up (straight up or
+~80 degrees), stand still ~5 s, read the counter and "Best". Say in the submission that the view is the sky.

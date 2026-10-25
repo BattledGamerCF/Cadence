@@ -24,7 +24,8 @@ Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
 - **Faster chunk meshing, startup and memory use**, plus an fps counter (Cadence HUD).
 - **Render Max FPS.** The game at the highest frame rate this Mac can render it while still playable: the world ray-traced
   on the GPU at 320 x 180, each block one colour with Minecraft's lighting, with the HUD, and frame interpolation counted
-  apart. 66,000 frames rendered a second on an M2 MacBook Air looking at the sky (see
+  apart. 51,000-66,000 frames rendered a second on an M2 MacBook Air looking up at the sky from a pillar, about 13,000 looking
+  down into a forest (see
   [docs/dev-log/RECORD.md](docs/dev-log/RECORD.md)).
 
 ## Requirements

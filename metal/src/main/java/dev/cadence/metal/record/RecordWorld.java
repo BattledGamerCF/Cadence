@@ -123,7 +123,7 @@ final class RecordWorld {
 	/** The game marked a section for rebuilding (a block changed): it's written again. */
 	void sectionDirty(int sx, int sy, int sz) {
 		if (!this.inWindow(sx << 4, sz << 4)) return;  // (a resource reload marks every section: only the window's are kept)
-		if (this.dirtySet.add(chunkKey(sx, sz) * 31 + sy)) this.dirty.add(new int[] {sx, sy, sz});
+		if (this.dirtySet.add(net.minecraft.core.SectionPos.asLong(sx, sy, sz))) this.dirty.add(new int[] {sx, sy, sz});
 	}
 
 	/** Writes queued columns and changed sections, until `budgetNanos` is spent. Whether work is left. */
@@ -131,7 +131,7 @@ final class RecordWorld {
 		long end = System.nanoTime() + budgetNanos;
 		while (!this.dirty.isEmpty() && System.nanoTime() < end) {
 			int[] s = this.dirty.poll();
-			this.dirtySet.remove(chunkKey(s[0], s[2]) * 31 + s[1]);
+			this.dirtySet.remove(net.minecraft.core.SectionPos.asLong(s[0], s[1], s[2]));
 			if (!this.inWindow(s[0] << 4, s[2] << 4)) continue;
 			LevelChunk c = this.level.getChunkSource().getChunkNow(s[0], s[2]);
 			if (c != null) this.writeSection(c, s[0], s[1], s[2]);

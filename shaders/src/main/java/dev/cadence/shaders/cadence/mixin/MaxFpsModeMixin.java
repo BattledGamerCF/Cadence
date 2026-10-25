@@ -26,7 +26,10 @@ public abstract class MaxFpsModeMixin {
 			// (Record Mode under a screen: its frame is the world the screen is drawn over)
 			dev.cadence.metal.record.Record.drawIntoGame(((GameRenderer) (Object) this).mainRenderTarget().getColorTexture());
 			ci.cancel();
-		} else if (MaxFpsMode.on()) ci.cancel();
+		} else if (MaxFpsMode.on()) {
+			dev.cadence.metal.lod.Lod.idle();
+			ci.cancel();
+		}
 	}
 
 	@Inject(method = "extractCamera", at = @At("HEAD"), cancellable = true)
