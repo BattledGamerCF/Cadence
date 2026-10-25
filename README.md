@@ -1,32 +1,54 @@
 # Cadence
 
-**A performance mod for Minecraft on Apple Silicon Macs.** Cadence replaces Minecraft's OpenGL renderer with a native
-Apple **Metal** renderer, adds a faster terrain path and quicker startup, and runs **shader packs** (BSL, Complementary,
-Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
+**Minecraft on Apple Silicon, drawn with Metal. One mod instead of the whole Sodium stack.** Cadence replaces Minecraft's
+OpenGL renderer with a native Apple **Metal** renderer, runs **shader packs** on it (BSL, Complementary, Bliss and 20 more),
+and brings its own versions of what Sodium, Iris, Lithium, Entity Culling, Distant Horizons and dynamic-lights mods do,
+built for Apple's GPUs and tested together.
 
 > **Beta software.** Expect the occasional bug and back up your worlds before trying it.
 
-## Features
+## Why Cadence
 
-- **Native Metal renderer.** No OpenGL translation layer between Minecraft and your Mac's GPU.
-- **Shader packs on Metal.** OptiFine/Iris-format packs are translated to Metal and cached, so the second load is
-  quick. Compute passes, custom images and per-buffer blending are supported.
-- **Auto resolution.** Shaders render at a lower internal resolution when your Mac can't hold the target frame rate,
-  then upscale with Apple's MetalFX. Temporal anti-aliasing history survives the changes, so the picture stays clean.
-- **Thermal-aware.** On fanless Macs, Cadence holds a steady frame rate rather than letting the Mac overheat and throttle.
-- **Faster game logic (Cadence Logic).** Cadence's own replacement for Lithium: entity searches up to 22× faster, mob
-  brains and villager sensors without per-tick garbage, smoother chunk unloading. Exact: the game plays the same.
-  See [docs/GAME-LOGIC.md](docs/GAME-LOGIC.md).
-- **Faster terrain shading.** With RGSS texture filtering, terrain pixels that RGSS can't change take one texture
-  sample instead of nine: about 25% more fps without shaders, with an identical picture (checked pixel by pixel).
-- **Works next to other mods (compatibility layers).** Where another mod hooks code Cadence replaces, Cadence uses
-  Minecraft's own code in that one area and keeps every other optimization. See [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
-- **Faster chunk meshing, startup and memory use**, plus an fps counter (Cadence HUD).
-- **Render Max FPS.** The game at the highest frame rate this Mac can render it while still playable: the world ray-traced
-  on the GPU at 320 x 180, each block one colour with Minecraft's lighting, with the HUD, and frame interpolation counted
-  apart. 51,000-66,000 frames rendered a second on an M2 MacBook Air looking up at the sky from a pillar, about 13,000 looking
-  down into a forest (see
-  [docs/dev-log/RECORD.md](docs/dev-log/RECORD.md)).
+**Shader packs on the base Macs.** The packs run on Metal (no OpenGL translation), and Cadence keeps them playable on an
+8-core M2 MacBook Air, the entry-level Apple Silicon GPU, where most packs hold 60 fps:
+- **Auto resolution:** the pack renders at a lower internal resolution when the Mac can't hold the target frame rate,
+  and Apple's MetalFX upscales it; the packs' anti-aliasing history survives the changes, so the picture stays clean.
+- **Faster Shadows:** the shadow pass reused every other frame, far shadows drawn as simple proxies, and casters that
+  can't shadow anything skipped.
+- **Heat Control:** fanless Macs hold a steady frame rate instead of overheating and throttling.
+- **Quick Setup** tests the Mac once and picks settings; the Shader Packs list marks each pack Light, Medium or Heavy.
+
+**Very high frame rates without shaders.** Measured on an M2 MacBook Air (8 GB, 8-core GPU) with Cadence's benchmark
+(Video Settings > Benchmark), no frame cap:
+
+| Window | Render distance | Average fps | 1% low |
+|---|---|---|---|
+| 1920 x 1080 | 6 chunks | 1,641 | 719 |
+| 1920 x 1080 | 12 chunks | 1,079 | 490 |
+| 2940 x 1846 (the Air's full Retina screen) | 6 chunks | 900 | 419 |
+
+And **Render Max FPS** (Video Settings > Cadence: Extras) is Cadence's run at the Minecraft FPS record: a playable,
+lit, ray-traced 320 x 180 view at up to 66,000 frames rendered a second (132,000 shown with frame interpolation, counted
+apart); about 30,000 with the land in view. See [docs/RENDER-MAX-FPS.md](docs/RENDER-MAX-FPS.md).
+
+**The Sodium stack in one jar.** Remove these; Cadence does their job (each part measured, most switchable):
+
+| Instead of | Cadence |
+|---|---|
+| **Sodium** | The Metal renderer and its own terrain path: chunk meshes in one GPU arena, culled on the GPU (frustum, occlusion with a depth pyramid, faces turned away), meshing caches, faster entity and item vertex writing |
+| **Iris** | Shader packs (Iris/OptiFine format: compute passes, custom images, buffer objects, Distant Horizons programs), per-pack options in the same files Iris uses, live switching |
+| **Lithium** | Cadence Logic: entity searches up to 22x faster, mob brains and villager sensors without per-tick garbage, block entities ticked only when they need it. Exact: the game plays the same ([docs/GAME-LOGIC.md](docs/GAME-LOGIC.md)) |
+| **Entity Culling** | Entities, block entities and particles behind walls aren't drawn |
+| **Distant Horizons** | Far Terrain (experimental): land past the render distance, generated from the world's own generator or from explored land on servers, drawn by shader packs that support Distant Horizons |
+| **LambDynamicLights** | Dynamic Lights: held torches and glowing entities light the world around them, on the GPU |
+| **More Culling / Cull Leaves** | Smart Leaves (opt-in): leaf faces hidden inside a canopy skipped |
+| **Sodium's options, Reese's Sodium Options** | Everything in Options > Video Settings, with tooltips and a Performance preset |
+| **An fps counter** | Cadence HUD |
+
+On top of that: a garbage-collection policy for games, faster startup (cached bootstrap data), lighter chunk storage,
+threads placed on the right kind of core, exact frame caps and even pacing, and the optional Vivace Java build. Where
+another mod hooks code Cadence replaces, Cadence runs Minecraft's own code in that one area and keeps everything else
+([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). The full list: [docs/COVERAGE.md](docs/COVERAGE.md).
 
 ## Requirements
 
@@ -47,9 +69,9 @@ Bliss and more) directly on Metal, without Iris, Sodium or OpenGL.
    and back on.
 4. Start the game. To check that Cadence is running, press F3 (fn + F3): the bottom right says `Metal 3 (Cadence)`.
 
-Cadence replaces Sodium and Iris, so remove them from the `mods` folder. Lithium isn't needed either (if it's installed,
-Cadence's own game-logic optimizations step aside for it). Fabric API isn't required, but keep it if
-your other mods need it.
+Cadence replaces Sodium and Iris, so remove them (and the mods that need them) from the `mods` folder. Lithium, Entity
+Culling and a dynamic-lights mod aren't needed either (if Lithium is installed, Cadence's game-logic optimizations step
+aside for it). Fabric API isn't required, but keep it if your other mods need it.
 
 ## Shader packs
 
@@ -122,7 +144,7 @@ For the development and test tools, see [CONTRIBUTING.md](CONTRIBUTING.md).
 | [`shaders/`](shaders) | **Cadence Shaders**: the shader-pack loader (GLSL → SPIR-V → Metal), Auto resolution and the in-game settings |
 | [`fpshud/`](fpshud) | **Cadence HUD**: the fps counter |
 | [`tools/`](tools) | Release packaging, the automated in-game test harness, benchmarks |
-| [`docs/`](docs) | Shader-pack status, changes from mcopt, licensing notes, development log and research notes |
+| [`docs/`](docs) | How it's built, shader-pack status, compatibility, Render Max FPS, changes from mcopt |
 | [`packaging/`](packaging) | Release README, Modrinth page text, project icon |
 
 New to the code? [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) maps every package: what it does and where to start.

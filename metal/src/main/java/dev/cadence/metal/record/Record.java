@@ -79,7 +79,7 @@ public final class Record {
 		if (!chosen || failed) return false;
 		Minecraft mc = Minecraft.getInstance();
 		// (not while a world or dimension loads: its screen waits for the player's section to be compiled by the game's own
-		// world drawing, which a record frame skips: 30 s every join, BUG-HUNT-10-24 BH3-02)
+		// world drawing, which a record frame skips: 30 s every join)
 		return mc.level != null && mc.player != null && mc.gui.overlay() == null
 			&& !(mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);
 	}
@@ -476,7 +476,7 @@ public final class Record {
 		double ry = Math.toRadians(yaw), rp = Math.toRadians(pitch);
 		double fx = -Math.sin(ry) * Math.cos(rp), fy = -Math.sin(rp), fz = Math.cos(ry) * Math.cos(rp);
 		// right from the yaw (forward x world up, normalised, at every pitch: made from forward, it collapsed to ~6e-8 at the
-		// +-90 degrees the mouse stops at, every pixel then the same ray, BUG-HUNT-10-24 BH3-01); up = right x forward
+		// +-90 degrees the mouse stops at, every pixel then the same ray); up = right x forward
 		double rx = -Math.cos(ry), rz = -Math.sin(ry);
 		double ux = -rz * fy, uy = rz * fx - rx * fz, uz = rx * fy;
 		MemoryUtil.memPutFloat(at, (float) x);

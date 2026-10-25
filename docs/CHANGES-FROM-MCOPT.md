@@ -1,5 +1,5 @@
-> **Renamed in the legal pass (branch `legal-pass`).** This file, dev-log/PLAN.md, dev-log/DAY2.md, dev-log/OVERNIGHT.md and the RESEARCH/DESIGN
-> notes are history and keep the names of their day (mcopt, Minecraft Shader Loader, `dev.kausik`, `minecraftShaders.*`).
+> **Renamed since.** This file is history and keeps the names of its day (mcopt, Minecraft Shader Loader, `dev.kausik`,
+> `minecraftShaders.*`).
 > Old name -> current name:
 >
 > | Old | Now |
@@ -13,7 +13,7 @@
 > | resources `mcopt/...`, mixin configs `mcopt-metal-*.mixins.json` etc. | `cadence/...`, `cadence-metal-*.mixins.json`, `cadence-hud.mixins.json`, `cadence-shaders.mixins.json`, `cadence-scene-*.mixins.json` |
 > | log prefixes `[mcopt]`, `mcopt-own:`, `mcopt-lod:` ... | `[cadence]`, `cadence-own:`, `cadence-lod:` ... |
 >
-> Full details: LICENSING.md. Credits and licenses: CREDITS.md, NOTICE.
+> Credits and licenses: CREDITS.md, NOTICE.
 
 # Cadence changes to mcopt
 
@@ -120,7 +120,7 @@ Apache-2.0 §4(b): files Cadence modified or added, relative to mcopt commit `7b
 - `CadenceSelfTest` / `BusyScene` — steps scene=busy, entitycull=, shadowrate=, glide=S[:D], cmd=, gc, particlephysics=,
   genarea=CX:CZ:R (+ per-chunk content hashes).
 
-### 2026-10-12 evening (day 3; tested since, see dev-log/DAY2.md)
+### 2026-10-12 evening (day 3)
 - `cadence/shadow/ShadowProxies.java`, `mixin/ChunkSectionsToRenderAccessor`, `mixin/SectionDirtyProxyMixin` (added),
   `ShadowRenderer.render` (far columns drawn as proxies), `ShadowCompileCull` (far shadow-only sections not compiled),
   `ShaderToggle.configValue` public — far shadow height-field proxies (config `shadowProxyDistance=`, 0 = off).
@@ -174,7 +174,7 @@ Apache-2.0 §4(b): files Cadence modified or added, relative to mcopt commit `7b
 - `metal/.../FrameHints.java` — frame-end depth discard switchable (stays off: no measured gain).
 - `CadenceSelfTest` — thermal=, pressure=, screen=, leave, join=, packcheck, ab frame time without a pack.
 
-### 2026-10-13 night (overnight performance and testing cycle; details and measurements in dev-log/DAY2.md)
+### 2026-10-13 night (overnight performance and testing cycle)
 - `cadence/mesh/MeshStateCache`, `mixin/MeshStateCacheMixin` — chunk meshing reads each block state of the section and a
   one-block border once per build (RenderSectionRegion is an immutable copy); `-Dcadence.meshCache=false`.
 - `cadence/mesh/MeshLightCache`, `mixin/MeshLightCacheMixin` — per-build flat light/shade arrays in place of vanilla's

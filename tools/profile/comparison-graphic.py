@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Draws the Cadence vs. vanilla comparison card (packaging/gallery/4-comparison.png).
 usage: comparison-graphic.py BACKGROUND.png ICON.png OUT.png
-Numbers: docs/dev-log/DAY-10-18.md section 7 (alternated launches, M2 Air) and SHADER-PACKS.md; edit ROWS when they change."""
+Numbers: alternated launches on an M2 Air (10-18) and docs/SHADER-PACKS.md; edit ROWS when they change."""
 import sys
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 

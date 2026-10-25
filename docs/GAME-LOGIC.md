@@ -3,7 +3,7 @@
 Cadence Logic is Cadence's own replacement for what [Lithium](https://github.com/CaffeineMC/lithium) does: it makes
 the game's simulation (mobs, entities, block entities) cheaper without changing what happens. Lithium is LGPL-3.0, so
 none of its code is used; each optimization here was designed from Minecraft 26.3's own bytecode and Lithium's public
-descriptions of *what* it optimizes ([research notes](research/LITHIUM.md)).
+descriptions of *what* it optimizes.
 
 Why it matters on a Mac: in singleplayer the game logic runs on an integrated server thread inside the same app as the
 renderer. On a MacBook Air both share one power and heat budget, so less logic work leaves more headroom for frame rate,

@@ -170,7 +170,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 			farClouds = -1;
 			progress = -1;
 			// (the label changes in place: rebuilding the page at every click lost its scroll position and what Pre-generate
-			// said, BH2-19. The Far Terrain switch changes the header too: that page is rebuilt, scrolled where this one was)
+			// said. The Far Terrain switch changes the header too: that page is rebuilt, scrolled where this one was)
 			b.setMessage(Component.literal(label + ": " + labelOf(key, def, values, labels)));
 			if (key.equals("farTerrain")) {
 				FarTerrainScreen next = new FarTerrainScreen(this.lastScreen);

@@ -205,7 +205,7 @@ public final class Lod {
 	}
 
 	/**
-	 * Every entry point's handler (BUG-HUNT-10-24 BH3-07): a failure, or the GPU out of memory (an Error), stops the far terrain
+	 * Every entry point's handler: a failure, or the GPU out of memory (an Error), stops the far terrain
 	 * in this world or dimension: its tiles saved, workers stopped and buffers released as when the world is left, and it starts
 	 * again in the next one (after STOP_AFTER failures: not for the rest of the session). It used to abandon all of it (draw:
 	 * ~190 MB and the workers kept), or reach the packet handler (the chunk hook: the player disconnected).
@@ -232,7 +232,7 @@ public final class Lod {
 	/**
 	 * A frame of Render Max FPS (which draws no level, so no beginLevel or draw runs): every 256th call the far terrain's finished
 	 * work is applied and its edits saved, as draw does. The chunk summaries of every chunk loaded and unloaded otherwise piled
-	 * up unbounded (~11 KB each, BUG-HUNT-10-24 BH3-03). Another world or dimension meanwhile: the old one's far terrain goes.
+	 * up unbounded (~11 KB each). Another world or dimension meanwhile: the old one's far terrain goes.
 	 */
 	public static void idle() {
 		if ((++idleCalls & 255) != 0) return;
@@ -364,7 +364,7 @@ public final class Lod {
 	private void begin(CameraRenderState camera) {
 		Minecraft mc = Minecraft.getInstance();
 		// (released buffers go RING level frames after their last use, also in a dimension without far terrain: they waited
-		// for the next far-terrain frame, ~190 MB held for a whole Nether trip, BH2-14)
+		// for the next far-terrain frame, ~190 MB held for a whole Nether trip)
 		this.releaseClock++;
 		while (!this.releaseLater.isEmpty() && this.releaseClock - this.releaseLater.peek()[0] >= RING) LodNative.release(this.releaseLater.poll()[1]);
 		if (LodResources.takeReload(mc)) this.resourcesReloaded(mc);
@@ -436,7 +436,7 @@ public final class Lod {
 			this.pk = null;
 		}
 		if (this.clip != null) {
-			// (all five: texBuf was left out, 12.6 MB lost at every dimension change, BH2-13)
+			// (all five: texBuf was left out, 12.6 MB lost at every dimension change)
 			buffers.add(this.clip.geomBuf);
 			buffers.add(this.clip.colorBuf);
 			buffers.add(this.clip.mipBuf);
@@ -464,7 +464,7 @@ public final class Lod {
 	/**
 	 * The player left the world (WorldClosed, through LodPackFrame): the far terrain goes with it now. It used to stay until
 	 * the next world's first frame: ~190 MB of GPU memory and the closed world held at the title screen, and its last tiles and
-	 * beacons unsaved if the game was quit from there (BH2-02).
+	 * beacons unsaved if the game was quit from there.
 	 */
 	static void worldClosed() {
 		Lod l = instance;
@@ -566,7 +566,7 @@ public final class Lod {
 		h = mix(h, mesh.instBuf ^ (mesh.survBuf << 1));
 		h = mix(h, rd ^ (pack ? 1L << 40 : 0) ^ this.packColors);
 		// the look (pack mode bakes brightness, saturation and curvature into the cull's records: a still camera kept the old
-		// ones until it moved, BH2-05)
+		// ones until it moved)
 		h = mix(h, Float.floatToRawIntBits(LodConfig.brightness()) ^ (long) Float.floatToRawIntBits(LodConfig.saturation()) << 32);
 		h = mix(h, Float.floatToRawIntBits(LodConfig.curvatureDrop()));
 		if (STILL_LOG && System.nanoTime() - this.stillLogged > 1_000_000_000L) {

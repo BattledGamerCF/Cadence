@@ -86,7 +86,7 @@ final class LodField {
 	/**
 	 * When a worker last ran out of memory (nanoTime; 0: never): for a minute after it no tile is generated or pre-generated (the
 	 * real chunks' summaries and the saves still run: they are what the far terrain keeps), then generation tries again. It used
-	 * to stop every job for the rest of the world (BUG-HUNT-10-24 BH3-05).
+	 * to stop every job for the rest of the world.
 	 */
 	private volatile long outOfMemoryAt;
 	private static final long OOM_PAUSE_NANOS = 60_000_000_000L;
@@ -213,7 +213,7 @@ final class LodField {
 			for (int tz = tz0; tz <= tz1; tz++) {
 				for (int tx = tx0; tx <= tx1; tx++) {
 					long key = LodTile.key(level, tx, tz);
-					// (also not one still queued: pressing Pre-generate again queued every tile a second time, BH2-19)
+					// (also not one still queued: pressing Pre-generate again queued every tile a second time)
 					if (this.pregenKeys.contains(key) || java.nio.file.Files.exists(this.file(key))) continue;
 					this.pregenKeys.add(key);
 					// (after every tile in view: a priority no view request reaches; nearer and finer first)
@@ -781,7 +781,7 @@ final class LodField {
 	 * left). A dirty tile leaving the window is written as it leaves (evicted), so the timer only bounds what a crash loses.
 	 * It used to run every 3000 frames and skip tiles that had left the window by then: a fast flight at a low frame rate lost
 	 * most of the land it explored (60 of 144 tiles kept at 30 fps), and on a server explored land is all the far terrain
-	 * there is (BH2-15).
+	 * there is.
 	 */
 	void saveDirty(boolean all) {
 		if (!LodConfig.DISK_CACHE || this.dirtyTiles.isEmpty()) return;

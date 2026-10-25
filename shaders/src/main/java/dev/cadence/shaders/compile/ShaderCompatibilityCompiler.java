@@ -366,9 +366,9 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       }
       adapter.uniforms().forEach((name, declaration) -> merge(uniforms, name, declaration));
       // (the adapter's expressions use them in the vertex stage, whichever stage the pack declares them in: Mellow declares
-      // dhProjection in its fragment stage only, which hid it from the vertex stage, BH2-03)
+      // dhProjection in its fragment stage only, which hid it from the vertex stage)
       vertexUniforms.addAll(adapter.uniforms().keySet());
-      // Cadence: an adapter value the fragment stage reads too (VanillaEX reads dhMaterialId there, BH2-06): a flat varying
+      // Cadence: an adapter value the fragment stage reads too (VanillaEX reads dhMaterialId there): a flat varying
       // the vertex stage fills from the adapter's expression
       for (var value : adapter.fragmentValues().entrySet()) {
         String name = value.getKey(), expression = adapter.legacyExpressions().get(name);
@@ -380,7 +380,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
         adapterCopyOut.append(varying).append(" = ").append(expression).append(";\n");
       }
       // Cadence: functions of the adapter's contract a pack calls without defining them (Noble's dh_hasTexture and
-      // dh_sampleTexture, BH2-07)
+      // dh_sampleTexture)
       for (var function : adapter.functions().entrySet()) {
         Pattern defined = Pattern.compile("\\b\\w+\\s+" + Pattern.quote(function.getKey()) + "\\s*\\([^)]*\\)\\s*\\{");
         if (token(vertexBody, function.getKey()) && !defined.matcher(vertexBody).find()) vertexBody = function.getValue() + "\n" + vertexBody;

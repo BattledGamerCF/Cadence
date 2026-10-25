@@ -15,9 +15,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Where a world's far terrain is kept on disk: `cadence-lod/<world>-<seed>/<dimension>/` in single player (and for a LAN host),
  * `cadence-lod/servers/<address>-<hashed seed>/<dimension>/` on a server. The seed tells two worlds of the same name apart:
- * keyed by the folder name alone, a new "New World" showed the old one's land (BUG-HUNT-10-24 BH3-04); a LAN guest's address
+ * keyed by the folder name alone, a new "New World" showed the old one's land; a LAN guest's address
  * is kept without the host's port, which is new every time the host opens to LAN. The dimension's folder name is made safe
- * (a server chooses it, and an id may hold `..` and `/`: BH3-09). Folders of the old layout are moved to the new one when
+ * (a server chooses it, and an id may hold `..` and `/`). Folders of the old layout are moved to the new one when
  * their world is opened, and at the first world of a session the folders of deleted single-player worlds are removed (with
  * any `.tmp` files a crash left), on a background thread.
  */

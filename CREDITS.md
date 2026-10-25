@@ -44,4 +44,4 @@ The idea behind the present-queue change (`cadence.metal.presentQueue`) came fro
 
 Cadence used to be called mcopt (backend) plus "Minecraft Shader Loader" (shader module). Old `-Dmcopt.*`,
 `-DminecraftShaders.*` and `-DminecraftScene.*` switches, and the old config files `config/mcopt.properties` and
-`config/minecraft-shader-loader.properties`, still work; see `docs/LICENSING.md`.
+`config/minecraft-shader-loader.properties`, still work (`dev.cadence.metal.Legacy`).

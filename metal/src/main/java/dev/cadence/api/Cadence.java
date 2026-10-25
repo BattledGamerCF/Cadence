@@ -35,7 +35,7 @@ public final class Cadence {
 		try {
 			return MetalCompute.available();
 		} catch (IllegalStateException e) {
-			// (RenderSystem.getDevice() before the device is made: it threw, and an addon that asked first never started, BH2-09)
+			// (RenderSystem.getDevice() before the device is made: it threw, and an addon that asked first never started)
 			return Boolean.parseBoolean(System.getProperty("cadence.metal", "true"));
 		}
 	}

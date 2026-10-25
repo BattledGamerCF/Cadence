@@ -36,7 +36,7 @@ public final class LodConfig {
 
 	/**
 	 * A look value from a hand-edited config or flag kept in its range (fallback when it isn't a number): the page's live path
-	 * applied NaN, 1e30 or negative values the launch path refused (BH2-16).
+	 * applied NaN, 1e30 or negative values the launch path refused.
 	 */
 	static float lookValue(float v, float fallback, float min, float max) {
 		return Float.isFinite(v) ? Math.clamp(v, min, max) : fallback;

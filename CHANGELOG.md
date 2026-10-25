@@ -12,7 +12,7 @@ Render Max FPS:
   (M2 MacBook Air). The ray walk crosses air in a loop of its own and loads a step ahead (10-45% faster with terrain in view, the same image).
 - **Correction**: looking straight up or down (exactly 90 degrees) drew one flat colour: the camera's sideways direction had
   no length there. Fixed. The earlier "looking down: 25,300 rendered" (beta.15 and beta.16 notes) was measured on that flat
-  frame; the real figure is about 13,000 (docs/dev-log/RECORD.md, "10-25 correction").
+  frame; the real figure is about 13,000 (docs/RENDER-MAX-FPS.md).
 - Joining a world or changing dimension with Render Max FPS on no longer waits 30 s on "Loading terrain".
 - The title screen and menus keep their usual frame-rate limit with Render Max FPS chosen.
 
@@ -48,7 +48,7 @@ every block and entity rendered, every frame really rendered). All of it is auto
 
 ## 0.4.0-beta.15 / shaders 0.3.14 (2026-10-23)
 
-(0.4.0-beta.14 was a pre-release build for an audit, docs/dev-log/BUG-HUNT-10-23.md; everything in it is listed here,
+(0.4.0-beta.14 was a pre-release build for an audit; everything in it is listed here,
 followed by the audit's fixes.)
 
 Far Terrain (experimental; Video Settings > Picture & Speed > Far Terrain):
@@ -115,7 +115,7 @@ Fixes from the audit (19 bugs found, all fixed; 8 of its 10 suspicions too):
 
 ## 0.4.0-beta.13 / shaders 0.3.12 (2026-10-22)
 
-Fixes from an overnight audit (docs/dev-log/BUG-HUNT-10-21.md: 23 bugs found, 21 fixed here).
+Fixes from an overnight audit (23 bugs found, 21 fixed here).
 
 Crashes and hangs:
 - **Many animated textures** (about 470 or more in one atlas: big resource packs and modpacks) stopped the game on its

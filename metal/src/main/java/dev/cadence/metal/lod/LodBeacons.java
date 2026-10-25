@@ -170,7 +170,7 @@ final class LodBeacons {
 			if (chunk != null) {
 				// its chunk is here (only too far for the game to draw it): what stands there now decides. Broken (no beacon block):
 				// forgotten; a beacon without a beam right now (its pyramid gone): not drawn. It used to keep its beam for as long
-				// as the chunk stayed loaded (BH2-04). (The block, not the block entity: a chunk being unloaded has lost its block
+				// as the chunk stayed loaded. (The block, not the block entity: a chunk being unloaded has lost its block
 				// entities but not its blocks)
 				if (!chunk.getBlockState(PROBE.set(b.x, b.y, b.z)).is(Blocks.BEACON)) {
 					it.remove();

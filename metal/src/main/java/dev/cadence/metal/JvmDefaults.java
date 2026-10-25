@@ -37,9 +37,9 @@ import java.util.stream.Stream;
  * (it holds the account token) is never logged, only the options added. Open files are marked close-on-exec first so the new
  * process doesn't inherit them. Off: -Dcadence.jvmDefaults=false, or cadence.jvmDefaults=false in config/cadence.properties.
  * The same restart can go to another Java: Vivace, when the player chose it in Video Settings (see {@link Vivace}).
- * Measured (docs/dev-log/DAY2.md): G1 + HeapTrim used ~870 MB less than ZGC on the same route; compact object headers ~23 MB less heap.
+ * Measured (M2 Air, same flight route): G1 + HeapTrim used ~870 MB less than ZGC on the same route; compact object headers ~23 MB less heap.
  * -XX:MetaspaceSize=256m: the game's class metadata grows to ~170 MB while it loads, and each threshold on the way triggered a
- * collection; the threshold only decides when to collect, it reserves nothing. Tried and withdrawn (docs/dev-log/DAY-10-18.md):
+ * collection; the threshold only decides when to collect, it reserves nothing. Tried and withdrawn:
  * -XX:-ClassUnloadingWithConcurrentMark made G1's Remark pauses ~1 ms instead of up to 25 ms while flying, but G1 frees
  * replaced JIT code only while unloading classes: the code cache grew 35 -> 100 MB in 4 minutes and kept growing.
  */
@@ -50,7 +50,7 @@ public final class JvmDefaults {
 	/**
 	 * Cadence's GC policy (GcPolicy in the shaders module): G1's own trigger for background marking is turned into a high safety
 	 * net (fixed at 90% of the heap instead of adaptive), and System.gc() starts that marking (instead of a full collection, or
-	 * nothing as with DisableExplicitGC before), so Cadence can start it when it is worth it. Measured (docs/dev-log/NIGHT-5.md):
+	 * nothing as with DisableExplicitGC before), so Cadence can start it when it is worth it. Measured:
 	 * adaptive IHOP had fallen to 0 bytes and G1 marked back to back, each cycle ending in an 8-19 ms Remark pause (class
 	 * unloading) every ~8 s while old-gen occupancy stayed flat. Only with G1 and when the player hasn't disabled System.gc().
 	 */

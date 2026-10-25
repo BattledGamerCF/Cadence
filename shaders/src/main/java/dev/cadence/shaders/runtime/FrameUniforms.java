@@ -644,7 +644,7 @@ public final class FrameUniforms {
   private void setDistantProjection() {
     double reach = dev.cadence.shaders.cadence.render.DistantTerrain.reachBlocks();
     // (no far terrain in this frame, the Nether or before it exists: the render distance stands in. Zeros made packs that
-    // divide by them draw black (Photon's combined depth) or nothing but fog (superDuperVanilla), BH2-17)
+    // divide by them draw black (Photon's combined depth) or nothing but fog (superDuperVanilla))
     if (reach <= 0) reach = Math.max(32, net.minecraft.client.Minecraft.getInstance().options.getEffectiveRenderDistance() * 16);
     float n = 16f, f = (float) (reach * 1.5);
     if (dhPreviousSet) dhPrevious.set(dhProjection);

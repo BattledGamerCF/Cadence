@@ -1,7 +1,7 @@
 # Shader packs beyond BSL (2026-10-14)
 
 Goal: as many OptiFine/Iris-format packs as possible running natively on Metal, fast, with their translations kept so
-turning shaders off and on (or relaunching) doesn't translate them again. Research: research/SHADERPACKS.md (one Haiku agent).
+turning shaders off and on (or relaunching) doesn't translate them again.
 
 ## How a pack gets to the GPU, and what is cached
 
@@ -111,7 +111,7 @@ Measured in the dev client at 960x540 (fanless Air, warm), Auto resolution holdi
 
 ## Overnight 10-14/15: motion glitches (user: coastline glitching, soft water/grass, black dots)
 
-Research: research/GLITCHES.md and research/PERF2.md (Haiku agents; mostly reasoning, few sources). Found and fixed:
+Found and fixed:
 
 - **Auto resolution threw away every pack's history.** Auto moved the render size every 3-5 s; each move remade the
   pack's targets, so TAA packs showed their raw, unconverged image for the next frames: black blobs along coastline

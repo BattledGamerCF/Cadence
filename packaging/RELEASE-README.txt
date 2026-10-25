@@ -1,6 +1,8 @@
 Cadence @VERSION@
 
-A Minecraft performance mod for Apple Silicon Macs. No Sodium needed. Cadence is a fork of mcopt by Noah Dunnagan
+A Minecraft performance mod for Apple Silicon Macs: Minecraft drawn with Metal, shader packs on it, and Cadence's own
+versions of Sodium, Iris, Lithium, Entity Culling, far terrain and dynamic lights in one jar. On an M2 MacBook Air: about
+1,600 fps without shaders (1080p, render distance 6), most shader packs at 60 fps with Auto resolution. Cadence is a fork of mcopt by Noah Dunnagan
 (Apache-2.0) and of the Shader Loader of minecraft-metal-renderer by Kausik Velaga (MIT); see CREDITS.md. BETA: expect the occasional bug, and back up your
 worlds.
 

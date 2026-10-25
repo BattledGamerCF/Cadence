@@ -200,7 +200,7 @@ public final class CompatLayers {
 						}
 						String name = area.substring(6);
 						ours.stream().filter(h -> h.mixin.equals(name) || h.mixin.endsWith("." + name)).forEach(h -> mixins.add(h.mixin));
-						// (was silent: a misspelt name looked like it worked, BH2-11)
+						// (was silent: a misspelt name looked like it worked)
 						if (mixins.isEmpty()) System.out.println("[cadence] compat: " + who + " asks to step aside in a mixin Cadence doesn't have: " + name);
 					}
 				}

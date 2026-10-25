@@ -272,7 +272,7 @@ final class LodMesh implements LodClip.Listener {
 		try {
 			this.workLoop(header, quads, scratch);
 		} finally {
-			// (an idle worker leaves through the interrupt: its ~1.4 MB were never freed, at every world and dimension, BH3-06)
+			// (an idle worker leaves through the interrupt: its ~1.4 MB were never freed, at every world and dimension)
 			MemoryUtil.nmemFree(header);
 			MemoryUtil.nmemFree(quads);
 			if (scratch != 0) MemoryUtil.nmemFree(scratch);
@@ -721,7 +721,7 @@ final class LodMesh implements LodClip.Listener {
 		MemoryUtil.memCopy(this.arenaAddr, addr, this.arenaWords * 4);
 		this.buffersLater.add(new long[] {frame, this.arenaBuf});
 		// the added part is free: exactly what the new buffer adds (it said the old size was, the doubling's arithmetic, and
-		// after growing by half that offered memory past the buffer's end: a native write there crashed the game, BH2-01)
+		// after growing by half that offered memory past the buffer's end: a native write there crashed the game)
 		long added = words - this.arenaWords;
 		this.release(this.arenaWords, added);
 		this.usedWords += added;
@@ -808,9 +808,9 @@ final class LodMesh implements LodClip.Listener {
 	}
 
 	/**
-	 * Stops the workers and waits for them (BUG-HUNT-10-24 BH3-08: one still inside copyRegion read the clipmap's buffers after
+	 * Stops the workers and waits for them (one still inside copyRegion read the clipmap's buffers after
 	 * the owner released them), then frees this mesh's host memory: the frame and table copies and the results not yet
-	 * installed (BH3-06). Render thread; the GPU buffers are the owner's to release (buffers()).
+	 * installed. Render thread; the GPU buffers are the owner's to release (buffers()).
 	 */
 	void close() {
 		this.closed = true;

@@ -12,7 +12,7 @@ import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
  * The resource packs the far terrain's colors come from. A tile's colors are worked out from the block textures when it is
  * made, so each cached tile records the packs it was made under (signature()), and a resource reload (the Resource Packs
  * screen, F3+T) has the colors, the texture table and, under other packs, a generated world's tiles made again. The far view
- * used to keep the first pack's colors for good, also across restarts (BH2-18).
+ * used to keep the first pack's colors for good, also across restarts.
  */
 final class LodResources {
 	private static volatile boolean reloaded;

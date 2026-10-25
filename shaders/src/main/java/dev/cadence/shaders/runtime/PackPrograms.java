@@ -117,7 +117,7 @@ public final class PackPrograms implements AutoCloseable {
     directory = pack.dimensionFolder(dimension);
     // Cadence: with far terrain running, a pack with a dh_terrain program draws it (DistantTerrain) and sees Iris's Distant
     // Horizons macros, so its other programs take their DH paths too (fog to the far terrain's reach, dhDepthTex). Not in a
-    // dimension without far terrain (the Nether): the DH paths there made Photon black and superDuperVanilla all fog (BH2-17)
+    // dimension without far terrain (the Nether): the DH paths there made Photon black and superDuperVanilla all fog
     boolean dhProgram = false;
     if (dev.cadence.shaders.cadence.render.DistantTerrain.available())
       for (ShaderProgram program : pack.programs(directory))

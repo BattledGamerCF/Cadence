@@ -22,7 +22,7 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 | `dev.cadence.metal` (root) | The Metal backend: Minecraft's `renderpearl` device/encoder/buffer/texture API implemented on Metal (`MetalDevice`, `MetalEncoder`, `MetalRenderPass`, `MetalBuffer`, `MetalTexture`, `MetalSurface`), `Native` (every native call, through Java's foreign-function API), `MacSystem` (thermal state, battery, fans, display, sysctl), `Profile` and `JvmDefaults` (startup settings), `Vivace` (restarting on the Vivace Java build when the player chose it), `PlatformCheck` (Apple Silicon, macOS, Rosetta). Kept as one package: the backend's classes share package-private state, as in mcopt. |
 | `own/` | Cadence's own terrain renderer: chunk meshes in one arena, GPU culling (`OwnFrag`, Hi-Z), the opaque/cutout draw path, dynamic lights. |
 | `lod/` | Far terrain (experimental, off by default). GPU code: `src/main/resources/cadence/lod/columns.metal`. |
-| `record/` | Render Max FPS (Record Mode): the compute-only renderer for the FPS record (`Record`, `RecordWorld`, `RecordHud`); GPU code `src/main/resources/cadence/record/record.metal`, native `mcrecord.m`, offline bench `tools/record_bench.m` (docs/dev-log/RECORD.md). |
+| `record/` | Render Max FPS (Record Mode): the compute-only renderer for the FPS record (`Record`, `RecordWorld`, `RecordHud`); GPU code `src/main/resources/cadence/record/record.metal`, native `mcrecord.m`, offline bench `tools/record_bench.m` (docs/RENDER-MAX-FPS.md). |
 | `chunk/`, `chunkio/` | Opt-in chunk pipeline and save-file changes (each behind a `-Dcadence.chunk.*` switch). |
 | `logic/` | Cadence Logic: the game-logic optimizations that replace Lithium (see docs/GAME-LOGIC.md). |
 | `cpu/` | Render-thread CPU work: model and item vertex writers, text, A/B timers. |
@@ -71,4 +71,5 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 - [FOR-REVIEWERS.md](FOR-REVIEWERS.md): for mod-platform reviewers: native code, network (none), files written, licences.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): building, the test harness, the rules for changes (exact or switch-gated, measured).
 - [tools/README.md](../tools/README.md): the scripts.
-- [dev-log/](dev-log): why things are the way they are, with the measurements.
+- [RENDER-MAX-FPS.md](RENDER-MAX-FPS.md): Render Max FPS, its results and the record attempt.
+- [CHANGELOG.md](../CHANGELOG.md): every change, with its measurements; older design notes are in the git history.

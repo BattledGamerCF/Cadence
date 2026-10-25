@@ -488,7 +488,7 @@ public final class CadenceSettings {
 		if (dev.cadence.shaders.cadence.system.BackgroundFps.enabled()) auto.add("background fps");
 		lines.add(auto.isEmpty() ? Component.literal("Automatic tuning off: your settings as set").withStyle(ChatFormatting.GRAY)
 			: Component.literal("Tuned automatically: " + String.join(" · ", auto)).withStyle(ChatFormatting.GREEN));
-		// (Render Max FPS: Heat Control, On Battery and Max Framerate don't apply, so their holds aren't shown, BH2-10)
+		// (Render Max FPS: Heat Control, On Battery and Max Framerate don't apply, so their holds aren't shown)
 		if (dev.cadence.shaders.cadence.render.MaxFpsMode.chosen())
 			lines.add(Component.literal("Render Max FPS: nothing holds the frame rate back").withStyle(ChatFormatting.YELLOW));
 		else if (HeatControl.level() > 0) lines.add(Component.literal(HeatControl.shortDescribe()).withStyle(ChatFormatting.YELLOW));

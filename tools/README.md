@@ -15,6 +15,6 @@
 | `native-check.sh`, `msl-check.m` | Compile-check Metal shaders (Cadence's native programs, or any .metal file) through the Metal API, no Xcode needed |
 | `profile/` | Python helpers for profiles and graphics: JFR hot methods, the benchmark and comparison graphics |
 | `cadence_native_test.m`, `icb_bench.m`, `mfx_bench.m` | Small standalone Metal tests and benchmarks |
-| `record_bench.m` | Times Render Max FPS's GPU kernel (`record.metal`) on a world dumped from the game, variant against variant (docs/dev-log/RECORD.md) |
+| `record_bench.m` | Times Render Max FPS's GPU kernel (`record.metal`) on a world dumped from the game, variant against variant (docs/RENDER-MAX-FPS.md) |
 | `gpu_frame_floor.m` | The GPU's fixed cost per frame on this Mac: command buffers and render passes a second, no Minecraft |
-| `metal4_interp_probe.m`, `metal4_interop_probe.m` | Metal 4 probes: MetalFX frame interpolation and submit cost; driving Metal 3 objects through Metal 4 (docs/dev-log/METAL4-PLAN.md) |
+| `metal4_interp_probe.m`, `metal4_interop_probe.m` | Metal 4 probes: MetalFX frame interpolation and submit cost; driving Metal 3 objects through Metal 4 |

@@ -99,7 +99,7 @@ final class LodNativeNoise {
 
 	static void counted(int size) {
 		// (counted only when asked: every build logged a line every 131,072 calls, about one a second while the far terrain
-		// fills in, and all generation threads bumped these shared counters on every call, BH2-12)
+		// fills in, and all generation threads bumped these shared counters on every call)
 		if (!NOISE_STATS) return;
 		long n = volumes.incrementAndGet();
 		volumePoints.addAndGet(size);
@@ -421,7 +421,7 @@ final class LodNativeNoise {
 
 		/**
 		 * lodnoise.c's copy of the stack, freed when the stack is collected (a few hundred KB for the overworld's stacks, made
-		 * for every world and dimension entered and kept for the session before: BUG-HUNT-10-24 BH3-06).
+		 * for every world and dimension entered and kept for the session before).
 		 */
 		static void attach(LodNoiseKernels.Stack s) {
 			try (Arena a = Arena.ofConfined()) {
