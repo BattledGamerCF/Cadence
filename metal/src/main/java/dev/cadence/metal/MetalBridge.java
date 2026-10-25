@@ -176,6 +176,15 @@ public final class MetalBridge {
 		uncappedPresent(on);
 	}
 
+	/** (testing) Main command buffers, pre command buffers and blit encoders opened since the last call. */
+	public static int[] encoderCounts() {
+		try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+			long c = stack.ncalloc(4, 3, 4);
+			Native.encCounters(c);
+			return new int[] {org.lwjgl.system.MemoryUtil.memGetInt(c), org.lwjgl.system.MemoryUtil.memGetInt(c + 4), org.lwjgl.system.MemoryUtil.memGetInt(c + 8)};
+		}
+	}
+
 	/** (testing) Record Mode's frames per command buffer (MetalEncoder.recordBatch). */
 	public static void recordBatch(int n) {
 		MetalEncoder.recordBatch = Math.max(1, n);

@@ -114,8 +114,13 @@ int main(int argc, char **argv) {
 		if (hudData.length == text.length) memcpy(text.contents, hudData.bytes, text.length);
 		// RB_RING=4: four of each, the in-between frame made from frames N-2 and N-3, so frame N depends on no frame still
 		// running (consecutive frames can overlap on the GPU); else three, from N-1 and N-2
-		int ring = getenv("RB_RING") ? 4 : 3, lagA = ring == 4 ? 2 : 1, lagB = lagA + 1;
-		id<MTLTexture> color[4], depth[4], mids[4];
+		// RB_FENCE=lagA: as the game (mcrecord.m): a ring of lagA + 3 slots, frame N's in-between frame from N-lagA and N-lagA-1,
+		// each frame waiting on their fences (untracked textures)
+		int fenceLag = getenv("RB_FENCE") ? atoi(getenv("RB_FENCE")) : 0;
+		int ring = fenceLag ? fenceLag + 3 : getenv("RB_RING") ? 4 : 3, lagA = fenceLag ? fenceLag : ring == 4 ? 2 : 1, lagB = lagA + 1;
+		id<MTLTexture> color[8], depth[8], mids[8];
+		id<MTLFence> fences[8];
+		for (int k = 0; k < 8; k++) fences[k] = fenceLag ? [d newFence] : nil;
 		for (int k = 0; k < ring; k++) {
 			mids[k] = tex(d, MTLPixelFormatRGBA8Unorm, w, h, MTLStorageModePrivate);
 			color[k] = tex(d, MTLPixelFormatRGBA8Unorm, w, h, MTLStorageModePrivate);
@@ -174,7 +179,12 @@ int main(int argc, char **argv) {
 							[c setTexture:color[b] atIndex:6];
 							[c setTexture:depth[b] atIndex:7];
 							[c setBytes:frame.bytes length:frame.length atIndex:0];
+							if (fences[0]) {
+								[c waitForFence:fences[a]];
+								[c waitForFence:fences[b]];
+							}
 							[c dispatchThreads:MTLSizeMake(w, getenv("RB_HALFH") ? (h + 1) / 2 : h, 1) threadsPerThreadgroup:MTLSizeMake(tgx, tgy, 1)];
+							if (fences[0]) [c updateFence:fences[cur]];
 							if (!one) [c endEncoding];
 							cur = (cur + 1) % ring;
 						}

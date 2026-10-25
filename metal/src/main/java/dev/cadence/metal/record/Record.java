@@ -212,8 +212,9 @@ public final class Record {
 	/** "cpu 12.3 us in the record frame + 20.1 us in the game loop" since the last call; resets. */
 	public static String cpuSplit() {
 		long n = Math.max(1, timedFrames);
-		String r = String.format(java.util.Locale.ROOT, "cpu %.1f us in the record frame + %.1f us in the game loop", insideNanos / 1000.0 / n,
-			outsideNanos / 1000.0 / n);
+		int[] enc = MetalBridge.encoderCounts();
+		String r = String.format(java.util.Locale.ROOT, "cpu %.1f us in the record frame + %.1f us in the game loop; per 1000 frames %d command buffers, %d pre, %d blits",
+			insideNanos / 1000.0 / n, outsideNanos / 1000.0 / n, enc[0] * 1000L / n, enc[1] * 1000L / n, enc[2] * 1000L / n);
 		insideNanos = outsideNanos = timedFrames = 0;
 		return r;
 	}

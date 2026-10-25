@@ -19,11 +19,10 @@ double mcrm_gpu_us(void) {
 	return n > 0 ? s / n : -1;
 }
 
-// Frames overlap on the GPU: frame N writes slot N % RING and makes its in-between frame from frames N-2 and N-3, so it never
-// reads what the frame just before it is still writing. The textures aren't tracked by Metal (tracking serialised every
-// frame behind the last one); fences order what must be: frame N waits for frames N-2 and N-3 (what it reads, and the last
-// readers of the slot it overwrites, which with 5 slots are those two), and the present and test reads wait for the frame
-// they show. Overlapping frames: +11-16% (tools/record_bench.m RB_UNTRACKED). On Metal 4 the textures stay tracked.
+// Frame N writes slot N % RING and makes its in-between frame from frames N-2 and N-3, so it never reads what the frame just
+// before it is still writing, and Metal's own tracking orders the rest. (Untracked textures ordered by fences were tried:
+// a fence wait costs a fixed ~25 us, which halved light frames: 36k vs 65k rendered looking at the sky, tools/record_bench.m
+// RB_FENCE; heavy frames gained 2-8%. The fence fields stay nil.)
 #define RING 5
 #define LAG_A 2
 #define LAG_B 3
@@ -64,8 +63,6 @@ void *mcrm_new(Ctx *ctx, const char *source, char *err, int errCap) {
 			free(r);
 			return NULL;
 		}
-		if (!mc4On)
-			for (int k = 0; k < RING; k++) r->fence[k] = [ctx->device newFence];
 		return r;
 	}
 }
@@ -74,7 +71,6 @@ static id<MTLTexture> tex(Ctx *ctx, MTLPixelFormat f, int w, int h) {
 	MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:f width:w height:h mipmapped:NO];
 	d.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
 	d.storageMode = MTLStorageModePrivate;
-	if (!mc4On) d.hazardTrackingMode = MTLHazardTrackingModeUntracked;  // (ordered by the fences instead)
 	return [ctx->device newTextureWithDescriptor:d];
 }
 
