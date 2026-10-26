@@ -28,6 +28,7 @@ public final class ShaderLoaderMod implements ClientModInitializer {
 		dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed();
     dev.cadence.shaders.cadence.memory.HeapTrim.apply();
     dev.cadence.shaders.cadence.render.FrameGenSetting.load();
+    dev.cadence.shaders.cadence.ui.SoundEngineSetting.load();
     dev.cadence.metal.rec.Replay.setEnabled("true".equalsIgnoreCase(dev.cadence.shaders.cadence.ui.ShaderToggle.configValue("instantReplay", "false").strip()));
     dev.cadence.shaders.cadence.memory.GcPolicy.start();
     // Cadence: the render thread's scheduling role, and the heat/memory monitor (Heat Control, memory guard)

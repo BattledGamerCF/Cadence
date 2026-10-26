@@ -133,6 +133,50 @@ public final class CadenceSelfTest {
 					LOGGER.info("[selftest] batteryinfo: {} Wh left, Mac draws {} W, on battery {}, Low Power Mode {}, estimate '{}'",
 						String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.batteryWh()), String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.systemWatts()),
 						dev.cadence.metal.MacSystem.onBattery(), dev.cadence.metal.MacSystem.lowPowerMode(), dev.cadence.metal.MacSystem.batteryTimeLeft());
+				} else if (lower.equals("audio")) {
+					// "audio": the sound engine in use and, on Apple's, its voices: made, playing, rendering (their audio advancing)
+					int[] a = dev.cadence.metal.audio.AppleAudio.stats();
+					LOGGER.info("[selftest] audio: apple {} | voices {} playing {} rendering {} engine running {} restarts {} | {}",
+						dev.cadence.metal.audio.AppleAudio.running(), a[0], a[1], a[4], a[3], a[2], mc.getSoundManager().getChannelDebugString());
+				} else if (lower.startsWith("sound=") || lower.startsWith("disc=")) {
+					// "sound=ID[:DX]": a sound played on the client at the player (DX blocks east), "disc=ID": a jukebox song there
+					// (a streamed sound); the play result, then the engine's voices 300 ms later
+					boolean disc = lower.startsWith("disc=");
+					String arg = step.substring(disc ? 5 : 6);
+					int colon = arg.lastIndexOf(':');
+					boolean offset = colon > 0 && arg.substring(colon + 1).matches("-?\\d+(\\.\\d+)?");
+					String id = offset ? arg.substring(0, colon) : arg;
+					double dx = offset ? Double.parseDouble(arg.substring(colon + 1)) : 0;
+					mc.execute(() -> {
+						if (mc.player == null) return;
+						var ev = net.minecraft.sounds.SoundEvent.createVariableRangeEvent(net.minecraft.resources.Identifier.parse(id));
+						var pos = mc.player.position();
+						var inst = disc ? net.minecraft.client.resources.sounds.SimpleSoundInstance.forJukeboxSong(ev, pos)
+							: new net.minecraft.client.resources.sounds.SimpleSoundInstance(ev, net.minecraft.sounds.SoundSource.MASTER, 1f, 1f,
+								net.minecraft.util.RandomSource.create(), pos.x + dx, pos.y, pos.z);
+						LOGGER.info("[selftest] sound {}: {}", id, mc.getSoundManager().play(inst));
+					});
+					sleep(300);
+					int[] st = dev.cadence.metal.audio.AppleAudio.stats();
+					LOGGER.info("[selftest] sound {}: voices {} playing {} rendering {} | {}", id, st[0], st[1], st[4], mc.getSoundManager().getChannelDebugString());
+				} else if (lower.equals("pausesounds") || lower.equals("resumesounds")) {
+					// "pausesounds" / "resumesounds": every sound paused and resumed, as the pause menu does
+					boolean pause = lower.equals("pausesounds");
+					mc.execute(() -> {
+						if (pause) mc.getSoundManager().pauseAllExcept();
+						else mc.getSoundManager().resume();
+					});
+				} else if (lower.startsWith("volume=")) {
+					// "volume=V": the master volume (0..1; a sound test can be nearly silent)
+					double vol = Double.parseDouble(lower.substring(7));
+					mc.execute(() -> mc.options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(vol));
+				} else if (lower.startsWith("soundengine=")) {
+					// "soundengine=apple|openal": the Sound Engine button's switch (not saved): the sound system restarts
+					boolean apple = lower.endsWith("apple");
+					mc.execute(() -> {
+						dev.cadence.metal.audio.AppleAudio.setWanted(apple);
+						mc.getSoundManager().reload();
+					});
 				} else if (lower.equals("serverchunks")) {
 					// "serverchunks": Keep Server Chunks' state (multiplayer guest checks): chunks loaded and kept, the distances
 					mc.execute(() -> LOGGER.info("[selftest] serverchunks: on {} loaded {} kept {} effective rd {} option rd {} pos {}",

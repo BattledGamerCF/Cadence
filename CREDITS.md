@@ -43,7 +43,7 @@ and every implementation (`dev.cadence.irisapi`) is Cadence's own, Apache-2.0.
   fonts, images, sounds or other third-party assets are bundled; `git ls-files` shows only source, JSON, `.metal` shader
   kernels (from mcopt, and Cadence's own), and one generated class-preload list.
 * The native library `libmcmetal.dylib` is built from the sources in `metal/src/main/native` and links only Apple system
-  frameworks (AppKit, CoreGraphics, CoreVideo, Foundation, Metal, MetalFX, QuartzCore). Shader translation (shaderc,
+  frameworks (AppKit, AVFAudio, CoreGraphics, CoreVideo, Foundation, Metal, MetalFX, QuartzCore). Shader translation (shaderc,
   SPIRV-Cross) is provided by the LWJGL libraries that Minecraft itself ships.
 
 ## Compatibility with the old names

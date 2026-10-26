@@ -18,7 +18,8 @@ it; docs/ARCHITECTURE.md). The release zip also holds an optional jar with no co
   (`clang`, no prebuilt binaries). At startup it is extracted from the jar to the system temp directory and loaded with the
   Java Foreign Function & Memory API (`dev.cadence.metal.Native`; if the temp directory can't be used, a
   `.cadence-natives` folder in the game directory). It links Apple's Metal, MetalFX, QuartzCore, CoreVideo, CoreGraphics,
-  IOKit, AppKit and Foundation frameworks only. VideoToolbox, CoreMedia and AVFoundation are opened at run time (dlopen) only
+  IOKit, AppKit, AVFAudio (the game's sound, on AVAudioEngine: output only, the microphone is never opened) and Foundation
+  frameworks only. VideoToolbox, CoreMedia and AVFoundation are opened at run time (dlopen) only
   when the player turns on Instant Replay (and AVFoundation only to save one). IOKit is read for the battery's charge, the
   power source and the fans (no writes).
 - GPU shaders (`*.metal` under `metal/src/main/resources/cadence`) are compiled by Metal at runtime from source.

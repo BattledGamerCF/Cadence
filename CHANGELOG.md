@@ -2,6 +2,19 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.22 / shaders 0.3.21 (2026-10-26)
+
+- **The game's sound on Apple's audio engine** (Options > Music & Sounds > Sound Engine: Apple Spatial Audio, the default;
+  OpenAL is one click away and switches at once). Minecraft's sounds, music and records play through AVAudioEngine instead
+  of OpenAL Soft: positional sounds are placed with Apple's spatial audio (HRTF on headphones and AirPods, Apple's own
+  rendering on the Mac's speakers; the game's Directional Audio option asks for the highest-quality HRTF on any output),
+  with the game's own loudness and per-sound distance falloff, pitch and looping; streams (music, records) are fed a second
+  at a time as before. It follows the output you pick in macOS, and plugging in headphones never stops the sound system.
+  Tested: sounds, positional sounds, streamed music and records play and finish, pause and resume, live switching to
+  OpenAL and back. Mods that drive OpenAL themselves (sound physics, reverb) keep OpenAL. While it runs, the game's own
+  sound Device option is not used (the output is macOS's).
+- Self-test steps: audio, sound=ID[:DX], disc=ID, soundengine=, volume=, pausesounds / resumesounds.
+
 ## 0.4.0-beta.21 / shaders 0.3.20 (2026-10-26)
 
 Multiplayer:

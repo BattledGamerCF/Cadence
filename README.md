@@ -57,7 +57,8 @@ apart); about 30,000 with the land in view. See [docs/RENDER-MAX-FPS.md](docs/RE
 
 Also: **Instant Replay** (the last 30 seconds saved as a video with F10, by the Mac's video encoder), **Photo Mode** (F9: a
 full-resolution, full-quality screenshot), a **Performance Overlay** (frames, GPU time, heat, power), **battery time left** at
-the current draw, macOS **Low Power Mode** followed as Battery Saver, and **Auto Render Distance** for shader packs.
+the current draw, macOS **Low Power Mode** followed as Battery Saver, **Auto Render Distance** for shader packs, and the game's
+sound on **Apple's audio engine** instead of OpenAL (spatial audio on headphones and AirPods; Options > Music & Sounds).
 
 On top of that: a garbage-collection policy for games, faster startup (about 15% sooner in a world: block data built in
 parallel, cached bootstrap data, a quicker loading fade), lighter chunk storage, threads placed on the right kind of core,

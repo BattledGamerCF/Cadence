@@ -90,6 +90,7 @@
 		"ui.PackCheckTextureMixin",
 		"ui.PerformanceOverlayMixin",
 		"ui.QuickSetupOfferMixin",
+		"ui.SoundOptionsEngineMixin",
 		"ui.VideoSettingsShadersMixin",
 		"worldgen.ChunkLoadSlotsMixin",
 		"worldgen.ChunkMapParallelMixin",

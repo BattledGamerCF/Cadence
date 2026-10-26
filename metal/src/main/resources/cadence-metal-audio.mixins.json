@@ -1,0 +1,8 @@
+{
+	"required": false,
+	"package": "dev.cadence.metal.mixin.audio",
+	"plugin": "dev.cadence.metal.mixin.audio.AudioMixinPlugin",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["ChannelCtor", "ChannelMixin", "LibraryMixin", "ListenerMixin", "SoundBufferMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

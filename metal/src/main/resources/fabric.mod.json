@@ -12,7 +12,7 @@
 	"contact": { "homepage": "https://github.com/BattledGamerCF/Cadence", "sources": "https://github.com/BattledGamerCF/Cadence", "issues": "https://github.com/BattledGamerCF/Cadence/issues" },
 	"environment": "client",
 	"entrypoints": { "preLaunch": ["dev.cadence.metal.Preload"], "client": ["dev.cadence.metal.PreloadLater"] },
-	"mixins": ["cadence-metal.mixins.json", "cadence-metal-lod.mixins.json", "cadence-metal-gen.mixins.json", "cadence-metal-own.mixins.json", "cadence-metal-ownmesh.mixins.json", "cadence-metal-startup.mixins.json", "cadence-metal-qos.mixins.json", "cadence-metal-cpu.mixins.json", "cadence-metal-chunk.mixins.json", "cadence-metal-alloc.mixins.json", "cadence-metal-chunkio.mixins.json", "cadence-metal-edge.mixins.json", "cadence-metal-compat.mixins.json", "cadence-metal-logic.mixins.json", "cadence-metal-framegen.mixins.json"],
+	"mixins": ["cadence-metal.mixins.json", "cadence-metal-lod.mixins.json", "cadence-metal-gen.mixins.json", "cadence-metal-own.mixins.json", "cadence-metal-ownmesh.mixins.json", "cadence-metal-startup.mixins.json", "cadence-metal-qos.mixins.json", "cadence-metal-cpu.mixins.json", "cadence-metal-chunk.mixins.json", "cadence-metal-alloc.mixins.json", "cadence-metal-chunkio.mixins.json", "cadence-metal-edge.mixins.json", "cadence-metal-compat.mixins.json", "cadence-metal-logic.mixins.json", "cadence-metal-framegen.mixins.json", "cadence-metal-audio.mixins.json"],
 	"depends": { "fabricloader": ">=0.19.5", "minecraft": "~26.3", "java": ">=25" },
 	"breaks": { "sodium": "*" }
 }

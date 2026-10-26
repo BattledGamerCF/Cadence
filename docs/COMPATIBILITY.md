@@ -62,6 +62,10 @@ adds it, and refuses ImmediatelyFast and Distant Horizons (they load code into I
 Tested 2026-10-25 with the release jar and the 17 mods above: everything loads, no mixin errors; with the provider (and
 without ImmediatelyFast), Essential starts on its Iris path.
 
+**Sound mods that drive OpenAL themselves** (sound physics, reverb: their mixins hook the game's `com.mojang.blaze3d.audio`
+classes) keep OpenAL: with one installed, Cadence's Apple sound engine stays off for the session and Music & Sounds says
+which mod it is for.
+
 **Bobby** does what Keep Server Chunks does (keeping the server's forgotten chunks, and saving them to disk); with Bobby
 installed Keep Server Chunks stays off so the two don't both hold on to them.
 

@@ -154,6 +154,14 @@ public final class CompatLayers {
 					else YIELDING.add(o.mixin);
 				}
 			}
+			// the Apple sound engine (dev.cadence.metal.audio.AppleAudio) replaces OpenAL under the game's audio classes: a mod
+			// that hooks them (sound physics, reverb: they drive OpenAL sources and effects themselves) keeps OpenAL
+			Set<String> audio = new LinkedHashSet<>();
+			for (Hook t : theirs) if (t.target.replace('.', '/').startsWith("com/mojang/blaze3d/audio/")) audio.add(NAMES.getOrDefault(t.mod, t.mod));
+			if (!audio.isEmpty()) {
+				LAYERS.put("dev.cadence.metal.mixin.audio", new Layer("dev.cadence.metal.mixin.audio", "Apple sound engine", audio, act));
+				if (act && System.getProperty("cadence.audio") == null) System.setProperty("cadence.audio", "openal");
+			}
 			requested(ours);
 			if (ownOff && !"false".equals(System.getProperty("cadence.own"))) System.setProperty("cadence.own", "false");
 			report();

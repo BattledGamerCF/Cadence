@@ -3,7 +3,7 @@ plugins {
 }
 
 base.archivesName = 'cadence-metal'
-version = '0.4.0-beta.21'
+version = '0.4.0-beta.22'
 
 dependencies {
 	minecraft "com.mojang:minecraft:${minecraft_version}"
@@ -16,13 +16,13 @@ dependencies {
 def nativeOut = layout.buildDirectory.dir('natives/natives')
 
 tasks.register('compileNative', Exec) {
-	def sources = ['mcmetal.m', 'mclod.m', 'lodseam.m', 'lodmesh.c', 'lodnoise.c', 'rec.m', 'mcown.m', 'mccap.m', 'mcfx.m', 'mccull.m', 'mcsys.m', 'mcbench.m', 'mcpack.m', 'mcm4.m', 'mcrecord.m', 'mcfg.m'].collect { file("src/main/native/$it") }
+	def sources = ['mcmetal.m', 'mclod.m', 'lodseam.m', 'lodmesh.c', 'lodnoise.c', 'rec.m', 'mcown.m', 'mccap.m', 'mcfx.m', 'mccull.m', 'mcsys.m', 'mcbench.m', 'mcpack.m', 'mcm4.m', 'mcrecord.m', 'mcfg.m', 'mcaudio.m'].collect { file("src/main/native/$it") }
 	def output = nativeOut.get().file('libmcmetal.dylib').asFile
 	inputs.files sources, file('src/main/native/mcmetal.h'), file('src/main/native/lodmesh.h')
 	outputs.file output
 	doFirst { output.parentFile.mkdirs() }
 	commandLine(['clang', '-fno-objc-arc', '-O2', '-Wall', '-arch', 'arm64', '-mmacosx-version-min=15.0', '-dynamiclib', '-install_name', '@rpath/libmcmetal.dylib',
-		'-framework', 'AppKit', '-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'IOKit', '-framework', 'Metal', '-framework', 'MetalFX', '-framework', 'QuartzCore', '-o', output] + sources)
+		'-framework', 'AppKit', '-framework', 'AVFAudio', '-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'IOKit', '-framework', 'Metal', '-framework', 'MetalFX', '-framework', 'QuartzCore', '-o', output] + sources)
 }
 
 processResources {
