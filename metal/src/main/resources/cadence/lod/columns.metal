@@ -1109,6 +1109,13 @@ static inline int compTop(constant CompFrame& f, device const uint* geom, int x,
     return (g & GEOM_VALID) != 0u ? GEOM_Y(g) : -100000;
 }
 
+// How much of smooth lighting's occlusion shows at this distance: all of it where a block is 6 pixels or more on screen,
+// none at 3 or less (the darkening is then a pixel or two at a crease), linear between. tex.x: the radians a pixel spans.
+static inline float compAoWeight(constant CompFrame& f, float3 rel) {
+    float px = 1.0 / max(length(rel) * f.tex.x, 1e-6);
+    return saturate((px - 3.0) / 3.0);
+}
+
 // The game's smooth-lighting occlusion at a face vertex: its two side neighbors and the corner in the layer in front of the
 // face, each solid one darkening by 0.2 (the corner counts as solid when both sides are).
 static inline float compVertexAo(bool s1, bool s2, bool c) {
@@ -1219,6 +1226,11 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
     }
     bool underCrown = (v.y & REC_UNDER_CROWN) != 0u;
     if (f.quadDepth.y == 0.0 || level != 0u || s.wet || underCrown && (s.face == FACE_TOP || f.tex.z == 0.0)) return true;
+#ifdef LOD_DETAIL_PX
+    // (level 0's near detail, textures and occlusion, only where a block is at least LOD_DETAIL_PX pixels on screen; past that
+    // the cell's own color, as the coarser levels draw: its 1-block shape stays)
+    if (1.0 / max(length(s.rel) * f.tex.x, 1e-6) < float(LOD_DETAIL_PX)) return true;
+#endif
     // near detail on level 0: the cell, from the hit's position (block coordinates relative to `origin`)
     float3 p = s.rel + f.camFrac.xyz;
     int ax, az;
@@ -1266,6 +1278,10 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
 #ifdef MESH_BENCH_NOAO
         return true;
 #endif
+        // (smooth lighting's occlusion only where a block is big enough on screen to show it: faded out from 6 to 3 pixels a
+        // block, and its eight loads skipped past that)
+        float aoW = compAoWeight(f, s.rel);
+        if (aoW <= 0.0) return true;
         // occluders: the neighbor columns rising above this top (the layer in front of the face)
         bool w = compTop(f, geom, gx - 1, gz) > top, e = compTop(f, geom, gx + 1, gz) > top;
         bool nn = compTop(f, geom, gx, gz - 1) > top, so = compTop(f, geom, gx, gz + 1) > top;
@@ -1273,7 +1289,7 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
         bool sw = compTop(f, geom, gx - 1, gz + 1) > top, se = compTop(f, geom, gx + 1, gz + 1) > top;
         float a00 = compVertexAo(w, nn, nw), a10 = compVertexAo(e, nn, ne), a01 = compVertexAo(w, so, sw), a11 = compVertexAo(e, so, se);
         float u = clamp(fx, 0.0, 1.0), vv = clamp(fz, 0.0, 1.0);
-        s.ao = mix(mix(a00, a10, u), mix(a01, a11, u), vv);
+        s.ao = mix(1.0, mix(mix(a00, a10, u), mix(a01, a11, u), vv), aoW);
         return true;
     }
     if (s.face == FACE_BOTTOM) return true;
@@ -1285,10 +1301,12 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
     float along = fxo != 0 ? fz : fx;
     int b = int(floor(y));
     float fy = y - float(b);
+    float aoW = compAoWeight(f, s.rel);
 #ifdef MESH_BENCH_NOAO
     int t0 = -100000, tm = -100000, tp = -100000;
 #else
-    int t0 = compTop(f, geom, ox, oz), tm = compTop(f, geom, ox - ux, oz - uz), tp = compTop(f, geom, ox + ux, oz + uz);
+    int t0 = aoW > 0.0 ? compTop(f, geom, ox, oz) : -100000, tm = aoW > 0.0 ? compTop(f, geom, ox - ux, oz - uz) : -100000,
+        tp = aoW > 0.0 ? compTop(f, geom, ox + ux, oz + uz) : -100000;
 #endif
     // solid(y, side): the block at height y in the front column (side 0), or its neighbor along the wall (-1 / +1)
     bool belowFront = b - 1 < t0, aboveFront = b + 1 < t0;
@@ -1296,7 +1314,7 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
     float a00 = compVertexAo(belowFront, sideM, cMb), a10 = compVertexAo(belowFront, sideP, cPb);
     float a01 = compVertexAo(aboveFront, sideM, cMt), a11 = compVertexAo(aboveFront, sideP, cPt);
     float u = clamp(along, 0.0, 1.0), vv = clamp(fy, 0.0, 1.0);
-    s.ao = mix(mix(a00, a10, u), mix(a01, a11, u), vv);
+    s.ao = mix(1.0, mix(mix(a00, a10, u), mix(a01, a11, u), vv), aoW);
     // the top block's side (with its fringe) for the upper block, what is under it below
     float depth = float(top) - y;
     float2 wuv = float2(along, 1.0 - fy);
@@ -2987,6 +3005,9 @@ fragment half4 lod_mesh_vanilla(MeshVOut in [[stage_in]], constant CompFrame& f 
                                 , constant SeamTaaFrame& tf [[buffer(30)]], texture2d<half> hist [[texture(21)]]
 #endif
                                 ) {
+#ifdef MESH_BENCH_FLAT
+    return half4(0.5h, 0.6h, 0.4h, 1.0h);  // (measurement: the fragment stage's own cost, -Dcadence.lod.defines=MESH_BENCH_FLAT)
+#endif
     if ((in.info & 7u) == 7u) {
         // the debug marks: 1 red (the block cull hid it), 2 green (the quad cull), 3 blue (the lists' visible set pruned it)
         uint m = (in.info >> 3) & 3u;
@@ -3153,6 +3174,16 @@ vertex MeshPlantVOut lod_mesh_plant_vs(uint vid [[vertex_id]], uint iid [[instan
     int oz = int((w1 >> 24) & 15u), oy = int((w1 >> 28) & 15u);
     int y0 = int(w1 & 0xFFFu) - 512;
     int ax = (int(in.z) << 6) + x, az = (int(in.w) << 6) + z;
+#ifdef LOD_PLANT_DIST
+    // (-Dcadence.lod.plantDistance: plants only this near, decided per plant from its own cell, so a quad is whole or gone; past
+    // it a plant is a few pixels and its quads, nearly all fragments discarded, were the far terrain's costliest per pixel)
+    float3 foot = float3(float(ax - f.origin.x) + 0.5, float(y0 - f.origin.y), float(az - f.origin.z) + 0.5) - f.camFrac.xyz;
+    if (dot(foot, foot) > float(LOD_PLANT_DIST) * float(LOD_PLANT_DIST)) {
+        o.position = float4(0.0, 0.0, -2.0, 1.0);
+        o.info = 0u;
+        return o;
+    }
+#endif
     float fox = float(ox) / 30.0 - 0.25, foz = float(oz) / 30.0 - 0.25, foy = -float(oy) / 60.0;
     bool a = corner == 1u || corner == 2u;
     float sa = a ? 0.95 : 0.05;

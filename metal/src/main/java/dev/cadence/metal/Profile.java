@@ -139,11 +139,11 @@ public final class Profile {
 			case "low" -> set.put("cadence.lod.small", "true");
 			case "medium" -> set.put("cadence.lod.n", "1024");
 			case "high" -> set.put("cadence.lod.n", "2048");
-			// auto: Low on GPUs of 8 cores or fewer (measured on an 8-core M2 Air, 150 blocks up: far terrain 2.3 ms a frame at
-			// Medium, 1.0 at Low, 333 -> 570 fps; the cells from ~190 blocks are 2 blocks), else by the Mac's memory (LodConfig.defaultN)
+			// auto: by the Mac's memory (LodConfig.defaultN: Medium up to 16 GB, High above). It was Low on GPUs of 8 cores or
+			// fewer (the blockier terrain from ~190 blocks; Medium cost 4.0 ms of GPU on an 8-core M2 Air 200 blocks up); with
+			// level 0's near detail drawn only where a block is 4+ pixels (LodConfig.DETAIL_PX) Medium is 2.65 ms there, and full
+			// detail reaches 440 blocks instead of 190
 			default -> {
-				int gpu = gpuCores();
-				if (gpu > 0 && gpu <= 8) set.put("cadence.lod.small", "true");
 			}
 		}
 		int cores = Runtime.getRuntime().availableProcessors();

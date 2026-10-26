@@ -47,13 +47,16 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 					"#Generated from the world's own terrain and trees, replaced by the real chunks as you explore. Uses some memory "
 						+ "and power while it fills in; takes effect at the next launch.")),
 			distanceSlider());
-		this.list.addSmall(cycle("Quality", "farTerrain.quality", "auto", new String[] {"auto", "low", "medium", "high"},
-				new String[] {"Auto", "Low", "Medium", "High"},
-				Tips.of("Detail in the distance, and the memory it takes.",
-					"Auto|Low on GPUs with 8 cores or fewer, Medium on Macs with up to 16 GB, High above",
-					"Low|about 150 MB: for 8-core GPUs and below",
-					"Medium|about 270 MB: as sharp as High on a laptop screen",
-					"High|about 580 MB: for 5K displays")),
+		// (the setting is farTerrain.quality, low / medium / high, as before: each a clipmap size, LodConfig.N; level 0's
+		// 1-block cells reach (N / 2 - 68) blocks and every level after doubles the cells and the distance)
+		this.list.addSmall(cycle("Full Detail", "farTerrain.quality", "auto", new String[] {"auto", "low", "medium", "high"},
+				new String[] {"Auto", "190 Blocks", "440 Blocks", "960 Blocks"},
+				Tips.of("How far the far terrain keeps full detail (1-block steps, textures, plants) before it turns blockier.",
+					"#Farther costs GPU time and memory; every level after it doubles the step size and the distance.",
+					"Auto|440 blocks on Macs with up to 16 GB, 960 above",
+					"190 Blocks|about 150 MB: the lightest",
+					"440 Blocks|about 270 MB: as sharp as 960 on a laptop screen",
+					"960 Blocks|about 580 MB: for 5K displays")),
 			cycle("CPU Load", "farTerrain.cpu", "balanced", new String[] {"low", "balanced", "high"},
 				new String[] {"Low", "Balanced", "High"},
 				Tips.of("How many cores fill in new far terrain.",

@@ -147,6 +147,19 @@ public final class LodConfig {
 	 */
 	public static final boolean PLANTS = TEXTURES && Boolean.parseBoolean(System.getProperty("cadence.lod.plants", "true"));
 	/**
+	 * -Dcadence.lod.plantDistance=BLOCKS: far terrain's plants drawn only this near (0: wherever level 0 reaches). Default 192, as
+	 * far as Low's level 0 reaches: at Medium and High level 0 reaches 444 and 956 blocks, and its plants there (a few pixels
+	 * each, their quads mostly discarded fragments) were about 0.5 ms of the far terrain's GPU time on an M2 Air.
+	 */
+	public static final int PLANT_DISTANCE = Integer.getInteger("cadence.lod.plantDistance", 192);
+	/**
+	 * -Dcadence.lod.detailPx=P: level 0's near detail (block textures, smooth-lighting occlusion) only where a block is at least
+	 * P pixels on screen; past that the cell's own color, as the coarser levels draw it (its 1-block shape stays). 0: everywhere
+	 * level 0 reaches. Default 4: at Medium (level 0 to 444 blocks) the far terrain's GPU time 4.0 -> 2.65 ms on an M2 Air,
+	 * 200 blocks up (most of it was that detail's lookups over level 0's outer band, where a texture is 2-4 pixels a block).
+	 */
+	public static final int DETAIL_PX = Integer.getInteger("cadence.lod.detailPx", 4);
+	/**
 	 * -Dcadence.lod.treeLevels=N: the N finest levels (at most 2) get the game's own trees (its tree features run on the far
 	 * terrain); coarser levels the biome's impostor canopy. Level 1 needs every chunk's block-exact ground: ~5x the work of
 	 * its tiles. Default 1.

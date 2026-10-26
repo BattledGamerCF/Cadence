@@ -142,6 +142,12 @@ public final class Lod {
 			if (HANDOFF_PUSH > 0 && HANDOFF_PUSH < 1) src = "#define SEAM_DEPTH_PUSH " + HANDOFF_PUSH + "\n" + src;
 			if (LodTaaTile.CODES) src = "#define SEAM_TAA_TILE 1\n" + src;
 			if (Boolean.getBoolean("cadence.lod.thinTex")) src = "#define SEAM_THIN_TEX 1\n" + src;
+			if (LodConfig.PLANT_DISTANCE > 0) src = "#define LOD_PLANT_DIST " + LodConfig.PLANT_DISTANCE + "\n" + src;
+			if (LodConfig.DETAIL_PX > 0) src = "#define LOD_DETAIL_PX " + LodConfig.DETAIL_PX + "\n" + src;
+			// (measurement: -Dcadence.lod.defines=A,B compiles columns.metal with #define A 1, #define B 1, e.g. MESH_BENCH_FLAT)
+			for (String d : System.getProperty("cadence.lod.defines", "").split(",")) {
+				if (d.matches("[A-Z_][A-Z0-9_]*(=[0-9.]+)?")) src = "#define " + d.replace('=', ' ') + (d.contains("=") ? "" : " 1") + "\n" + src;
+			}
 			if (Boolean.getBoolean("cadence.lod.thin")) src = "#define SEAM_THIN 1\n#define SEAM_CROWN_LEVELS " + Math.max(1, LodConfig.CROWN_LEVELS) + "\n" + src;
 			return src;
 		} catch (IOException e) {
@@ -1414,17 +1420,22 @@ public final class Lod {
 
 	private final float[] sky = new float[3];
 	private long probeLast, probeWindow = -1, probeReport;
-	private final long[] probeNanos = new long[2], probeFrames = new long[2];
+	private final long[] probeNanos = new long[2], probeFrames = new long[2], probeGpu = new long[2];
+	private long probeGpuLast;
 	private boolean probeOn;
 
 	/** The in-run A/B (-Dcadence.lod.probe): whether this frame draws; frame intervals are booked to the state that drew them. */
 	private boolean probe(long now) {
 		if (LodConfig.PROBE_MS <= 0) return true;
+		// (and the GPU's busy time, which a covered window's paced presents don't hide: GpuBusy, a couple of frames late)
+		long gpu = dev.cadence.metal.GpuBusy.totalNanos();
 		if (this.probeLast != 0) {
 			int k = this.probeOn ? 1 : 0;
 			this.probeNanos[k] += now - this.probeLast;
 			this.probeFrames[k]++;
+			this.probeGpu[k] += gpu - this.probeGpuLast;
 		}
+		this.probeGpuLast = gpu;
 		this.probeLast = now;
 		long window = now / (LodConfig.PROBE_MS * 1_000_000L);
 		if (window != this.probeWindow) {
@@ -1436,9 +1447,10 @@ public final class Lod {
 		if (this.probeReport == 0) this.probeReport = now;
 		if (now - this.probeReport > 5_000_000_000L && this.probeFrames[0] > 0 && this.probeFrames[1] > 0) {
 			double off = this.probeNanos[0] / 1e6 / this.probeFrames[0], on = this.probeNanos[1] / 1e6 / this.probeFrames[1];
-			System.out.printf("cadence-lod probe: on %.4f ms (%d frames, %.0f fps), off %.4f ms (%d, %.0f fps), cost %.4f ms, columns %d, rows %d%n", on,
-				this.probeFrames[1], 1000 / on, off, this.probeFrames[0], 1000 / off, on - off, this.lastColumns, this.lastR1 - this.lastR0 + 1);
-			this.probeNanos[0] = this.probeNanos[1] = this.probeFrames[0] = this.probeFrames[1] = 0;
+			double gOff = this.probeGpu[0] / 1e6 / this.probeFrames[0], gOn = this.probeGpu[1] / 1e6 / this.probeFrames[1];
+			System.out.printf("cadence-lod probe: on %.4f ms (%d frames, %.0f fps), off %.4f ms (%d, %.0f fps), cost %.4f ms, gpu on %.4f off %.4f cost %.4f ms, columns %d, rows %d%n", on,
+				this.probeFrames[1], 1000 / on, off, this.probeFrames[0], 1000 / off, on - off, gOn, gOff, gOn - gOff, this.lastColumns, this.lastR1 - this.lastR0 + 1);
+			this.probeNanos[0] = this.probeNanos[1] = this.probeFrames[0] = this.probeFrames[1] = this.probeGpu[0] = this.probeGpu[1] = 0;
 			this.probeReport = now;
 		}
 		return this.probeOn;
