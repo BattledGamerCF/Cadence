@@ -134,7 +134,7 @@ public final class Profile {
 		set.put("cadence.lod.yield", "missing:0");
 		set.put("cadence.lod.handoffPush", "0.9995");
 		String distance = ui.getProperty("farTerrain.distance", "").strip();
-		if (distance.matches("\\d{2,4}")) set.put("cadence.lod.radius", Integer.toString(Math.max(64, Math.min(2048, Integer.parseInt(distance)))));
+		if (distance.matches("\\d{2,4}")) set.put("cadence.lod.radius", Integer.toString(Math.max(dev.cadence.metal.lod.LodConfig.MIN_RADIUS, Math.min(dev.cadence.metal.lod.LodConfig.MAX_RADIUS, Integer.parseInt(distance)))));
 		switch (ui.getProperty("farTerrain.quality", "auto").strip().toLowerCase(java.util.Locale.ROOT)) {
 			case "low" -> set.put("cadence.lod.small", "true");
 			case "medium" -> set.put("cadence.lod.n", "1024");

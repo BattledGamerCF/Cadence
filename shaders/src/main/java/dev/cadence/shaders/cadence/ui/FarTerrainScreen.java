@@ -186,12 +186,13 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 	}
 
 	/** Far Distance's stops, in chunks (512: the default). */
-	private static final int[] DISTANCES = {64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048};
+	private static final int[] DISTANCES = {64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096};
 
 	/** The saved Far Distance, in chunks. */
 	static int distance() {
 		try {
-			return Math.clamp(Integer.parseInt(ShaderToggle.configValue("farTerrain.distance", "512").strip()), 64, 2048);
+			return Math.clamp(Integer.parseInt(ShaderToggle.configValue("farTerrain.distance", "512").strip()), dev.cadence.metal.lod.LodConfig.MIN_RADIUS,
+				dev.cadence.metal.lod.LodConfig.MAX_RADIUS);
 		} catch (NumberFormatException e) {
 			return 512;
 		}
@@ -232,7 +233,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		};
 		slider.active = on;
 		slider.setTooltip(on
-			? Tips.of("How far the far terrain reaches, like Render Distance for the real chunks (512 chunks: 8 km).",
+			? Tips.of("How far the far terrain reaches, like Render Distance for the real chunks (512 chunks: 8 km; up to 4,096: 65 km).",
 				"#Applies now" + (running() ? "" : " (at the next launch: Far Terrain starts then)") + ". Farther takes a little more memory and "
 					+ "time to fill in; a big change builds the far terrain again (a second or two, from the disk cache).")
 			: Tips.of("Turn Far Terrain on first (the button beside this one).",

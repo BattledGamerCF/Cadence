@@ -63,7 +63,7 @@ public final class LodConfig {
 		return curvature <= 0 ? 0 : (float) (curvature / (2 * 6_371_000.0));
 	}
 	/** The Far Distance range, in chunks. */
-	public static final int MIN_RADIUS = 64, MAX_RADIUS = 2048;
+	public static final int MIN_RADIUS = 64, MAX_RADIUS = 4096;
 	/**
 	 * How far the far terrain reaches, in chunks (to the edge of the coarsest tiles drawn): -Dcadence.lod.radius=N at launch
 	 * (Video Settings > Far Distance, saved), then live: the slider asks for a new one (requestRadius) and Lod.begin applies it,
