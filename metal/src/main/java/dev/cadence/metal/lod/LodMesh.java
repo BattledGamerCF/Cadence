@@ -723,6 +723,12 @@ final class LodMesh implements LodClip.Listener {
 		}
 	}
 
+	/** Lod's still-camera reuse: no cull this frame, so the counts adapt reads are stale; the shrink window starts over (BH6-08). */
+	void noteStill() {
+		this.peakSince = 0;
+		this.peakCand = this.peakSurv = 0;
+	}
+
 	/** A hash of the tile table as it is now (what the cull reads of the installed meshes): Lod's still-camera reuse. ~3 us. */
 	long tableHash() {
 		long h = 0;

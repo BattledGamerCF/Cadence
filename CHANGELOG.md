@@ -2,6 +2,43 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.21 / shaders 0.3.20 (2026-10-26)
+
+Multiplayer:
+- **Keep Server Chunks now saves to disk.** Every chunk the client lets go on a server (past your render distance, or the
+  world or dimension left) is stored as the server's own chunk packet, in region files under `cadence-chunks/` (512 MB at
+  most, least recently written first). Coming back, the stored chunks within your render distance are there at once, a
+  few each frame, until the server's own copies replace them. LAN test (server view distance 4, render distance 10): back
+  from the Nether, 182 chunks from disk in the first second (117 without), the same picture. Nothing in single player.
+- Measured, nothing to fix: the client's handling of the server's chunk and light packets is about 6% of the render thread
+  flying at 20 blocks a second (vanilla already paces chunk sending to how fast the client handles it); in a crowd of 200
+  mobs, entity models are half of the render thread, already on Cadence's exact whole-face writer, and the frame is GPU-bound.
+
+Far terrain:
+- **Far Distance up to 4,096 chunks** (65 km): one more clipmap level, 2 MB; 3% slower than 2,048 at 200 blocks up.
+- **Full detail reaches 440 blocks by default** (it was 190 on 8-core GPUs, where the terrain turned blocky close by). The
+  Quality button is now **Full Detail: 190 / 440 / 960 Blocks**, saying where the blockier terrain starts. Made affordable:
+  level 0's block textures and occlusion are drawn only where a block is 4 or more pixels on screen (past that, the cell's
+  color, as the coarser levels draw it), and its plants within 192 blocks: at 440 blocks, 200 blocks up on an M2 Air, the
+  far terrain's GPU time 4.0 -> 2.65 ms, the same picture.
+- **Fixed: a hole under the camera from high up.** Chunks whose ground is more than the render distance below the camera
+  aren't drawn by the near terrain, but far terrain still stepped back from them.
+- Memory: the cull's buffers shrink back after 30 s of low use (they only grew), and the mesh arena grows by a quarter
+  instead of half (Medium at 4,096 chunks: 136 MB instead of 144).
+- Not done yet: the far terrain's cull costs about 2 ms of GPU each frame the camera moves (a still camera reuses it).
+
+Fixes from the bug hunt (Sonnet, 11 found, all fixed):
+- Keep Server Chunks' disk store: leaving a world saves for at most 40 ms, farthest chunks first (the ones the server won't
+  send again), and never stops the disconnect it runs inside; what waits to be written is held to 48 MB; chunks that came
+  from disk unchanged aren't written again; the 512 MB budget is kept during a session too (and oversized-chunk files go
+  with their region); decoded chunks wait at most 64 ahead of the game; a server switch through a proxy (or a server
+  reconfiguring) saves the world it leaves and doesn't keep it in memory; a reset map or another world behind the same
+  address and seed (an earlier game time or another spawn) clears its stored chunks instead of showing them; turning the
+  setting off stops the store at once; a far teleport reads the stored chunks around where you land.
+- Full Detail's Auto stays at 190 blocks on GPUs of 6 cores or fewer (440 was only measured on 8 cores).
+- The far terrain's cull buffers no longer shrink from a long still view's counts (a few frames of missing distant land
+  after turning).
+
 ## 0.4.0-beta.20 / shaders 0.3.19 (2026-10-25)
 
 - **Keep Server Chunks** (Video Settings, on by default): on a server whose view distance is shorter than your render

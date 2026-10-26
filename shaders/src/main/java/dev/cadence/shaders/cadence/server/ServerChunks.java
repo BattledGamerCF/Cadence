@@ -44,6 +44,7 @@ public final class ServerChunks {
 		on = !on;
 		ShaderToggle.saveKey("keepServerChunks", Boolean.toString(on));
 		nextCheck = 0;
+		if (!on) ServerChunkStore.reset();  // (nothing more read or written this session, BH6-06/07)
 	}
 
 	public static int kept() {
@@ -106,6 +107,7 @@ public final class ServerChunks {
 	/** ClientChunkCache.replaceWithPacketData: the server sent the chunk again; it is live, not kept. */
 	public static void sent(int x, int z) {
 		if (!KEPT.isEmpty()) KEPT.remove(ChunkPos.pack(x, z));
+		ServerChunkStore.sentByServer(ChunkPos.pack(x, z));
 	}
 
 	/**
@@ -126,6 +128,7 @@ public final class ServerChunks {
 		Minecraft mc = Minecraft.getInstance();
 		ClientLevel level = mc.level;
 		if (level == null) {
+			ServerChunkStore.reset();
 			KEPT.clear();
 			keptIn = null;
 			serverRadius = applied = -1;
@@ -178,11 +181,20 @@ public final class ServerChunks {
 
 	/** The world or dimension about to go (Minecraft.setLevel / disconnect, ServerChunksLeaveMixin): its chunks stored. */
 	public static void leaving() {
-		Minecraft mc = Minecraft.getInstance();
-		ClientLevel level = mc.level;
-		if (level == null || mc.player == null) return;
-		int r = Math.max(applied, playerDistance(mc)) + 3;
-		ServerChunkStore.close(mc, level, mc.player.chunkPosition().x(), mc.player.chunkPosition().z(), r);
+		// (a cache: whatever goes wrong here must never stop the disconnect or the dimension change it runs inside, BH6-01)
+		try {
+			Minecraft mc = Minecraft.getInstance();
+			ClientLevel level = mc.level;
+			if (level == null || mc.player == null || !active(mc)) {
+				ServerChunkStore.reset();
+				return;
+			}
+			int r = Math.max(applied, playerDistance(mc)) + 3;
+			ServerChunkStore.close(mc, level, mc.player.chunkPosition().x(), mc.player.chunkPosition().z(), r);
+		} catch (Throwable t) {
+			System.out.println("[cadence] Keep Server Chunks: the world's chunks couldn't be stored: " + t);
+			ServerChunkStore.reset();
+		}
 	}
 
 	/** Kept chunks farther than rd from (x, z) (rd < 0: all of them) forgotten as the server asked, through vanilla's path. */

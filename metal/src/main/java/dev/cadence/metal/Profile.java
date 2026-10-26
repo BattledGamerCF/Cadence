@@ -142,8 +142,11 @@ public final class Profile {
 			// auto: by the Mac's memory (LodConfig.defaultN: Medium up to 16 GB, High above). It was Low on GPUs of 8 cores or
 			// fewer (the blockier terrain from ~190 blocks; Medium cost 4.0 ms of GPU on an 8-core M2 Air 200 blocks up); with
 			// level 0's near detail drawn only where a block is 4+ pixels (LodConfig.DETAIL_PX) Medium is 2.65 ms there, and full
-			// detail reaches 440 blocks instead of 190
+			// detail reaches 440 blocks instead of 190. The smallest GPUs (6 cores or fewer: the MacBook Neo's 5) keep Low:
+			// nothing measured there says Medium fits (BH6-03)
 			default -> {
+				int gpu = gpuCores();
+				if (gpu > 0 && gpu <= 6) set.put("cadence.lod.small", "true");
 			}
 		}
 		int cores = Runtime.getRuntime().availableProcessors();

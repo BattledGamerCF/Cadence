@@ -15,6 +15,12 @@ abstract class ServerChunksLeaveMixin {
 		ServerChunks.leaving();
 	}
 
+	// (a proxy moving the player to another server, a server reconfiguring: the level goes without disconnect or setLevel, BH6-05)
+	@Inject(method = "clearClientLevel", at = @At("HEAD"))
+	private void cadence$cleared(net.minecraft.client.gui.screens.Screen screen, CallbackInfo ci) {
+		ServerChunks.leaving();
+	}
+
 	@Inject(method = "disconnect(Lnet/minecraft/client/gui/screens/Screen;ZZ)V", at = @At("HEAD"))
 	private void cadence$disconnect(net.minecraft.client.gui.screens.Screen screen, boolean keepResourcePacks, boolean stopSound, CallbackInfo ci) {
 		ServerChunks.leaving();

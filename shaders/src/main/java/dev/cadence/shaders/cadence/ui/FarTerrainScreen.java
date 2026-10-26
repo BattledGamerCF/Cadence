@@ -53,7 +53,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 				new String[] {"Auto", "190 Blocks", "440 Blocks", "960 Blocks"},
 				Tips.of("How far the far terrain keeps full detail (1-block steps, textures, plants) before it turns blockier.",
 					"#Farther costs GPU time and memory; every level after it doubles the step size and the distance.",
-					"Auto|440 blocks on Macs with up to 16 GB, 960 above",
+					"Auto|440 blocks on Macs with up to 16 GB (190 on GPUs of 6 cores or fewer), 960 above",
 					"190 Blocks|about 150 MB: the lightest",
 					"440 Blocks|about 270 MB: as sharp as 960 on a laptop screen",
 					"960 Blocks|about 580 MB: for 5K displays")),

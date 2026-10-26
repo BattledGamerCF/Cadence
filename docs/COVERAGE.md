@@ -37,7 +37,7 @@ packs are translated the same way.
 | Memory | A garbage-collection policy for games, heap and native memory trimming, compacted chunk heaps | |
 | Startup | Cached block and bootstrap data, every block state's cache built in parallel (the same values), the crash-report warm-up and the narrator off the main thread, classes preloaded in the background, a 0.4 s loading fade | |
 | Java | Startup settings tuned for Minecraft, the optional Vivace Java build | |
-| Multiplayer | Keep Server Chunks: chunks a server forgets kept within your render distance (the server's shorter view distance no longer limits it); far terrain from explored land | Packet handling |
+| Multiplayer | Keep Server Chunks: chunks a server forgets kept within your render distance (the server's shorter view distance no longer limits it) and saved on disk for when you come back; far terrain from explored land | Packet handling (measured: about 6% of the render thread flying at 20 blocks a second) |
 | Networking, sound | | Vanilla (under 2% of any thread) |
 
 ## Other mods

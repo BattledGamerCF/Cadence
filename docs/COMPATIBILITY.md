@@ -62,8 +62,8 @@ adds it, and refuses ImmediatelyFast and Distant Horizons (they load code into I
 Tested 2026-10-25 with the release jar and the 17 mods above: everything loads, no mixin errors; with the provider (and
 without ImmediatelyFast), Essential starts on its Iris path.
 
-**Bobby** does what Keep Server Chunks does (it also saves the chunks to disk); with Bobby installed Keep Server Chunks
-stays off so the two don't both hold on to the server's forgotten chunks.
+**Bobby** does what Keep Server Chunks does (keeping the server's forgotten chunks, and saving them to disk); with Bobby
+installed Keep Server Chunks stays off so the two don't both hold on to them.
 
 Messages in the log that aren't Cadence's: "Mod appleskin provides a broken implementation of ModMenuApi" (AppleSkin's
 settings button wants Cloth Config, which isn't installed), and with an offline test account, Essential's and Realms'

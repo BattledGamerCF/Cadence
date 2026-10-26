@@ -38,6 +38,7 @@ All inside the Minecraft game directory unless noted:
 | `config/cadence.properties`, `config/cadence-shaders.properties` | Settings. |
 | `cadence-cache/` | Caches: translated shader-pack shaders (`spirv/`, `msl/`), kept under a size budget (safe to delete). |
 | `cadence-lod/<world or server>/<dimension>/` | Far Terrain's saved land, when the player turns Far Terrain on (safe to delete). |
+| `cadence-chunks/servers/<address>-<seed>/<dimension>/` | Keep Server Chunks: a multiplayer server's chunks as the client last had them (vanilla region files holding the server's own chunk packets), so a world or dimension shows its land at once when the player comes back; kept under 512 MB, least recently written first; nothing in single player (safe to delete). |
 | `replays/` | Instant Replay's videos (mp4), only when the player turns it on and presses Save Replay. |
 | `screenshots/cadence-photo-*.png` | Photo Mode's screenshots (F9), where the game's own screenshots go. |
 | `screenshots/` | Benchmark result cards when the player saves them. |

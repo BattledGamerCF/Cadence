@@ -732,7 +732,10 @@ public final class Lod {
 				long key = pk == null && STILL_REUSE ? this.cullKey(mesh, rd, pack) : 0;
 				boolean still = key != 0 && key == this.lastCullKey && this.lastCullFrame == this.frames - 1;
 				this.lastCullFrame = this.frames;
-				if (still) this.stillFrames++;
+				if (still) {
+					this.stillFrames++;
+					mesh.noteStill();
+				}
 				else {
 				// (the cull's buffers sized to the last counts, before this frame's cull and draw are encoded with them)
 				mesh.adapt(this.frames);

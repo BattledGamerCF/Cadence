@@ -52,7 +52,7 @@ The release jar (`tools/release`) nests four Fabric mods built by Gradle from fo
 | `cadence/shaderpack/` | Switching packs live (`ShaderSwitcher`), the pack catalogue (tested/heavy), quality hints. |
 | `cadence/shadow/` | Shader-pack shadows: every-2nd-frame reuse, shadow proxies, skipping casters that can't shadow anything. |
 | `cadence/hiz/`, `cadence/facecull/`, `cadence/mesh/` | Occlusion (Hi-Z), face culling, chunk meshing caches and Smart Leaves. |
-| `cadence/server/` | Keep Server Chunks (`ServerChunks`): on a server with a shorter view distance, the chunks it forgets kept within the render distance (mixins in `cadence/mixin/server/`). |
+| `cadence/server/` | Keep Server Chunks (`ServerChunks`): on a server with a shorter view distance, the chunks it forgets kept within the render distance, and stored on disk (`ServerChunkStore`: the server's own chunk packets in region files, handed back to the game's packet handler when you return; mixins in `cadence/mixin/server/`). |
 | `cadence/system/` | The Mac: cooling (`HeatControl`), On Battery, In Background, frame pacing, the memory guard, CPU core tiers, thread priorities, Cadence messages. |
 | `cadence/memory/` | Memory: the GC policy (`GcPolicy`), heap and native trimming, chunk heap compaction. |
 | `cadence/setup/` | Quick Setup (tests the Mac, recommends settings). |

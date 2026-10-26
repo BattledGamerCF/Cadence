@@ -21,6 +21,7 @@ public final class WorldClosed {
 			dev.cadence.metal.framegen.FrameGen.reset();
 			PhotoMode.cancel(net.minecraft.client.Minecraft.getInstance());
 			dev.cadence.metal.lod.LodPackFrame.worldClosed();
+			dev.cadence.shaders.cadence.server.ServerChunkStore.reset();  // (the left world's level not kept alive by the store, BH6-05)
 			dev.cadence.shaders.cadence.hiz.HiZ.release();
 			dev.cadence.shaders.runtime.ShadowRenderer.releaseWorld();
 			WorldScale.releaseWorld();
