@@ -88,6 +88,9 @@ final class LodMesh implements LodClip.Listener {
 	 */
 	long instBuf, survBuf;
 	private int instCap = LodPk.ENABLED ? MAX_INSTANCES : MAX_INSTANCES / 8, survCap = LodPk.ENABLED ? MAX_SURVIVORS : MAX_SURVIVORS / 8;
+	/** adapt: the most candidates and survivors since peakSince (nanos; 0: not started). */
+	private int peakCand, peakSurv;
+	private long peakSince;
 	private final long argsAddr;
 	private final java.util.function.LongUnaryOperator gpuBuffer;
 	private static final int MAX_LISTED = 1 << 16;
@@ -683,6 +686,29 @@ final class LodMesh implements LodClip.Listener {
 	void adapt(long frame) {
 		if (LodPk.ENABLED) return;
 		int candidates = MemoryUtil.memGetInt(this.argsAddr + 13 * 4L), survivors = MemoryUtil.memGetInt(this.argsAddr + 14 * 4L);
+		// and back down: a buffer whose counts stayed under an eighth of it for 30 s goes to four times the most it held then
+		// (it only grew: survivors stayed at 16 MB for 25-45k quads once a view at the ground had needed 600k+)
+		this.peakCand = Math.max(this.peakCand, candidates);
+		this.peakSurv = Math.max(this.peakSurv, survivors);
+		long now = System.nanoTime();
+		if (this.peakSince == 0) this.peakSince = now;
+		if (now - this.peakSince > 30_000_000_000L) {
+			int initInst = MAX_INSTANCES / 8, initSurv = MAX_SURVIVORS / 8;
+			if (this.instCap > initInst && this.peakCand < this.instCap / 8) {
+				this.buffersLater.add(new long[] {frame, this.instBuf});
+				this.instCap = Math.max(initInst, Integer.highestOneBit(Math.max(1, this.peakCand * 4 - 1)) << 1);
+				this.instBuf = this.gpuBuffer.applyAsLong((long) this.instCap * 32);
+				System.out.println("cadence-lod: mesh instances back to " + this.instCap + " (" + ((long) this.instCap * 32 >> 20) + " MB)");
+			}
+			if (this.survCap > initSurv && this.peakSurv < this.survCap / 8) {
+				this.buffersLater.add(new long[] {frame, this.survBuf});
+				this.survCap = Math.max(initSurv, Integer.highestOneBit(Math.max(1, this.peakSurv * 4 - 1)) << 1);
+				this.survBuf = this.gpuBuffer.applyAsLong((long) this.survCap * 16);
+				System.out.println("cadence-lod: mesh survivors back to " + this.survCap + " (" + ((long) this.survCap * 16 >> 20) + " MB)");
+			}
+			this.peakCand = this.peakSurv = 0;
+			this.peakSince = now;
+		}
 		if (candidates > this.instCap * 3L / 4 && this.instCap < MAX_INSTANCES) {
 			this.buffersLater.add(new long[] {frame, this.instBuf});
 			this.instCap = Math.min(MAX_INSTANCES, this.instCap * 2);
@@ -714,8 +740,9 @@ final class LodMesh implements LodClip.Listener {
 	}
 
 	private void grow(long frame) {
-		// (by half, rounded up to 16 MB: doubling left up to half the arena unused, 53 MB at 512 chunks)
-		long words = Math.min(MAX_ARENA_WORDS, (this.arenaWords * 3 / 2 + (4L << 20) - 1) & ~((4L << 20) - 1));
+		// (by a quarter, rounded up to 8 MB: doubling left up to half the arena unused, 53 MB at 512 chunks; by half, 39 MB at
+		// Medium's 4,096 chunks, 105 MB used of 144)
+		long words = Math.min(MAX_ARENA_WORDS, (this.arenaWords * 5 / 4 + (2L << 20) - 1) & ~((2L << 20) - 1));
 		long buf = LodNative.buffer(this.ctx, words * 4);
 		long addr = LodNative.contents(buf);
 		MemoryUtil.memCopy(this.arenaAddr, addr, this.arenaWords * 4);
