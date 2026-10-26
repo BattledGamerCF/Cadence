@@ -830,12 +830,38 @@ public final class CadenceSelfTest {
 						spin.setDaemon(true);
 						spin.start();
 					}
+				} else if (lower.startsWith("ahead=")) {
+					// "ahead=S": for S seconds, once a second, the chunks this client has east of the player (the direction a host's
+					// "glide=...:NAME" moves it), then the average and minimum (multiplayer: how well chunks keep up)
+					int seconds = Integer.parseInt(lower.substring(6));
+					Thread ahead = new Thread(() -> {
+						int samples = 0, sum = 0, min = Integer.MAX_VALUE;
+						for (int k = 0; k < seconds; k++) {
+							sleep(1000);
+							int n = mc.submit(() -> {
+								if (mc.player == null || mc.level == null) return 0;
+								int pcx = mc.player.chunkPosition().x(), pcz = mc.player.chunkPosition().z();
+								int rd = mc.options.getEffectiveRenderDistance(), c = 0;
+								while (c < rd && mc.level.getChunkSource().hasChunk(pcx + c + 1, pcz)) c++;
+								return c;
+							}).join();
+							samples++;
+							sum += n;
+							min = Math.min(min, n);
+						}
+						LOGGER.info("[selftest] ahead: chunks loaded ahead avg {} min {} over {} s (render distance {})",
+							String.format(Locale.ROOT, "%.1f", samples == 0 ? 0.0 : (double) sum / samples), samples == 0 ? 0 : min, samples,
+							mc.options.getEffectiveRenderDistance());
+					}, "cadence-ahead");
+					ahead.setDaemon(true);
+					ahead.start();
 				} else if (lower.startsWith("glide=")) {
 					// "glide=S", "glide=S:D" or "glide=S:D:Y": the player moves east D (0.5) blocks per tick for S seconds (runs on while
-					// the step is observed); with Y, held at height Y (a flight over the terrain; the player doesn't fly by itself)
-					String[] g = lower.substring(6).split(":");
+					// the step is observed); with Y, held at height Y (a flight over the terrain; the player doesn't fly by itself);
+					// "glide=S:D:Y:NAME" moves that player instead (a LAN guest, from the host; the guest's own "ahead=S" measures)
+					String[] g = step.substring(6).split(":");
 					int seconds = Integer.parseInt(g[0]);
-					String perTick = g.length > 1 ? g[1] : "0.5", height = g.length > 2 ? g[2] : "~";
+					String perTick = g.length > 1 ? g[1] : "0.5", height = g.length > 2 ? g[2] : "~", who = g.length > 3 ? g[3] : mc.getUser().getName();
 					var glideServer = mc.getSingleplayerServer();
 					if (glideServer != null) {
 						Thread glide = new Thread(() -> {
@@ -844,7 +870,7 @@ public final class CadenceSelfTest {
 							while (System.nanoTime() < end) {
 								// (output suppressed: a chat line per tick was most of the render thread's garbage while gliding)
 								glideServer.execute(() -> glideServer.getCommands().performPrefixedCommand(glideServer.createCommandSourceStack().withSuppressedOutput(),
-									"execute as " + mc.getUser().getName() + " at @s run tp @s ~" + perTick + " " + height + " ~"));
+									"execute as " + who + " at @s run tp @s ~" + perTick + " " + height + " ~"));
 								sleep(50);
 								if (System.nanoTime() >= nextSample) {
 									nextSample += 1_000_000_000L;

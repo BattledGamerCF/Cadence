@@ -440,7 +440,8 @@ public final class CadenceSettings {
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("On a server: your full render distance, not just the server's view distance.",
 			"#Chunks the server stops sending are kept while they're within your render distance (as they were when you last saw them; the server sends them "
-				+ "again when you come back), so the view fills in as you travel. Single player already sends everything. Uses memory for the extra chunks.")).build();
+				+ "again when you come back), so the view fills in as you travel. They're also saved on disk (cadence-chunks, up to 512 MB), so a world or "
+				+ "dimension you come back to is there at once. Single player already sends everything. Uses memory for the extra chunks.")).build();
 		onRefresh(() -> self[0].setMessage(keepChunksLabel()));
 		return self[0];
 	}

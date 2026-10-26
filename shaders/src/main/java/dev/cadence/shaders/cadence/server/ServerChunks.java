@@ -15,8 +15,9 @@ import net.minecraft.world.level.ChunkPos;
  * distance, a chunk the server forgets is kept while it is within that distance (as it was last sent: the server sends it again,
  * up to date, when the player comes back near), and the server's cap on the render distance is lifted. Far terrain still reaches
  * past it. Kept chunks are let go once farther than the render distance, before the storage moves off them, so their light data
- * goes too. Not in single player or on a LAN host (the integrated server already sends the whole render distance); off with
- * Bobby installed (it does the same).
+ * goes too. Every chunk let go (and every chunk the client has when the world or dimension is left) is also stored on disk
+ * (ServerChunkStore), and coming back the stored ones within the render distance are there at once. Not in single player or on
+ * a LAN host (the integrated server already sends the whole render distance); off with Bobby installed (it does the same).
  */
 public final class ServerChunks {
 	private static volatile boolean on = !"false".equalsIgnoreCase(ShaderToggle.configValue("keepServerChunks", "true").strip())
@@ -94,7 +95,10 @@ public final class ServerChunks {
 			keptIn = level;
 		}
 		int cx = mc.player.chunkPosition().x(), cz = mc.player.chunkPosition().z(), rd = playerDistance(mc);
-		if (Math.max(Math.abs(pos.x() - cx), Math.abs(pos.z() - cz)) > rd) return false;
+		if (Math.max(Math.abs(pos.x() - cx), Math.abs(pos.z() - cz)) > rd) {
+			store(mc, level, pos);  // (dropped as the server asks: stored first)
+			return false;
+		}
 		KEPT.add(ChunkPos.pack(pos.x(), pos.z()));
 		return true;
 	}
@@ -137,6 +141,9 @@ public final class ServerChunks {
 		int want = active(mc) ? Math.max(serverRadius, playerDistance(mc)) : serverRadius;
 		if (mc.player != null && !KEPT.isEmpty())
 			release(mc, mc.player.chunkPosition().x(), mc.player.chunkPosition().z(), active(mc) ? playerDistance(mc) : -1);
+		// (the level's stored chunks, once its storage is as big as the render distance)
+		if (active(mc) && appliedIn == level && applied >= playerDistance(mc) && mc.player != null)
+			ServerChunkStore.open(mc, level, mc.player.chunkPosition().x(), mc.player.chunkPosition().z(), playerDistance(mc));
 		if (want != applied || appliedIn != level || capLifted != active(mc)) {
 			int server = serverRadius;
 			level.getChunkSource().updateViewRadius(server);  // (raised by storageRadius)
@@ -144,6 +151,38 @@ public final class ServerChunks {
 			if (active(mc) || want != server)
 				System.out.println("[cadence] Keep Server Chunks: chunk storage for " + applied + " chunks (the server sends " + server + ")");
 		}
+	}
+
+	private static void store(Minecraft mc, ClientLevel level, ChunkPos pos) {
+		var chunk = level.getChunkSource().getChunk(pos.x(), pos.z(), net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false);
+		if (chunk != null) ServerChunkStore.save(mc, level, chunk);
+	}
+
+	/**
+	 * Every frame (FramerateCapMixin): chunks read from disk handed to the game, within ServerChunkStore's budget, each then
+	 * kept as a chunk the server forgot.
+	 */
+	public static void frame() {
+		if (!ServerChunkStore.ENABLED) return;
+		Minecraft mc = Minecraft.getInstance();
+		ClientLevel level = mc.level;
+		if (level == null || !active(mc) || appliedIn != level) return;
+		ServerChunkStore.apply(mc, level, packed -> {
+			if (keptIn != level) {
+				KEPT.clear();
+				keptIn = level;
+			}
+			KEPT.add(packed);
+		}, playerDistance(mc));
+	}
+
+	/** The world or dimension about to go (Minecraft.setLevel / disconnect, ServerChunksLeaveMixin): its chunks stored. */
+	public static void leaving() {
+		Minecraft mc = Minecraft.getInstance();
+		ClientLevel level = mc.level;
+		if (level == null || mc.player == null) return;
+		int r = Math.max(applied, playerDistance(mc)) + 3;
+		ServerChunkStore.close(mc, level, mc.player.chunkPosition().x(), mc.player.chunkPosition().z(), r);
 	}
 
 	/** Kept chunks farther than rd from (x, z) (rd < 0: all of them) forgotten as the server asked, through vanilla's path. */
@@ -159,6 +198,7 @@ public final class ServerChunks {
 				ChunkPos pos = ChunkPos.unpack(it.nextLong());
 				if (rd >= 0 && Math.max(Math.abs(pos.x() - x), Math.abs(pos.z() - z)) <= rd) continue;
 				it.remove();
+				if (mc.level != null) store(mc, mc.level, pos);
 				connection.handleForgetLevelChunk(new ClientboundForgetLevelChunkPacket(pos));
 			}
 		} finally {
