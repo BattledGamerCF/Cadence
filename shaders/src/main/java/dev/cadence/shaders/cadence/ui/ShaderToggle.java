@@ -153,6 +153,7 @@ public final class ShaderToggle {
 	 * the last one back. False when there is none to bring back (K then opens the list).
 	 */
 	public static boolean setEnabled(boolean on) {
+		if (!CadencePackGate.metalBackend()) return false;  // (no packs this session: the config stays as it is, BH5-11)
 		String now = selectedPack();
 		if (!on) {
 			if (!now.isEmpty()) {

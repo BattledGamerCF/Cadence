@@ -18,7 +18,7 @@ def main():
     p.add_argument('--metal', required=True)
     p.add_argument('--fps', required=True)
     p.add_argument('--shaders')
-    p.add_argument('--iris', help='the Iris API answered by Cadence (mod iris 0.0.1+cadence; a real Iris replaces it)')
+    p.add_argument('--iris', help='Cadence Iris API (mod cadence_iris_api: Iris\'s public API answered by Cadence)')
     p.add_argument('--out', required=True)
     p.add_argument('--native', action='store_true', help='the experimental native build: cadence/native/ENABLED (NativeShaders on by default), version +native')
     a = p.parse_args()

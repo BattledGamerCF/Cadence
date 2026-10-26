@@ -24,6 +24,8 @@ public final class ServerChunks {
 	/** The server's view distance as it sent it (-1 before any), and the storage radius applied for it in appliedIn. */
 	private static int serverRadius = -1, applied = -1;
 	private static ClientLevel appliedIn;
+	/** Whether Options' server render distance was last set with the cap lifted (0), so a change of the setting puts it back (BH5-05). */
+	private static boolean capLifted;
 	private static final LongOpenHashSet KEPT = new LongOpenHashSet();
 	private static ClientLevel keptIn;
 	/** A forget Cadence itself asks for (a kept chunk let go): vanilla's path, not kept again. */
@@ -77,7 +79,8 @@ public final class ServerChunks {
 	 */
 	public static int serverRenderDistance(int distance) {
 		if (distance > 0) serverRadius = distance;
-		return distance > 0 && active(Minecraft.getInstance()) ? 0 : distance;
+		capLifted = distance > 0 && active(Minecraft.getInstance());
+		return capLifted ? 0 : distance;
 	}
 
 	/** ClientPacketListener.handleForgetLevelChunk, on the render thread: true keeps the chunk (the forget is skipped). */
@@ -123,6 +126,7 @@ public final class ServerChunks {
 			keptIn = null;
 			serverRadius = applied = -1;
 			appliedIn = null;
+			capLifted = false;
 			return;
 		}
 		if (keptIn != null && keptIn != level) {
@@ -133,7 +137,7 @@ public final class ServerChunks {
 		int want = active(mc) ? Math.max(serverRadius, playerDistance(mc)) : serverRadius;
 		if (mc.player != null && !KEPT.isEmpty())
 			release(mc, mc.player.chunkPosition().x(), mc.player.chunkPosition().z(), active(mc) ? playerDistance(mc) : -1);
-		if (want != applied || appliedIn != level) {
+		if (want != applied || appliedIn != level || capLifted != active(mc)) {
 			int server = serverRadius;
 			level.getChunkSource().updateViewRadius(server);  // (raised by storageRadius)
 			mc.options.setServerRenderDistance(server);  // (the cap: lifted or put back)

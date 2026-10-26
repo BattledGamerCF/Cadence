@@ -7,6 +7,9 @@ import java.nio.ByteBuffer;
 import java.util.function.IntFunction;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.api.v0.IrisApiConfig;
+import net.irisshaders.iris.api.v0.IrisProgram;
+import net.irisshaders.iris.api.v0.IrisShadowProgram;
+import net.irisshaders.iris.api.v0.IrisShadowRenderCallback;
 import net.irisshaders.iris.api.v0.IrisTextVertexSink;
 import net.minecraft.client.Minecraft;
 
@@ -41,6 +44,7 @@ public final class CadenceIrisApi implements IrisApi, IrisApiConfig {
 		}
 	}
 
+	/** 2, as Iris states it (the v0.3 / v0.4 methods are declared too). */
 	@Override
 	public int getMinorApiRevision() {
 		return 2;
@@ -67,9 +71,13 @@ public final class CadenceIrisApi implements IrisApi, IrisApiConfig {
 		}
 	}
 
+	/**
+	 * The text itself rather than Iris's key (options.iris.shaderPackSelection): callers make a translatable component of it,
+	 * which shows a missing key as written, and mod language files only load with Fabric API, which Cadence doesn't need.
+	 */
 	@Override
 	public String getMainScreenLanguageKey() {
-		return "options.iris.shaderPackSelection";
+		return "Shader Packs...";
 	}
 
 	@Override
@@ -91,12 +99,41 @@ public final class CadenceIrisApi implements IrisApi, IrisApiConfig {
 		}
 	}
 
+	/**
+	 * Iris draws a pipeline it is told about with the given pack program. Cadence's packs choose the program for every
+	 * pipeline themselves (by the pipeline's shader); a mod's own pipeline is drawn as its shader says. No-op.
+	 */
+	@Override
+	public void assignPipeline(com.mojang.renderpearl.api.pipeline.RenderPipeline pipeline, IrisProgram program) {
+	}
+
+	@Override
+	public void assignPipelineShadow(com.mojang.renderpearl.api.pipeline.RenderPipeline pipeline, IrisShadowProgram program) {
+	}
+
+	/** Accepted and kept; Cadence's shadow pass doesn't call mods' callbacks (a mod's own shadow drawing doesn't show). */
+	@Override
+	public void registerShadowRenderCallback(IrisShadowRenderCallback callback) {
+		if (callback != null) SHADOW_CALLBACKS.add(callback);
+	}
+
+	/** Cadence keeps the game's depth convention while a pack draws (the pack's own passes get theirs translated). */
+	@Override
+	public boolean isReverseZDuringShaders() {
+		return false;
+	}
+
+	private static final java.util.List<IrisShadowRenderCallback> SHADOW_CALLBACKS = new java.util.concurrent.CopyOnWriteArrayList<>();
+
 	@Override
 	public boolean areShadersEnabled() {
 		return isShaderPackInUse();
 	}
 
-	/** Shaders off (the pack remembered) or back on with the last pack, as the K key; on the render thread. */
+	/**
+	 * Shaders off (the pack remembered) or back on with the last pack, as the K key; on the render thread. Unlike Iris it returns
+	 * before the pack is running (packs load in the background): isShaderPackInUse turns true when it draws.
+	 */
 	@Override
 	public void setShadersEnabledAndApply(boolean enabled) {
 		if (SET_ENABLED == null) return;

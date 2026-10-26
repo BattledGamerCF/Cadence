@@ -119,56 +119,48 @@ public final class CadenceSettings {
 		o.cutoutLeaves().set(false);
 		o.cloudStatus().set(net.minecraft.client.CloudStatus.OFF);
 		o.entityDistanceScaling().set(Math.min(o.entityDistanceScaling().get(), MAX_FPS_ENTITY_DISTANCE));
+		// (what Max FPS set: leaving it restores only the options still at these values, BH5-07)
+		ShaderToggle.saveKey("maxFps.setEntityDistance", Double.toString(o.entityDistanceScaling().get()));
 		o.save();
-		farPlants();
 		if (rebuild && net.minecraft.client.Minecraft.getInstance().level != null) net.minecraft.client.Minecraft.getInstance().levelExtractor.allChanged();
 	}
 
 	/**
-	 * Max FPS's entity distance (vanilla's Entity Distance option, 75%) and Far Plants (OwnTerrain.farPlantBlocks: grass, flowers
-	 * and ferns past 96 blocks not drawn; glass and every other cutout face still are). M2 Air, fullscreen, render and simulation
-	 * distance 16, in-run A/B: entity distance 100% -> 75% GPU -0.10 ms, render thread -0.06 ms; far plants GPU -0.04 ms, no
-	 * difference in the screenshots (a plant at 96 blocks is a few pixels, mostly behind the terrain in front of it).
+	 * Max FPS's entity distance (vanilla's Entity Distance option, at most 75%). M2 Air, fullscreen, render and simulation
+	 * distance 16, in-run A/B: 100% -> 75% GPU -0.10 ms, render thread -0.06 ms (mobs are the render thread's largest cost there).
 	 */
 	private static final double MAX_FPS_ENTITY_DISTANCE = 0.75;
-	private static final float FAR_PLANTS_BLOCKS = 96;
 
-	/** Far Plants on while Max FPS's looks are (the saved leaves mark them); at launch (ShaderLoaderMod) and on every preset change. */
-	public static void farPlants() {
-		boolean on = !ShaderToggle.configValue("maxFps.leaves", "").strip().isEmpty();
-		try {
-			dev.cadence.metal.own.OwnTerrain.farPlantBlocks = on && System.getProperty("cadence.own.farPlants") == null ? FAR_PLANTS_BLOCKS
-				: Float.parseFloat(System.getProperty("cadence.own.farPlants", "0"));
-		} catch (NumberFormatException | LinkageError e) {
-			// (a bad -D value or no Metal module: plants as usual)
-		}
-	}
-
-	/** Leaving Max FPS for another preset: the player's leaves, clouds and entity distance as they were before it. */
+	/**
+	 * Leaving Max FPS for another preset: the player's leaves, clouds and entity distance as they were before it, each only if
+	 * it is still what Max FPS set (one the player changed since stays as they set it, BH5-07).
+	 */
 	private static void restoreLooks() {
 		String leaves = ShaderToggle.configValue("maxFps.leaves", "").strip(), clouds = ShaderToggle.configValue("maxFps.clouds", "").strip();
 		if (leaves.isEmpty()) return;
 		var o = net.minecraft.client.Minecraft.getInstance().options;
-		boolean cut = Boolean.parseBoolean(leaves), rebuild = o.cutoutLeaves().get() != cut;
-		o.cutoutLeaves().set(cut);
-		try {
-			o.cloudStatus().set(net.minecraft.client.CloudStatus.valueOf(clouds));
-		} catch (IllegalArgumentException e) {
-			o.cloudStatus().set(net.minecraft.client.CloudStatus.FANCY);
+		boolean rebuild = false;
+		if (!o.cutoutLeaves().get()) {
+			boolean cut = Boolean.parseBoolean(leaves);
+			rebuild = cut;
+			o.cutoutLeaves().set(cut);
 		}
-		String entities = ShaderToggle.configValue("maxFps.entityDistance", "").strip();
-		if (!entities.isEmpty()) {
+		if (o.cloudStatus().get() == net.minecraft.client.CloudStatus.OFF) {
 			try {
-				o.entityDistanceScaling().set(Double.parseDouble(entities));
-			} catch (NumberFormatException e) {
-				o.entityDistanceScaling().set(1.0);
+				o.cloudStatus().set(net.minecraft.client.CloudStatus.valueOf(clouds));
+			} catch (IllegalArgumentException e) {
+				o.cloudStatus().set(net.minecraft.client.CloudStatus.FANCY);
 			}
 		}
+		String entities = ShaderToggle.configValue("maxFps.entityDistance", "").strip(), set = ShaderToggle.configValue("maxFps.setEntityDistance", "").strip();
+		try {
+			if (!entities.isEmpty() && (set.isEmpty() || Math.abs(o.entityDistanceScaling().get() - Double.parseDouble(set)) < 1e-6))
+				o.entityDistanceScaling().set(Double.parseDouble(entities));
+		} catch (NumberFormatException e) {
+			// (an edited config: entity distance stays as it is)
+		}
 		o.save();
-		ShaderToggle.saveKey("maxFps.leaves", "");
-		ShaderToggle.saveKey("maxFps.clouds", "");
-		ShaderToggle.saveKey("maxFps.entityDistance", "");
-		farPlants();
+		for (String key : new String[] {"maxFps.leaves", "maxFps.clouds", "maxFps.entityDistance", "maxFps.setEntityDistance"}) ShaderToggle.saveKey(key, "");
 		if (rebuild && net.minecraft.client.Minecraft.getInstance().level != null) net.minecraft.client.Minecraft.getInstance().levelExtractor.allChanged();
 	}
 

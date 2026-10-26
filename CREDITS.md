@@ -15,6 +15,12 @@ Cadence is a **fork**. It is built from two open-source projects, and it would n
 
 The idea behind the present-queue change (`cadence.metal.presentQueue`) came from ByteV0rtex (noahdunnagan/mcopt#2).
 
+The Iris API module (`irisapi/`) declares the interfaces of [Iris](https://github.com/IrisShaders/Iris)'s public API
+(`net.irisshaders.iris.api.v0`: `IrisApi`, `IrisApiConfig`, `IrisTextVertexSink`) with their published names and
+signatures, so that mods written against that API work with Cadence; the names and the API's design are the Iris
+project's (IrisShaders, LGPL-3.0). No Iris source code is copied: the declarations were written from the API's signatures,
+and every implementation (`dev.cadence.irisapi`) is Cadence's own, Apache-2.0.
+
 ## Licenses
 
 * **Cadence as a whole is distributed under the Apache License, Version 2.0** (`LICENSE`). Apache-2.0 was chosen because

@@ -55,6 +55,16 @@ Zoomify, EntityCulling" (the places where those mods change the same code as Cad
 Not compatible by design: **Sodium** (and Iris, which needs it). Cadence replaces both, and Fabric refuses to start with
 both installed, naming the two mods.
 
+**Mods that use the Iris API** (`net.irisshaders.iris.api.v0`) work: Cadence Iris API, nested in Cadence's jar, answers it
+from Cadence's shader packs without claiming the mod id `iris` ([API.md](API.md#the-iris-api)). Xaero's Minimap finds it
+("Iris found!"). Mods that check for the mod id see no Iris; the optional `cadence-iris-provider` jar from the release zip
+adds it, and refuses ImmediatelyFast and Distant Horizons (they load code into Iris's internals or take Iris-only paths).
+Tested 2026-10-25 with the release jar and the 17 mods above: everything loads, no mixin errors; with the provider (and
+without ImmediatelyFast), Essential starts on its Iris path.
+
+**Bobby** does what Keep Server Chunks does (it also saves the chunks to disk); with Bobby installed Keep Server Chunks
+stays off so the two don't both hold on to the server's forgotten chunks.
+
 Messages in the log that aren't Cadence's: "Mod appleskin provides a broken implementation of ModMenuApi" (AppleSkin's
 settings button wants Cloth Config, which isn't installed), and with an offline test account, Essential's and Realms'
 sign-in errors.
@@ -70,7 +80,7 @@ Essential didn't load. Now, when any other mod has a pre-launch step, Cadence's 
 ## What still doesn't work
 
 - Mods that draw with OpenGL directly: Cadence's renderer is Metal. Mods that use Minecraft's own rendering API work.
-- Sodium and Iris: Cadence replaces them.
+- Sodium and Iris: Cadence replaces them. Mods that need Iris's internals (beyond its API) don't load without Iris.
 
 ## Options
 

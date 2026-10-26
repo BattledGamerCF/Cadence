@@ -1,9 +1,9 @@
 {
 	"schemaVersion": 1,
-	"id": "iris",
+	"id": "cadence_iris_api",
 	"version": "${version}",
-	"name": "Iris API (Cadence)",
-	"description": "The Iris API (net.irisshaders.iris.api.v0) answered by Cadence's own shader packs, for mods that ask Iris whether a pack is on. Not Iris: a real Iris, if installed, replaces it.",
+	"name": "Cadence Iris API",
+	"description": "Iris's public API (net.irisshaders.iris.api.v0) answered by Cadence's own shader packs, for mods that use it. It doesn't claim to be Iris: mods that check for the mod id iris see none (cadence-iris-provider, a separate optional jar, adds that).",
 	"license": "Apache-2.0",
 	"custom": { "modmenu": { "parent": "cadence", "badges": ["library"] } },
 	"authors": ["Cadence authors"],

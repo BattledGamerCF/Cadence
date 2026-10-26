@@ -6,7 +6,8 @@ OpenGL directly (LWJGL's `GL11`…`GL46` classes, `GlStateManager`) have no Open
 
 The API in `dev.cadence.api` (in the main Cadence jar) is how another mod fills that gap. An addon can:
 
-- see where it is running: `Cadence.isMetal()`, `Cadence.shaderPackActive()`, `Cadence.farTerrainReach()`;
+- see where it is running: `Cadence.isMetal()`, `Cadence.shaderPackActive()`, `Cadence.shaderPack()`,
+  `Cadence.renderingShadowPass()`, `Cadence.sunPathRotation()`, `Cadence.farTerrainReach()`;
 - draw at fixed points of every frame (`Cadence.onRender`), either with Minecraft's backend-neutral render passes or with Metal
   directly (`RenderContext.metal()` gives the device, command queue, command buffer, open render encoder and main textures);
 - ask Cadence to leave parts of the game on their vanilla code path for a mod that hooks the same code (`stepAside`, below).
@@ -89,6 +90,38 @@ behaviour that depends on vanilla timing), a mod can ask in its `fabric.mod.json
 
 `Cadence.steppedAside()` lists what is in effect and for which mods. Cadence's settings screen shows the same.
 
+## The Iris API
+
+Cadence's jar nests **Cadence Iris API** (mod id `cadence_iris_api`), which declares Iris's public API,
+`net.irisshaders.iris.api.v0`, as Iris's 26.1 branch has it (`IrisApi` with the v0.3 and v0.4 additions, `IrisApiConfig`,
+`IrisProgram`, `IrisShadowProgram`, `IrisShadowRenderCallback`, `IrisTextVertexSink`), and answers it from Cadence:
+
+| `IrisApi` | Cadence's answer |
+|---|---|
+| `isShaderPackInUse()` | `Cadence.shaderPackActive()` |
+| `isRenderingShadowPass()` | `Cadence.renderingShadowPass()` |
+| `getSunPathRotation()` | the active pack's `sunPathRotation` in degrees, 0 without a pack |
+| `openMainIrisScreenObj(parent)` | Cadence's Shader Packs screen (returned, not opened, as Iris does) |
+| `getMainScreenLanguageKey()` | the text "Shader Packs..." (a translatable component of it shows as written, with or without Fabric API) |
+| `getConfig().areShadersEnabled()` | whether a pack is drawing now |
+| `getConfig().setShadersEnabledAndApply(b)` | off and back on as the K key does, on the render thread; the pack then loads in the background (`isShaderPackInUse` turns true when it draws) |
+| `createTextVertexSink(n, provider)` | quads in the game's `POSITION_COLOR_TEX_LIGHTMAP` format |
+| `assignPipeline`, `assignPipelineShadow` | accepted, no effect: Cadence's packs pick the program for every pipeline themselves |
+| `registerShadowRenderCallback` | accepted and kept; Cadence's shadow pass doesn't call it |
+| `isReverseZDuringShaders()` | false |
+
+It does **not** claim the mod id `iris`: mods that find Iris by its classes (Xaero's Minimap) or call the API directly use it;
+mods that first check `FabricLoader.isModLoaded("iris")` see no Iris. That is deliberate. With an `iris` mod present, other
+mods apply mixins into Iris's internals (ImmediatelyFast) or take paths for Iris's own renderer (Distant Horizons), which
+fail or misbehave without it.
+
+For a mod that needs to see Iris installed, the release zip has an optional **`cadence-iris-provider`** jar: mod id `iris`,
+version `1.11.4+cadence` (above the versions mods treat as an old Iris), depending on Cadence Iris API, and declaring that it
+breaks ImmediatelyFast and Distant Horizons (Fabric then names the conflict instead of starting into a crash). Tested with
+the 17-mod compatibility set (Essential takes its Iris path and starts normally). A real Iris needs Sodium, which Cadence
+replaces; Cadence tells the provider from a real Iris by the `+cadence` version.
+
 ## Version
 
-`Cadence.API_VERSION` is 1. Additions keep the number; a change or removal of anything raises it.
+`Cadence.API_VERSION` is 1. Additions keep the number; a change or removal of anything raises it. (`renderingShadowPass()`
+and `sunPathRotation()` were added in 0.4.0-beta.20.)

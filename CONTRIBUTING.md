@@ -5,7 +5,7 @@ preset you used, a screenshot, and `logs/latest.log`.
 
 ## Building
 
-You need a JDK 25. `./gradlew build` builds the three mods; `tools/release` makes the release jar and zip in `dist/`.
+You need a JDK 25. `./gradlew build` builds the four mods (with the Iris API module); `tools/release` makes the release jar and zip in `dist/`.
 The native part (`metal/src/main/native`, Objective-C) is compiled by the Gradle build with the Xcode command-line tools
 (`xcode-select --install`).
 

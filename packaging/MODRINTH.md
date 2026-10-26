@@ -10,11 +10,13 @@ Sodium, Iris, Lithium, Entity Culling, Distant Horizons and dynamic lights, buil
 
 - 🍎 **Native Metal renderer** for Apple Silicon Macs (M1 and newer): no OpenGL translation
 - ⚡ **Very high fps without shaders:** about 1,600 fps at 1080p (render distance 6), 1,080 at render distance 12, on an
-  M2 MacBook Air
+  M2 MacBook Air; with the Max FPS preset fullscreen, 2,155 fps (distance 6) and 1,391 (render and simulation distance 16)
 - 🌅 **Shader packs on the base Macs.** OptiFine/Iris-format packs translated to Metal and cached; **Auto resolution**
   with Apple's MetalFX, **Faster Shadows** and **Heat Control** keep most packs at 60 fps on an 8-core M2 MacBook Air
-- 🧱 **Replaces the Sodium stack:** Sodium (renderer, GPU culling), Iris (shaders), Lithium (Cadence Logic, exact),
-  Entity Culling, Distant Horizons (Far Terrain, experimental), dynamic lights, an fps counter, all in Video Settings
+- 🧱 **Replaces the Sodium stack:** Sodium (renderer, GPU culling), Iris (shaders, and its API for other mods), Lithium
+  (Cadence Logic, exact), Entity Culling, Bobby (Keep Server Chunks), Distant Horizons (Far Terrain, experimental), dynamic
+  lights, an fps counter, all in Video Settings
+- 🎞️ **Frame Generation, Instant Replay, Photo Mode,** a Performance Overlay and battery time left
 - 🏁 **Render Max FPS:** a playable, lit 320 x 180 view at up to 66,000 frames rendered a second (Cadence's run at the
   Minecraft FPS record)
 - 🧩 **Plays well with other mods.** Where another mod hooks code Cadence replaces, Cadence uses Minecraft's own code in
@@ -36,8 +38,8 @@ preset. Shader packs are not included; download them from their authors.
 2. Put the Cadence jar in your `mods` folder, and shader packs in `shaderpacks`
 3. Choose a pack in **Options → Video Settings** (Cadence: Shaders); **Shader Pack Settings** has its options
 
-**Remove Sodium, Iris, Lithium and Entity Culling:** Cadence replaces them. Mods that draw with OpenGL directly won't work while the Metal
-renderer is on.
+**Remove Sodium, Iris, Lithium, Entity Culling and Bobby:** Cadence replaces them. Mods that use Iris's API work (Cadence
+answers it); mods that draw with OpenGL directly won't work while the Metal renderer is on.
 
 ## Credits
 

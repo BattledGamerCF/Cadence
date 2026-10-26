@@ -2,6 +2,42 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.20 / shaders 0.3.19 (2026-10-25)
+
+- **Keep Server Chunks** (Video Settings, on by default): on a server whose view distance is shorter than your render
+  distance, the chunks it stops sending are kept while they're within your render distance (as they were when you last saw
+  them; the server sends them again, up to date, when you come back), and the server's cap on your render distance is
+  lifted, so the view fills to your full distance as you travel. Kept chunks are let go once they're farther than your
+  render distance. Off in single player and on a LAN host (they already send everything) and with Bobby installed. LAN test,
+  server view distance 4, guest render distance 10: 117 chunks loaded, 184 after moving (67 kept); turned off, back to 117
+  and the server's distance.
+- **The Iris API** for other mods: Cadence's jar nests Cadence Iris API, which declares Iris's public API
+  (`net.irisshaders.iris.api.v0`, as Iris's 26.1 branch has it) and answers it from Cadence's shader packs: whether a pack
+  is on, whether its shadow pass is drawing, its sun angle, the shader screen, shaders off and on. It doesn't claim the mod
+  id `iris` (mods that see an `iris` load code into Iris's internals); the optional `cadence-iris-provider` jar in the
+  release zip does, for mods that need to see Iris installed, and refuses ImmediatelyFast and Distant Horizons. Tested with
+  the 17-mod compatibility set; Xaero's Minimap finds it. Cadence API additions: `renderingShadowPass()`, `sunPathRotation()`
+  (docs/API.md).
+- **Faster startup**: about 15% sooner in a world. The game's block-state caches are built in parallel (the same values:
+  the digest of every cache matches vanilla's across runs) and the crash-report warm-up runs on a background thread, now on
+  by default (M2 Air, alternating launches, JVM start to in a world: 11.99 s -> 10.21 s, three each). The loading screen
+  fades out in 0.4 s and takes clicks 0.8 s after loading instead of 2 s. (The block-cache check had looked like a mismatch:
+  it hashed fluid states by a text that holds a per-run identity hash.)
+- **Max FPS preset at render and simulation distance 16**: 1,146 -> 1,391 fps fullscreen (M2 Air, cooled runs). The preset
+  now also sets Entity Distance to 75% (saved, and restored by another preset unless you changed it since: GPU -0.10 ms,
+  render thread -0.06 ms at simulation distance 16, where mobs are the render thread's largest cost). 2,000 fps at distance
+  16 isn't reached: terrain still costs about 0.5 ms there, and the next step, merging block faces into larger quads, is a
+  renderer project of its own. Far Plants (`-Dcadence.own.farPlants=96`: the cull leaves out far grass and flowers) is
+  opt-in only: it also hid far wall torches, chains, sloped rails and fire, for 0.04 ms.
+- Leaving the Max FPS preset puts back only the leaves, clouds and entity distance you haven't changed since choosing it.
+- Fixes from the final bug hunt (Sonnet, 11 found, all fixed or designed out): Essential would have crashed on the first
+  Iris API version (missing `IrisProgram` / `assignPipeline`; the API now matches Iris's current one); claiming the mod id
+  `iris` made other mods take Iris-only paths (now the optional provider's job); turning Keep Server Chunks off now puts
+  the server's render-distance cap back; the startup hooks can no longer stop a launch after a game patch (they fall back to
+  vanilla); the Iris API's shadow-pass flag clears on a failed frame; turning shaders on through the Iris API without the
+  Metal renderer no longer rewrites the shader config.
+- Measured, not built: a Java AOT cache (about 1.3 s faster to a world, but 261 MB and only the launcher can turn it on).
+
 ## 0.4.0-beta.19 / shaders 0.3.18 (2026-10-25)
 
 - **Frame Generation** (Video Settings: Smooth, Responsive, Off), with and without shader packs: a frame made between each two

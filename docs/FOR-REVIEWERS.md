@@ -6,8 +6,10 @@ repository; the release jar is built from it by `tools/release` (Gradle plus `to
 ## What it is
 
 A client-side performance mod for Minecraft 26.3 (Fabric) on Apple Silicon Macs: Minecraft drawn with Apple's Metal API
-instead of OpenGL, plus engine optimizations, shader-pack support and a far-terrain renderer. Three mods in one jar
-(`cadence`, `cadence_shaders`, `cadence_hud`; docs/ARCHITECTURE.md). It runs only on macOS on Apple Silicon and declares
+instead of OpenGL, plus engine optimizations, shader-pack support and a far-terrain renderer. Four mods in one jar
+(`cadence`, `cadence_shaders`, `cadence_hud`, `cadence_iris_api`: Iris's public API answered by Cadence for mods that use
+it; docs/ARCHITECTURE.md). The release zip also holds an optional jar with no code, `cadence-iris-provider` (mod id `iris`,
+`1.11.4+cadence`), for mods that check for Iris by its mod id. It runs only on macOS on Apple Silicon and declares
 `environment: client`.
 
 ## Native code
@@ -54,4 +56,6 @@ Minecraft's own code when another mod hooks the same method.
 ## Licences and origins
 
 Apache-2.0 (Cadence, derived from mcopt by Noah Dunnagan, Apache-2.0) and MIT (the shader loader, derived from Kausik
-Velaga's Minecraft Shader Loader). LICENSE, NOTICE and CREDITS.md list every upstream and its licence.
+Velaga's Minecraft Shader Loader). LICENSE, NOTICE and CREDITS.md list every upstream and its licence. The `irisapi/` module
+declares Iris's public API interfaces (`net.irisshaders.iris.api.v0`) again from their published names and signatures, for
+compatibility; it contains no Iris code (CREDITS.md).

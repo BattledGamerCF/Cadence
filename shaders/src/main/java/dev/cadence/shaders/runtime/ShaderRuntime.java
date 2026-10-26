@@ -464,6 +464,7 @@ public final class ShaderRuntime implements AutoCloseable {
       active = true;
       hand = false;
       shadow = false;
+      dev.cadence.metal.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
       deferred = false;
       dev.cadence.shaders.cadence.render.DistantTerrain.want(programs.distantTerrain && !distantFailed);
       // Cadence: the pack's images and buffer objects (sized for this frame, cleared where asked), its setup programs once
@@ -523,10 +524,10 @@ public final class ShaderRuntime implements AutoCloseable {
   }
 
   public void endShadow() {
+    dev.cadence.metal.ApiHooks.shadowPass = false; // (first: suspend() can throw, BH5-10)
     suspend();
     profile("shadow.end");
     shadow = false;
-    dev.cadence.metal.ApiHooks.shadowPass = false;
     frameBuffers.clear();
     execute("shadowcomp");
     execute("prepare");
@@ -658,6 +659,7 @@ public final class ShaderRuntime implements AutoCloseable {
       active = false;
       hand = false;
       shadow = false;
+      dev.cadence.metal.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
       OriginalPipelines.prune();
     }
   }
@@ -669,6 +671,7 @@ public final class ShaderRuntime implements AutoCloseable {
     active = false;
     hand = false;
     shadow = false;
+    dev.cadence.metal.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
   }
 
   public boolean intercept(RenderPassDescriptor descriptor) {

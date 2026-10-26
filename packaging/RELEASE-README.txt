@@ -1,7 +1,7 @@
 Cadence @VERSION@
 
 A Minecraft performance mod for Apple Silicon Macs: Minecraft drawn with Metal, shader packs on it, and Cadence's own
-versions of Sodium, Iris, Lithium, Entity Culling, far terrain and dynamic lights in one jar. On an M2 MacBook Air: about
+versions of Sodium, Iris, Lithium, Entity Culling, Bobby, far terrain and dynamic lights in one jar. On an M2 MacBook Air: about
 1,600 fps without shaders (1080p, render distance 6), most shader packs at 60 fps with Auto resolution. Cadence is a fork of mcopt by Noah Dunnagan
 (Apache-2.0) and of the Shader Loader of minecraft-metal-renderer by Kausik Velaga (MIT); see CREDITS.md. BETA: expect the occasional bug, and back up your
 worlds.
@@ -23,7 +23,10 @@ Install
 
 No Sodium needed: Cadence won't start alongside it (Fabric says so), so take Sodium out of the mods folder.
 Fabric API isn't required; keep it if your other mods need it.
-Mods that require Sodium (for example Better Block Entities or Iris) can't be used with this build.
+Mods that require Sodium (for example Better Block Entities or Iris itself) can't be used with this build. Mods that use
+Iris's API (to ask whether shaders are on) work: Cadence answers it. A mod that only uses it once it sees Iris installed
+needs the optional cadence-iris-provider jar from this zip in the mods folder too (not with ImmediatelyFast or Distant
+Horizons, which Fabric will then name).
 Distant Horizons runs on the Metal renderer next to Cadence's own terrain. With DH set to its OpenGL renderer, Cadence
 switches its renderer off for it.
 

@@ -3,15 +3,16 @@
 A map of the source tree for anyone reading the code for the first time. Start here, then open the package you need: each
 Cadence package begins with a short description (package-info.java or the first class's doc comment).
 
-## The three mods
+## The four mods
 
-The release jar (`tools/release`) nests three Fabric mods built by Gradle from three modules:
+The release jar (`tools/release`) nests four Fabric mods built by Gradle from four modules:
 
 | Module | Mod id | What it is |
 |---|---|---|
 | `metal/` | `cadence` | The Metal renderer and everything that runs below Minecraft's rendering: the backend, the native library, the fast terrain path, game-logic optimizations, startup and Java settings. Forked from mcopt (Apache-2.0). |
 | `shaders/` | `cadence_shaders` | Shader packs on Metal (forked from the MIT Shader Loader), and Cadence's own features that need the game's screens and settings: Video Settings, Auto resolution, cooling, the benchmark, the GC policy. |
 | `fpshud/` | `cadence_hud` | The frame-rate counter in the corner. |
+| `irisapi/` | `cadence_iris_api` | Iris's public API (`net.irisshaders.iris.api.v0`) declared again and answered from Cadence (`dev.cadence.irisapi.CadenceIrisApi`, reached by name, so it builds without the other modules). It doesn't claim the id `iris`; the optional provider jar (`packaging/iris-provider`, made by `tools/release`) does, and `Profile.realIris` tells it from a real Iris by its `+cadence` version. |
 
 `metal` never depends on `shaders`; `shaders` uses `metal` (MacSystem, Native, the backend's hooks).
 
@@ -20,7 +21,7 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 | Where | What |
 |---|---|
 | `dev.cadence.metal` (root) | The Metal backend: Minecraft's `renderpearl` device/encoder/buffer/texture API implemented on Metal (`MetalDevice`, `MetalEncoder`, `MetalRenderPass`, `MetalBuffer`, `MetalTexture`, `MetalSurface`), `Native` (every native call, through Java's foreign-function API), `MacSystem` (thermal state, battery, fans, display, sysctl), `Profile` and `JvmDefaults` (startup settings), `Vivace` (restarting on the Vivace Java build when the player chose it), `PlatformCheck` (Apple Silicon, macOS, Rosetta). Kept as one package: the backend's classes share package-private state, as in mcopt. |
-| `own/` | Cadence's own terrain renderer: chunk meshes in one arena, GPU culling (`OwnFrag`, Hi-Z), the opaque/cutout draw path, dynamic lights. |
+| `own/` | Cadence's own terrain renderer: chunk meshes in one arena, GPU culling (`OwnFrag`, Hi-Z; the opt-in Far Plants, `OwnTerrain.farPlantBlocks`, is a test in the cull), the opaque/cutout draw path, dynamic lights. |
 | `lod/` | Far terrain (experimental, off by default). GPU code: `src/main/resources/cadence/lod/columns.metal`. |
 | `record/` | Render Max FPS (Record Mode): the compute-only renderer for the FPS record (`Record`, `RecordWorld`, `RecordHud`); GPU code `src/main/resources/cadence/record/record.metal`, native `mcrecord.m`, offline bench `tools/record_bench.m` (docs/RENDER-MAX-FPS.md). |
 | `chunk/`, `chunkio/` | Opt-in chunk pipeline and save-file changes (each behind a `-Dcadence.chunk.*` switch). |
@@ -51,6 +52,7 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 | `cadence/shaderpack/` | Switching packs live (`ShaderSwitcher`), the pack catalogue (tested/heavy), quality hints. |
 | `cadence/shadow/` | Shader-pack shadows: every-2nd-frame reuse, shadow proxies, skipping casters that can't shadow anything. |
 | `cadence/hiz/`, `cadence/facecull/`, `cadence/mesh/` | Occlusion (Hi-Z), face culling, chunk meshing caches and Smart Leaves. |
+| `cadence/server/` | Keep Server Chunks (`ServerChunks`): on a server with a shorter view distance, the chunks it forgets kept within the render distance (mixins in `cadence/mixin/server/`). |
 | `cadence/system/` | The Mac: cooling (`HeatControl`), On Battery, In Background, frame pacing, the memory guard, CPU core tiers, thread priorities, Cadence messages. |
 | `cadence/memory/` | Memory: the GC policy (`GcPolicy`), heap and native trimming, chunk heap compaction. |
 | `cadence/setup/` | Quick Setup (tests the Mac, recommends settings). |
@@ -58,7 +60,7 @@ The release jar (`tools/release`) nests three Fabric mods built by Gradle from t
 | `cadence/packcheck/` | Faster Shadows' picture test for a pack. |
 | `cadence/selftest/` | The development self-test driven by `tools/cadence-test.sh` (`-Dcadence.selftest=steps`). Not used in normal play. |
 | `cadence/alloc/`, `cadence/worldgen/`, `cadence/census/` | Allocation fixes, worldgen experiments, the offline pack census. |
-| `cadence/mixin/<area>/` | The mixins for all of the above, by area: `maxfps`, `chunk`, `memory`, `mesh`, `hiz`, `shadow`, `light`, `entity`, `render`, `ui`, `system`, `worldgen` (one config, `cadence-shaders-ui.mixins.json`; `CadenceMixinPlugin` decides which apply). |
+| `cadence/mixin/<area>/` | The mixins for all of the above, by area: `maxfps`, `chunk`, `memory`, `mesh`, `hiz`, `shadow`, `light`, `entity`, `render`, `server`, `ui`, `system`, `worldgen` (one config, `cadence-shaders-ui.mixins.json`; `CadenceMixinPlugin` decides which apply). |
 
 ## Settings and switches
 

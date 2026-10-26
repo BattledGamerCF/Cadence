@@ -1,0 +1,13 @@
+{
+	"schemaVersion": 1,
+	"id": "iris",
+	"version": "1.11.4+cadence",
+	"name": "Cadence Iris Provider (optional)",
+	"description": "Optional. Makes mods that check for Iris (the mod id iris) see one, answered by Cadence Iris API. Install it only for a mod that needs to see Iris; it is not Iris. Mods that load code into Iris's internals when Iris is present are marked as breaking it.",
+	"license": "Apache-2.0",
+	"authors": ["Cadence authors"],
+	"contact": { "homepage": "https://github.com/BattledGamerCF/Cadence", "sources": "https://github.com/BattledGamerCF/Cadence", "issues": "https://github.com/BattledGamerCF/Cadence/issues" },
+	"environment": "client",
+	"depends": { "cadence_iris_api": "*", "minecraft": "~26.3" },
+	"breaks": { "immediatelyfast": "*", "distanthorizons": "*" }
+}

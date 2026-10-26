@@ -20,7 +20,7 @@ packs are translated the same way.
 | Particles | Culling, cheaper movement and lighting |
 | Sky, clouds, weather | Clouds drawn from only the faces that can be on screen |
 | Text and GUI | Faster text layout (bidirectional text, glyph matrices), crisp text at any resolution, a compact Unicode font, lazily made HUD and panorama targets |
-| Shader packs | Run on Metal (Iris's format, compute, images, buffer objects, Distant Horizons programs), shadows reused every other frame, shadow casters that can't cast skipped |
+| Shader packs | Run on Metal (Iris's format, compute, images, buffer objects, Distant Horizons programs), shadows reused every other frame, shadow casters that can't cast skipped; Iris's public API answered for other mods |
 | Resolution | Auto resolution, World Resolution, Retina off, MetalFX upscaling |
 | Frame timing | Exact frame caps, even pacing, refresh-locked presents on ProMotion, Heat Control, On Battery, In Background, Render Max FPS |
 
@@ -35,8 +35,9 @@ packs are translated the same way.
 | Block entities | Ticking only what needs a tick | |
 | Threads | Each thread on the right kind of core (render and server on performance cores, workers below) | |
 | Memory | A garbage-collection policy for games, heap and native memory trimming, compacted chunk heaps | |
-| Startup | Cached block and bootstrap data, classes preloaded in the background | |
+| Startup | Cached block and bootstrap data, every block state's cache built in parallel (the same values), the crash-report warm-up and the narrator off the main thread, classes preloaded in the background, a 0.4 s loading fade | |
 | Java | Startup settings tuned for Minecraft, the optional Vivace Java build | |
+| Multiplayer | Keep Server Chunks: chunks a server forgets kept within your render distance (the server's shorter view distance no longer limits it); far terrain from explored land | Packet handling |
 | Networking, sound | | Vanilla (under 2% of any thread) |
 
 ## Other mods

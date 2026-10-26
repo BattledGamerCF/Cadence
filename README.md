@@ -34,6 +34,7 @@ Responsive (the newest frame turned to where your mouse looks now: no added dela
 | 2940 x 1846 (the Air's full Retina screen) | 6 chunks | 900 | 419 |
 | Fullscreen, Max FPS preset (Retina off, 1470 x 923, fast leaves, no clouds) | 6 chunks | 2,155 | 942 |
 | Fullscreen, Max FPS preset | 12 chunks | 1,598 | 680 |
+| Fullscreen, Max FPS preset, simulation distance 16 | 16 chunks | 1,391 | 607 |
 
 And **Render Max FPS** (Video Settings > Cadence: Extras) is Cadence's run at the Minecraft FPS record: a playable,
 lit, ray-traced 320 x 180 view at up to 66,000 frames rendered a second (132,000 shown with frame interpolation, counted
@@ -44,9 +45,10 @@ apart); about 30,000 with the land in view. See [docs/RENDER-MAX-FPS.md](docs/RE
 | Instead of | Cadence |
 |---|---|
 | **Sodium** | The Metal renderer and its own terrain path: chunk meshes in one GPU arena, culled on the GPU (frustum, occlusion with a depth pyramid, faces turned away), meshing caches, faster entity and item vertex writing |
-| **Iris** | Shader packs (Iris/OptiFine format: compute passes, custom images, buffer objects, Distant Horizons programs), per-pack options in the same files Iris uses, live switching |
+| **Iris** | Shader packs (Iris/OptiFine format: compute passes, custom images, buffer objects, Distant Horizons programs), per-pack options in the same files Iris uses, live switching, and the **Iris API** for other mods: calls to Iris's public API (is a pack on, the shadow pass, the sun angle, the shader screen) get Cadence's answers |
 | **Lithium** | Cadence Logic: entity searches up to 22x faster, mob brains and villager sensors without per-tick garbage, block entities ticked only when they need it. Exact: the game plays the same ([docs/GAME-LOGIC.md](docs/GAME-LOGIC.md)) |
 | **Entity Culling** | Entities, block entities and particles behind walls aren't drawn |
+| **Bobby** | Keep Server Chunks: on a server whose view distance is shorter than yours, the chunks it stops sending stay within your render distance, so you see your full distance as you travel |
 | **Distant Horizons** | Far Terrain (experimental): land past the render distance, out to a **Far Distance** of up to 2,048 chunks (32 km; a slider in Video Settings, applied while you play), generated from the world's own generator or from explored land on servers, drawn by shader packs that support Distant Horizons |
 | **LambDynamicLights** | Dynamic Lights: held torches and glowing entities light the world around them, on the GPU |
 | **More Culling / Cull Leaves** | Smart Leaves (opt-in): leaf faces hidden inside a canopy skipped |
@@ -57,9 +59,10 @@ Also: **Instant Replay** (the last 30 seconds saved as a video with F10, by the 
 full-resolution, full-quality screenshot), a **Performance Overlay** (frames, GPU time, heat, power), **battery time left** at
 the current draw, macOS **Low Power Mode** followed as Battery Saver, and **Auto Render Distance** for shader packs.
 
-On top of that: a garbage-collection policy for games, faster startup (cached bootstrap data), lighter chunk storage,
-threads placed on the right kind of core, exact frame caps and even pacing, and the optional Vivace Java build. Where
-another mod hooks code Cadence replaces, Cadence runs Minecraft's own code in that one area and keeps everything else
+On top of that: a garbage-collection policy for games, faster startup (about 15% sooner in a world: block data built in
+parallel, cached bootstrap data, a quicker loading fade), lighter chunk storage, threads placed on the right kind of core,
+exact frame caps and even pacing, and the optional Vivace Java build. Where another mod hooks code Cadence replaces,
+Cadence runs Minecraft's own code in that one area and keeps everything else
 ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). The full list: [docs/COVERAGE.md](docs/COVERAGE.md).
 
 ## Requirements
@@ -108,9 +111,12 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 
 - **In game:** everything is in **Options > Video Settings**, at the top: the status lines, then **Shaders...** (the
   Shader Packs list, with the pack's profile) and **Shader Pack Settings...** (the pack's own options, on its own pages,
-  as in Iris, with Apply), then the Performance preset and Quick Setup; resolution, sharpening, Retina, leaves, cooling,
-  background frame rate, dynamic lights and messages under **Cadence: Performance**; shadows under **Cadence: Shader Speed**.
-- **Keys:** **O** opens Shader Packs, **K** turns shaders off and back on (Controls > Key Binds > Miscellaneous).
+  as in Iris, with Apply), then the Performance preset and Quick Setup. Below them, **Cadence: Picture & Speed** (resolution
+  and sharpening, leaves, Far Terrain and Far Distance, Frame Generation, Dynamic Lights, Auto Render Distance, Keep Server
+  Chunks), **Cadence: Power & Heat** (cooling, On Battery, In Background) and **Cadence: Extras** (Benchmark, the fps
+  counter, messages, Render Max FPS, Java, the Performance Overlay, Instant Replay).
+- **Keys:** **O** opens Shader Packs, **K** turns shaders off and back on, **F9** takes a Photo Mode shot, **F10** saves an
+  Instant Replay (Controls > Key Binds > Miscellaneous).
 - **Shader pack options** are kept per pack in `shaderpacks/<pack>.txt`, the same file Iris uses.
 - **Config files:** `config/cadence.properties` and `config/cadence-shaders.properties` in your Minecraft folder.
   Set `profile=none` in `cadence.properties` to turn off Cadence's performance profile.
@@ -119,7 +125,9 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 
 ## Known issues
 
-- Mods that require Sodium or Iris, or that draw with OpenGL directly, can't be used while the Metal renderer is on.
+- Mods that require Sodium, or Iris's internals beyond its API, or that draw with OpenGL directly, can't be used while the
+  Metal renderer is on. Mods that call the Iris API work (Cadence answers it); a mod that only uses it after checking that
+  the mod `iris` is installed needs the optional `cadence-iris-provider` jar from the release zip ([docs/API.md](docs/API.md#the-iris-api)).
   Mods that use Minecraft's own rendering API work; where one hooks code Cadence replaces, Cadence steps aside in that
   area (compatibility layers, first version). Addon mods can fill the gap for OpenGL-only mods with Cadence's API
   (render hooks, Metal handles, step-aside requests): [docs/API.md](docs/API.md).
@@ -139,8 +147,8 @@ You need a JDK 25 (for example Zulu or Temurin). Then:
 ./gradlew build
 ```
 
-This builds the three mods into `metal/build/libs`, `shaders/build/libs` and `fpshud/build/libs`. To make the single
-release jar and zip in `dist/`, run:
+This builds the four mods into `metal/build/libs`, `shaders/build/libs`, `fpshud/build/libs` and `irisapi/build/libs`.
+To make the single release jar and zip in `dist/`, run:
 
 ```bash
 tools/release
@@ -155,6 +163,7 @@ For the development and test tools, see [CONTRIBUTING.md](CONTRIBUTING.md).
 | [`metal/`](metal) | **Cadence**, the core mod: the Metal renderer (Java plus Objective-C in `src/main/native`), terrain, chunk and startup work |
 | [`shaders/`](shaders) | **Cadence Shaders**: the shader-pack loader (GLSL → SPIR-V → Metal), Auto resolution and the in-game settings |
 | [`fpshud/`](fpshud) | **Cadence HUD**: the fps counter |
+| [`irisapi/`](irisapi) | **Cadence Iris API**: Iris's public API answered by Cadence (mod id `cadence_iris_api`; the optional provider in `packaging/iris-provider` claims the id `iris`) |
 | [`tools/`](tools) | Release packaging, the automated in-game test harness, benchmarks |
 | [`docs/`](docs) | How it's built, shader-pack status, compatibility, Render Max FPS, changes from mcopt |
 | [`packaging/`](packaging) | Release README, Modrinth page text, project icon |

@@ -2,8 +2,10 @@ plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 }
 
-// The Iris API (net.irisshaders.iris.api.v0) answered by Cadence, for mods that ask Iris whether a shader pack is on. Nested in
-// Cadence's jar as mod "iris" 0.0.1+cadence: Fabric keeps the newest version of a mod id, so a real Iris always wins.
+// The Iris API (net.irisshaders.iris.api.v0) answered by Cadence, for mods that use it. Nested in Cadence's jar as mod
+// cadence_iris_api: it doesn't claim the mod id iris. Mods that see an iris loaded apply mixins into Iris's internals
+// (ImmediatelyFast: missing targets, a warning today and a failed launch once it asks for loader 0.19.4+) or take Iris-only
+// paths (BH5). The optional provider jar (packaging/iris-provider, made by tools/release) claims it.
 base.archivesName = 'cadence-iris-api'
 version = '0.0.1+cadence'
 

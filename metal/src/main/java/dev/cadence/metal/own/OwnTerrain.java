@@ -63,9 +63,11 @@ public final class OwnTerrain {
 	 */
 	private static final boolean OCC = Boolean.getBoolean("cadence.own.occ");
 	/**
-	 * Far Plants (the Max FPS preset; -Dcadence.own.farPlants=BLOCKS): cross-model plants (grass, flowers, ferns, saplings: the
-	 * cutout layer's any-facing units) of sections at least this far from the camera are left out by the cull; 0 draws them all.
-	 * Glass, panes, leaves and every axis-aligned cutout face are drawn as before. Read each frame (frag_cull FragFrame.farPlants).
+	 * Far Plants (opt-in, -Dcadence.own.farPlants=BLOCKS): the cutout layer's any-facing units (every quad not flat on an axis:
+	 * cross-model plants such as grass, flowers and ferns, but also wall torches, chains, sloped rails, fire, cobwebs and
+	 * dripstone, BH5-06) of sections at least this far from the camera are left out by the cull; 0 (the default) draws them all.
+	 * Glass, panes and every axis-aligned cutout face are drawn as before. RD16 fullscreen, 96 blocks: GPU -0.04 ms. Read each
+	 * frame (frag_cull FragFrame.farPlants).
 	 */
 	public static volatile float farPlantBlocks = Float.parseFloat(System.getProperty("cadence.own.farPlants", "0"));
 	private static final int OCC_FRAME_BYTES = 128;

@@ -1,9 +1,11 @@
 #!/bin/sh
 # Build the mod and package it, locally (nothing is uploaded anywhere):
-# - dist/cadence-VERSION.jar, the single-jar install (tools/bundle.py): the Metal mod, natives inside, with the fps counter
-#   the shader-pack loader and the Iris API (mod iris 0.0.1+cadence, replaced by a real Iris) nested through Fabric's jar-in-jar. Put it in the mods folder; this build runs without Sodium.
-# - dist/cadence-VERSION.zip: cadence-VERSION/{cadence-VERSION.jar, README.txt, LICENSE, NOTICE, CREDITS.md}, the same jar byte for
-#   byte (README.txt is packaging/RELEASE-README.txt with the version filled in).
+# - dist/cadence-VERSION.jar, the single-jar install (tools/bundle.py): the Metal mod, natives inside, with the fps counter,
+#   the shader-pack loader and Cadence Iris API nested through Fabric's jar-in-jar. Put it in the mods folder; this build
+#   runs without Sodium.
+# - dist/cadence-VERSION.zip: cadence-VERSION/{cadence-VERSION.jar, cadence-iris-provider-VERSION.jar (optional), README.txt,
+#   LICENSE, NOTICE, CREDITS.md}, the same jar byte for byte (README.txt is packaging/RELEASE-README.txt with the version
+#   filled in).
 # Usage: tools/release   (tools/release native: an extra jar with cadence/native/ENABLED; obsolete since native shaders are on by default)
 set -eu
 cd "$(dirname "$0")/.."
@@ -30,5 +32,13 @@ mkdir -p "dist/$name"
 cp "dist/$name.jar" "dist/$name/$name.jar"
 cp LICENSE NOTICE CREDITS.md "dist/$name/"
 sed "s/@VERSION@/$version/g" packaging/RELEASE-README.txt > "dist/$name/README.txt"
+# the optional Iris provider (mod id iris for mods that look for Iris; packaging/iris-provider): beside the jar, not nested
+provider="dist/$name/cadence-iris-provider-$version.jar"
+python3 - "$provider" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as z:
+    for src, dst in (('packaging/iris-provider/fabric.mod.json', 'fabric.mod.json'), ('LICENSE', 'LICENSE'), ('NOTICE', 'NOTICE')):
+        z.writestr(zipfile.ZipInfo(dst, (1980, 2, 1, 0, 0, 0)), open(src, 'rb').read())
+PY
 (cd dist && zip -qrX "$name.zip" "$name")
 echo "dist/$name.zip"

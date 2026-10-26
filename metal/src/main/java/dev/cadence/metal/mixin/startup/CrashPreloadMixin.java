@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  */
 @Mixin(Main.class)
 abstract class CrashPreloadMixin {
-	@Redirect(method = "main", at = @At(value = "INVOKE", target = "Lnet/minecraft/CrashReport;preload()V"))
+	@Redirect(method = "main", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/CrashReport;preload()V"))
 	private static void cadence$async() {
 		MemoryReserve.allocate();
 		Thread t = new Thread(() -> new CrashReport("Don't panic!", new Throwable()).getFriendlyReport(ReportType.CRASH), "Cadence crash-report preload");
