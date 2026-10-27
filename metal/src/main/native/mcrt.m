@@ -14,10 +14,12 @@ id<MTLCommandBuffer> mc_frame_cmd(Enc *enc);
 
 typedef struct {
 	Ctx *ctx;
-	id<MTLComputePipelineState> shadow, shadowHw, cacheUpdate, cacheResolve;
+	id<MTLComputePipelineState> shadow, shadowHw, cacheUpdate, cacheResolve, gather;
+	id<MTLTexture> irr;  // the cached light per traced sample (rt_gather)
 	id<MTLFunction> applyVs, applyFs, debugFs, lightFs;
 	id<MTLRenderPipelineState> apply[2], debug[2], light[2];  // [0] an 8-bit frame, [1] a float one (HDR)
 	id<MTLBuffer> cache;  // the lighting cache (Ray Traced Lighting), made at its first use
+	id<MTLBuffer> touched;  // the entries the frame's samples touched: a count, then their slots
 	id<MTLComputePipelineState> path;
 	id<MTLFunction> pathOutFs;
 	id<MTLRenderPipelineState> pathOut[2];
@@ -66,7 +68,9 @@ void *mcrt_new(Ctx *ctx, const char *source, int hw, int w, int h, char *err, in
 		id<MTLFunction> cu = [[lib newFunctionWithName:@"rt_cache_update"] autorelease], cr = [[lib newFunctionWithName:@"rt_cache_resolve"] autorelease];
 		r->cacheUpdate = cu ? [ctx->device newComputePipelineStateWithFunction:cu error:&e] : nil;
 		r->cacheResolve = cr ? [ctx->device newComputePipelineStateWithFunction:cr error:&e] : nil;
-		if (!r->shadow || !r->applyVs || !r->applyFs || !r->debugFs || !r->lightFs || !r->cacheUpdate || !r->cacheResolve || !r->path || !r->pathOutFs) {
+		id<MTLFunction> gf = [[lib newFunctionWithName:@"rt_gather"] autorelease];
+		r->gather = gf ? [ctx->device newComputePipelineStateWithFunction:gf error:&e] : nil;
+		if (!r->shadow || !r->applyVs || !r->applyFs || !r->debugFs || !r->lightFs || !r->cacheUpdate || !r->cacheResolve || !r->gather || !r->path || !r->pathOutFs) {
 			rtErr(e, "rt pipelines", err, errCap);
 			free(r);
 			return NULL;
@@ -313,11 +317,11 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 				r->cache = [r->ctx->device newBufferWithLength:(NSUInteger) RT_CACHE_ENTRIES * 32 options:MTLResourceStorageModePrivate];
 				flags |= 8;
 			}
-			if (flags & 8) {
-				id<MTLBlitCommandEncoder> b = [cb blitCommandEncoder];
-				[b fillBuffer:r->cache range:NSMakeRange(0, r->cache.length) value:0];
-				[b endEncoding];
-			}
+			if (!r->touched) r->touched = [r->ctx->device newBufferWithLength:(NSUInteger) (RT_CACHE_ENTRIES + 1) * 4 options:MTLResourceStorageModePrivate];
+			id<MTLBlitCommandEncoder> b = [cb blitCommandEncoder];
+			if (flags & 8) [b fillBuffer:r->cache range:NSMakeRange(0, r->cache.length) value:0];
+			[b fillBuffer:r->touched range:NSMakeRange(0, 4) value:0];
+			[b endEncoding];
 			id<MTLComputeCommandEncoder> u = [cb computeCommandEncoder];
 			u.label = @"Cadence ray traced lighting (cache)";
 			[u setComputePipelineState:r->cacheUpdate];
@@ -329,10 +333,30 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 			[u setBuffer:r->cache offset:0 atIndex:3];
 			[u setBuffer:palette offset:0 atIndex:4];
 			[u setBuffer:sections offset:0 atIndex:5];
-			[u dispatchThreads:MTLSizeMake((w + 1) / 2, (h + 1) / 2, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+			[u setBuffer:r->touched offset:0 atIndex:6];
+			// (one update thread per stride x stride traced samples: RtFrame extra2.w, the bytes at 252)
+			float strideF = ((const float *) frame)[63];
+			NSUInteger stride = strideF >= 1 ? (NSUInteger) strideF : 2;
+			NSUInteger uw = (w + stride - 1) / stride, uh = (h + stride - 1) / stride;
+			[u dispatchThreads:MTLSizeMake(uw, uh, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 			[u memoryBarrierWithScope:MTLBarrierScopeBuffers];
+			// (at most one entry per update thread: the list is never longer than that)
 			[u setComputePipelineState:r->cacheResolve];
-			[u dispatchThreads:MTLSizeMake(RT_CACHE_ENTRIES, 1, 1) threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+			[u dispatchThreads:MTLSizeMake(MIN(uw * uh, (NSUInteger) RT_CACHE_ENTRIES), 1, 1) threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+			// the cached light per traced sample, for the relight pass to upsample
+			if (!r->irr || r->irr.width != w || r->irr.height != h) {
+				[r->irr release];
+				MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA16Float width:w height:h mipmapped:NO];
+				d.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+				d.storageMode = MTLStorageModePrivate;
+				r->irr = [r->ctx->device newTextureWithDescriptor:d];
+			}
+			[u memoryBarrierWithScope:MTLBarrierScopeBuffers];
+			[u setComputePipelineState:r->gather];
+			[u setTexture:depth atIndex:0];
+			[u setTexture:r->out atIndex:1];
+			[u setTexture:r->irr atIndex:2];
+			[u dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 			[u endEncoding];
 		}
 		id<MTLRenderPipelineState> p = applyPipeline(r, color.pixelFormat, (flags & 2) ? 1 : lighting ? 2 : 0);
@@ -348,7 +372,7 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 		[re setFragmentTexture:lightmap atIndex:1];
 		[re setFragmentTexture:depth atIndex:2];
 		[re setFragmentBuffer:fb offset:0 atIndex:2];
-		if (lighting) [re setFragmentBuffer:r->cache offset:0 atIndex:3];
+		if (lighting) [re setFragmentTexture:r->irr atIndex:3];
 		[re drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 		[re endEncoding];
 	}
@@ -435,6 +459,9 @@ void mcrt_free(void *rt) {
 	[r->cacheUpdate release];
 	[r->cacheResolve release];
 	[r->cache release];
+	[r->touched release];
+	[r->gather release];
+	[r->irr release];
 	[r->path release];
 	[r->pathOutFs release];
 	[r->accum release];

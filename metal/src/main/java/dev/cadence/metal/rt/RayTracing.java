@@ -36,6 +36,8 @@ public final class RayTracing {
 	/** -Dcadence.rt.scale=1|2: a shadow ray per pixel, or per 2 x 2 pixels upsampled by depth (default 2: a quarter of the cost). */
 	/** -Dcadence.rt.strength: the sky light levels a full sun shadow takes away (default 10 of 15; the game's lightmap gives the rest). */
 	private static final float STRENGTH = Float.parseFloat(System.getProperty("cadence.rt.strength", "10"));
+	/** -Dcadence.rt.updateStride: the lighting cache takes a ray from one traced sample in N x N each frame (default 4). */
+	private static final int UPDATE_STRIDE = Math.clamp(Integer.getInteger("cadence.rt.updateStride", 4), 1, 8);
 	private static final int SCALE = Math.clamp(Integer.getInteger("cadence.rt.scale", 2), 1, 2);
 
 	public enum Mode {
@@ -301,6 +303,7 @@ public final class RayTracing {
 		MemoryUtil.memPutFloat(b + 240, sunRgb[0] * sunPower);
 		MemoryUtil.memPutFloat(b + 244, sunRgb[1] * sunPower);
 		MemoryUtil.memPutFloat(b + 248, sunRgb[2] * sunPower);
+		MemoryUtil.memPutFloat(b + 252, UPDATE_STRIDE);
 		float lum = Math.max(0.05f, 0.2126f * skyR + 0.7152f * skyG + 0.0722f * skyB);
 		float dayLight = 0.05f + 0.5f * smooth(-0.15f, 0.25f, sy);
 		MemoryUtil.memPutFloat(b + 208, skyR / lum);

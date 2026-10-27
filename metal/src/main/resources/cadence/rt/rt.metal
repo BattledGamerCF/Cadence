@@ -28,7 +28,7 @@ struct RtFrame {
 	float4 extra;          // x: one above the highest solid cell in the window (window y): a ray climbing past it is in the open;
 	                       // y: the trace's scale (1: a ray per pixel, 2: per 2 x 2 pixels, rt_apply_fs upsamples);
 	                       // zw: the window's origin x, z minus its wrap (world x = window x + dims.z + extra.z)
-	float4 extra2;         // xyz: the sun's colour (linear, its strength folded in later by sun.w)
+	float4 extra2;         // xyz: the sun's colour (linear, its strength folded in later by sun.w); w: the lighting cache's update stride
 	float4 cache;          // x: lighting cache entries (a power of two), y: bounce ray length, z: least blend per frame, w: exposure
 };
 
@@ -151,6 +151,14 @@ static float3 normalAt(depth2d<float, access::read> depth, uint2 gid, float3 P, 
 	return dot(n, P) > 0.0f ? -n : n;
 }
 
+// A surface normal's face (0..5: -x +x -y +y -z +z)
+static inline uint faceIndex(float3 n) {
+	float3 a = abs(n);
+	if (a.x >= a.y && a.x >= a.z) return n.x < 0.0f ? 0u : 1u;
+	if (a.y >= a.z) return n.y < 0.0f ? 2u : 3u;
+	return n.z < 0.0f ? 4u : 5u;
+}
+
 // The light levels (sky << 4 | block) of the air in front of a surface point, 0xF0 outside the window.
 static uint lightAt(float3 g, float3 n, device const ushort *vox, constant RtFrame &f) {
 	for (int k = 1; k <= 2; k++) {
@@ -189,15 +197,15 @@ kernel void rt_shadow(depth2d<float, access::read> depth [[texture(0)]], texture
 	uint2 px = min(gid * uint(f.extra.y), f.screen.xy - 1);  // (the frame's pixel this ray stands for)
 	float d = depth.read(px);
 	if (d <= 1e-7f) {
-		out.write(float4(1.0f, 240.0f, 60000.0f, 0.0f), gid);  // the sky
+		out.write(float4(1.0f, 240.0f, 60000.0f, 3.0f), gid);  // the sky
 		return;
 	}
 	float3 P = pointAt(px, d, f);
 	float3 N = normalAt(depth, px, P, f);
 	float3 g = P - f.origin.xyz;  // window coordinates
 	uint light = lightAt(g, N, vox, f);
-	float vis = 1.0f;
-	if (f.sun.w > 0.0f) {
+	float vis = 1.0f, fade = edgeFade(P, f);
+	if (f.sun.w > 0.0f && fade < 0.999f) {  // (past the window's edge the shadows have faded out: no ray)
 		float3 L = jitterTowards(f.sun.xyz, f.params.w, px, uint(f.params.y));
 		if ((light >> 4) == 0u) vis = 1.0f;  // (no sky light here: nothing for a sun shadow to take away, no ray)
 		else if (dot(N, L) <= 0.0f) vis = 0.0f;
@@ -205,9 +213,9 @@ kernel void rt_shadow(depth2d<float, access::read> depth [[texture(0)]], texture
 			int3 own = int3(floor(g - N * 0.01f));
 			vis = rt_trace(g + N * 0.02f, L, 0.0f, f.params.x, own, bricks, sections, f) >= 0.0f ? 0.0f : 1.0f;
 		}
-		vis = mix(vis, 1.0f, edgeFade(P, f));
+		vis = mix(vis, 1.0f, fade);
 	}
-	out.write(float4(vis, float(light), length(P), 0.0f), gid);
+	out.write(float4(vis, float(light), length(P), float(faceIndex(N))), gid);
 }
 
 // ---- hardware ray tracing (RtAccel): the same trace through an acceleration structure of the non-empty bricks ----
@@ -262,15 +270,15 @@ kernel void rt_shadow_hw(depth2d<float, access::read> depth [[texture(0)]], text
 	uint2 px = min(gid * uint(f.extra.y), f.screen.xy - 1);
 	float d = depth.read(px);
 	if (d <= 1e-7f) {
-		out.write(float4(1.0f, 240.0f, 60000.0f, 0.0f), gid);
+		out.write(float4(1.0f, 240.0f, 60000.0f, 3.0f), gid);
 		return;
 	}
 	float3 P = pointAt(px, d, f);
 	float3 N = normalAt(depth, px, P, f);
 	float3 g = P - f.origin.xyz;
 	uint light = lightAt(g, N, vox, f);
-	float vis = 1.0f;
-	if (f.sun.w > 0.0f) {
+	float vis = 1.0f, fade = edgeFade(P, f);
+	if (f.sun.w > 0.0f && fade < 0.999f) {  // (past the window's edge the shadows have faded out: no ray)
 		float3 L = jitterTowards(f.sun.xyz, f.params.w, px, uint(f.params.y));
 		if ((light >> 4) == 0u) vis = 1.0f;  // (no sky light here: nothing for a sun shadow to take away, no ray)
 		else if (dot(N, L) <= 0.0f) vis = 0.0f;
@@ -286,9 +294,9 @@ kernel void rt_shadow_hw(depth2d<float, access::read> depth [[texture(0)]], text
 			auto hit = it.intersect(r, accel, 0xFF, table, skip);
 			vis = hit.type == intersection_type::none ? 1.0f : 0.0f;
 		}
-		vis = mix(vis, 1.0f, edgeFade(P, f));
+		vis = mix(vis, 1.0f, fade);
 	}
-	out.write(float4(vis, float(light), length(P), 0.0f), gid);
+	out.write(float4(vis, float(light), length(P), float(faceIndex(N))), gid);
 }
 
 // ---- applying the shadows to the frame: a full-screen pass, the frame multiplied by the factor ----
@@ -304,14 +312,12 @@ vertex VOut rt_apply_vs(uint id [[vertex_id]]) {
 	return o;
 }
 
-// The factor at a pixel: 1 where the light reaches it; in shadow, the game's lightmap at fewer sky light levels over the
-// lightmap at the levels it has (per channel), so the darkening is the one the game itself shows for less sky light.
 // The trace at this pixel: itself (scale 1), or the four nearest traced samples weighted by distance from it and by how close
-// their depth is to this pixel's (scale 2: a shadow edge stays on the edge of the geometry). rgb: visibility, light code, distance.
-static float3 traced(texture2d<float, access::read> rt, depth2d<float, access::read> depth, uint2 p, constant RtFrame &f) {
-	if (f.extra.y < 1.5f) return rt.read(p).rgb;
+// their depth is to this pixel's (scale 2: a shadow edge stays on the edge of the geometry). Visibility, light code, distance, face.
+static float4 traced(texture2d<float, access::read> rt, depth2d<float, access::read> depth, uint2 p, constant RtFrame &f) {
+	if (f.extra.y < 1.5f) return rt.read(p);
 	float d = depth.read(p);
-	if (d <= 1e-7f) return float3(1.0f, 240.0f, 60000.0f);
+	if (d <= 1e-7f) return float4(1.0f, 240.0f, 60000.0f, 3.0f);
 	float dist = length(pointAt(p, d, f));
 	float2 q = (float2(p) + 0.5f) / f.extra.y - 0.5f;
 	int2 q0 = int2(floor(q));
@@ -319,23 +325,22 @@ static float3 traced(texture2d<float, access::read> rt, depth2d<float, access::r
 	int2 lim = int2(rt.get_width(), rt.get_height()) - 1;
 	float3 sum = float3(0.0f);
 	float wsum = 0.0f, bestW = -1.0f;
-	float3 best = float3(1.0f, 240.0f, dist);
+	float4 best = float4(1.0f, 240.0f, dist, 3.0f);
 	for (int k = 0; k < 4; k++) {
 		int2 o = int2(k & 1, k >> 1);
-		float3 v = rt.read(uint2(clamp(q0 + o, int2(0), lim))).rgb;
+		float4 v = rt.read(uint2(clamp(q0 + o, int2(0), lim)));
 		float wb = (o.x ? fr.x : 1.0f - fr.x) * (o.y ? fr.y : 1.0f - fr.y);
 		float wd = exp(-abs(v.b - dist) / (0.03f * dist + 0.15f));
 		float w = wb * wd + 1e-5f;
-		sum += v * w;
+		sum += v.rgb * w;
 		wsum += w;
 		if (wd > bestW) {
 			bestW = wd;
 			best = v;
 		}
 	}
-	float3 r = sum / wsum;
-	r.g = best.g;  // (the light code isn't blended: the nearest-depth sample's)
-	return r;
+	// (the light code and the face aren't blended: the nearest-depth sample's)
+	return float4((sum / wsum).r, best.g, dist, best.a);
 }
 
 // The factor at a pixel: 1 where the light reaches it; in shadow, the game's lightmap at fewer sky light levels over the
@@ -343,7 +348,7 @@ static float3 traced(texture2d<float, access::read> rt, depth2d<float, access::r
 fragment float4 rt_apply_fs(VOut in [[stage_in]], texture2d<float, access::read> rt [[texture(0)]],
 	texture2d<float, access::read> lightmap [[texture(1)]], depth2d<float, access::read> depth [[texture(2)]], constant RtFrame &f [[buffer(2)]]) {
 	uint2 p = uint2(in.pos.xy);
-	float3 s = traced(rt, depth, p, f);
+	float4 s = traced(rt, depth, p, f);
 	if (s.r >= 0.999f || f.sun.w <= 0.0f) return float4(1.0f);
 	uint code = uint(s.g + 0.5f), sky = (code >> 4) & 15u, block = code & 15u;
 	float drop = f.params.z * f.sun.w;
@@ -410,10 +415,7 @@ static int cacheFind(device CacheEntry *cache, uint mask, uint key, bool insert)
 }
 
 static inline uint faceOf(float3 n) {
-	float3 a = abs(n);
-	if (a.x >= a.y && a.x >= a.z) return n.x < 0.0f ? 0u : 1u;
-	if (a.y >= a.z) return n.y < 0.0f ? 2u : 3u;
-	return n.z < 0.0f ? 4u : 5u;
+	return faceIndex(n);
 }
 
 static inline float3 faceNormal(uint face) {
@@ -515,18 +517,17 @@ static float3 cacheAt(device CacheEntry *cache, uint mask, int3 wcell, uint face
 kernel void rt_cache_update(depth2d<float, access::read> depth [[texture(0)]], texture2d<float, access::read> traced [[texture(1)]],
 	device const ushort *vox [[buffer(0)]], device const uint2 *bricks [[buffer(1)]], constant RtFrame &f [[buffer(2)]],
 	device CacheEntry *cache [[buffer(3)]], device const uint2 *palette [[buffer(4)]], device const uchar *sections [[buffer(5)]],
-	uint2 gid [[thread_position_in_grid]]) {
-	// a quarter of the traced pixels each frame, in a pattern that moves every frame
-	uint frame = uint(f.params.y);
-	uint2 q = gid * 2u + uint2(frame & 1u, (frame >> 1) & 1u);
+	device atomic_uint *touched [[buffer(6)]], uint2 gid [[thread_position_in_grid]]) {
+	// one traced pixel in stride x stride each frame (extra2.w), in a pattern that moves every frame
+	uint frame = uint(f.params.y), stride = max(1u, uint(f.extra2.w));
+	uint2 q = gid * stride + uint2(frame % stride, (frame / stride) % stride);
 	if (q.x >= traced.get_width() || q.y >= traced.get_height()) return;
 	uint2 px = min(q * uint(f.extra.y), f.screen.xy - 1);
 	float d = depth.read(px);
 	if (d <= 1e-7f) return;
 	float3 P = pointAt(px, d, f);
-	float3 N = normalAt(depth, px, P, f);
-	uint face = faceOf(N);
-	N = faceNormal(face);
+	uint face = min(uint(traced.read(q).a + 0.5f), 5u);  // (the shadow pass's normal, as a face)
+	float3 N = faceNormal(face);
 	float3 g = P - f.origin.xyz;
 	int3 air = int3(floor(g + N * 0.5f));
 	if (!inWindow(air, f)) return;
@@ -552,12 +553,19 @@ kernel void rt_cache_update(depth2d<float, access::read> depth [[texture(0)]], t
 	atomic_fetch_add_explicit(&cache[s].sum[0], fx.x, memory_order_relaxed);
 	atomic_fetch_add_explicit(&cache[s].sum[1], fx.y, memory_order_relaxed);
 	atomic_fetch_add_explicit(&cache[s].sum[2], fx.z, memory_order_relaxed);
-	atomic_fetch_add_explicit(&cache[s].count, 1u, memory_order_relaxed);
+	// (the frame's first sample for this entry: it goes on the list rt_cache_resolve walks, instead of every entry)
+	if (atomic_fetch_add_explicit(&cache[s].count, 1u, memory_order_relaxed) == 0u) {
+		uint k = atomic_fetch_add_explicit(&touched[0], 1u, memory_order_relaxed);
+		if (k < uint(f.cache.x)) atomic_store_explicit(&touched[1 + k], uint(s), memory_order_relaxed);
+	}
 }
 
 // Each entry's new samples folded into its average (the first ones count fully, then each frame a tenth), then cleared.
-kernel void rt_cache_resolve(device CacheEntry *cache [[buffer(3)]], constant RtFrame &f [[buffer(2)]], uint i [[thread_position_in_grid]]) {
-	if (i >= uint(f.cache.x)) return;
+kernel void rt_cache_resolve(device CacheEntry *cache [[buffer(3)]], constant RtFrame &f [[buffer(2)]], device const uint *touched [[buffer(6)]],
+	uint t [[thread_position_in_grid]]) {
+	// (the entries this frame's samples touched: rt_cache_update's list)
+	if (t >= min(touched[0], uint(f.cache.x))) return;
+	uint i = touched[1 + t];
 	uint n = atomic_load_explicit(&cache[i].count, memory_order_relaxed);
 	if (n == 0u) return;
 	float3 s = float3(atomic_load_explicit(&cache[i].sum[0], memory_order_relaxed), atomic_load_explicit(&cache[i].sum[1], memory_order_relaxed),
@@ -596,6 +604,47 @@ static float3 cacheSmooth(device CacheEntry *cache, uint mask, float3 g, uint fa
 	return wsum > 0.0f ? sum / wsum : float3(-1.0f);
 }
 
+// The cached light per traced sample (half resolution: a quarter of the cache lookups the frame's pixels would make), for
+// rt_light_fs to upsample by depth as the shadows are. a: 1 where the cache had light there.
+kernel void rt_gather(depth2d<float, access::read> depth [[texture(0)]], texture2d<float, access::read> traced [[texture(1)]],
+	texture2d<float, access::write> irr [[texture(2)]], constant RtFrame &f [[buffer(2)]], device CacheEntry *cache [[buffer(3)]],
+	uint2 q [[thread_position_in_grid]]) {
+	if (q.x >= irr.get_width() || q.y >= irr.get_height()) return;
+	uint2 px = min(q * uint(f.extra.y), f.screen.xy - 1);
+	float d = depth.read(px);
+	if (d <= 1e-7f) {
+		irr.write(float4(0.0f), q);
+		return;
+	}
+	float3 g = pointAt(px, d, f) - f.origin.xyz;
+	uint face = min(uint(traced.read(q).a + 0.5f), 5u);
+	float3 c = cacheSmooth(cache, uint(f.cache.x) - 1u, g, face, f);
+	irr.write(c.x < 0.0f ? float4(0.0f) : float4(c, 1.0f), q);
+}
+
+// The gathered light at a pixel, upsampled as traced() upsamples the shadows (weights by distance and by depth).
+static float4 gathered(texture2d<float, access::read> rt, texture2d<float, access::read> irr, depth2d<float, access::read> depth, uint2 p,
+	constant RtFrame &f) {
+	if (f.extra.y < 1.5f) return irr.read(p);
+	float dist = length(pointAt(p, depth.read(p), f));
+	float2 q = (float2(p) + 0.5f) / f.extra.y - 0.5f;
+	int2 q0 = int2(floor(q));
+	float2 fr = q - float2(q0);
+	int2 lim = int2(rt.get_width(), rt.get_height()) - 1;
+	float4 sum = float4(0.0f);
+	float wsum = 0.0f;
+	for (int k = 0; k < 4; k++) {
+		int2 o = int2(k & 1, k >> 1);
+		uint2 at = uint2(clamp(q0 + o, int2(0), lim));
+		float4 v = irr.read(at);
+		float wb = (o.x ? fr.x : 1.0f - fr.x) * (o.y ? fr.y : 1.0f - fr.y);
+		float w = (wb * exp(-abs(rt.read(at).b - dist) / (0.03f * dist + 0.15f)) + 1e-5f) * v.a;
+		sum += v * w;
+		wsum += w;
+	}
+	return wsum > 1e-4f ? sum / wsum : float4(0.0f);
+}
+
 // The game's face shading (vanilla: up 1.0, down 0.5, north/south 0.8, east/west 0.6), taken out where the new light replaces it.
 static inline float vanillaShade(uint face) {
 	return face == 3u ? 1.0f : face == 2u ? 0.5f : face >= 4u ? 0.8f : 0.6f;
@@ -605,20 +654,20 @@ static inline float vanillaShade(uint face) {
 // the game's block light plus the traced sun and the cached sky and bounce light.
 fragment float4 rt_light_fs(VOut in [[stage_in]], texture2d<float, access::read> rt [[texture(0)]],
 	texture2d<float, access::read> lightmap [[texture(1)]], depth2d<float, access::read> depth [[texture(2)]], constant RtFrame &f [[buffer(2)]],
-	device CacheEntry *cache [[buffer(3)]]) {
+	texture2d<float, access::read> irr [[texture(3)]]) {
 	uint2 p = uint2(in.pos.xy);
 	float d = depth.read(p);
 	if (d <= 1e-7f) return float4(1.0f);
-	float3 s = traced(rt, depth, p, f);
+	float4 s = traced(rt, depth, p, f);
 	uint code = uint(s.g + 0.5f), sky = (code >> 4) & 15u, block = code & 15u;
 	float3 P = pointAt(p, d, f);
-	float3 N = normalAt(depth, p, P, f);
-	uint face = faceOf(N);
+	uint face = min(uint(s.a + 0.5f), 5u);  // (the shadow pass's normal, as a face: not rebuilt here per pixel)
 	float3 g = P - f.origin.xyz;
 	float fade = edgeFade(P, f);
 	if (fade >= 0.999f) return float4(1.0f);
-	float3 cached = cacheSmooth(cache, uint(f.cache.x) - 1u, g, face, f);
-	if (cached.x < 0.0f) return float4(1.0f);  // (not lit yet: as the game draws it)
+	float4 gl = gathered(rt, irr, depth, p, f);
+	if (gl.a < 0.5f) return float4(1.0f);  // (not lit yet: as the game draws it)
+	float3 cached = gl.rgb;
 	float3 vanilla = srgbToLinear(lightmap.read(uint2(block, sky)).rgb) * vanillaShade(face);
 	float3 torch = srgbToLinear(lightmap.read(uint2(block, 0u)).rgb);
 	float vis = sky == 0u ? 0.0f : s.r;
