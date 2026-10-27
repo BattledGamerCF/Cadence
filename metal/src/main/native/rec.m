@@ -178,6 +178,7 @@ static __typeof__(CMBlockBufferCopyDataBytes) *pCMCopy;
 static __typeof__(CMSampleBufferGetFormatDescription) *pCMFormat;
 static __typeof__(CMVideoFormatDescriptionGetH264ParameterSetAtIndex) *pCMParams;
 static __typeof__(CMSampleBufferGetSampleAttachmentsArray) *pCMAttachments;
+static CFStringRef kHevcMain, kHevcMain10;
 static CFStringRef kNotSync, kRealTime, kProfile, kHigh, kBitRate, kFrameRate, kKeyInterval, kReorder, kPrimaries, kTransfer, kMatrix, kRequireHw, kSpeed;
 
 static int vtLoad(char *err, int errCap) {
@@ -216,6 +217,8 @@ static int vtLoad(char *err, int errCap) {
 	KEY(kMatrix, vt, "kVTCompressionPropertyKey_YCbCrMatrix")
 	KEY(kRequireHw, vt, "kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder")
 	KEY(kSpeed, vt, "kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality")
+	KEY(kHevcMain, vt, "kVTProfileLevel_HEVC_Main_AutoLevel")
+	KEY(kHevcMain10, vt, "kVTProfileLevel_HEVC_Main10_AutoLevel")
 #undef FN
 #undef KEY
 	loaded = 1;
@@ -553,6 +556,7 @@ typedef struct {
 	CFDictionaryRef aux;
 	VTCompressionSessionRef vt;
 	int w, h;
+	int codec;  // 0 H.264, 1 HEVC, 2 HEVC Main10 HLG (HDR)
 	double seconds;
 	dispatch_queue_t q;
 	os_unfair_lock lock;
@@ -609,7 +613,9 @@ static void replayOutput(void *ref, void *frameRef, OSStatus status, VTEncodeInf
 	atomic_fetch_add(&r->encoded, 1);
 }
 
-Replay *mcrp_open(Ctx *ctx, const char *source, int w, int h, int fps, int64_t bitrate, double seconds, char *err, int errCap) {
+// codec: 0 H.264, 1 HEVC (half the size for the same picture), 2 HEVC Main10 in HLG (Cadence HDR's frame, highlights kept); the
+// media engine encodes each in hardware.
+Replay *mcrp_open(Ctx *ctx, const char *source, int w, int h, int fps, int64_t bitrate, double seconds, int codec, char *err, int errCap) {
 	@autoreleasepool {
 		if (vtLoad(err, errCap) != 0) return NULL;
 		void *cm = dlopen("/System/Library/Frameworks/CoreMedia.framework/CoreMedia", RTLD_NOW | RTLD_LOCAL);
@@ -621,13 +627,14 @@ Replay *mcrp_open(Ctx *ctx, const char *source, int w, int h, int fps, int64_t b
 		o.languageVersion = MTLLanguageVersion3_1;
 		NSError *e = nil;
 		id<MTLLibrary> lib = [[ctx->device newLibraryWithSource:[NSString stringWithUTF8String:source] options:o error:&e] autorelease];
-		id<MTLFunction> fn = lib ? [[lib newFunctionWithName:@"rec_nv12_tex"] autorelease] : nil;
+		id<MTLFunction> fn = lib ? [[lib newFunctionWithName:codec == 2 ? @"rec_p010_tex" : @"rec_nv12_tex"] autorelease] : nil;
 		id<MTLComputePipelineState> pso = fn ? [ctx->device newComputePipelineStateWithFunction:fn error:&e] : nil;
 		if (!pso) {
-			snprintf(err, errCap, "rec_nv12_tex: %s", e ? e.description.UTF8String : "no function");
+			snprintf(err, errCap, "rec kernel: %s", e ? e.description.UTF8String : "no function");
 			return NULL;
 		}
 		Replay *r = calloc(1, sizeof(Replay));
+		r->codec = codec;
 		r->ctx = ctx;
 		r->pso = pso;
 		r->w = w;
@@ -642,7 +649,7 @@ Replay *mcrp_open(Ctx *ctx, const char *source, int w, int h, int fps, int64_t b
 			return NULL;
 		}
 		NSDictionary *pb = @{
-			(id) kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+			(id) kCVPixelBufferPixelFormatTypeKey: @(codec == 2 ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
 			(id) kCVPixelBufferWidthKey: @(w), (id) kCVPixelBufferHeightKey: @(h),
 			(id) kCVPixelBufferIOSurfacePropertiesKey: @{}, (id) kCVPixelBufferMetalCompatibilityKey: @YES,
 		};
@@ -652,22 +659,23 @@ Replay *mcrp_open(Ctx *ctx, const char *source, int w, int h, int fps, int64_t b
 			return NULL;
 		}
 		r->aux = (CFDictionaryRef) [@{(id) kCVPixelBufferPoolAllocationThresholdKey: @8} retain];
-		OSStatus st = pVTCreate(NULL, w, h, kCMVideoCodecType_H264, (CFDictionaryRef) @{(id) kRequireHw: @YES}, NULL, NULL, replayOutput, r, &r->vt);
+		OSStatus st = pVTCreate(NULL, w, h, codec ? kCMVideoCodecType_HEVC : kCMVideoCodecType_H264, (CFDictionaryRef) @{(id) kRequireHw: @YES}, NULL, NULL,
+			replayOutput, r, &r->vt);
 		if (st != noErr) {
-			snprintf(err, errCap, "VTCompressionSessionCreate: %d", (int) st);
+			snprintf(err, errCap, "VTCompressionSessionCreate (%s): %d", codec ? "HEVC" : "H.264", (int) st);
 			r->vt = NULL;
 			replayFree(r);
 			return NULL;
 		}
 		pVTSet(r->vt, kRealTime, kCFBooleanTrue);
-		pVTSet(r->vt, kProfile, kHigh);
+		pVTSet(r->vt, kProfile, codec == 2 ? kHevcMain10 : codec == 1 ? kHevcMain : kHigh);
 		pVTSet(r->vt, kReorder, kCFBooleanFalse);
 		cfSetInt(r->vt, kBitRate, bitrate);
 		cfSetInt(r->vt, kFrameRate, fps);
 		cfSetInt(r->vt, kKeyInterval, fps);  // (a group a second: the ring drops whole seconds)
-		pVTSet(r->vt, kPrimaries, kCVImageBufferColorPrimaries_ITU_R_709_2);
-		pVTSet(r->vt, kTransfer, kCVImageBufferTransferFunction_ITU_R_709_2);
-		pVTSet(r->vt, kMatrix, kCVImageBufferYCbCrMatrix_ITU_R_709_2);
+		pVTSet(r->vt, kPrimaries, codec == 2 ? kCVImageBufferColorPrimaries_ITU_R_2020 : kCVImageBufferColorPrimaries_ITU_R_709_2);
+		pVTSet(r->vt, kTransfer, codec == 2 ? kCVImageBufferTransferFunction_ITU_R_2100_HLG : kCVImageBufferTransferFunction_ITU_R_709_2);
+		pVTSet(r->vt, kMatrix, codec == 2 ? kCVImageBufferYCbCrMatrix_ITU_R_2020 : kCVImageBufferYCbCrMatrix_ITU_R_709_2);
 		pVTSet(r->vt, kSpeed, kCFBooleanTrue);
 		pVTPrepare(r->vt);
 		r->q = dispatch_queue_create("cadence.replay", DISPATCH_QUEUE_SERIAL);
@@ -686,14 +694,18 @@ int mcrp_capture(Replay *r, Enc *enc, id<MTLTexture> src, const void *params, in
 		atomic_fetch_add(&r->dropped, 1);
 		return -2;
 	}
-	CVBufferSetAttachment(pb, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
-	CVBufferSetAttachment(pb, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
-	CVBufferSetAttachment(pb, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+	int hdr = r->codec == 2;
+	CVBufferSetAttachment(pb, kCVImageBufferColorPrimariesKey, hdr ? kCVImageBufferColorPrimaries_ITU_R_2020 : kCVImageBufferColorPrimaries_ITU_R_709_2,
+		kCVAttachmentMode_ShouldPropagate);
+	CVBufferSetAttachment(pb, kCVImageBufferTransferFunctionKey, hdr ? kCVImageBufferTransferFunction_ITU_R_2100_HLG : kCVImageBufferTransferFunction_ITU_R_709_2,
+		kCVAttachmentMode_ShouldPropagate);
+	CVBufferSetAttachment(pb, kCVImageBufferYCbCrMatrixKey, hdr ? kCVImageBufferYCbCrMatrix_ITU_R_2020 : kCVImageBufferYCbCrMatrix_ITU_R_709_2,
+		kCVAttachmentMode_ShouldPropagate);
 	static CFDictionaryRef writable;
 	if (!writable) writable = (CFDictionaryRef) [@{(id) kCVMetalTextureUsage: @(MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite)} retain];
 	CVMetalTextureRef ty = NULL, tuv = NULL;
-	CVMetalTextureCacheCreateTextureFromImage(NULL, r->cache, pb, writable, MTLPixelFormatR8Unorm, r->w, r->h, 0, &ty);
-	CVMetalTextureCacheCreateTextureFromImage(NULL, r->cache, pb, writable, MTLPixelFormatRG8Unorm, r->w / 2, r->h / 2, 1, &tuv);
+	CVMetalTextureCacheCreateTextureFromImage(NULL, r->cache, pb, writable, hdr ? MTLPixelFormatR16Unorm : MTLPixelFormatR8Unorm, r->w, r->h, 0, &ty);
+	CVMetalTextureCacheCreateTextureFromImage(NULL, r->cache, pb, writable, hdr ? MTLPixelFormatRG16Unorm : MTLPixelFormatRG8Unorm, r->w / 2, r->h / 2, 1, &tuv);
 	id<MTLTexture> yt = ty ? CVMetalTextureGetTexture(ty) : nil, uvt = tuv ? CVMetalTextureGetTexture(tuv) : nil;
 	if (!yt || !uvt) {
 		if (ty) CFRelease(ty);

@@ -26,7 +26,13 @@ import org.lwjgl.system.MemoryUtil;
  */
 public final class Replay {
 	private static final Linker LINKER = Linker.nativeLinker();
-	private static final int PARAMS_BYTES = 64, SECONDS = 30, WIDTH = 1280, FPS = 60;
+	private static final int PARAMS_BYTES = 64, SECONDS = 30, FPS = 60;
+	/** -Dcadence.replay.codec=h264|hevc: the codec (default hevc: the same picture at about half the size, so 1080p for 720p's memory). */
+	private static final boolean HEVC = !"h264".equalsIgnoreCase(System.getProperty("cadence.replay.codec", "hevc"));
+	private static final int WIDTH = HEVC ? 1920 : 1280;
+	/** The replay kept was opened for HDR frames (10-bit HLG): HDR turning on or off starts it again. */
+	private static boolean openedHdr;
+	private static String codecName = "";
 	private static MethodHandle OPEN, CAPTURE, SAVE, CLOSE;
 	private static volatile boolean wanted;
 	private static long replay, params;
@@ -63,6 +69,10 @@ public final class Replay {
 		long now = System.nanoTime();
 		if (now - lastCapture < 1_000_000_000L / FPS - 500_000L) return;
 		int w = view.getWidth(0), h = view.getHeight(0);
+		if (replay != 0 && openedHdr != dev.cadence.metal.Hdr.active()) {
+			closeLater();
+			return;
+		}
 		if (replay == 0 && !open(encoder, w, h)) return;
 		if (w != srcW || h != srcH) fit(w, h);
 		lastCapture = now;
@@ -116,7 +126,7 @@ public final class Replay {
 	private static boolean open(Object encoder, int w, int h) {
 		try {
 			if (OPEN == null) {
-				OPEN = fn("mcrp_open", JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_DOUBLE, JAVA_LONG, JAVA_INT);
+				OPEN = fn("mcrp_open", JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_DOUBLE, JAVA_INT, JAVA_LONG, JAVA_INT);
 				CAPTURE = fn("mcrp_capture", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT);
 				SAVE = fn("mcrp_save", JAVA_DOUBLE, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 				CLOSE = fn("mcrp_close", null, JAVA_LONG);
@@ -125,21 +135,33 @@ public final class Replay {
 			try (InputStream in = Replay.class.getResourceAsStream("/cadence/rec/rec.metal")) {
 				src = new String(in.readAllBytes(), StandardCharsets.UTF_8);
 			}
-			// the video: 1280 wide, the window's aspect, even sizes
-			outW = WIDTH;
-			outH = Math.max(2, (int) Math.round((double) WIDTH * h / Math.max(1, w)) & ~1);
+			// the video: 1920 wide (HEVC; 1280 for H.264), no wider than the frame, the window's aspect, even sizes
+			outW = Math.max(2, Math.min(WIDTH, w) & ~1);
+			outH = Math.max(2, (int) Math.round((double) outW * h / Math.max(1, w)) & ~1);
+			boolean hdr = dev.cadence.metal.Hdr.active();
+			int codec = hdr ? 2 : HEVC ? 1 : 0;
 			long s = MemoryUtil.nmemAlloc(src.length() * 3L + 1), err = MemoryUtil.nmemAlloc(512);
 			try {
 				MemoryUtil.memUTF8(src, true, MemoryUtil.memByteBuffer(s, src.length() * 3 + 1));
-				replay = (long) OPEN.invokeExact(MetalBridge.ctx(encoder), s, outW, outH, FPS, 8_000_000L, (double) SECONDS, err, 512);
+				replay = (long) OPEN.invokeExact(MetalBridge.ctx(encoder), s, outW, outH, FPS, hdr ? 12_000_000L : 8_000_000L, (double) SECONDS, codec, err, 512);
+				if (replay == 0 && codec != 0) {
+					// (no HEVC encoder: H.264 as before)
+					System.out.println("[cadence] instant replay: " + MemoryUtil.memUTF8(err) + "; H.264 instead");
+					outW = Math.max(2, Math.min(1280, w) & ~1);
+					outH = Math.max(2, (int) Math.round((double) outW * h / Math.max(1, w)) & ~1);
+					codec = 0;
+					replay = (long) OPEN.invokeExact(MetalBridge.ctx(encoder), s, outW, outH, FPS, 8_000_000L, (double) SECONDS, codec, err, 512);
+				}
 				if (replay == 0) throw new IllegalStateException(MemoryUtil.memUTF8(err));
+				openedHdr = hdr;
+				codecName = codec == 2 ? "HEVC 10-bit HDR (HLG)" : codec == 1 ? "HEVC" : "H.264";
 			} finally {
 				MemoryUtil.nmemFree(s);
 				MemoryUtil.nmemFree(err);
 			}
 			params = MemoryUtil.nmemCalloc(1, PARAMS_BYTES);
 			srcW = srcH = 0;
-			System.out.println("[cadence] instant replay on: the last " + SECONDS + " s at " + outW + "x" + outH);
+			System.out.println("[cadence] instant replay on: the last " + SECONDS + " s at " + outW + "x" + outH + ", " + codecName + ", hardware encoder");
 			return true;
 		} catch (Throwable t) {
 			failed = true;

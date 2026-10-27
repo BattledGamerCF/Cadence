@@ -67,3 +67,41 @@ kernel void rec_nv12_tex(texture2d<float, access::sample> src [[texture(0)]], te
 	float y = dot(m, kY);
 	uvTex.write(float4(float(q(128.0 + 224.0 * (m.b - y) / 1.8556)) / 255.0, float(q(128.0 + 224.0 * (m.r - y) / 1.5748)) / 255.0, 0.0, 0.0), gid);
 }
+
+// Instant Replay in HDR (Cadence HDR on): the frame (sRGB-encoded values, light sources above 1.0) as 10-bit HEVC in BT.2100 HLG:
+// linear, BT.709 primaries to BT.2020, SDR white at 26.5% of the HLG peak (signal ~0.75, as BT.2408 places it), the HLG curve,
+// BT.2020 Y'CbCr, 10-bit limited range in the high bits of 16-bit planes (P010-style: Y R16, CbCr RG16).
+static float3 pixelHdr(texture2d<float, access::sample> src, constant RecParams &p, uint x, uint y) {
+	constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::linear);
+	float du = p.crop.z / float(p.rw), dv = p.crop.w / float(p.rh);
+	float u0 = p.crop.x + (float(x - p.rx) + 0.5) * du, v0 = 1.0 - (p.crop.y + (float(y - p.ry) + 0.5) * dv);
+	float3 sum = 0.0;
+	for (uint j = 0; j < p.tapsY; j++) {
+		float v = v0 + ((float(j) + 0.5) / float(p.tapsY) - 0.5) * dv;
+		for (uint i = 0; i < p.tapsX; i++) {
+			float u = u0 + ((float(i) + 0.5) / float(p.tapsX) - 0.5) * du;
+			float3 c = max(src.sample(s, float2(u, v)).rgb, 0.0);
+			sum += select(pow((c + 0.055) / 1.055, 2.4), c / 12.92, c <= 0.04045);  // (linear, before averaging)
+		}
+	}
+	float3 lin = sum / float(p.tapsX * p.tapsY);
+	float3 r2020 = float3(dot(lin, float3(0.6274, 0.3293, 0.0433)), dot(lin, float3(0.0691, 0.9195, 0.0114)), dot(lin, float3(0.0164, 0.0880, 0.8956)));
+	float3 e = clamp(r2020 * 0.265, 0.0, 1.0);
+	const float a = 0.17883277, b = 0.28466892, c = 0.55991073;
+	return select(a * log(max(12.0 * e - b, 1e-6)) + c, sqrt(3.0 * e), e <= 1.0 / 12.0);
+}
+
+kernel void rec_p010_tex(texture2d<float, access::sample> src [[texture(0)]], texture2d<float, access::write> yTex [[texture(1)]],
+	texture2d<float, access::write> uvTex [[texture(2)]], constant RecParams &p [[buffer(1)]], uint2 gid [[thread_position_in_grid]]) {
+	uint bx = gid.x * 2, by = gid.y * 2;
+	if (bx >= p.outW || by >= p.outH) return;
+	bool inside = bx >= p.rx && bx < p.rx + p.rw && by >= p.ry && by < p.ry + p.rh;
+	float3 c[4];
+	for (uint k = 0; k < 4; k++) c[k] = inside ? pixelHdr(src, p, bx + (k & 1), by + (k >> 1)) : float3(0.0);
+	const float3 kY = float3(0.2627, 0.6780, 0.0593);
+	for (uint k = 0; k < 4; k++) yTex.write(float4(round(64.0 + 876.0 * dot(c[k], kY)) * 64.0 / 65535.0), uint2(bx + (k & 1), by + (k >> 1)));
+	float3 m = (c[0] + c[1] + c[2] + c[3]) * 0.25;
+	float y = dot(m, kY);
+	float cb = round(512.0 + 896.0 * (m.b - y) / 1.8814), cr = round(512.0 + 896.0 * (m.r - y) / 1.4746);
+	uvTex.write(float4(cb * 64.0 / 65535.0, cr * 64.0 / 65535.0, 0.0, 0.0), gid);
+}
