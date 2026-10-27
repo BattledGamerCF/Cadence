@@ -13,7 +13,7 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import org.lwjgl.system.MemoryUtil;
 
 /**
- * Smooth Textures (Video Settings > Cadence: Apple Hardware): the block textures at twice their resolution, upscaled once by an
+ * Smooth Textures (Video Settings > Cadence: Visuals): the block textures at twice their resolution, upscaled once by an
  * ML model on the Neural Engine (VideoToolbox's low-latency super resolution, mcneural.m mcsm_upscale): the pixel art drawn with
  * smooth, sharp detail instead of square pixels. Cadence's terrain renderer draws with the 2x atlas (its levels below are the
  * game's own); animated sprites (water, lava, fire, portals) keep the game's frames, copied in each frame. Made again when the

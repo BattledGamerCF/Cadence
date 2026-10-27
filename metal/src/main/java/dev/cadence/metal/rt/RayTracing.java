@@ -13,7 +13,7 @@ import org.joml.Matrix4fc;
 import org.lwjgl.system.MemoryUtil;
 
 /**
- * Ray Tracing (Video Settings > Cadence: Apple Hardware > Ray Tracing): shadows from the sun and the moon, traced per pixel
+ * Ray Tracing (Video Settings > Cadence: Visuals > Ray Tracing): shadows from the sun and the moon, traced per pixel
  * through a voxel copy of the world near the camera (RtWorld, rt.metal) instead of a shadow map, after the world is drawn and
  * before the hand and the HUD. In shadow, a pixel gets the light the game's own lightmap gives for fewer sky light levels there,
  * so torch-lit places stay torch-lit and nights get soft moon shadows. Surfaces facing away from the light count as shadowed.

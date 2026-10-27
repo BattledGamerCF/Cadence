@@ -16,7 +16,7 @@ import net.minecraft.resources.Identifier;
 import org.lwjgl.system.MemoryUtil;
 
 /**
- * Style Filters (Video Settings > Cadence: Apple Hardware > Style Filter): the world repainted in the style of one of the game's
+ * Style Filters (Video Settings > Cadence: Visuals > Style Filter): the world repainted in the style of one of the game's
  * own paintings, by a neural network on the Neural Engine (mcneural.m: about 28 ms a picture on an M2, beside the GPU; the newest
  * picture is blended over the world, the hand and the HUD drawn on top as always).
  *

@@ -236,7 +236,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		};
 		slider.active = on;
 		slider.setTooltip(on
-			? Tips.of("How far the far terrain reaches, like Render Distance for the real chunks (512 chunks: 8 km; up to 4,096: 65 km).",
+			? Tips.of(Tips.Impact.MEDIUM, "How far the far terrain reaches, like Render Distance for the real chunks (512 chunks: 8 km; up to 4,096: 65 km).",
 				"#Applies now" + (running() ? "" : " (at the next launch: Far Terrain starts then)") + ". Farther takes a little more memory and "
 					+ "time to fill in; a big change builds the far terrain again (a second or two, from the disk cache).")
 			: Tips.of("Turn Far Terrain on first (the button beside this one).",
@@ -248,7 +248,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 	public static Button button(Screen parent) {
 		String state = chosen() ? (running() ? "On" : "On next launch") : (running() ? "Off next launch" : "Off");
 		return Button.builder(Component.literal("Far Terrain: " + state + "..."), b -> Minecraft.getInstance().gui.setScreen(new FarTerrainScreen(parent)))
-			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Terrain drawn far past your render distance, like the Distant Horizons mod (experimental).",
+			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.MEDIUM, "Terrain drawn far past your render distance, like the Distant Horizons mod (experimental).",
 				"#Its distance, quality, memory and fog are on this page.")).build();
 	}
 }

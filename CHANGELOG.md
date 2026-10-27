@@ -4,6 +4,13 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
 
 ## Unreleased
 
+- **Video Settings regrouped, with performance impact like Sodium.** A new **Cadence: Visuals** section holds the settings
+  that cost frames for the picture (Far Terrain and Far Distance, Ray Tracing and its tracer, HDR, Dynamic Lights, Style
+  Filter, Smooth Textures, leaves, Keep Server Chunks); each one's tooltip ends with "Performance impact:" Low (green),
+  Medium (yellow), High (gold) or Varies, rated from the measurements above. **Cadence: Speed** has Sharpness & Speed, Frame
+  Generation, Auto Render Distance and Render Max FPS; Voice Control moved to Extras. (Replaces Picture & Speed and Apple
+  Hardware.)
+
 - **The previous dimension's world is let go after a dimension change.** Two things held the whole level (its chunks,
   entities and light data: 787 chunks in memory instead of 574 in the Nether test) until the world was left: Keep Server
   Chunks' note of which level its storage size was set for (now a weak reference), and vanilla's recipe search tree, whose

@@ -52,7 +52,7 @@ The release jar (`tools/release`) nests four Fabric mods built by Gradle from fo
 | `shaders/mixin/` | Hooks into Minecraft's renderer for shader packs. |
 | `scene/`, `sceneoptimizer/` | The Scene Optimizer port (from the Shader Loader). |
 | **`shaders/cadence/`** | **Cadence's own features**, by area: |
-| `cadence/ui/` | Video Settings rows and buttons (`CadenceSettings`, `AppleHardwareSettings` for the Apple Hardware section, `ShaderToggle` = the shader settings and the config file), the Sharpness & Speed page, the Shader Packs list, Shader Pack Settings, tooltips (`Tips`), keys O/K, the Mod Menu entry. |
+| `cadence/ui/` | Video Settings rows and buttons (`CadenceSettings`, `AppleHardwareSettings` for the Apple hardware features' buttons, `Tips` = every tooltip, with the performance impact line, `ShaderToggle` = the shader settings and the config file), the Sharpness & Speed page, the Shader Packs list, Shader Pack Settings, tooltips (`Tips`), keys O/K, the Mod Menu entry. |
 | `cadence/render/` | Rendering features: Auto resolution and World Resolution (`RenderScale`, `WorldScale`), crisp text, dynamic lights, entity culling, Render Max FPS, the compile queue, lazy targets (outline, HUD, panorama), recovering from a failed frame, cleanup when a world closes. |
 | `cadence/shaderpack/` | Switching packs live (`ShaderSwitcher`), the pack catalogue (tested/heavy), quality hints. |
 | `cadence/shadow/` | Shader-pack shadows: every-2nd-frame reuse, shadow proxies, skipping casters that can't shadow anything. |

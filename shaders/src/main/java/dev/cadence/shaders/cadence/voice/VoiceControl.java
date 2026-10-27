@@ -11,7 +11,7 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 
 /**
- * Voice Control (Video Settings > Cadence: Apple Hardware): spoken commands. Cadence Helper (dev.cadence.metal.neural.Helper)
+ * Voice Control (Video Settings > Cadence: Extras): spoken commands. Cadence Helper (dev.cadence.metal.neural.Helper)
  * listens with Apple's speech recognition on this Mac only (requiresOnDeviceRecognition: the Neural Engine, nothing sent
  * anywhere) and appends each finished phrase to a file; each tick the new lines become game actions. The helper runs as its own
  * app (launched through LaunchServices), so the first time macOS asks to let Cadence Helper use the microphone and speech

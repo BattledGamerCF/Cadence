@@ -69,26 +69,26 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 			.tooltip(dev.cadence.shaders.cadence.ui.Tips.of("Tests your Mac (about 15 seconds) and recommends settings.",
 				"#Nothing changes until you press Apply." + (mac.isEmpty() ? "" : " Last set up for: " + mac + ".")))
 			.build());
-		// (grouped so the panel reads top to bottom: what you see and how fast, then power and heat, then extras; the
-		// sharpness-for-speed trades, shader shadows included, are on their own page)
-		this.list.addHeader(heading("Cadence: Picture & Speed"));
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.SharpnessScreen.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.leavesButton());
+		// (grouped so the panel reads top to bottom: what you see, each with its performance impact in the tooltip, as in
+		// Sodium; then speed, power and heat, extras. The sharpness-for-speed trades, shader shadows included, are on their own page)
+		this.list.addHeader(heading("Cadence: Visuals"));
 		// (Far Distance beside Far Terrain, as Render Distance is a slider of its own)
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.FarTerrainScreen.button(self), dev.cadence.shaders.cadence.ui.FarTerrainScreen.distanceSlider());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.frameGenButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.dynamicLightsButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.autoRenderDistanceButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.keepServerChunksButton());
-		this.list.addHeader(heading("Cadence: Apple Hardware"));
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.hdrButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.rayTracingButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.tracerButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.styleButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.smoothButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.voiceButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.rayTracingButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.tracerButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.hdrButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.dynamicLightsButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.styleButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.smoothButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.leavesButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.keepServerChunksButton());
+		this.list.addHeader(heading("Cadence: Speed"));
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.SharpnessScreen.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.frameGenButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.autoRenderDistanceButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.maxFpsButton());
 		this.list.addHeader(heading("Cadence: Power & Heat"));
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.batteryButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.backgroundButton(), null);
 		this.list.addHeader(heading("Cadence: Extras"));
 		this.list.addSmall(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.fpsCounterButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.messagesButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.maxFpsButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.javaButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.overlayButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.replayButton(), null);
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.overlayButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.messagesButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.replayButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.voiceButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.javaButton(), null);
 	}
 
 	/**

@@ -5,7 +5,7 @@ import java.util.List;
 import org.lwjgl.system.MemoryUtil;
 
 /**
- * HDR (Video Settings > Picture & Speed > HDR): the picture on the display's extended dynamic range. With it on, the game's frame
+ * HDR (Video Settings > Cadence: Visuals > HDR): the picture on the display's extended dynamic range. With it on, the game's frame
  * (the main target and Cadence's scaled world target) is an RGBA16Float texture instead of RGBA8: it holds the same sRGB-encoded
  * values the game always wrote, but light sources may go above 1.0 (Cadence's terrain renderer lifts emissive blocks, the
  * sky renderer draws the sun brighter, see {@link #emissiveGain()}), and the window's layer is extended linear sRGB with EDR on.

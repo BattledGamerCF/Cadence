@@ -6,8 +6,8 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 
 /**
- * Video Settings > Cadence: Apple Hardware: the features built on the Mac's display, ray tracing and Neural Engine hardware.
- * Each one's own class holds what it does; this is their buttons and the saved values (the Cadence config).
+ * The features built on the Mac's display, ray tracing and Neural Engine hardware (Video Settings > Cadence: Visuals, Voice
+ * Control under Extras). Each one's own class holds what it does; this is their buttons and the saved values (the Cadence config).
  */
 public final class AppleHardwareSettings {
 	private AppleHardwareSettings() {
@@ -54,7 +54,7 @@ public final class AppleHardwareSettings {
 			dev.cadence.metal.neural.SmoothTextures.setWanted(on);
 			ShaderToggle.saveKey("smoothTextures", Boolean.toString(on));
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Block textures at twice their resolution, upscaled by an ML model on your Mac's Neural Engine.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.LOW, "Block textures at twice their resolution, upscaled by an ML model on your Mac's Neural Engine.",
 			"#The pixel art keeps its look with smooth, sharp detail instead of square pixels up close. Done once in a few seconds "
 				+ "(again after a resource pack change); animated textures (water, lava, fire) stay as they are. Uses about 85 MB more "
 				+ "graphics memory. Needs Cadence's terrain renderer (not with a shader pack).")).build();
@@ -76,7 +76,7 @@ public final class AppleHardwareSettings {
 			dev.cadence.metal.neural.StyleFilter.setStyle(next);
 			ShaderToggle.saveKey("styleFilter", next.name());
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The world repainted in the style of one of Minecraft's paintings, by a neural network on your Mac's Neural Engine.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.MEDIUM, "The world repainted in the style of one of Minecraft's paintings, by a neural network on your Mac's Neural Engine.",
 			"#The first time a style is chosen, your Mac learns it (about 4 minutes, in the background while you play; it takes a few "
 				+ "pictures of your world first). Nothing is downloaded. The network then runs beside the graphics chip, about 35 pictures "
 				+ "a second; your HUD stays sharp. Not with a shader pack or World Resolution below 100%.")).build();
@@ -106,13 +106,14 @@ public final class AppleHardwareSettings {
 			RayTracing.setMode(next);
 			ShaderToggle.saveKey("rayTracing", next.name());
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Shadows from the sun and the moon, ray traced through the blocks around you (64 blocks each way).",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.HIGH, "Shadows from the sun and the moon, ray traced through the blocks around you (64 blocks each way).",
 			"Shadows|every pixel in the open is tested against the sun: houses, trees and cliffs cast real shadows, and walls facing away "
 				+ "from the sun are in shade; torch-lit places stay lit",
 			"Lighting (Experimental)|the shadows plus the sky's and the sun's light bounced between blocks, ray traced and kept in a lighting "
 				+ "cache: shaded overhangs and caves' mouths, sunlit walls lighting the ground beside them",
 			"Off|as vanilla",
-			"#Not with a shader pack (it has its own shadows) or World Resolution below 100%. Players and mobs don't cast shadows yet.")).build();
+			"#About 1 ms a frame for Shadows and 2.5 ms for Lighting on an M2 at 1080p. Not with a shader pack (it has its own shadows) "
+					+ "or World Resolution below 100%. Players and mobs don't cast shadows yet.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(rtLabel()));
 		return self[0];
 	}
@@ -130,7 +131,7 @@ public final class AppleHardwareSettings {
 			RayTracing.setTracer(next);
 			ShaderToggle.saveKey("rayTracer", next.name());
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How rays are traced (the picture is the same).",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES, "How rays are traced (the picture is the same).",
 			"Hardware|Metal ray tracing through an acceleration structure of the world: on M3 and newer the ray tracing hardware does it",
 			"Voxel|a walk through the blocks in a compute shader: fastest on M1 and M2, which have no ray tracing hardware",
 			"Auto|Hardware on M3 and newer, Voxel before")).build();
@@ -167,7 +168,7 @@ public final class AppleHardwareSettings {
 		String screen = p > 1.05f
 			? String.format(java.util.Locale.ROOT, "This screen shows highlights up to %.1fx white (less at full brightness: the room left above the brightness you set).", p)
 			: "This screen shows no HDR range now (turn it on to find out: macOS reports it once a game asks). Built-in XDR displays reach 16x; most other Mac screens about 2x below full brightness.";
-		return Tips.of("Light sources brighter than white, on your screen's extended range: glowstone, lava, torch flames, lanterns and the sun.",
+		return Tips.of(Tips.Impact.LOW, "Light sources brighter than white, on your screen's extended range: glowstone, lava, torch flames, lanterns and the sun.",
 			"#Everything else, the menus and the HUD look as before (on a screen with little room above white, white itself is a touch "
 				+ "dimmer, to leave the highlights some). " + screen
 				+ " Needs Cadence's terrain renderer for the glowing blocks; with a shader pack, the pack's own picture is shown unchanged."

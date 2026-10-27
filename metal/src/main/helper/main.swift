@@ -1,4 +1,4 @@
-// Cadence Helper (Cadence: Apple Hardware): the jobs that need Apple frameworks the game's process can't use for them.
+// Cadence Helper (the Apple hardware features): the jobs that need Apple frameworks the game's process can't use for them.
 //
 //   cadence-helper train-style STYLE_IMAGE CONTENT_DIR ITERATIONS OUT.mlmodel
 //       A style transfer model trained with Create ML on this Mac (no download: Create ML's own feature extractor), for Style

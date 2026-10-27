@@ -286,7 +286,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(leavesLabel(), b -> {
 			dev.cadence.shaders.cadence.mesh.SmartLeaves.setEnabled(!dev.cadence.shaders.cadence.mesh.SmartLeaves.enabled());
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("With See-Through Leaves on:",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.MEDIUM, "With See-Through Leaves on:",
 			"Smart|leaves buried inside a canopy aren't drawn; forests up to 2x faster",
 			"Detailed|every leaf face, as in vanilla")).build();
 		onRefresh(() -> self[0].setMessage(leavesLabel()));
@@ -438,7 +438,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(keepChunksLabel(), b -> {
 			dev.cadence.shaders.cadence.server.ServerChunks.toggle();
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("On a server: your full render distance, not just the server's view distance.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.MEDIUM, "On a server: your full render distance, not just the server's view distance.",
 			"#Chunks the server stops sending are kept while they're within your render distance (as they were when you last saw them; the server sends them "
 				+ "again when you come back), so the view fills in as you travel. They're also saved on disk (cadence-chunks, up to 512 MB), so a world or "
 				+ "dimension you come back to is there at once. Single player already sends everything. Uses memory for the extra chunks.")).build();
@@ -461,7 +461,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(dynamicLightsLabel(), b -> {
 			DynamicLights.cycle();
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Light from torches and other light sources that move, as a placed one would give.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.LOW, "Light from torches and other light sources that move, as a placed one would give.",
 			"Held Items|a torch, lantern or glowstone in anyone's hand lights the world around them",
 			"All|also dropped light items, burning mobs, blazes, fireballs, lit TNT, glowing items in frames",
 			"Off|as vanilla",

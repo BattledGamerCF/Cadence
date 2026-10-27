@@ -60,7 +60,7 @@ full-resolution, full-quality screenshot), a **Performance Overlay** (frames, GP
 the current draw, macOS **Low Power Mode** followed as Battery Saver, **Auto Render Distance** for shader packs, and the game's
 sound on **Apple's audio engine** instead of OpenAL (spatial audio on headphones and AirPods; Options > Music & Sounds).
 
-**Apple hardware** (Video Settings > Cadence: Apple Hardware): **HDR** (light sources brighter than white on the display's
+**Apple hardware** (Video Settings > Cadence: Visuals; Voice Control under Extras): **HDR** (light sources brighter than white on the display's
 extended range), **ray-traced shadows and lighting** (a voxel tracer on M1/M2, Metal's ray tracing hardware on M3 and newer;
 path-traced Photo Mode shots), and the **Neural Engine** at work: **Style Filters** (the world repainted like one of the game's
 paintings, trained on your Mac), **Smooth Textures** (block textures upscaled 2x by Apple's ML super resolution), a Neural
@@ -119,10 +119,12 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 
 - **In game:** everything is in **Options > Video Settings**, at the top: the status lines, then **Shaders...** (the
   Shader Packs list, with the pack's profile) and **Shader Pack Settings...** (the pack's own options, on its own pages,
-  as in Iris, with Apply), then the Performance preset and Quick Setup. Below them, **Cadence: Picture & Speed** (resolution
-  and sharpening, leaves, Far Terrain and Far Distance, Frame Generation, Dynamic Lights, Auto Render Distance, Keep Server
-  Chunks), **Cadence: Power & Heat** (cooling, On Battery, In Background) and **Cadence: Extras** (Benchmark, the fps
-  counter, messages, Render Max FPS, Java, the Performance Overlay, Instant Replay).
+  as in Iris, with Apply), then the Performance preset and Quick Setup. Below them, **Cadence: Visuals** (the settings that cost
+  frames for the picture: Far Terrain and Far Distance, Ray Tracing and its tracer, HDR, Dynamic Lights, Style Filter, Smooth
+  Textures, leaves, Keep Server Chunks; each tooltip ends with its performance impact, as in Sodium: Low in green, Medium in
+  yellow, High in gold), **Cadence: Speed** (Sharpness & Speed, Frame Generation, Auto Render Distance, Render Max FPS),
+  **Cadence: Power & Heat** (cooling, On Battery, In Background) and **Cadence: Extras** (Benchmark, the fps counter, the
+  Performance Overlay, messages, Instant Replay, Voice Control, Java).
 - **Keys:** **O** opens Shader Packs, **K** turns shaders off and back on, **F9** takes a Photo Mode shot, **F10** saves an
   Instant Replay (Controls > Key Binds > Miscellaneous).
 - **Shader pack options** are kept per pack in `shaderpacks/<pack>.txt`, the same file Iris uses.
