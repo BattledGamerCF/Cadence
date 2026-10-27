@@ -414,6 +414,28 @@ static int cacheFind(device CacheEntry *cache, uint mask, uint key, bool insert)
 	return -1;
 }
 
+// The entry for a key, claimed if it has none; when all its probes are taken, one whose cell is outside the window now is taken
+// over (the player moved on: without this the table fills while exploring and new surfaces get no bounce light, BH7 suspicion
+// 3). Its average restarts (age 0: the first samples count fully).
+static int cacheClaim(device CacheEntry *cache, uint mask, uint key, constant RtFrame &f) {
+	int s = cacheFind(cache, mask, key, true);
+	if (s >= 0) return s;
+	uint ox = (f.dims.z + uint(int(f.extra.z))) & 0x3FFu, oz = (f.dims.w + uint(int(f.extra.w))) & 0x3FFu, w = f.dims.x;
+	uint h = hashKey(key);
+	for (uint i = 0; i < CACHE_PROBES; i++) {
+		uint slot = (h + i) & mask;
+		uint k = atomic_load_explicit(&cache[slot].key, memory_order_relaxed);
+		if (((k - ox) & 0x3FFu) < w && (((k >> 10) - oz) & 0x3FFu) < w) continue;  // (inside the window: in use)
+		uint expected = k;
+		if (atomic_compare_exchange_weak_explicit(&cache[slot].key, &expected, key, memory_order_relaxed, memory_order_relaxed)) {
+			cache[slot].age = 0u;
+			return int(slot);
+		}
+		if (expected == key) return int(slot);
+	}
+	return -1;
+}
+
 static inline uint faceOf(float3 n) {
 	return faceIndex(n);
 }
@@ -542,12 +564,12 @@ kernel void rt_cache_update(depth2d<float, access::read> depth [[texture(0)]], t
 		L = f.sky.xyz * f.sky.w * (dir.y > 0.0f ? 1.0f : 0.25f);
 	} else {
 		ushort v = vox[voxelIndex(hit, f)];
-		float3 albedo = srgbToLinear(float3((uint3(palette[v & 0xFFFu].x) >> uint3(16, 8, 0)) & 0xFFu) / 255.0f);
+		float3 albedo = srgbToLinear(float3((uint3(palette[v & 0x7FFFu].x) >> uint3(16, 8, 0)) & 0xFFu) / 255.0f);
 		float3 hp = g + dir * t;
 		float3 inLight = sunOn(hp, hn, bricks, sections, f) + cacheAt(cache, mask, worldCell(hit + int3(hn), f), faceOf(hn));
 		L = albedo * inLight;
 	}
-	int s = cacheFind(cache, mask, cacheKey(worldCell(air, f), face), true);
+	int s = cacheClaim(cache, mask, cacheKey(worldCell(air, f), face), f);
 	if (s < 0) return;
 	uint3 fx = uint3(clamp(L, 0.0f, 64.0f) * 1024.0f);
 	atomic_fetch_add_explicit(&cache[s].sum[0], fx.x, memory_order_relaxed);
@@ -737,7 +759,7 @@ kernel void rt_path(depth2d<float, access::read> depth [[texture(0)]], texture2d
 					L += thr * skyRadiance(dir, f);
 					break;
 				}
-				uint e = palette[vox[voxelIndex(hit, f)] & 0xFFFu].x;
+				uint e = palette[vox[voxelIndex(hit, f)] & 0x7FFFu].x;
 				float3 a = srgbToLinear(float3((uint3(e) >> uint3(16, 8, 0)) & 0xFFu) / 255.0f);
 				float glow = float(e >> 24) / 15.0f;
 				if (glow > 0.0f) L += thr * a * glow * 4.0f;

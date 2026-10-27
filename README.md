@@ -60,6 +60,13 @@ full-resolution, full-quality screenshot), a **Performance Overlay** (frames, GP
 the current draw, macOS **Low Power Mode** followed as Battery Saver, **Auto Render Distance** for shader packs, and the game's
 sound on **Apple's audio engine** instead of OpenAL (spatial audio on headphones and AirPods; Options > Music & Sounds).
 
+**Apple hardware** (Video Settings > Cadence: Apple Hardware): **HDR** (light sources brighter than white on the display's
+extended range), **ray-traced shadows and lighting** (a voxel tracer on M1/M2, Metal's ray tracing hardware on M3 and newer;
+path-traced Photo Mode shots), and the **Neural Engine** at work: **Style Filters** (the world repainted like one of the game's
+paintings, trained on your Mac), **Smooth Textures** (block textures upscaled 2x by Apple's ML super resolution), a Neural
+Engine **upscaler** for World Resolution, and **Voice Control** (spoken commands, recognised on your Mac only). Sound: **World
+Reverb** (caves echo, walls muffle).
+
 On top of that: a garbage-collection policy for games, faster startup (about 15% sooner in a world: block data built in
 parallel, cached bootstrap data, a quicker loading fade), lighter chunk storage, threads placed on the right kind of core,
 exact frame caps and even pacing, and the optional Vivace Java build. Where another mod hooks code Cadence replaces,

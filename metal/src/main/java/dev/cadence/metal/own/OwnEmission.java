@@ -50,8 +50,12 @@ public final class OwnEmission {
 			return;
 		}
 		if (!(Minecraft.getInstance().getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS) instanceof TextureAtlas atlas)) return;
-		GpuTexture t = atlas.getTexture();
-		if (t == null) return;
+		GpuTexture t;
+		try {
+			t = atlas.getTexture();
+		} catch (IllegalStateException notYet) {
+			return;  // (the atlas isn't stitched yet: the loading screen's first frames, BH7-01)
+		}
 		if (t != forAtlas || mask == null) {
 			try {
 				build(atlas, t);

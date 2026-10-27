@@ -21,7 +21,7 @@ public final class WorldAcoustics {
 	private static long roomAt, soundsAt;
 	private static boolean applied;
 	private static float level = -40f, blend;
-	private static int preset = -1;
+	private static int preset = -1, candidate = -1, candidateCount;
 	private static final float[][] DIRS = directions();
 	private static long ids, pos;
 	private static final int MAX_SOUNDS = 64;
@@ -98,7 +98,13 @@ public final class WorldAcoustics {
 		// (eased: walking into a cave fills in over a second or so)
 		level += (targetLevel - level) * 0.35f;
 		blend += (targetBlend - blend) * 0.35f;
-		preset = p;
+		// (a new preset only once it has been measured twice in a row: loading one resets the reverb, so a space on the edge
+		// between two doesn't flip it 4 times a second)
+		if (p != preset) {
+			candidateCount = p == candidate ? candidateCount + 1 : 1;
+			candidate = p;
+			if (candidateCount >= 2 || preset < 0) preset = p;
+		}
 		AppleAudio.environment(true, preset, level, blend);
 		applied = true;
 		last = String.format(java.util.Locale.ROOT, "hits %d/%d mean %.1f sky %.2f preset %d level %.1f dB blend %.2f%s%s", hits, DIRS.length, mean, sky, preset,

@@ -25,6 +25,9 @@ public final class WorldClosed {
 			dev.cadence.shaders.cadence.hiz.HiZ.release();
 			dev.cadence.shaders.runtime.ShadowRenderer.releaseWorld();
 			WorldScale.releaseWorld();
+			dev.cadence.metal.rt.RayTracing.release();  // (its voxel window holds the level, BH7-03)
+			dev.cadence.metal.neural.StyleFilter.release();
+			dev.cadence.metal.NeuralUpscaler.release();  // (BH7-11)
 			ShadowCompileCull.reset();
 			dev.cadence.scene.SceneViews.worldChanged();
 			var runtime = dev.cadence.shaders.runtime.ShaderRuntime.get();

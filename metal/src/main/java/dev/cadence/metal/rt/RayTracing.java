@@ -188,7 +188,7 @@ public final class RayTracing {
 	 */
 	public static void afterWorld(GpuTexture color, GpuTexture depth, boolean pack, boolean scaled) {
 		if (mode == Mode.OFF || failed || pack || scaled || color == null || depth == null || dev.cadence.metal.record.Record.active()) {
-			if (mode == Mode.OFF && world != null) dropWorld();
+			if (mode == Mode.OFF && (world != null || rt != 0)) release();
 			return;
 		}
 		Minecraft mc = Minecraft.getInstance();
@@ -363,6 +363,27 @@ public final class RayTracing {
 			MemoryUtil.memFree(source);
 			MemoryUtil.nmemFree(err);
 		}
+	}
+
+	/**
+	 * Everything let go, made again at the next use: Ray Tracing turned off (the lighting cache too), or the world closed
+	 * (WorldClosed: the window holds the level and its chunks, BH7-03). Render thread.
+	 */
+	public static void release() {
+		dropWorld();
+		if (rt != 0) {
+			long old = rt;
+			rt = 0;
+			rtHw = false;
+			Thread.ofVirtual().start(() -> {
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException ignored) {
+				}
+				Minecraft.getInstance().execute(() -> RtNative.free(old));
+			});
+		}
+		clearCache = true;
 	}
 
 	/** The voxel window let go (Ray Tracing off, another world, the tracer changed); made again at the next use. */

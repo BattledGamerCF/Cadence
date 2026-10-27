@@ -47,6 +47,7 @@ static void playNode(Voice *v);
 // level from rays cast into the blocks around) and how much of each spatial sound goes into it
 static int gReverbOn;
 static float gReverbBlend;
+static int gLastPreset = -1;  // (the reverb preset loaded into gEnv: -1 for a new environment, BH7-10)
 
 // ---- loudness and placement (gLock held) ----
 
@@ -84,6 +85,7 @@ static int startEngine(char *err, int cap) {
 }
 
 int mca_init(int directional, char *err, int cap) {
+	gLastPreset = -1;
 	@autoreleasepool {
 		gAlgorithm = directional ? AVAudio3DMixingRenderingAlgorithmHRTFHQ : AVAudio3DMixingRenderingAlgorithmAuto;
 		if (gEngine) return 1;
@@ -468,11 +470,10 @@ void mca_environment(int on, int preset, float level, float blend) {
 	@autoreleasepool {
 		os_unfair_lock_lock(&gLock);
 		if (gEnv) {
-			static int lastPreset = -1;
 			gEnv.reverbParameters.enable = on ? YES : NO;
-			if (on && preset != lastPreset) {
+			if (on && preset != gLastPreset) {
 				[gEnv.reverbParameters loadFactoryReverbPreset:(AVAudioUnitReverbPreset) preset];
-				lastPreset = preset;
+				gLastPreset = preset;
 			}
 			gEnv.reverbParameters.level = level;
 		}

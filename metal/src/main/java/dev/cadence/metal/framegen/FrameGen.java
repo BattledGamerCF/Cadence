@@ -63,6 +63,7 @@ public final class FrameGen {
 	private static final double[][] slotPos = new double[2][3];
 	private static final float[][] slotLook = new float[2][2];  // the player's yaw and pitch (getYRot/getXRot) at the snapshot
 	private static final long[] slotFrame = {-10, -10};
+	private static boolean floatSnap;
 	/** When each snapshot was taken (nanoTime): an older one isn't the frame before (FG paused, a hitch, a menu). */
 	private static final long[] slotTime = new long[2];
 	private static volatile long frames;
@@ -210,6 +211,13 @@ public final class FrameGen {
 		slotFrame[s] = ++frames;
 		slotTime[s] = System.nanoTime();
 		hand = handDistance;
+		// (the frame's format changed, HDR on or off: mcfg.m made both snapshot textures again, so the other slot holds nothing,
+		// BH7-14)
+		boolean f = MetalBridge.isFloatFrame(color);
+		if (f != floatSnap) {
+			floatSnap = f;
+			slotFrame[s ^ 1] = -10;
+		}
 	}
 
 	private static float hand;

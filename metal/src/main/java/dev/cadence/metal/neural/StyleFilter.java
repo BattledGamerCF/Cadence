@@ -50,9 +50,15 @@ public final class StyleFilter {
 	private static volatile boolean busy;
 	private static volatile long ready;  // a loaded network handed over by the loading thread
 	private static volatile Style readyFor;
+	/** The style whose training or loading failed: not tried again until another style is chosen (BH7-02). */
+	private static volatile Style failedFor;
+	/** The running training (destroyed when the style is turned off or another is chosen, BH7-15). */
+	private static volatile Process training;
+	private static volatile Style trainingFor;
 	// pictures of the world for training, taken every half second while a style waits for them
 	private static Path capturing;
-	private static int captured, frameCounter;
+	private static int captured;
+	private static long capturedAt;
 
 	private StyleFilter() {
 	}
@@ -64,6 +70,21 @@ public final class StyleFilter {
 	public static void setStyle(Style s) {
 		style = s == null ? Style.OFF : s;
 		status = "";
+		failedFor = null;
+		Process p = training;
+		if (p != null && trainingFor != style) p.destroy();  // (the training thread then clears busy)
+	}
+
+	/** The world closed (WorldClosed): the network let go; a capture under way stops. Render thread. */
+	public static void release() {
+		if (handle != 0) drop();
+		capturing = null;
+	}
+
+	private static void failed(Style s, String why) {
+		status = "Can't: " + why;
+		failedFor = s;
+		System.out.println("[cadence] style filter: " + s.label + ": " + why);
 	}
 
 	/** What the chosen style is doing: "" (running or off), "Training 42%", "Taking pictures", or why it can't run. */
@@ -75,11 +96,20 @@ public final class StyleFilter {
 		return Path.of(System.getProperty("user.home"), "Library", "Application Support", "Cadence", "styles");
 	}
 
-	/** Render thread, after the world is drawn (before the hand and the HUD): the newest styled picture over it. */
+	/**
+	 * Render thread, after the world is drawn (before the hand and the HUD): the newest styled picture over it. color null: not
+	 * this frame (a shader pack, World Resolution below 100%): the network is let go, as when the style is off.
+	 */
 	public static void afterWorld(GpuTexture color) {
 		Style s = style;
-		if (s == Style.OFF) {
+		if (s == Style.OFF || color == null) {
 			if (handle != 0) drop();
+			if (ready != 0) {
+				long h = ready;
+				ready = 0;
+				NeuralNative.styleFree(h);
+			}
+			capturing = null;
 			return;
 		}
 		if (ready != 0) {
@@ -97,7 +127,7 @@ public final class StyleFilter {
 			capture();
 			return;
 		}
-		if (!busy) prepare(s);
+		if (!busy && failedFor != s) prepare(s);
 	}
 
 	private static void prepare(Style s) {
@@ -143,14 +173,14 @@ public final class StyleFilter {
 			writePainting(s, painting);
 			train(s, painting, content, model);
 		} catch (Throwable t) {
-			status = "Can't: " + t.getMessage();
-			style = Style.OFF;
-			System.out.println("[cadence] style filter: " + t);
+			failed(s, String.valueOf(t.getMessage()));
 		}
 	}
 
 	private static void capture() {
-		if (++frameCounter % 30 != 0) return;  // (a picture every 30 frames: the world as the player moves through it)
+		long now = System.nanoTime();
+		if (now - capturedAt < 500_000_000L) return;  // (a picture every half second: the world as the player moves through it)
+		capturedAt = now;
 		Path to = capturing.resolve("world-" + System.currentTimeMillis() + ".png");
 		Screenshot.takeScreenshot(Minecraft.getInstance().gameRenderer.mainRenderTarget(), image -> {
 			try (NativeImage img = image) {
@@ -179,37 +209,46 @@ public final class StyleFilter {
 	private static void train(Style s, Path painting, Path content, Path model) {
 		Path helper = Helper.binary();
 		if (helper == null) {
-			status = "Can't: no Cadence Helper";
+			failed(s, "no Cadence Helper");
 			return;
 		}
 		busy = true;
+		trainingFor = s;
 		status = "Training 0%";
 		Thread t = new Thread(() -> {
 			try {
 				Path tmp = model.resolveSibling(s.painting + ".training.mlmodel");
 				Process p = new ProcessBuilder("/usr/bin/nice", "-n", "15", helper.toString(), "train-style", painting.toString(), content.toString(),
 					String.valueOf(ITERATIONS), tmp.toString()).redirectErrorStream(true).start();
+				training = p;
+				if (style != s) p.destroy();  // (turned off while it started)
+				var row = java.util.regex.Pattern.compile("^\\|\\s*(\\d+)\\s*\\|");
 				try (BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
 					for (String line; (line = r.readLine()) != null;) {
 						// Create ML's table: "| 42 | ..." a row per iteration
-						var m = java.util.regex.Pattern.compile("^\\|\\s*(\\d+)\\s*\\|").matcher(line);
-						if (m.find()) status = "Training " + Math.min(99, Integer.parseInt(m.group(1)) * 100 / ITERATIONS) + "%";
+						var m = row.matcher(line);
+						if (m.find() && style == s) status = "Training " + Math.min(99, Integer.parseInt(m.group(1)) * 100 / ITERATIONS) + "%";
 						if (line.startsWith("error:")) System.out.println("[cadence] style filter: " + line);
 					}
 				}
-				if (p.waitFor() == 0 && Files.exists(tmp)) {
+				int code = p.waitFor();
+				training = null;
+				if (code == 0 && Files.exists(tmp)) {
 					Files.move(tmp, model, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 					System.out.println("[cadence] style filter: " + s.label + " trained");
-					status = "";
+					if (style == s) status = "";
 					busy = false;
 					if (style == s) load(s, model);
 				} else {
-					status = "Can't: training failed";
+					Files.deleteIfExists(tmp);
 					busy = false;
+					if (style == s) failed(s, "training failed");
+					else System.out.println("[cadence] style filter: " + s.label + " training stopped");
 				}
 			} catch (Exception e) {
-				status = "Can't: " + e.getMessage();
+				training = null;
 				busy = false;
+				if (style == s) failed(s, String.valueOf(e.getMessage()));
 			}
 		}, "cadence-style-train");
 		t.setDaemon(true);
@@ -227,7 +266,9 @@ public final class StyleFilter {
 				cmp = MemoryUtil.memAddress(MemoryUtil.memUTF8(model.resolveSibling(s.painting + ".mlmodelc").toString()));
 				long h = NeuralNative.styleNew(ctx, src, cmp, err, 1024);
 				if (h == 0) {
-					status = "Can't: " + MemoryUtil.memUTF8(err);
+					failed(s, MemoryUtil.memUTF8(err));
+				} else if (style != s) {
+					NeuralNative.styleFree(h);  // (turned off or changed while it loaded)
 				} else {
 					readyFor = s;
 					ready = h;

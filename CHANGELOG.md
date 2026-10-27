@@ -2,6 +2,68 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.23 / shaders 0.3.22 (2026-10-27)
+
+**Cadence: Apple Hardware**, a new section in Video Settings: features built on the Mac's display, its ray tracing and its
+Neural Engine. Measured on an M2 MacBook Air (8 GPU cores), 1080p, no shader pack, unless noted.
+
+Display and ray tracing:
+- **HDR.** Light sources above SDR white on the display's extended range (EDR): glowstone, lava, torch flames, lanterns,
+  sea lanterns and the sun; the GUI and every ordinary surface look exactly as before. The game's frame is a float target
+  (the game's pipelines get float variants, compiled once from their Metal source), the present is the tone mapping (a
+  roll-off into the headroom macOS reports for the game's screen, read 4x a second), screenshots and other 8-bit readers get
+  the highlights scaled back. Emissive blocks come from an emission mask (sprites only light-giving blocks use). With a shader
+  pack the pack's picture is shown unchanged. Cost: 1,820 -> 1,700 fps. The M2 Air's screen reaches 2x SDR white.
+- **Ray Tracing: Shadows.** Shadows from the sun and the moon, traced per pixel through a voxel copy of the blocks within 64
+  blocks (128 x 384 x 128, 13 MB), applied by the game's own lightmap at fewer sky light levels (torch-lit places stay lit).
+  Two tracers, the same picture: **Voxel** (a brick-skipping walk in a compute kernel) and **Hardware** (Metal ray tracing
+  through an acceleration structure of the world's 4 x 4 x 4 bricks: in hardware on M3 and newer). Ray Tracer: Auto picks
+  Hardware on M3+, Voxel before. M2: +1.0 ms (1,267 -> about 600 fps); Metal's software traversal on M2 +7.7 ms.
+- **Ray Tracing: Lighting (Experimental).** The shadows plus the sky's and the sun's light bounced between blocks, from a
+  world-space lighting cache (a hash table of block faces, a few rays a frame, light bouncing on frame after frame): shaded
+  overhangs, blue sky light in the shade, warm bounce light. +1.8 ms (2.5 ms frame). When the Mac can't hold the screen's
+  rate with it, Frame Generation renders half the rate and generates the rest.
+- **Path traced photos.** Photo Mode (F9) with Ray Tracing on path traces the view (the frame's own textures, soft sun
+  shadows, sky, 3 bounces, glowing blocks), 256 samples (about 7 seconds at 1080p), then saves.
+- **Instant Replay on HEVC**: 1080p in the memory 720p took (H.264 kept as the fallback); with HDR on, 10-bit HEVC in HLG.
+
+Neural Engine:
+- **Style Filter**: the world repainted in the style of one of the game's paintings (Sunflowers, Sunset, Wanderer, Pond) by a
+  neural network on the Neural Engine (about 30 ms a picture, beside the GPU; the HUD stays sharp). Each style is trained on
+  the Mac the first time it's chosen (Create ML, about 4 minutes in the background; the painting from the game's resources,
+  a few pictures of your world; nothing downloaded).
+- **Smooth Textures**: block textures at twice their resolution, upscaled once by Apple's ML super resolution on the Neural
+  Engine (1,254 sprites in 0.5 s; animated textures stay as they are; +85 MB of graphics memory).
+- **Sharpening: Neural Engine**: World Resolution's upscale on the Neural Engine instead of MetalFX on the GPU (the world
+  one frame behind). 50% of 1080p: 920 fps with MetalFX, 2,041 with the Neural Engine.
+- **Voice Control**: spoken commands as whole phrases (open inventory, jump, screenshot, take a photo, save replay, pause,
+  camera, hotbar slots; chat messages and commands only after "Cadence": "Cadence say ...", "Cadence command ..."),
+  recognised on the Mac only by Cadence Helper, a small app that asks macOS for the microphone and speech recognition the
+  first time. It stops with the game and deletes what it heard.
+
+Sound:
+- **World Reverb** (Options > Music & Sounds, with the Apple sound engine, on by default): rays through the blocks around you
+  set Apple's reverb (field, room, hall, cave, cathedral, underwater), and each sound is muffled by the blocks between you
+  and it.
+
+Measured, not built: tile memory for Dynamic Lights (all 16 lights cost 0.07 ms per frame: nothing to save). Chunk
+uploads: the fast terrain path writes every mesh straight into GPU memory (0 bytes staged); with a shader pack 6-11 MB/s
+take a staging copy while flying (under 1 ms of CPU a second: left as it is; -Dcadence.metal.uploadStats=true shows it).
+- Self-test steps: hdr=, hdrstats, rt=, rttracer=, rtstats, style=, stylestats, smooth=, upscaler=neural, voice=, acoustics.
+
+Bug hunt (BH7, 17 findings, all fixed): HDR or Smooth Textures saved on crashed the game at start (the block atlas isn't
+stitched on the loading screen's first frames); a failed Style Filter training or load was retried every frame (24 helper
+launches a second); Ray Tracing kept the world you left in memory (and turning it or a Style Filter off freed nothing);
+the speech helper could outlive the game; any talk containing a command word acted (and "say ..." went to chat); torch
+sticks came out blue or green with Smooth Textures (the cutout sprites now keep their colours, the model adds only detail);
+the HDR sun was 6x with a shader pack; Smooth Textures could stick at "Upscaling"; the reverb preset after a sound engine
+restart; the Neural Engine upscaler's session lingered; the World Reverb button's state; a Frame Generation frame after an
+HDR toggle; style training couldn't be cancelled; animated-sprite copy above 256 sprites; the helper's update check;
+tooltip texts. Also from its suspicions: float pipeline variants compile per thread, one intersection table per frame in
+flight, the lighting cache reuses entries outside the window (it filled while exploring), 32,768 block colours for ray
+tracing (was 4,096), World Reverb changes rooms only after two measurements agree, the speech helper ends a phrase on a
+pause (it waited up to 50 s) and reports a missing microphone.
+
 ## 0.4.0-beta.22 / shaders 0.3.21 (2026-10-26)
 
 - **The game's sound on Apple's audio engine** (Options > Music & Sounds > Sound Engine: Apple Spatial Audio, the default;

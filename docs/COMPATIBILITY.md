@@ -86,6 +86,19 @@ Essential didn't load. Now, when any other mod has a pre-launch step, Cadence's 
 - Mods that draw with OpenGL directly: Cadence's renderer is Metal. Mods that use Minecraft's own rendering API work.
 - Sodium and Iris: Cadence replaces them. Mods that need Iris's internals (beyond its API) don't load without Iris.
 
+## Apple Hardware features with shader packs and other mods
+
+- **HDR** with a shader pack: the pack's picture is shown as the pack made it (SDR); the frame stays 8-bit-compatible
+  for the pack's own passes. Mods that read the frame back (screenshots, replays, map mods) get SDR values: the float
+  frame's highlights are scaled into 0-1 by the copy.
+- **Ray Tracing** is off with a shader pack (the pack has its own shadows) and with World Resolution below 100%; the
+  button's tooltip says so. Blocks added by mods are traced as full cubes in their texture's average colour.
+- **Style Filter** is off with a shader pack and with World Resolution below 100%.
+- **Smooth Textures** applies to Cadence's own terrain renderer only; with a pack, or with mods that draw blocks
+  themselves, those draws keep the game's atlas.
+- **World Reverb** needs the Apple sound engine; sound mods that replace OpenAL calls (Sound Physics Remastered and
+  similar) should be used with the OpenAL engine instead, where World Reverb is off.
+
 ## Options
 
 - `cadence.compat=false` (in `config/cadence.properties`, or `-Dcadence.compat=false`): nothing steps aside; the

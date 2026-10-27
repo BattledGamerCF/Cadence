@@ -328,7 +328,7 @@ public final class CadenceSettings {
 			ShaderToggle.saveKey("instantReplay", Boolean.toString(on));
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Keeps the last 30 seconds of play; Save Replay (F10) saves them as a video in the replays folder.",
-			"#Recorded by your Mac's video encoder at 1280 wide (about 30 MB of memory, a small GPU cost each frame); no sound.")).build();
+			"#Recorded by your Mac's video encoder in 1080p HEVC (10-bit HDR with HDR on; about 45 MB of memory, a small GPU cost each frame); no sound.")).build();
 		onRefresh(() -> self[0].setMessage(replayLabel()));
 		return self[0];
 	}

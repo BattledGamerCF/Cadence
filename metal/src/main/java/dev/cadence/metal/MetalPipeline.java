@@ -398,7 +398,7 @@ public final class MetalPipeline implements BackendRenderPipeline {
 			// MTLColorWriteMask is ABGR-ordered (red = 8), renderpearl's is RGBA-ordered (red = 1).
 			int mask = (c.writeRed() ? 8 : 0) | (c.writeGreen() ? 4 : 0) | (c.writeBlue() ? 2 : 0) | (c.writeAlpha() ? 1 : 0);
 			// (HDR: a variant for the game's float frame, forFloat)
-			d.put(compilingFloat && c.format() == com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM ? 115 : MetalConst.pixelFormat(c.format())).put(mask);
+			d.put(COMPILING_FLOAT.get() && c.format() == com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM ? 115 : MetalConst.pixelFormat(c.format())).put(mask);
 			if (c.blendFunction().isPresent()) {
 				var b = c.blendFunction().get();
 				d.put(1).put(MetalConst.blendFactor(b.color().sourceFactor())).put(MetalConst.blendFactor(b.color().destFactor())).put(MetalConst.blendOp(b.color().op()))
@@ -590,7 +590,8 @@ public final class MetalPipeline implements BackendRenderPipeline {
 	private @Nullable MetalPipeline floatVariant;
 	private boolean noFloatVariant, variant;
 	/** describe(): RGBA8 colour targets as RGBA16Float (render thread: pipelines compile on it). */
-	private static boolean compilingFloat;
+	// (per thread: worker threads describe other pipelines while the render thread compiles a float variant, BH7 suspicion 1)
+	private static final ThreadLocal<Boolean> COMPILING_FLOAT = ThreadLocal.withInitial(() -> false);
 
 	/**
 	 * HDR: this pipeline for a pass into the float frame (the main target's colour is RGBA16Float there; a pipeline made for RGBA8
@@ -605,7 +606,7 @@ public final class MetalPipeline implements BackendRenderPipeline {
 		this.noFloatVariant = true;
 		if (!rgba8 || this.sources == null) return this;
 		long ctx = this.encoder.ctx, vlib = 0, flib = 0, withDepth = 0, withoutDepth = 0;
-		compilingFloat = true;
+		COMPILING_FLOAT.set(true);
 		try (MemoryStack stack = MemoryStack.stackPush()) {
 			long err = stack.nmalloc(1, 4096);
 			vlib = library(ctx, this.sources[0], this.modes == null ? -1 : this.modes[0], err);
@@ -623,7 +624,7 @@ public final class MetalPipeline implements BackendRenderPipeline {
 				return this;
 			}
 		} finally {
-			compilingFloat = false;
+			COMPILING_FLOAT.set(false);
 			if (vlib != 0) Native.release(vlib);
 			if (flib != 0) Native.release(flib);
 		}

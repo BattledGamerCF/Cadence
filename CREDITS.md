@@ -43,7 +43,10 @@ and every implementation (`dev.cadence.irisapi`) is Cadence's own, Apache-2.0.
   fonts, images, sounds or other third-party assets are bundled; `git ls-files` shows only source, JSON, `.metal` shader
   kernels (from mcopt, and Cadence's own), and one generated class-preload list.
 * The native library `libmcmetal.dylib` is built from the sources in `metal/src/main/native` and links only Apple system
-  frameworks (AppKit, AVFAudio, CoreGraphics, CoreVideo, Foundation, Metal, MetalFX, QuartzCore). Shader translation (shaderc,
+  frameworks (AppKit, AVFAudio, CoreGraphics, CoreVideo, Foundation, Metal, MetalFX, QuartzCore; Core ML, VideoToolbox, CoreMedia
+  and AVFoundation are opened at run time). Cadence Helper is built from `metal/src/main/helper` and uses Apple's Create ML,
+  Speech and AVFoundation. Style Filters are trained on the player's Mac from the game's own painting textures (read from the
+  game's resources, never bundled). Shader translation (shaderc,
   SPIRV-Cross) is provided by the LWJGL libraries that Minecraft itself ships.
 
 ## Compatibility with the old names

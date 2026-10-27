@@ -383,6 +383,22 @@ static void rgbAt420v(const uint8_t *yp, size_t yr, const uint8_t *cp, size_t cr
 	out[2] = clamp8(b * 255);
 }
 
+// A sprite's texel (wrapped inside the sprite); a transparent one takes the colour of an opaque neighbour (up to 2 away), so the
+// model doesn't see the black under the transparent texels as an edge (BH7-08).
+static const uint8_t *spriteTexel(const uint8_t *src, int w, int sx, int sy, int rw, int rh, int x, int y) {
+	const uint8_t *p = src + ((size_t) (sy + y) * w + sx + x) * 4;
+	if (p[3] >= 128) return p;
+	static const int d[16][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1},
+		{2, 0}, {-2, 0}, {0, 2}, {0, -2}, {2, 1}, {-2, -1}, {1, 2}, {-1, -2}};
+	for (int k = 0; k < 16; k++) {
+		int nx = x + d[k][0], ny = y + d[k][1];
+		if (nx < 0 || ny < 0 || nx >= rw || ny >= rh) continue;
+		const uint8_t *q = src + ((size_t) (sy + ny) * w + sx + nx) * 4;
+		if (q[3] >= 128) return q;
+	}
+	return p;
+}
+
 // src: the atlas's level 0 (RGBA, w x h, rows top first); out: 2w x 2h RGBA, already holding a 2x nearest copy (what isn't
 // upscaled stays that). rects: n sprites (x, y, w, h in src pixels), the still ones. Returns the sprites upscaled, or -1 (err).
 int mcsm_upscale(const uint8_t *src, int w, int h, uint8_t *out, const int *rects, int n, char *err, int errCap) {
@@ -418,7 +434,7 @@ int mcsm_upscale(const uint8_t *src, int w, int h, uint8_t *out, const int *rect
 				int sx = rects[i * 4], sy = rects[i * 4 + 1];
 				for (int y = 0; y < th; y++)
 					for (int x = 0; x < tw; x++) {
-						const uint8_t *p = src + ((size_t) (sy + y % rh) * w + sx + x % rw) * 4;
+						const uint8_t *p = spriteTexel(src, w, sx, sy, rw, rh, x % rw, y % rh);
 						uint8_t *q = sheet + ((size_t) (cy + y) * S + cx + x) * 4;
 						q[0] = p[0]; q[1] = p[1]; q[2] = p[2]; q[3] = 255;
 					}
@@ -445,11 +461,28 @@ int mcsm_upscale(const uint8_t *src, int w, int h, uint8_t *out, const int *rect
 			for (int k = 0; k < count; k++) {
 				int si = placed[k][0], rx = rects[si * 4], ry = rects[si * 4 + 1], rw = rects[si * 4 + 2], rh = rects[si * 4 + 3];
 				int ox = (placed[k][1] + rw) * 2, oy = (placed[k][2] + rh) * 2;
+				// a cutout sprite (any texel not opaque: torches, plants, bars): its own colours kept, only the model's detail in
+				// brightness added; the 4:2:0 chroma of a 2-texel-wide stick is its neighbours' (blue / green torch sticks, BH7-08)
+				bool cutout = false;
+				for (int y = 0; y < rh && !cutout; y++)
+					for (int x = 0; x < rw; x++)
+						if (src[((size_t) (ry + y) * w + rx + x) * 4 + 3] < 255) { cutout = true; break; }
 				for (int y = 0; y < rh * 2; y++)
 					for (int x = 0; x < rw * 2; x++) {
 						uint8_t *q = out + ((size_t) (ry * 2 + y) * (w * 2) + rx * 2 + x) * 4;
-						rgbAt420v(yp, yr, cp, cr, ox + x, oy + y, q);
-						q[3] = src[((size_t) (ry + y / 2) * w + rx + x / 2) * 4 + 3];
+						const uint8_t *s = src + ((size_t) (ry + y / 2) * w + rx + x / 2) * 4;
+						if (cutout) {
+							float ys = 0.2126f * s[0] + 0.7152f * s[1] + 0.0722f * s[2];
+							float ym = 255 * (yp[(oy + y) * yr + ox + x] - 16) / 219.0f;
+							float dl = ym - ys;
+							dl = dl > 48 ? 48 : dl < -48 ? -48 : dl;  // (ringing kept small)
+							q[0] = clamp8(s[0] + dl);
+							q[1] = clamp8(s[1] + dl);
+							q[2] = clamp8(s[2] + dl);
+						} else {
+							rgbAt420v(yp, yr, cp, cr, ox + x, oy + y, q);
+						}
+						q[3] = s[3];
 					}
 				done++;
 			}
@@ -483,7 +516,9 @@ void mcsm_anim(Ctx *ctx, Enc *enc, id<MTLTexture> src, id<MTLTexture> dst, const
 		[c setComputePipelineState:animPso];
 		[c setTexture:src atIndex:0];
 		[c setTexture:dst atIndex:1];
-		[c setBytes:rects length:(NSUInteger) n * 16 atIndex:0];
+		// (setBytes takes at most 4 KB: 256 sprites; more go in a buffer, BH7-16)
+		if (n * 16 <= 4096) [c setBytes:rects length:(NSUInteger) n * 16 atIndex:0];
+		else [c setBuffer:[[ctx->device newBufferWithBytes:rects length:(NSUInteger) n * 16 options:MTLResourceStorageModeShared] autorelease] offset:0 atIndex:0];
 		[c dispatchThreads:MTLSizeMake((NSUInteger) maxW * 2, (NSUInteger) maxH * 2, (NSUInteger) n) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		[c endEncoding];
 		id<MTLBlitCommandEncoder> b = [cb blitCommandEncoder];

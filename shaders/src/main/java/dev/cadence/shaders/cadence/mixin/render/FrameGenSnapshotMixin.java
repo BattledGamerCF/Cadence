@@ -19,16 +19,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class FrameGenSnapshotMixin {
 	@Inject(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GameRenderer;render3dHud(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lnet/minecraft/client/renderer/state/OptionsRenderState;Z)V"))
 	private void cadence$fgWorld(CallbackInfo ci) {
-		// (Ray Tracing's shadows go into the world first, so the snapshot has them)
-		if (dev.cadence.metal.rt.RayTracing.mode() != dev.cadence.metal.rt.RayTracing.Mode.OFF) {
-			var main = ((GameRenderer) (Object) this).mainRenderTarget();
-			dev.cadence.metal.rt.RayTracing.afterWorld(main.getColorTexture(), main.getDepthTexture(), ShaderRuntime.get() != null,
-				dev.cadence.shaders.cadence.render.RenderScale.get() < 0.995f);
-		}
-		// (Style Filters: the newest styled picture over the world, before the snapshot too)
-		if (dev.cadence.metal.neural.StyleFilter.style() != dev.cadence.metal.neural.StyleFilter.Style.OFF && ShaderRuntime.get() == null
-			&& dev.cadence.shaders.cadence.render.RenderScale.get() >= 0.995f)
-			dev.cadence.metal.neural.StyleFilter.afterWorld(((GameRenderer) (Object) this).mainRenderTarget().getColorTexture());
+		// (Ray Tracing's shadows go into the world first, so the snapshot has them; called when off too, which lets its world go,
+		// BH7-03)
+		var main = ((GameRenderer) (Object) this).mainRenderTarget();
+		boolean pack = ShaderRuntime.get() != null, scaled = dev.cadence.shaders.cadence.render.RenderScale.get() < 0.995f;
+		dev.cadence.metal.rt.RayTracing.afterWorld(main.getColorTexture(), main.getDepthTexture(), pack, scaled);
+		// (Style Filters: the newest styled picture over the world, before the snapshot too; off, with a pack or scaled, its network
+		// is let go, BH7-05)
+		dev.cadence.metal.neural.StyleFilter.afterWorld(pack || scaled ? null : main.getColorTexture());
 		// (World Resolution below 100%: the world is in the scaled target, whose depth the upscale has already dealt with by here;
 		// WorldScale.active() is already false at this point, so the scale itself decides, BUG-HUNT BH4-02)
 		if (!FrameGen.running() || ShaderRuntime.get() != null || dev.cadence.shaders.cadence.render.RenderScale.get() < 0.995f) return;

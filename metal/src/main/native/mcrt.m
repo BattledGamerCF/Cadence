@@ -37,7 +37,7 @@ typedef struct {
 	int dirtyCount, tlasDirty, tlasBuilt, ox, oz;
 	id<MTLAccelerationStructure> tlas;
 	NSUInteger blasSize, scratchSize;
-	id<MTLIntersectionFunctionTable> table;
+	id<MTLIntersectionFunctionTable> table[RT_RING];  // (one per frame in flight: a table's bindings aren't versioned by Metal)
 	NSArray<id<MTLAccelerationStructure>> *blasArray;
 } Rt;
 
@@ -87,8 +87,10 @@ void *mcrt_new(Ctx *ctx, const char *source, int hw, int w, int h, char *err, in
 			if (r->shadowHw) {
 				MTLIntersectionFunctionTableDescriptor *td = [[MTLIntersectionFunctionTableDescriptor new] autorelease];
 				td.functionCount = 1;
-				r->table = [r->shadowHw newIntersectionFunctionTableWithDescriptor:td];
-				[r->table setFunction:[r->shadowHw functionHandleWithFunction:brick] atIndex:0];
+				for (int k = 0; k < RT_RING; k++) {
+					r->table[k] = [r->shadowHw newIntersectionFunctionTableWithDescriptor:td];
+					[r->table[k] setFunction:[r->shadowHw functionHandleWithFunction:brick] atIndex:0];
+				}
 				r->slotsX = w >> 4;
 				r->slotsY = h >> 4;
 				r->slots = r->slotsX * r->slotsX * r->slotsY;
@@ -287,6 +289,7 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 			r->out = [r->ctx->device newTextureWithDescriptor:d];
 		}
 		id<MTLBuffer> fb = r->frames[r->ring];
+		id<MTLIntersectionFunctionTable> table = r->table[r->ring];
 		r->ring = (r->ring + 1) % RT_RING;
 		memcpy(fb.contents, frame, (size_t) len);
 		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
@@ -302,10 +305,10 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 		[c setBuffer:fb offset:0 atIndex:2];
 		[c setBuffer:sections offset:0 atIndex:5];
 		if (useHw) {
-			[r->table setBuffer:bricks offset:0 atIndex:1];
-			[r->table setBuffer:fb offset:0 atIndex:2];
+			[table setBuffer:bricks offset:0 atIndex:1];
+			[table setBuffer:fb offset:0 atIndex:2];
 			[c setAccelerationStructure:r->tlas atBufferIndex:3];
-			[c setIntersectionFunctionTable:r->table atBufferIndex:4];
+			[c setIntersectionFunctionTable:table atBufferIndex:4];
 			// (the instances' structures, reached through the top one)
 			for (int s = 0; s < r->slots; s++) if (r->blas[s] && r->masks[s]) [c useResource:r->blas[s] usage:MTLResourceUsageRead];
 		}
@@ -482,7 +485,7 @@ void mcrt_free(void *rt) {
 	[r->boxes release];
 	for (int i = 0; i < RT_RING; i++) [r->instances[i] release];
 	[r->scratch release];
-	[r->table release];
+	for (int i = 0; i < RT_RING; i++) [r->table[i] release];
 	free(r);
 }
 

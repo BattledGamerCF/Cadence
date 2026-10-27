@@ -25,8 +25,8 @@ public final class Helper {
 		try {
 			Path dir = Path.of(System.getProperty("user.home"), "Library", "Application Support", "Cadence");
 			Path target = dir.resolve("Cadence Helper.app");
-			// (the binary's size and the mod's version: a new build unpacks again)
-			String stamp = String.valueOf(Helper.class.getPackage().getImplementationVersion()) + "/" + resourceSize("Contents/MacOS/cadence-helper");
+			// (a hash of what is in the jar: any new build of the app or its Info.plist unpacks again, BH7-17)
+			String stamp = digest();
 			Path stampFile = dir.resolve("helper-stamp.txt");  // (outside the bundle: its signature seals what is inside)
 			if (!Files.exists(stampFile) || !Files.readString(stampFile).equals(stamp)) {
 				Files.createDirectories(dir);
@@ -58,9 +58,17 @@ public final class Helper {
 		return a == null ? null : a.resolve("Contents/MacOS/cadence-helper");
 	}
 
-	private static long resourceSize(String f) throws IOException {
-		try (InputStream in = Helper.class.getResourceAsStream("/natives/CadenceHelper.app/" + f)) {
-			return in == null ? -1 : in.transferTo(java.io.OutputStream.nullOutputStream());
+	private static String digest() throws IOException {
+		try {
+			var md = java.security.MessageDigest.getInstance("SHA-256");
+			for (String f : FILES) {
+				try (InputStream in = Helper.class.getResourceAsStream("/natives/CadenceHelper.app/" + f)) {
+					if (in != null) md.update(in.readAllBytes());
+				}
+			}
+			return java.util.HexFormat.of().formatHex(md.digest());
+		} catch (java.security.NoSuchAlgorithmException e) {
+			throw new IOException(e);
 		}
 	}
 }

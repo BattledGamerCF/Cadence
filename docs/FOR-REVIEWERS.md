@@ -22,6 +22,15 @@ it; docs/ARCHITECTURE.md). The release zip also holds an optional jar with no co
   frameworks only. VideoToolbox, CoreMedia and AVFoundation are opened at run time (dlopen) only
   when the player turns on Instant Replay (and AVFoundation only to save one). IOKit is read for the battery's charge, the
   power source and the fans (no writes).
+- Core ML and VideoToolbox's ML frame processors are opened at run time (dlopen, classes by name) only when the player turns
+  on a Neural Engine feature (Style Filter, Smooth Textures, the Neural Engine upscaler). Metal's ray tracing (acceleration
+  structures) is used only with Ray Tracing on.
+- **Cadence Helper** (`metal/src/main/helper`: one Swift file and an Info.plist) is built by the Gradle build with `swiftc`,
+  signed ad hoc, shipped inside the jar and unpacked into `~/Library/Application Support/Cadence/Cadence Helper.app` the first
+  time a feature needs it. It does two things, each only when the player turns that feature on: trains a Style Filter's
+  network with Apple's Create ML (on the Mac, nothing downloaded), and, for Voice Control, recognises speech with Apple's
+  Speech framework set to on-device recognition only (`requiresOnDeviceRecognition`). It runs as its own app so that macOS
+  asks the player for the microphone and speech recognition for "Cadence Helper"; Java never touches the microphone.
 - GPU shaders (`*.metal` under `metal/src/main/resources/cadence`) are compiled by Metal at runtime from source.
 
 ## Network
@@ -44,6 +53,7 @@ All inside the Minecraft game directory unless noted:
 | `screenshots/cadence-photo-*.png` | Photo Mode's screenshots (F9), where the game's own screenshots go. |
 | `screenshots/` | Benchmark result cards when the player saves them. |
 | system temp directory | The extracted native library (`mcmetal*/libmcmetal.dylib`). |
+| `~/Library/Application Support/Cadence/` | Cadence Helper.app (unpacked from the jar, with `helper-stamp.txt`); `styles/`: Style Filters' trained networks, the paintings they were trained on (from the game's resources) and `content/`, the pictures of the player's world used for training (copies of their screenshots or frames taken while they play); `voice-PID-N.txt`, the phrases Voice Control heard, deleted by the helper when Voice Control stops or the game exits (the helper exits when the game's process is gone). All safe to delete. |
 | files named by `-D` flags | Measurement logs and recordings, only when a developer flag asks for them. |
 
 ## Code that changes Minecraft

@@ -121,6 +121,11 @@ public final class MetalBridge {
 		return ((MetalTexture) texture).handle;
 	}
 
+	/** Whether the texture is an HDR float frame (RGBA16Float in Metal while the game sees RGBA8). */
+	public static boolean isFloatFrame(GpuTexture texture) {
+		return texture instanceof MetalTexture t && t.floatFrame;
+	}
+
 	/** Whether the texture was created with ShaderWrite usage (a compute kernel may write it). */
 	public static boolean shaderWritable(GpuTexture texture) {
 		return texture instanceof MetalTexture t && t.shaderWrite;

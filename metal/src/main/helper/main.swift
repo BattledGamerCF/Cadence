@@ -3,10 +3,11 @@
 //   cadence-helper train-style STYLE_IMAGE CONTENT_DIR ITERATIONS OUT.mlmodel
 //       A style transfer model trained with Create ML on this Mac (no download: Create ML's own feature extractor), for Style
 //       Filters, which run it on the Neural Engine. Create ML's table (a row per iteration) while training, "done" at the end.
-//   cadence-helper listen OUT_FILE [--locale ID] [--file AUDIO]
+//   cadence-helper listen OUT_FILE [--locale ID] [--parent PID] [--file AUDIO]
 //       Voice Control: speech recognised on this Mac (Speech, on-device only: nothing is sent anywhere), each finished phrase
 //       appended to OUT_FILE as a line. Runs as its own app (Cadence Helper.app), so macOS asks for the microphone and speech
-//       recognition for it, not for Java. --file: recognise a recording instead (tests). Ends when OUT_FILE.stop appears.
+//       recognition for it, not for Java. --file: recognise a recording instead (tests). Ends when OUT_FILE.stop appears or the
+//       game (PID) is gone, and deletes both files then.
 import AVFoundation
 import CreateML
 import Foundation
@@ -37,16 +38,33 @@ func trainStyle() {
 
 final class Listener {
 	let out: URL
+	let parent: pid_t
 	let recognizer: SFSpeechRecognizer
 	let engine = AVAudioEngine()
+	let lock = NSLock()  // (the request: replaced on the main thread, appended to on the audio thread)
 	var request: SFSpeechAudioBufferRecognitionRequest?
 	var task: SFSpeechRecognitionTask?
 	var started = Date()
+	// the phrase being heard: its words so far and when they last changed (a pause of PAUSE seconds ends it)
+	var heard = "", changed = Date()
+	let pause = 0.8
 
-	init(out: URL, locale: String) {
+	init(out: URL, locale: String, parent: pid_t) {
 		self.out = out
-		guard let r = SFSpeechRecognizer(locale: Locale(identifier: locale)) else { fail("no speech recognizer for \(locale)") }
+		self.parent = parent
+		guard let r = SFSpeechRecognizer(locale: Locale(identifier: locale)) else {
+			try? "#no speech recognition for \(locale)\n".data(using: .utf8)!.write(to: out)
+			fail("no speech recognizer for \(locale)")
+		}
 		self.recognizer = r
+	}
+
+	/** Stopped (the stop file, or the game gone): the files deleted, so nothing heard stays on disk. */
+	func finish() -> Never {
+		engine.stop()
+		try? FileManager.default.removeItem(at: out)
+		try? FileManager.default.removeItem(atPath: out.path + ".stop")
+		exit(0)
 	}
 
 	func write(_ line: String) {
@@ -70,37 +88,69 @@ final class Listener {
 		if !recognizer.supportsOnDeviceRecognition { write("#no on-device recognition for this language") }
 	}
 
-	// One recognition request (Speech limits each to about a minute): restarted after each finished phrase or 50 s.
+	// One recognition request (Speech limits each to about a minute): restarted after each phrase or 50 s. Partial results: a
+	// buffer request only finishes when its audio ends, so a phrase is taken as finished once its words stop changing for a pause.
 	func start() {
 		task?.cancel()
 		let req = SFSpeechAudioBufferRecognitionRequest()
 		req.requiresOnDeviceRecognition = true
-		req.shouldReportPartialResults = false
+		req.shouldReportPartialResults = true
+		lock.lock()
 		request = req
+		lock.unlock()
 		started = Date()
+		heard = ""
 		task = recognizer.recognitionTask(with: req) { result, error in
-			if let r = result, r.isFinal {
-				let text = r.bestTranscription.formattedString.trimmingCharacters(in: .whitespaces)
-				if !text.isEmpty { self.write(text) }
-				DispatchQueue.main.async { self.start() }
-			} else if error != nil {
-				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.start() }
+			DispatchQueue.main.async {
+				guard self.request === req else { return }  // (an old request's last words)
+				if let r = result {
+					let text = r.bestTranscription.formattedString.trimmingCharacters(in: .whitespaces)
+					if text != self.heard {
+						self.heard = text
+						self.changed = Date()
+					}
+					if r.isFinal { self.phraseDone() }
+				} else if error != nil {
+					DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.start() }
+				}
 			}
 		}
+	}
+
+	func phraseDone() {
+		if !heard.isEmpty { write(heard) }
+		start()
 	}
 
 	func listenMicrophone() {
 		let input = engine.inputNode
 		let format = input.outputFormat(forBus: 0)
-		input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in self.request?.append(buffer) }
+		if format.sampleRate == 0 || format.channelCount == 0 {
+			write("#no microphone")
+			fail("no microphone")
+		}
+		input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+			self.lock.lock()
+			let r = self.request
+			self.lock.unlock()
+			r?.append(buffer)
+		}
 		engine.prepare()
-		do { try engine.start() } catch { fail("microphone: \(error)") }
+		do { try engine.start() } catch {
+			write("#microphone: \(error.localizedDescription)")
+			fail("microphone: \(error)")
+		}
 		start()
 		write("#listening")
-		Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-			if FileManager.default.fileExists(atPath: self.out.path + ".stop") { exit(0) }
-			// (a phrase that never finishes: ended so the next request starts within Speech's limit)
-			if Date().timeIntervalSince(self.started) > 50 { self.request?.endAudio() }
+		Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
+			if FileManager.default.fileExists(atPath: self.out.path + ".stop") { self.finish() }
+			if self.parent > 0 && kill(self.parent, 0) != 0 && errno == ESRCH { self.finish() }  // (the game quit or crashed)
+			if !self.heard.isEmpty && Date().timeIntervalSince(self.changed) > self.pause {
+				self.phraseDone()
+			} else if Date().timeIntervalSince(self.started) > 50 {
+				// (nothing finished within Speech's limit: a new request)
+				self.phraseDone()
+			}
 		}
 		RunLoop.main.run()
 	}
@@ -124,14 +174,15 @@ final class Listener {
 
 func listen() {
 	guard args.count >= 3 else { fail("usage: listen OUT_FILE [--locale ID] [--file AUDIO]") }
-	var locale = Locale.current.identifier, file: String?
+	var locale = Locale.current.identifier, file: String?, parent: pid_t = 0
 	var i = 3
 	while i < args.count {
 		if args[i] == "--locale", i + 1 < args.count { locale = args[i + 1]; i += 2 }
+		else if args[i] == "--parent", i + 1 < args.count { parent = pid_t(args[i + 1]) ?? 0; i += 2 }
 		else if args[i] == "--file", i + 1 < args.count { file = args[i + 1]; i += 2 }
 		else { i += 1 }
 	}
-	let l = Listener(out: URL(fileURLWithPath: args[2]), locale: locale)
+	let l = Listener(out: URL(fileURLWithPath: args[2]), locale: locale, parent: parent)
 	l.authorize()
 	if let f = file { l.listenFile(URL(fileURLWithPath: f)) } else { l.listenMicrophone() }
 }

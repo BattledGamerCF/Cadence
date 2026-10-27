@@ -22,6 +22,9 @@ public final class SoundEngineSetting {
 	}
 
 	/** World Reverb: On / Off (dev.cadence.metal.audio.WorldAcoustics; the Apple engine only). */
+	/** The World Reverb button on the open screen: greyed out or not as the Sound Engine button changes the engine (BH7-13). */
+	private static Button reverb;
+
 	public static Button reverbButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(reverbLabel(), b -> {
@@ -33,6 +36,7 @@ public final class SoundEngineSetting {
 			"#Caves echo, rooms ring, open fields stay dry, and a sound behind a wall is muffled by the blocks in between. Cadence measures "
 				+ "the blocks around you a few times a second and sets Apple's reverb to match. With the Apple sound engine.")).build();
 		self[0].active = AppleAudio.wanted();
+		reverb = self[0];
 		return self[0];
 	}
 
@@ -49,6 +53,7 @@ public final class SoundEngineSetting {
 			AppleAudio.setWanted(apple);
 			Minecraft.getInstance().getSoundManager().reload();
 			self[0].setMessage(label());
+			if (reverb != null) reverb.active = apple;
 		}).width(Button.DEFAULT_WIDTH).tooltip(forced
 			? Tips.of("OpenAL: another mod drives OpenAL itself (sound physics, reverb), so Cadence keeps it.",
 				"#" + String.join(", ", compatMods()))

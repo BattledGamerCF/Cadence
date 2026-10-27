@@ -17,7 +17,7 @@ import org.lwjgl.system.MemoryUtil;
  * ML model on the Neural Engine (VideoToolbox's low-latency super resolution, mcneural.m mcsm_upscale): the pixel art drawn with
  * smooth, sharp detail instead of square pixels. Cadence's terrain renderer draws with the 2x atlas (its levels below are the
  * game's own); animated sprites (water, lava, fire, portals) keep the game's frames, copied in each frame. Made again when the
- * atlas is (a resource pack change). 4x the atlas's memory (about 64 MB more for the default atlas). Off by default.
+ * atlas is (a resource pack change). 4x the atlas's memory (about 85 MB more for the default atlas, with its levels). Off by default.
  */
 public final class SmoothTextures {
 	private static volatile boolean wanted;
@@ -59,18 +59,27 @@ public final class SmoothTextures {
 	public static void frame() {
 		if (!wanted) {
 			if (view2x != null) release();
+			if (state == 3) discard();  // (an upscale that finished after the setting went off)
 			return;
 		}
 		if (!(Minecraft.getInstance().getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS) instanceof TextureAtlas atlas)) return;
-		GpuTexture t = atlas.getTexture();
-		if (t == null) return;
+		GpuTexture t;
+		try {
+			t = atlas.getTexture();
+		} catch (IllegalStateException notYet) {
+			return;  // (the atlas isn't stitched yet: the loading screen's first frames, BH7-01)
+		}
 		var encoder = MetalBridge.encoder(((com.mojang.renderpearl.frontend.FrontendCommandEncoder) RenderSystem.getDevice().createCommandEncoder()).backend());
 		if (state == 0 && t != forAtlas && t != working) {
 			start(atlas, t, encoder);
 			return;
 		}
-		if (state == 3 && t == working) {
-			upload(t, encoder);
+		if (state == 3) {
+			if (t == working) {
+				upload(t, encoder);
+				return;
+			}
+			discard();  // (the atlas was made again meanwhile: started again for the new one, BH7-09)
 			return;
 		}
 		if (view2x != null && t == forAtlas && anim.length > 0)
@@ -117,9 +126,34 @@ public final class SmoothTextures {
 		animMaxH = mh;
 	}
 
+	/** A finished upscale nobody will use: its pixels freed, ready for the next atlas. */
+	private static void discard() {
+		if (out != 0) MemoryUtil.nmemFree(out);
+		out = 0;
+		working = null;
+		state = 0;
+		status = "";
+	}
+
 	private static void upscale(List<int[]> still) {
+		try {
+			upscaleOn(still);
+		} catch (Throwable t) {
+			// (anything thrown here would leave the state at "Upscaling" for good, BH7-09)
+			if (out != 0) MemoryUtil.nmemFree(out);
+			out = 0;
+			status = "Can't: " + t;
+			System.out.println("[cadence] smooth textures: " + t);
+			forAtlas = working;
+			working = null;
+			state = 0;
+		}
+	}
+
+	private static void upscaleOn(List<int[]> still) {
 		long t0 = System.nanoTime();
 		out = MemoryUtil.nmemAlloc((long) w * h * 16);
+		if (out == 0) throw new OutOfMemoryError("smooth textures: " + (long) w * h * 16 + " bytes");
 		long rects = MemoryUtil.nmemAlloc(Math.max(1, still.size()) * 16L), err = MemoryUtil.nmemCalloc(1, 512);
 		try {
 			for (int i = 0; i < still.size(); i++)

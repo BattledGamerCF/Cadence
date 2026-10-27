@@ -28,7 +28,7 @@ import org.lwjgl.system.MemoryUtil;
  * which keeps an acceleration structure of the bricks.
  */
 final class RtWorld {
-	static final int PALETTE_MAX = 4096;
+	static final int PALETTE_MAX = 32768;  // (15 bits; 4,096 ran out in heavy modpacks: further blocks cast no shadow, BH7 suspicion 7)
 	final int w, h, minY;
 	final long vox, bricks, sections, palette;
 	private final long voxAddr, bricksAddr, sectionsAddr, paletteAddr;

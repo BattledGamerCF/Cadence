@@ -34,8 +34,9 @@ public final class AppleHardwareSettings {
 			CadenceSettings.refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Spoken commands, recognised on your Mac only (Apple's on-device speech recognition; nothing is sent anywhere).",
 			"#Say \"open inventory\", \"jump\", \"screenshot\", \"take a photo\", \"save replay\", \"pause\", \"third person\", \"slot three\", "
-				+ "\"say hello\" (a chat message) or \"slash time set day\" (a command). The first time, macOS asks to let Cadence Helper use the "
-				+ "microphone and speech recognition.")).build();
+				+ "\"Cadence say hello\" (a chat message) or \"Cadence command time set day\" (a command). Only whole phrases count: talk that "
+				+ "contains a command word does nothing. The first time, macOS asks to let Cadence Helper use the microphone and speech "
+				+ "recognition. What it hears is deleted when it stops.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(voiceLabel()));
 		return self[0];
 	}
@@ -55,7 +56,7 @@ public final class AppleHardwareSettings {
 			CadenceSettings.refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Block textures at twice their resolution, upscaled by an ML model on your Mac's Neural Engine.",
 			"#The pixel art keeps its look with smooth, sharp detail instead of square pixels up close. Done once in a few seconds "
-				+ "(again after a resource pack change); animated textures (water, lava, fire) stay as they are. Uses about 64 MB more "
+				+ "(again after a resource pack change); animated textures (water, lava, fire) stay as they are. Uses about 85 MB more "
 				+ "graphics memory. Needs Cadence's terrain renderer (not with a shader pack).")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(smoothLabel()));
 		return self[0];
@@ -78,7 +79,7 @@ public final class AppleHardwareSettings {
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The world repainted in the style of one of Minecraft's paintings, by a neural network on your Mac's Neural Engine.",
 			"#The first time a style is chosen, your Mac learns it (about 4 minutes, in the background while you play; it takes a few "
 				+ "pictures of your world first). Nothing is downloaded. The network then runs beside the graphics chip, about 35 pictures "
-				+ "a second; your HUD stays sharp. Not with a shader pack.")).build();
+				+ "a second; your HUD stays sharp. Not with a shader pack or World Resolution below 100%.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(styleLabel()));
 		return self[0];
 	}
@@ -167,7 +168,9 @@ public final class AppleHardwareSettings {
 			? String.format(java.util.Locale.ROOT, "This screen shows highlights up to %.1fx white (less at full brightness: the room left above the brightness you set).", p)
 			: "This screen shows no HDR range now (turn it on to find out: macOS reports it once a game asks). Built-in XDR displays reach 16x; most other Mac screens about 2x below full brightness.";
 		return Tips.of("Light sources brighter than white, on your screen's extended range: glowstone, lava, torch flames, lanterns and the sun.",
-			"#Everything else, the menus and the HUD look exactly as before. " + screen
-				+ " Needs Cadence's terrain renderer for the glowing blocks; with a shader pack, the pack's own picture is shown unchanged.");
+			"#Everything else, the menus and the HUD look as before (on a screen with little room above white, white itself is a touch "
+				+ "dimmer, to leave the highlights some). " + screen
+				+ " Needs Cadence's terrain renderer for the glowing blocks; with a shader pack, the pack's own picture is shown unchanged."
+				+ " With Sharpening: Neural Engine the world's highlights stop at white.");
 	}
 }

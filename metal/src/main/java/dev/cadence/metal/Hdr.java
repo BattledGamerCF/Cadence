@@ -91,9 +91,10 @@ public final class Hdr {
 			surface.reconfigure();
 			System.out.println("[cadence] HDR " + (active ? "on" : "off") + " (headroom " + now + ", at most " + potential + ")");
 		}
-		dev.cadence.metal.own.OwnEmission.prepare();
-		dev.cadence.metal.neural.SmoothTextures.frame();
-		dev.cadence.metal.audio.WorldAcoustics.frame();
+		// (each guarded: this runs inside every present, so an exception here would end the game, BH7-01)
+		guarded(0, dev.cadence.metal.own.OwnEmission::prepare);
+		guarded(1, dev.cadence.metal.neural.SmoothTextures::frame);
+		guarded(2, dev.cadence.metal.audio.WorldAcoustics::frame);
 		if (!active) return;
 		long t = System.nanoTime();
 		if (t - readAt > 250_000_000L) {
@@ -112,6 +113,19 @@ public final class Hdr {
 		float h = Math.max(1f, now > 1.05f ? now : potential);
 		float knee = h >= 1.5f ? 1f : Math.max(0.75f, h - 0.5f);
 		Native.hdrTone(h, knee, pack || h < 1.05f ? 0 : 1);
+	}
+
+	private static final boolean[] hookFailed = new boolean[3];
+
+	/** A between-frames hook run; the first exception logged and that hook not run again. */
+	private static void guarded(int i, Runnable hook) {
+		if (hookFailed[i]) return;
+		try {
+			hook.run();
+		} catch (Throwable t) {
+			hookFailed[i] = true;
+			System.out.println("[cadence] " + (i == 0 ? "HDR emission" : i == 1 ? "Smooth Textures" : "World Reverb") + " stopped: " + t);
+		}
 	}
 
 	private static void rebuildTargets() {

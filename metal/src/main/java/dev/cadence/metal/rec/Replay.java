@@ -19,8 +19,8 @@ import org.lwjgl.system.MemoryUtil;
 
 /**
  * Instant Replay (Video Settings > Instant Replay; the Save Replay key): the last 30 seconds of what's on screen kept in memory
- * as hardware-encoded H.264 (rec.m mcrp_*: the recorder's GPU conversion into an IOSurface pixel buffer, VideoToolbox, a ring of
- * encoded frames, about 30 MB at 1280 wide), saved on request to replays/replay-DATE.mp4 by AVFoundation (nothing re-encoded).
+ * as hardware-encoded HEVC, 1920 wide (10-bit HLG with HDR on; H.264 at 1280 wide when HEVC can't be had; rec.m mcrp_*: the
+ * recorder's GPU conversion into an IOSurface pixel buffer, VideoToolbox, a ring of encoded frames, about 45 MB), saved on request to replays/replay-DATE.mp4 by AVFoundation (nothing re-encoded).
  * At most 60 frames a second are kept, each at the time it was shown; no sound. Off by default: on, it costs a GPU dispatch
  * per kept frame (~0.1 ms) and the Mac's media encoder.
  */
