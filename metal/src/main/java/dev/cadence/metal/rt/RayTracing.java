@@ -31,14 +31,15 @@ public final class RayTracing {
 	private static final boolean DEBUG = Boolean.getBoolean("cadence.rt.debug");
 	/** -Dcadence.rt.budgetMs: render-thread time per frame for writing the voxel window (default 2 ms). */
 	private static final long BUDGET_NS = (long) (Double.parseDouble(System.getProperty("cadence.rt.budgetMs", "2")) * 1e6);
-	private static final int FRAME_BYTES = 256;
+	private static final int FRAME_BYTES = 512;
+	private static final int CACHE_ENTRIES = 1 << 19;  // (mcrt.m RT_CACHE_ENTRIES)
 	/** -Dcadence.rt.scale=1|2: a shadow ray per pixel, or per 2 x 2 pixels upsampled by depth (default 2: a quarter of the cost). */
 	/** -Dcadence.rt.strength: the sky light levels a full sun shadow takes away (default 10 of 15; the game's lightmap gives the rest). */
 	private static final float STRENGTH = Float.parseFloat(System.getProperty("cadence.rt.strength", "10"));
 	private static final int SCALE = Math.clamp(Integer.getInteger("cadence.rt.scale", 2), 1, 2);
 
 	public enum Mode {
-		OFF("Off"), SHADOWS("Shadows");
+		OFF("Off"), SHADOWS("Shadows"), LIGHTING("Lighting (Experimental)");
 
 		public final String label;
 
@@ -68,7 +69,11 @@ public final class RayTracing {
 	private static final Matrix4f proj = new Matrix4f(), viewRot = new Matrix4f(), viewProj = new Matrix4f(), inv = new Matrix4f(), prevViewProj = new Matrix4f();
 	private static double camX, camY, camZ;
 	private static float sunAngle, moonAngle, rain;
+	private static float skyR = 0.47f, skyG = 0.65f, skyB = 1f;
+	private static boolean clearCache = true;
 	private static boolean usedHw;
+	private static long gpuAt, gpuNanos, gpuFrames;
+	private static volatile float gpuMs;
 	private static double gpuEstimateMs;
 
 	private RayTracing() {
@@ -104,6 +109,42 @@ public final class RayTracing {
 		return usedHw;
 	}
 
+	// ---- path traced photos (Photo Mode) ----
+
+	private static int photoTarget, photoSamples;
+	private static boolean photoReset;
+	private static final Matrix4f photoView = new Matrix4f();
+	private static double photoX, photoY, photoZ;
+
+	/**
+	 * Photo Mode with Ray Tracing on: the next frames path trace the view, adding up samples until `samples` (the camera moving
+	 * starts the sum again). False when Ray Tracing is off (an ordinary photo).
+	 */
+	public static boolean startPhoto(int samples) {
+		if (mode == Mode.OFF || failed) return false;
+		photoTarget = samples;
+		photoSamples = 0;
+		photoReset = true;
+		return true;
+	}
+
+	/** Samples added up so far for the photo being path traced. */
+	public static int photoSamples() {
+		return photoSamples;
+	}
+
+	/** The photo was taken (or cancelled): back to the usual frames, the sum let go. */
+	public static void endPhoto() {
+		photoTarget = 0;
+		photoSamples = 0;
+		if (rt != 0) RtNative.pathDone(rt);
+	}
+
+	/** The GPU's milliseconds per frame lately while ray tracing (0: not measured yet). */
+	public static float gpuMsPerFrame() {
+		return mode == Mode.OFF ? 0 : gpuMs;
+	}
+
 	/** Voxel window columns/sections still to write (0: complete). */
 	public static int backlog() {
 		RtWorld w = world;
@@ -123,10 +164,13 @@ public final class RayTracing {
 		proj.set(projection);
 	}
 
-	public static void sky(float sun, float moon, float rainLevel) {
+	public static void sky(float sun, float moon, float rainLevel, float r, float g, float b) {
 		sunAngle = sun;
 		moonAngle = moon;
 		rain = rainLevel;
+		skyR = r;
+		skyG = g;
+		skyB = b;
 	}
 
 	public static void sectionDirty(int x, int y, int z) {
@@ -155,6 +199,7 @@ public final class RayTracing {
 		if (world == null) {
 			boolean hw = tracer == Tracer.HARDWARE || tracer == Tracer.AUTO && support == 2;
 			world = new RtWorld(ctx, level, WINDOW);
+			clearCache = true;  // (the lighting cache's keys are world cells: another world's are wrong)
 			if (hw) {
 				if (rt != 0) RtNative.free(rt);
 				rt = createRt(true);
@@ -170,10 +215,40 @@ public final class RayTracing {
 		writeFrame(level, color.getWidth(0), color.getHeight(0));
 		var view = mc.gameRenderer.lightmap();
 		long light = view == null ? 0 : MetalBridge.textureHandle(view.texture());
-		int flags = (rtHw ? 1 : 0) | (DEBUG ? 2 : 0) | SCALE << 8;
+		if (photoTarget > 0) {
+			// (a photo being path traced: the camera must hold still, else the sum starts again)
+			boolean moved = !photoView.equals(viewProj, 1e-5f) || Math.abs(photoX - camX) + Math.abs(photoY - camY) + Math.abs(photoZ - camZ) > 1e-4;
+			if (moved || photoReset) {
+				photoView.set(viewProj);
+				photoX = camX;
+				photoY = camY;
+				photoZ = camZ;
+				photoSamples = 0;
+			}
+			RtNative.path(rt, enc, MetalBridge.textureHandle(color), MetalBridge.textureHandle(depth), light, world.vox, world.bricks, world.sections, world.palette,
+				frameBuf, FRAME_BYTES, photoSamples == 0);
+			photoReset = false;
+			photoSamples++;
+			prevViewProj.set(viewProj);
+			frames++;
+			return;
+		}
+		boolean lighting = mode == Mode.LIGHTING;
+		int flags = (rtHw ? 1 : 0) | (DEBUG ? 2 : 0) | (lighting ? 4 : 0) | (lighting && clearCache ? 8 : 0) | SCALE << 8;
+		if (lighting) clearCache = false;
 		int r = RtNative.frame(rt, enc, MetalBridge.textureHandle(color), MetalBridge.textureHandle(depth), light, world.vox, world.bricks, world.sections,
-			frameBuf, FRAME_BYTES, world.ox >> 4, world.oz >> 4, flags);
+			world.palette, frameBuf, FRAME_BYTES, world.ox >> 4, world.oz >> 4, flags);
 		usedHw = r == 1;
+		// (the GPU's time per frame, every half second: Frame Generation fills in for Lighting when the Mac can't hold the screen's rate)
+		gpuFrames++;
+		long now = System.nanoTime();
+		if (now - gpuAt > 500_000_000L) {
+			long busy = dev.cadence.metal.GpuBusy.totalNanos();
+			if (gpuAt != 0 && gpuFrames > 0) gpuMs = (busy - gpuNanos) / 1e6f / gpuFrames;
+			gpuAt = now;
+			gpuNanos = busy;
+			gpuFrames = 0;
+		}
 		prevViewProj.set(viewProj);
 		frames++;
 	}
@@ -215,6 +290,27 @@ public final class RayTracing {
 		MemoryUtil.memPutInt(b + 204, 0);
 		MemoryUtil.memPutFloat(b + 224, Math.max(w.top, 1));  // extra.x: the window's top
 		MemoryUtil.memPutFloat(b + 228, SCALE);
+		MemoryUtil.memPutFloat(b + 232, w.ox - (w.ox & (w.w - 1)));  // extra.zw: world x, z of the window minus its wrap
+		MemoryUtil.memPutFloat(b + 236, w.oz - (w.oz & (w.w - 1)));
+		// Ray Traced Lighting: the sun's colour (warmer and weaker near the horizon; the moon's is pale blue), the sky's
+		// (its colour, normalised to a brightness that follows the day), the lighting cache's settings
+		float elev = sun ? sy : my;
+		float warm = smooth(0.0f, 0.35f, elev);
+		float[] sunRgb = sun ? new float[] {1.0f, 0.55f + 0.4f * warm, 0.3f + 0.65f * warm} : new float[] {0.55f, 0.65f, 0.9f};
+		float sunPower = sun ? 0.75f : 0.18f;
+		MemoryUtil.memPutFloat(b + 240, sunRgb[0] * sunPower);
+		MemoryUtil.memPutFloat(b + 244, sunRgb[1] * sunPower);
+		MemoryUtil.memPutFloat(b + 248, sunRgb[2] * sunPower);
+		float lum = Math.max(0.05f, 0.2126f * skyR + 0.7152f * skyG + 0.0722f * skyB);
+		float dayLight = 0.05f + 0.5f * smooth(-0.15f, 0.25f, sy);
+		MemoryUtil.memPutFloat(b + 208, skyR / lum);
+		MemoryUtil.memPutFloat(b + 212, skyG / lum);
+		MemoryUtil.memPutFloat(b + 216, skyB / lum);
+		MemoryUtil.memPutFloat(b + 220, hasSky ? dayLight * clear : 0.02f);
+		MemoryUtil.memPutFloat(b + 256, CACHE_ENTRIES);
+		MemoryUtil.memPutFloat(b + 260, 48f);   // bounce rays: how far
+		MemoryUtil.memPutFloat(b + 264, 0.08f); // the cache's least blend per frame
+		MemoryUtil.memPutFloat(b + 268, 1f);    // exposure
 	}
 
 	private static float smooth(float a, float b, float x) {

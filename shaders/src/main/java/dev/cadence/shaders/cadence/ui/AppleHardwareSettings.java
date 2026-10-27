@@ -40,6 +40,8 @@ public final class AppleHardwareSettings {
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Shadows from the sun and the moon, ray traced through the blocks around you (64 blocks each way).",
 			"Shadows|every pixel in the open is tested against the sun: houses, trees and cliffs cast real shadows, and walls facing away "
 				+ "from the sun are in shade; torch-lit places stay lit",
+			"Lighting (Experimental)|the shadows plus the sky's and the sun's light bounced between blocks, ray traced and kept in a lighting "
+				+ "cache: shaded overhangs and caves' mouths, sunlit walls lighting the ground beside them",
 			"Off|as vanilla",
 			"#Not with a shader pack (it has its own shadows) or World Resolution below 100%. Players and mobs don't cast shadows yet.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(rtLabel()));

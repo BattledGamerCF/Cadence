@@ -15,6 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class RtSkyMixin {
 	@Inject(method = "extractRenderState", at = @At("RETURN"))
 	private void cadence$rtSky(ClientLevel level, float partialTicks, Camera camera, SkyRenderState state, CallbackInfo ci) {
-		if (RayTracing.mode() != RayTracing.Mode.OFF) RayTracing.sky(state.sunAngle, state.moonAngle, level.getRainLevel(partialTicks));
+		if (RayTracing.mode() != RayTracing.Mode.OFF)
+			RayTracing.sky(state.sunAngle, state.moonAngle, level.getRainLevel(partialTicks), state.skyColor.x(), state.skyColor.y(), state.skyColor.z());
 	}
 }

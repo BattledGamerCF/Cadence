@@ -26,7 +26,10 @@ struct RtFrame {
 	uint4 screen;          // xy: the frame's size; z: flags (bit 0: debug view of the visibility)
 	float4 sky;            // xyz: the sky's colour (linear), w: sky brightness 0..1 (path tracing)
 	float4 extra;          // x: one above the highest solid cell in the window (window y): a ray climbing past it is in the open;
-	                       // y: the trace's scale (1: a ray per pixel, 2: per 2 x 2 pixels, rt_apply_fs upsamples)
+	                       // y: the trace's scale (1: a ray per pixel, 2: per 2 x 2 pixels, rt_apply_fs upsamples);
+	                       // zw: the window's origin x, z minus its wrap (world x = window x + dims.z + extra.z)
+	float4 extra2;         // xyz: the sun's colour (linear, its strength folded in later by sun.w)
+	float4 cache;          // x: lighting cache entries (a power of two), y: bounce ray length, z: least blend per frame, w: exposure
 };
 
 // ---- the voxels ----
@@ -357,4 +360,357 @@ fragment float4 rt_debug_fs(VOut in [[stage_in]], texture2d<float, access::read>
 	depth2d<float, access::read> depth [[texture(2)]], constant RtFrame &f [[buffer(2)]]) {
 	float v = traced(rt, depth, uint2(in.pos.xy), f).r;
 	return float4(v, v, v, 1.0f);
+}
+
+// ---- Ray Traced Lighting (experimental): the sky's and the sun's light from the voxels, through a lighting cache ----
+//
+// The lighting cache: a hash table in world space, an entry per (air cell, face direction) that a pixel sees: the light arriving
+// at the block faces facing that way in that cell (the sky, the sun and what other blocks bounce), averaged over time. Each frame
+// rt_cache_update traces one ray from a quarter of the traced pixels' surfaces into the hemisphere above them (cosine-weighted):
+// out to the sky it brings the sky's light; onto a block, that block's colour times the sun on it (one shadow ray) and the
+// cache's own light there (so light bounces on, frame after frame). rt_cache_resolve folds each entry's new samples into its
+// average. rt_light_fs then relights the frame: the game's own sky lighting replaced by the sun (traced shadow) and the cached
+// sky and bounce light, the block light (torches) kept as the game gives it.
+
+struct CacheEntry {
+	atomic_uint key;    // 0: free; else the cell and face (cacheKey)
+	atomic_uint sum[3]; // this frame's samples, RGB, fixed point (x 1024)
+	atomic_uint count;  // this frame's sample count
+	uint age;           // updates folded in so far (the average's weight)
+	half4 irr;          // the light arriving (linear RGB), the running average
+};
+
+#define CACHE_PROBES 8
+
+// A world cell (window y, world x and z) and face (0..5: -x +x -y +y -z +z) as a key; never 0.
+static inline uint cacheKey(int3 world, uint face) {
+	return (uint(world.x) & 0x3FFu) | (uint(world.z) & 0x3FFu) << 10 | (uint(world.y) & 0x1FFu) << 20 | (face + 1u) << 29;
+}
+
+static inline uint hashKey(uint k) {
+	k ^= k >> 16; k *= 0x7feb352du; k ^= k >> 15; k *= 0x846ca68bu; k ^= k >> 16;
+	return k;
+}
+
+// The entry for a key: found, or claimed (insert) when free; -1 if the probes are all taken by others.
+static int cacheFind(device CacheEntry *cache, uint mask, uint key, bool insert) {
+	uint h = hashKey(key);
+	for (uint i = 0; i < CACHE_PROBES; i++) {
+		uint slot = (h + i) & mask;
+		uint k = atomic_load_explicit(&cache[slot].key, memory_order_relaxed);
+		if (k == key) return int(slot);
+		if (k == 0u) {
+			if (!insert) return -1;
+			uint expected = 0u;
+			if (atomic_compare_exchange_weak_explicit(&cache[slot].key, &expected, key, memory_order_relaxed, memory_order_relaxed)) return int(slot);
+			if (expected == key) return int(slot);
+		}
+	}
+	return -1;
+}
+
+static inline uint faceOf(float3 n) {
+	float3 a = abs(n);
+	if (a.x >= a.y && a.x >= a.z) return n.x < 0.0f ? 0u : 1u;
+	if (a.y >= a.z) return n.y < 0.0f ? 2u : 3u;
+	return n.z < 0.0f ? 4u : 5u;
+}
+
+static inline float3 faceNormal(uint face) {
+	float3 n = float3(0.0f);
+	n[face >> 1] = (face & 1u) ? 1.0f : -1.0f;
+	return n;
+}
+
+// The window cell (logical) to world x, z (the key's coordinates: the cache stays valid as the window moves).
+static inline int3 worldCell(int3 c, constant RtFrame &f) {
+	return int3(c.x + int(f.dims.z) + int(f.extra.z), c.y, c.z + int(f.dims.w) + int(f.extra.w));
+}
+
+static inline float3 srgbToLinear(float3 c) {
+	return select(pow((c + 0.055f) / 1.055f, 2.4f), c / 12.92f, c <= 0.04045f);
+}
+
+// The first solid cell along the ray, and the face it was entered through (the hit's normal axis, signed). -1 if none.
+static float rt_hit(float3 o, float3 d, float tMax, device const uint2 *bricks, device const uchar *sections, constant RtFrame &f,
+	thread int3 &hit, thread float3 &normal) {
+	float3 inv = 1.0f / select(d, float3(1e-9f), abs(d) < 1e-9f);
+	float3 lo = (float3(0.0f) - o) * inv, hi = (float3(float(f.dims.x), float(f.dims.y), float(f.dims.x)) - o) * inv;
+	float t0 = max(max(min(lo.x, hi.x), min(lo.y, hi.y)), min(lo.z, hi.z));
+	float t1 = min(min(max(lo.x, hi.x), max(lo.y, hi.y)), max(lo.z, hi.z));
+	float t = max(t0, 0.0f);
+	float tEnd = min(t1, tMax);
+	if (d.y > 1e-6f) tEnd = min(tEnd, (f.extra.x - o.y) / d.y);
+	if (t >= tEnd) return -1.0f;
+	int3 step = int3(sign(d));
+	float3 delta = abs(inv);
+	int3 c = int3(floor(o + d * (t + 1e-4f)));
+	float3 next = (float3(c) + max(float3(step), 0.0f) - o) * inv;
+	int axis = 1;
+	for (int i = 0; i < 192; i++) {
+		if (!inWindow(c, f)) return -1.0f;
+		int size = 0;
+		uint2 mask = uint2(0);
+		if (sections[sectionIndex(c, f)] == 0) size = 16;
+		else {
+			mask = bricks[brickIndex(c, f)];
+			if ((mask.x | mask.y) == 0) size = 4;
+		}
+		if (size != 0) {
+			float3 b0 = float3(c & ~(size - 1)), b1 = b0 + float(size);
+			float3 exitT = (select(b0, b1, d > 0.0f) - o) * inv;
+			exitT = select(float3(1e30f), exitT, abs(d) >= 1e-9f);
+			axis = exitT.x < exitT.y && exitT.x < exitT.z ? 0 : exitT.y < exitT.z ? 1 : 2;
+			t = exitT[axis];
+			if (t >= tEnd) return -1.0f;
+			c = int3(floor(o + d * (t + 1e-4f)));
+			next = (float3(c) + max(float3(step), 0.0f) - o) * inv;
+			continue;
+		}
+		int3 b0 = c & ~3;
+		for (int k = 0; k < 10; k++) {
+			if (brickBit(mask, c) && i + k > 0) {
+				hit = c;
+				normal = float3(0.0f);
+				normal[axis] = -float(step[axis]);
+				return t;
+			}
+			if (next.x < next.y && next.x < next.z) { t = next.x; c.x += step.x; next.x += delta.x; axis = 0; }
+			else if (next.y < next.z) { t = next.y; c.y += step.y; next.y += delta.y; axis = 1; }
+			else { t = next.z; c.z += step.z; next.z += delta.z; axis = 2; }
+			if (t >= tEnd) return -1.0f;
+			if (any((c & ~3) != b0)) break;
+		}
+	}
+	return -1.0f;
+}
+
+// A cosine-weighted direction about n (u: two numbers in 0..1).
+static float3 cosineDir(float3 n, float2 u) {
+	float3 t = normalize(abs(n.y) < 0.9f ? cross(n, float3(0, 1, 0)) : cross(n, float3(1, 0, 0)));
+	float3 b = cross(n, t);
+	float r = sqrt(u.x), a = 6.2831853f * u.y;
+	return normalize(t * (r * cos(a)) + b * (r * sin(a)) + n * sqrt(max(0.0f, 1.0f - u.x)));
+}
+
+static inline float2 rand2(uint2 p, uint frame) {
+	uint h = hashKey(p.x * 73856093u ^ p.y * 19349663u ^ frame * 83492791u);
+	return float2(float(h & 0xFFFFu), float(h >> 16)) / 65536.0f;
+}
+
+// The sun's (or moon's) light on a surface: its colour times strength times the cosine, if a ray reaches it.
+static float3 sunOn(float3 g, float3 n, device const uint2 *bricks, device const uchar *sections, constant RtFrame &f) {
+	float c = dot(n, f.sun.xyz);
+	if (c <= 0.0f || f.sun.w <= 0.0f) return float3(0.0f);
+	if (rt_trace(g + n * 0.02f, f.sun.xyz, 0.0f, f.params.x, int3(-100000), bricks, sections, f) >= 0.0f) return float3(0.0f);
+	return f.extra2.xyz * (c * f.sun.w);
+}
+
+// The cached light at a world cell and face (0 if none yet).
+static float3 cacheAt(device CacheEntry *cache, uint mask, int3 wcell, uint face) {
+	int s = cacheFind(cache, mask, cacheKey(wcell, face), false);
+	return s < 0 ? float3(0.0f) : float3(cache[s].irr.rgb);
+}
+
+kernel void rt_cache_update(depth2d<float, access::read> depth [[texture(0)]], texture2d<float, access::read> traced [[texture(1)]],
+	device const ushort *vox [[buffer(0)]], device const uint2 *bricks [[buffer(1)]], constant RtFrame &f [[buffer(2)]],
+	device CacheEntry *cache [[buffer(3)]], device const uint2 *palette [[buffer(4)]], device const uchar *sections [[buffer(5)]],
+	uint2 gid [[thread_position_in_grid]]) {
+	// a quarter of the traced pixels each frame, in a pattern that moves every frame
+	uint frame = uint(f.params.y);
+	uint2 q = gid * 2u + uint2(frame & 1u, (frame >> 1) & 1u);
+	if (q.x >= traced.get_width() || q.y >= traced.get_height()) return;
+	uint2 px = min(q * uint(f.extra.y), f.screen.xy - 1);
+	float d = depth.read(px);
+	if (d <= 1e-7f) return;
+	float3 P = pointAt(px, d, f);
+	float3 N = normalAt(depth, px, P, f);
+	uint face = faceOf(N);
+	N = faceNormal(face);
+	float3 g = P - f.origin.xyz;
+	int3 air = int3(floor(g + N * 0.5f));
+	if (!inWindow(air, f)) return;
+	uint mask = uint(f.cache.x) - 1u;
+	float3 dir = cosineDir(N, rand2(q, frame));
+	int3 hit;
+	float3 hn;
+	float3 L;
+	float t = rt_hit(g + N * 0.02f, dir, f.cache.y, bricks, sections, f, hit, hn);
+	if (t < 0.0f) {
+		// the sky (the brighter the higher it is seen; below the horizon it's the ground's colour at the window's edge)
+		L = f.sky.xyz * f.sky.w * (dir.y > 0.0f ? 1.0f : 0.25f);
+	} else {
+		ushort v = vox[voxelIndex(hit, f)];
+		float3 albedo = srgbToLinear(float3((uint3(palette[v & 0xFFFu].x) >> uint3(16, 8, 0)) & 0xFFu) / 255.0f);
+		float3 hp = g + dir * t;
+		float3 inLight = sunOn(hp, hn, bricks, sections, f) + cacheAt(cache, mask, worldCell(hit + int3(hn), f), faceOf(hn));
+		L = albedo * inLight;
+	}
+	int s = cacheFind(cache, mask, cacheKey(worldCell(air, f), face), true);
+	if (s < 0) return;
+	uint3 fx = uint3(clamp(L, 0.0f, 64.0f) * 1024.0f);
+	atomic_fetch_add_explicit(&cache[s].sum[0], fx.x, memory_order_relaxed);
+	atomic_fetch_add_explicit(&cache[s].sum[1], fx.y, memory_order_relaxed);
+	atomic_fetch_add_explicit(&cache[s].sum[2], fx.z, memory_order_relaxed);
+	atomic_fetch_add_explicit(&cache[s].count, 1u, memory_order_relaxed);
+}
+
+// Each entry's new samples folded into its average (the first ones count fully, then each frame a tenth), then cleared.
+kernel void rt_cache_resolve(device CacheEntry *cache [[buffer(3)]], constant RtFrame &f [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+	if (i >= uint(f.cache.x)) return;
+	uint n = atomic_load_explicit(&cache[i].count, memory_order_relaxed);
+	if (n == 0u) return;
+	float3 s = float3(atomic_load_explicit(&cache[i].sum[0], memory_order_relaxed), atomic_load_explicit(&cache[i].sum[1], memory_order_relaxed),
+		atomic_load_explicit(&cache[i].sum[2], memory_order_relaxed)) / (1024.0f * float(n));
+	uint age = cache[i].age;
+	float a = max(1.0f / float(age + 1u), f.cache.z);
+	cache[i].irr = half4(half3(mix(float3(cache[i].irr.rgb), s, a)), 1.0h);
+	cache[i].age = min(age + n, 1000u);
+	atomic_store_explicit(&cache[i].sum[0], 0u, memory_order_relaxed);
+	atomic_store_explicit(&cache[i].sum[1], 0u, memory_order_relaxed);
+	atomic_store_explicit(&cache[i].sum[2], 0u, memory_order_relaxed);
+	atomic_store_explicit(&cache[i].count, 0u, memory_order_relaxed);
+}
+
+// The cached light at a surface point, blended between the four nearest cells across its face (smooth, not one value per block).
+static float3 cacheSmooth(device CacheEntry *cache, uint mask, float3 g, uint face, constant RtFrame &f) {
+	float3 n = faceNormal(face);
+	uint ax = face >> 1, a1 = (ax + 1u) % 3u, a2 = (ax + 2u) % 3u;
+	float3 c = g + n * 0.5f;
+	float u = c[a1] - 0.5f, v = c[a2] - 0.5f;
+	float fu = fract(u), fv = fract(v);
+	float3 sum = float3(0.0f);
+	float wsum = 0.0f;
+	for (int k = 0; k < 4; k++) {
+		float3 p = c;
+		p[a1] = floor(u) + float(k & 1) + 0.5f;
+		p[a2] = floor(v) + float(k >> 1) + 0.5f;
+		int3 cell = int3(floor(p));
+		if (!inWindow(cell, f)) continue;
+		int s = cacheFind(cache, mask, cacheKey(worldCell(cell, f), face), false);
+		if (s < 0) continue;
+		float w = ((k & 1) ? fu : 1.0f - fu) * ((k >> 1) ? fv : 1.0f - fv) + 1e-4f;
+		sum += float3(cache[s].irr.rgb) * w;
+		wsum += w;
+	}
+	return wsum > 0.0f ? sum / wsum : float3(-1.0f);
+}
+
+// The game's face shading (vanilla: up 1.0, down 0.5, north/south 0.8, east/west 0.6), taken out where the new light replaces it.
+static inline float vanillaShade(uint face) {
+	return face == 3u ? 1.0f : face == 2u ? 0.5f : face >= 4u ? 0.8f : 0.6f;
+}
+
+// The frame relit: the factor, per channel (sRGB-encoded, as the frame is), that turns the game's lighting at this pixel into
+// the game's block light plus the traced sun and the cached sky and bounce light.
+fragment float4 rt_light_fs(VOut in [[stage_in]], texture2d<float, access::read> rt [[texture(0)]],
+	texture2d<float, access::read> lightmap [[texture(1)]], depth2d<float, access::read> depth [[texture(2)]], constant RtFrame &f [[buffer(2)]],
+	device CacheEntry *cache [[buffer(3)]]) {
+	uint2 p = uint2(in.pos.xy);
+	float d = depth.read(p);
+	if (d <= 1e-7f) return float4(1.0f);
+	float3 s = traced(rt, depth, p, f);
+	uint code = uint(s.g + 0.5f), sky = (code >> 4) & 15u, block = code & 15u;
+	float3 P = pointAt(p, d, f);
+	float3 N = normalAt(depth, p, P, f);
+	uint face = faceOf(N);
+	float3 g = P - f.origin.xyz;
+	float fade = edgeFade(P, f);
+	if (fade >= 0.999f) return float4(1.0f);
+	float3 cached = cacheSmooth(cache, uint(f.cache.x) - 1u, g, face, f);
+	if (cached.x < 0.0f) return float4(1.0f);  // (not lit yet: as the game draws it)
+	float3 vanilla = srgbToLinear(lightmap.read(uint2(block, sky)).rgb) * vanillaShade(face);
+	float3 torch = srgbToLinear(lightmap.read(uint2(block, 0u)).rgb);
+	float vis = sky == 0u ? 0.0f : s.r;
+	float3 sun = f.extra2.xyz * (f.sun.w * vis * max(dot(faceNormal(face), f.sun.xyz), 0.0f));
+	float3 relit = torch * vanillaShade(face) + (sun + cached) * f.cache.w;
+	float3 k = clamp(relit / max(vanilla, float3(0.03f)), 0.0f, 6.0f);
+	k = mix(k, float3(1.0f), fade);
+	return float4(pow(k, 1.0f / 2.2f), 1.0f);
+}
+
+// ---- Path traced photos (Photo Mode with Ray Tracing on): the view path traced, a sample per pixel per frame, added up ----
+//
+// The first hit is the game's own frame (its depth gives the point and the face; its colour divided by the game's lighting there
+// gives the surface's colour, texture detail included). From there the path goes on through the voxels: at every surface the sun
+// or moon (a shadow ray, its disc's size jittered: soft shadows), then a bounce in a cosine-weighted direction; out to the sky, the
+// sky's light; onto a block, its colour (its texture's average) and, for blocks that give light, their glow. Torch light at the
+// first hit is the game's block light. accum keeps the sum; rt_path_out_fs draws the average into the frame.
+
+static float3 skyRadiance(float3 dir, constant RtFrame &f) {
+	return f.sky.xyz * f.sky.w * (dir.y > 0.0f ? 0.6f + 0.4f * dir.y : 0.2f);
+}
+
+static float3 sunSoft(float3 g, float3 n, uint2 p, uint frame, device const uint2 *bricks, device const uchar *sections, constant RtFrame &f) {
+	if (f.sun.w <= 0.0f) return float3(0.0f);
+	float2 u = rand2(p + 101u, frame);
+	float3 l = f.sun.xyz;
+	float3 t = normalize(abs(l.y) < 0.9f ? cross(l, float3(0, 1, 0)) : cross(l, float3(1, 0, 0))), b = cross(l, t);
+	float r = sqrt(u.x) * 0.03f, a = 6.2831853f * u.y;
+	l = normalize(l + (t * cos(a) + b * sin(a)) * r);
+	float c = dot(n, l);
+	if (c <= 0.0f) return float3(0.0f);
+	if (rt_trace(g + n * 0.02f, l, 0.0f, f.params.x, int3(-100000), bricks, sections, f) >= 0.0f) return float3(0.0f);
+	return f.extra2.xyz * (c * f.sun.w);
+}
+
+kernel void rt_path(depth2d<float, access::read> depth [[texture(0)]], texture2d<float, access::read> color [[texture(1)]],
+	texture2d<float, access::read_write> accum [[texture(2)]], texture2d<float, access::read> lightmap [[texture(3)]],
+	device const ushort *vox [[buffer(0)]], device const uint2 *bricks [[buffer(1)]], constant RtFrame &f [[buffer(2)]],
+	device const uint2 *palette [[buffer(4)]], device const uchar *sections [[buffer(5)]], constant uint &reset [[buffer(6)]],
+	uint2 gid [[thread_position_in_grid]]) {
+	if (gid.x >= f.screen.x || gid.y >= f.screen.y) return;
+	float4 sum = reset != 0u ? float4(0.0f) : accum.read(gid);
+	float3 c0 = srgbToLinear(clamp(color.read(gid).rgb, 0.0f, 64.0f));
+	float d = depth.read(gid);
+	float3 result = c0;
+	uint frame = uint(f.params.y);
+	if (d > 1e-7f) {
+		float3 P = pointAt(gid, d, f);
+		uint face = faceOf(normalAt(depth, gid, P, f));
+		float3 N = faceNormal(face);
+		float3 g = P - f.origin.xyz;
+		float fade = edgeFade(P, f);
+		if (fade < 0.999f) {
+			uint code = lightAt(g, N, vox, f), sky = (code >> 4) & 15u, block = code & 15u;
+			float shade = vanillaShade(face);
+			float3 vanilla = srgbToLinear(lightmap.read(uint2(block, sky)).rgb) * shade;
+			float3 albedo = clamp(c0 / max(vanilla, float3(0.02f)), 0.0f, 1.0f);
+			float3 L = srgbToLinear(lightmap.read(uint2(block, 0u)).rgb) * shade / max(f.cache.w, 1e-3f);
+			L += sunSoft(g, N, gid, frame, bricks, sections, f);
+			float3 thr = float3(1.0f), o = g + N * 0.02f, n = N;
+			for (uint bounce = 0; bounce < 3u; bounce++) {
+				float3 dir = cosineDir(n, rand2(gid + uint2(bounce * 7919u, 0u), frame));
+				int3 hit;
+				float3 hn;
+				float t = rt_hit(o, dir, 64.0f, bricks, sections, f, hit, hn);
+				if (t < 0.0f) {
+					L += thr * skyRadiance(dir, f);
+					break;
+				}
+				uint e = palette[vox[voxelIndex(hit, f)] & 0xFFFu].x;
+				float3 a = srgbToLinear(float3((uint3(e) >> uint3(16, 8, 0)) & 0xFFu) / 255.0f);
+				float glow = float(e >> 24) / 15.0f;
+				if (glow > 0.0f) L += thr * a * glow * 4.0f;
+				thr *= a;
+				o = o + dir * t + hn * 0.02f;
+				n = hn;
+				L += thr * sunSoft(o, n, gid + uint2(0u, bounce * 104729u + 7u), frame, bricks, sections, f);
+				if (max(max(thr.r, thr.g), thr.b) < 0.02f) break;
+			}
+			result = mix(albedo * L * f.cache.w, c0, fade);
+		}
+	}
+	accum.write(sum + float4(result, 1.0f), gid);
+}
+
+static float3 linearToSrgb(float3 l) {
+	l = max(l, 0.0f);
+	return select(1.055f * pow(l, 1.0f / 2.4f) - 0.055f, l * 12.92f, l <= 0.0031308f);
+}
+
+// The average so far, into the frame (its alpha kept).
+fragment float4 rt_path_out_fs(VOut in [[stage_in]], texture2d<float, access::read> accum [[texture(0)]]) {
+	float4 s = accum.read(uint2(in.pos.xy));
+	return float4(linearToSrgb(s.rgb / max(s.a, 1.0f)), 1.0f);
 }

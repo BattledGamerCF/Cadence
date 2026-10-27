@@ -8,15 +8,20 @@
 
 id<MTLCommandBuffer> mc_frame_cmd(Enc *enc);
 
-#define RT_FRAME_BYTES 256  // RtFrame (rt.metal)
+#define RT_FRAME_BYTES 512  // RtFrame (rt.metal)
+#define RT_CACHE_ENTRIES (1 << 19)  // the lighting cache (rt.metal CacheEntry, 32 bytes each: 16 MB)
 #define RT_RING 4
 
 typedef struct {
 	Ctx *ctx;
-	id<MTLComputePipelineState> shadow, shadowHw;
-	id<MTLFunction> applyVs, applyFs, debugFs;
-	id<MTLRenderPipelineState> apply[2], debug[2];  // [0] an 8-bit frame, [1] a float one (HDR)
-	MTLPixelFormat applyFormat[2];
+	id<MTLComputePipelineState> shadow, shadowHw, cacheUpdate, cacheResolve;
+	id<MTLFunction> applyVs, applyFs, debugFs, lightFs;
+	id<MTLRenderPipelineState> apply[2], debug[2], light[2];  // [0] an 8-bit frame, [1] a float one (HDR)
+	id<MTLBuffer> cache;  // the lighting cache (Ray Traced Lighting), made at its first use
+	id<MTLComputePipelineState> path;
+	id<MTLFunction> pathOutFs;
+	id<MTLRenderPipelineState> pathOut[2];
+	id<MTLTexture> accum;  // path traced photos: the sum of the samples so far (RGBA32Float; a = the count)
 	id<MTLTexture> out;
 	id<MTLBuffer> frames[RT_RING];  // the frame's constants, for the intersection function too (it can't take setBytes)
 	int ring;
@@ -54,7 +59,14 @@ void *mcrt_new(Ctx *ctx, const char *source, int hw, int w, int h, char *err, in
 		r->applyVs = [lib newFunctionWithName:@"rt_apply_vs"];
 		r->applyFs = [lib newFunctionWithName:@"rt_apply_fs"];
 		r->debugFs = [lib newFunctionWithName:@"rt_debug_fs"];
-		if (!r->shadow || !r->applyVs || !r->applyFs || !r->debugFs) {
+		r->lightFs = [lib newFunctionWithName:@"rt_light_fs"];
+		r->pathOutFs = [lib newFunctionWithName:@"rt_path_out_fs"];
+		id<MTLFunction> pf = [[lib newFunctionWithName:@"rt_path"] autorelease];
+		r->path = pf ? [ctx->device newComputePipelineStateWithFunction:pf error:&e] : nil;
+		id<MTLFunction> cu = [[lib newFunctionWithName:@"rt_cache_update"] autorelease], cr = [[lib newFunctionWithName:@"rt_cache_resolve"] autorelease];
+		r->cacheUpdate = cu ? [ctx->device newComputePipelineStateWithFunction:cu error:&e] : nil;
+		r->cacheResolve = cr ? [ctx->device newComputePipelineStateWithFunction:cr error:&e] : nil;
+		if (!r->shadow || !r->applyVs || !r->applyFs || !r->debugFs || !r->lightFs || !r->cacheUpdate || !r->cacheResolve || !r->path || !r->pathOutFs) {
 			rtErr(e, "rt pipelines", err, errCap);
 			free(r);
 			return NULL;
@@ -225,16 +237,17 @@ static void buildAccel(Rt *r, id<MTLCommandBuffer> cb, int sox, int soz) {
 	r->tlasBuilt = 1;
 }
 
-static id<MTLRenderPipelineState> applyPipeline(Rt *r, MTLPixelFormat format, int debug) {
+// kind: 0 the shadows' factor, 1 the debug view, 2 Ray Traced Lighting's factor
+static id<MTLRenderPipelineState> applyPipeline(Rt *r, MTLPixelFormat format, int kind) {
 	int k = format == MTLPixelFormatRGBA16Float ? 1 : 0;
-	id<MTLRenderPipelineState> *slot = debug ? &r->debug[k] : &r->apply[k];
-	if (*slot && r->applyFormat[k] == format) return *slot;
+	id<MTLRenderPipelineState> *slot = kind == 1 ? &r->debug[k] : kind == 2 ? &r->light[k] : &r->apply[k];
+	if (*slot) return *slot;
 	@autoreleasepool {
 		MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor new] autorelease];
 		d.vertexFunction = r->applyVs;
-		d.fragmentFunction = debug ? r->debugFs : r->applyFs;
+		d.fragmentFunction = kind == 1 ? r->debugFs : kind == 2 ? r->lightFs : r->applyFs;
 		d.colorAttachments[0].pixelFormat = format;
-		if (!debug) {
+		if (kind != 1) {
 			// the frame times the factor: src * 0 + dst * src colour; the frame's alpha kept
 			d.colorAttachments[0].blendingEnabled = YES;
 			d.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorZero;
@@ -243,19 +256,18 @@ static id<MTLRenderPipelineState> applyPipeline(Rt *r, MTLPixelFormat format, in
 			d.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOne;
 		}
 		NSError *e = nil;
-		[*slot release];
 		*slot = [r->ctx->device newRenderPipelineStateWithDescriptor:d error:&e];
-		r->applyFormat[k] = format;
 		if (!*slot) NSLog(@"cadence-rt: apply pipeline: %@", e);
 		return *slot;
 	}
 }
 
 // One frame's shadows: traced into the visibility texture (the frame's size), then applied to color. frame: RtFrame (rt.metal).
-// sox, soz: the window's origin in sections (hardware path). flags: bit 0 hardware ray tracing, bit 1 debug view.
+// sox, soz: the window's origin in sections (hardware path). flags: bit 0 hardware ray tracing, bit 1 debug view, bit 2 Ray Traced
+// Lighting (the lighting cache updated and the frame relit instead of only shadowed), bit 3 the cache cleared first.
 // 0, or -1 when nothing could be done.
 int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, id<MTLTexture> lightmap, id<MTLBuffer> vox,
-	id<MTLBuffer> bricks, id<MTLBuffer> sections, const void *frame, int len, int sox, int soz, int flags) {
+	id<MTLBuffer> bricks, id<MTLBuffer> sections, id<MTLBuffer> palette, const void *frame, int len, int sox, int soz, int flags) {
 	Rt *r = rt;
 	if (!color || !depth || !vox || !bricks || !sections || len > RT_FRAME_BYTES) return -1;
 	int useHw = (flags & 1) && r->hw;
@@ -295,7 +307,35 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 		}
 		[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		[c endEncoding];
-		id<MTLRenderPipelineState> p = applyPipeline(r, color.pixelFormat, (flags & 2) != 0);
+		int lighting = (flags & 4) != 0 && palette;
+		if (lighting) {
+			if (!r->cache) {
+				r->cache = [r->ctx->device newBufferWithLength:(NSUInteger) RT_CACHE_ENTRIES * 32 options:MTLResourceStorageModePrivate];
+				flags |= 8;
+			}
+			if (flags & 8) {
+				id<MTLBlitCommandEncoder> b = [cb blitCommandEncoder];
+				[b fillBuffer:r->cache range:NSMakeRange(0, r->cache.length) value:0];
+				[b endEncoding];
+			}
+			id<MTLComputeCommandEncoder> u = [cb computeCommandEncoder];
+			u.label = @"Cadence ray traced lighting (cache)";
+			[u setComputePipelineState:r->cacheUpdate];
+			[u setTexture:depth atIndex:0];
+			[u setTexture:r->out atIndex:1];
+			[u setBuffer:vox offset:0 atIndex:0];
+			[u setBuffer:bricks offset:0 atIndex:1];
+			[u setBuffer:fb offset:0 atIndex:2];
+			[u setBuffer:r->cache offset:0 atIndex:3];
+			[u setBuffer:palette offset:0 atIndex:4];
+			[u setBuffer:sections offset:0 atIndex:5];
+			[u dispatchThreads:MTLSizeMake((w + 1) / 2, (h + 1) / 2, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+			[u memoryBarrierWithScope:MTLBarrierScopeBuffers];
+			[u setComputePipelineState:r->cacheResolve];
+			[u dispatchThreads:MTLSizeMake(RT_CACHE_ENTRIES, 1, 1) threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+			[u endEncoding];
+		}
+		id<MTLRenderPipelineState> p = applyPipeline(r, color.pixelFormat, (flags & 2) ? 1 : lighting ? 2 : 0);
 		if (!p || !lightmap) return -1;
 		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
 		rp.colorAttachments[0].texture = color;
@@ -308,10 +348,79 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 		[re setFragmentTexture:lightmap atIndex:1];
 		[re setFragmentTexture:depth atIndex:2];
 		[re setFragmentBuffer:fb offset:0 atIndex:2];
+		if (lighting) [re setFragmentBuffer:r->cache offset:0 atIndex:3];
 		[re drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 		[re endEncoding];
 	}
 	return useHw ? 1 : 0;
+}
+
+// A path traced photo's sample: the view path traced once more and added to the sum (reset: start a new sum), the average drawn
+// into color. The caller makes sure the camera hasn't moved. 0, or -1.
+int mcrt_path(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, id<MTLTexture> lightmap, id<MTLBuffer> vox, id<MTLBuffer> bricks,
+	id<MTLBuffer> sections, id<MTLBuffer> palette, const void *frame, int len, int reset) {
+	Rt *r = rt;
+	if (!color || !depth || !lightmap || len > RT_FRAME_BYTES) return -1;
+	@autoreleasepool {
+		NSUInteger w = color.width, h = color.height;
+		if (!r->accum || r->accum.width != w || r->accum.height != h) {
+			[r->accum release];
+			MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float width:w height:h mipmapped:NO];
+			d.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+			d.storageMode = MTLStorageModePrivate;
+			r->accum = [r->ctx->device newTextureWithDescriptor:d];
+			reset = 1;
+		}
+		int k = color.pixelFormat == MTLPixelFormatRGBA16Float ? 1 : 0;
+		if (!r->pathOut[k]) {
+			MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor new] autorelease];
+			d.vertexFunction = r->applyVs;
+			d.fragmentFunction = r->pathOutFs;
+			d.colorAttachments[0].pixelFormat = color.pixelFormat;
+			d.colorAttachments[0].writeMask = MTLColorWriteMaskRed | MTLColorWriteMaskGreen | MTLColorWriteMaskBlue;
+			NSError *e = nil;
+			r->pathOut[k] = [r->ctx->device newRenderPipelineStateWithDescriptor:d error:&e];
+			if (!r->pathOut[k]) { NSLog(@"cadence-rt: path out: %@", e); return -1; }
+		}
+		id<MTLBuffer> fb = r->frames[r->ring];
+		r->ring = (r->ring + 1) % RT_RING;
+		memcpy(fb.contents, frame, (size_t) len);
+		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
+		id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
+		c.label = @"Cadence path traced photo";
+		[c setComputePipelineState:r->path];
+		[c setTexture:depth atIndex:0];
+		[c setTexture:color atIndex:1];
+		[c setTexture:r->accum atIndex:2];
+		[c setTexture:lightmap atIndex:3];
+		[c setBuffer:vox offset:0 atIndex:0];
+		[c setBuffer:bricks offset:0 atIndex:1];
+		[c setBuffer:fb offset:0 atIndex:2];
+		[c setBuffer:palette offset:0 atIndex:4];
+		[c setBuffer:sections offset:0 atIndex:5];
+		uint32_t rs = (uint32_t) (reset != 0);
+		[c setBytes:&rs length:4 atIndex:6];
+		[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+		[c endEncoding];
+		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+		rp.colorAttachments[0].texture = color;
+		rp.colorAttachments[0].loadAction = MTLLoadActionLoad;
+		rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+		id<MTLRenderCommandEncoder> re = [cb renderCommandEncoderWithDescriptor:rp];
+		re.label = @"Cadence path traced photo (out)";
+		[re setRenderPipelineState:r->pathOut[k]];
+		[re setFragmentTexture:r->accum atIndex:0];
+		[re drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		[re endEncoding];
+	}
+	return 0;
+}
+
+// Lets go of a path traced photo's sum (33 MB at 1080p).
+void mcrt_path_done(void *rt) {
+	Rt *r = rt;
+	[r->accum release];
+	r->accum = nil;
 }
 
 void mcrt_free(void *rt) {
@@ -322,9 +431,18 @@ void mcrt_free(void *rt) {
 	[r->applyVs release];
 	[r->applyFs release];
 	[r->debugFs release];
+	[r->lightFs release];
+	[r->cacheUpdate release];
+	[r->cacheResolve release];
+	[r->cache release];
+	[r->path release];
+	[r->pathOutFs release];
+	[r->accum release];
+	for (int k = 0; k < 2; k++) [r->pathOut[k] release];
 	for (int k = 0; k < 2; k++) {
 		[r->apply[k] release];
 		[r->debug[k] release];
+		[r->light[k] release];
 	}
 	[r->out release];
 	for (int i = 0; i < RT_RING; i++) [r->frames[i] release];

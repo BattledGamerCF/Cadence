@@ -15,6 +15,10 @@ public final class PhotoMode {
 	/** Frames left before the shot (the scale change takes a frame to reach the pack's targets), 0: not taking one. */
 	private static int countdown;
 	private static boolean hudWasHidden, frozeScale;
+	/** With Ray Tracing on: the photo is path traced (dev.cadence.metal.rt.RayTracing.startPhoto), this many samples added up first. */
+	private static final int PATH_SAMPLES = Integer.getInteger("cadence.photo.samples", 256);
+	private static boolean pathTraced;
+	private static long pathStarted;
 
 	private PhotoMode() {
 	}
@@ -32,6 +36,9 @@ public final class PhotoMode {
 		frozeScale = !RenderScale.frozen;
 		RenderScale.frozen = true;
 		countdown = 4;  // (ticks: ~0.2 s for the full-size frame to reach the screen)
+		// (Ray Tracing on, no shader pack: path traced, the shot taken once enough samples are added up, at most 30 s)
+		pathTraced = dev.cadence.shaders.runtime.ShaderRuntime.get() == null && dev.cadence.metal.rt.RayTracing.startPhoto(PATH_SAMPLES);
+		pathStarted = System.nanoTime();
 	}
 
 	/** A screen opened or the world closed during the countdown: no shot, everything as it was (WorldClosed, ShaderKeys). */
@@ -42,6 +49,8 @@ public final class PhotoMode {
 	}
 
 	private static void restore(Minecraft mc) {
+		if (pathTraced) dev.cadence.metal.rt.RayTracing.endPhoto();
+		pathTraced = false;
 		if (frozeScale) RenderScale.frozen = false;
 		frozeScale = false;
 		if (!hudWasHidden && mc.gui.hud.isHidden()) mc.gui.hud.toggle();
@@ -50,11 +59,19 @@ public final class PhotoMode {
 	/** Once a tick (ShaderKeys.tick, from handleKeybinds: in a world, no screen open): the countdown, then the shot. */
 	public static void frame(Minecraft mc) {
 		if (countdown <= 0) return;
-		if (--countdown > 0) return;
+		if (countdown > 1 || !pathTraced) {
+			if (--countdown > 0) return;
+		} else if (dev.cadence.metal.rt.RayTracing.photoSamples() < PATH_SAMPLES && System.nanoTime() - pathStarted < 30_000_000_000L) {
+			return;  // (still adding up samples: the shot waits)
+		} else {
+			countdown = 0;
+		}
+		int samples = pathTraced ? dev.cadence.metal.rt.RayTracing.photoSamples() : 0;
 		// (milliseconds in the name: two shots in one second overwrote the first)
 		String name = "cadence-photo-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")) + ".png";
 		Screenshot.grab(mc.gameDirectory, name, mc.gameRenderer.mainRenderTarget(), 1, message -> mc.execute(() -> {
-			if (mc.player != null) mc.player.sendSystemMessage(Component.literal("Photo Mode: ").append(message));
+			if (mc.player != null) mc.player.sendSystemMessage(Component.literal(samples > 0 ? "Photo Mode (path traced, " + samples + " samples): " : "Photo Mode: ")
+				.append(message));
 		}));
 		restore(mc);
 	}
