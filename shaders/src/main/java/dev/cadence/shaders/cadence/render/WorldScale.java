@@ -94,7 +94,8 @@ public final class WorldScale {
 		var targets = (Targets) gameRenderer;
 		targets.cadence$setTargets(savedMain, savedHand);
 		GpuTextureView destination = savedMain.getColorTextureView();
-		if (!RenderScale.metalFx() || !dev.cadence.metal.MetalFxUpscaler.encode(worldView, destination)) {
+		boolean done = RenderScale.neural() && dev.cadence.metal.NeuralUpscaler.encode(worldView, destination);
+		if (!done && (!RenderScale.metalFx() || !dev.cadence.metal.MetalFxUpscaler.encode(worldView, destination))) {
 			float sharpen = RenderScale.sharpenFor(RenderScale.get());
 			boolean fast = RenderScale.fastUpscale();
 			if (upscale == null || upscale.sharpen() != sharpen || upscale.fast() != fast) {

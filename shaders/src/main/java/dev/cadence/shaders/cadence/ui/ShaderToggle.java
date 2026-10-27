@@ -302,12 +302,14 @@ public final class ShaderToggle {
 	public static Button upscalerButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(upscalerLabel(), b -> {
-			RenderScale.setUpscaler((RenderScale.upscaler() + 1) % 3);
+			RenderScale.setUpscaler((RenderScale.upscaler() + 1) % RenderScale.UPSCALERS);
 			CadenceSettings.refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("When Resolution is below 100%, how the picture is sharpened back:",
 			"Apple|sharpest edges, Apple's MetalFX (recommended with shaders)",
 			"Smooth|a little softer, very even",
 			"Fast|cheapest, the most fps; crisp pixel edges (at 50% exactly sharp)",
+			"Neural Engine|an ML upscaler on your Mac's Neural Engine, beside the graphics chip (the world one frame behind; up to 1280-wide "
+				+ "pictures, Apple's otherwise, and with shaders)",
 			"#Greyed out at 100% without shaders: nothing to sharpen.")).build();
 		Runnable state = () -> {
 			self[0].setMessage(upscalerLabel());
@@ -347,6 +349,7 @@ public final class ShaderToggle {
 		return Component.literal("Sharpening: " + switch (RenderScale.upscaler()) {
 			case RenderScale.UPSCALE_SMOOTH -> "Smooth";
 			case RenderScale.UPSCALE_FAST -> "Fast";
+			case RenderScale.UPSCALE_NEURAL -> "Neural Engine";
 			default -> "Apple";
 		});
 	}

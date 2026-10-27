@@ -77,8 +77,9 @@ public final class RenderScale {
 	 * edges) or "cadence" (Catmull-Rom + adaptive sharpen; also the automatic fallback if MetalFX can't run).
 	 * -Dcadence.upscaler=cadence|metalfx overrides it for tests.
 	 */
-	// Cadence: three upscalers. 0 Apple (MetalFX), 1 Smooth (Cadence bicubic + sharpen), 2 Fast (bilinear, cheapest)
-	public static final int UPSCALE_APPLE = 0, UPSCALE_SMOOTH = 1, UPSCALE_FAST = 2;
+	// Cadence: four upscalers. 0 Apple (MetalFX), 1 Smooth (Cadence bicubic + sharpen), 2 Fast (bilinear, cheapest), 3 Neural Engine
+	// (dev.cadence.metal.NeuralUpscaler: the world only, without a shader pack; MetalFX where it can't)
+	public static final int UPSCALE_APPLE = 0, UPSCALE_SMOOTH = 1, UPSCALE_FAST = 2, UPSCALE_NEURAL = 3, UPSCALERS = 4;
 	private static volatile int upscaler = parseUpscaler(
 		System.getProperty("cadence.upscaler", ShaderToggle.configValue("upscaler", "metalfx")));
 
@@ -86,6 +87,7 @@ public final class RenderScale {
 		return switch (value.strip().toLowerCase(Locale.ROOT)) {
 			case "cadence", "smooth" -> UPSCALE_SMOOTH;
 			case "fast", "bilinear" -> UPSCALE_FAST;
+			case "neural", "ane" -> UPSCALE_NEURAL;
 			default -> UPSCALE_APPLE;
 		};
 	}
@@ -97,7 +99,7 @@ public final class RenderScale {
 	/** The upscaler, also saved (upscaler= metalfx | cadence | fast). */
 	public static void setUpscaler(int mode) {
 		upscaler = mode;
-		ShaderToggle.saveKey("upscaler", mode == UPSCALE_SMOOTH ? "cadence" : mode == UPSCALE_FAST ? "fast" : "metalfx");
+		ShaderToggle.saveKey("upscaler", mode == UPSCALE_SMOOTH ? "cadence" : mode == UPSCALE_FAST ? "fast" : mode == UPSCALE_NEURAL ? "neural" : "metalfx");
 	}
 
 	/** For the self-test: not saved. */
@@ -106,7 +108,12 @@ public final class RenderScale {
 	}
 
 	public static boolean metalFx() {
-		return upscaler == UPSCALE_APPLE && !fastModes();
+		return (upscaler == UPSCALE_APPLE || upscaler == UPSCALE_NEURAL) && !fastModes();
+	}
+
+	/** The world's upscale on the Neural Engine (MetalFX where it can't: a shader pack's frame, too large a picture). */
+	public static boolean neural() {
+		return upscaler == UPSCALE_NEURAL && !fastModes();
 	}
 
 	/** Record Mode or Render Max FPS is on: the frame isn't scaled (and MetalFX doesn't run). */
