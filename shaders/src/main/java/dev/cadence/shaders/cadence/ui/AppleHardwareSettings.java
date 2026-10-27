@@ -18,6 +18,30 @@ public final class AppleHardwareSettings {
 		Hdr.setWanted("true".equalsIgnoreCase(ShaderToggle.configValue("hdr", "false").strip()));
 		RayTracing.setMode(parse(RayTracing.Mode.class, ShaderToggle.configValue("rayTracing", "OFF"), RayTracing.Mode.OFF));
 		RayTracing.setTracer(parse(RayTracing.Tracer.class, ShaderToggle.configValue("rayTracer", "AUTO"), RayTracing.Tracer.AUTO));
+		dev.cadence.metal.neural.StyleFilter.setStyle(parse(dev.cadence.metal.neural.StyleFilter.Style.class, ShaderToggle.configValue("styleFilter", "OFF"),
+			dev.cadence.metal.neural.StyleFilter.Style.OFF));
+	}
+
+	/** Style Filter: Off / a painting's style (dev.cadence.metal.neural.StyleFilter, on the Neural Engine). */
+	public static Button styleButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(styleLabel(), b -> {
+			var all = dev.cadence.metal.neural.StyleFilter.Style.values();
+			var next = all[(dev.cadence.metal.neural.StyleFilter.style().ordinal() + 1) % all.length];
+			dev.cadence.metal.neural.StyleFilter.setStyle(next);
+			ShaderToggle.saveKey("styleFilter", next.name());
+			CadenceSettings.refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The world repainted in the style of one of Minecraft's paintings, by a neural network on your Mac's Neural Engine.",
+			"#The first time a style is chosen, your Mac learns it (about 4 minutes, in the background while you play; it takes a few "
+				+ "pictures of your world first). Nothing is downloaded. The network then runs beside the graphics chip, about 35 pictures "
+				+ "a second; your HUD stays sharp. Not with a shader pack.")).build();
+		CadenceSettings.onRefresh(() -> self[0].setMessage(styleLabel()));
+		return self[0];
+	}
+
+	private static Component styleLabel() {
+		String st = dev.cadence.metal.neural.StyleFilter.status();
+		return Component.literal("Style Filter: " + dev.cadence.metal.neural.StyleFilter.style().label + (st.isEmpty() ? "" : " (" + st + ")"));
 	}
 
 	private static <E extends Enum<E>> E parse(Class<E> type, String value, E fallback) {

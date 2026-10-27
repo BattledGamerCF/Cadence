@@ -180,6 +180,16 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("hdr=")) {
 					// "hdr=on|off": the HDR button's switch (not saved), applied at the next frame
 					dev.cadence.metal.Hdr.setWanted(lower.endsWith("on"));
+				} else if (lower.startsWith("style=")) {
+					// "style=off|sunflowers|sunset|wanderer|pond": Style Filter (not saved)
+					dev.cadence.metal.neural.StyleFilter.setStyle(dev.cadence.metal.neural.StyleFilter.Style.valueOf(lower.substring(6).toUpperCase(Locale.ROOT)));
+				} else if (lower.equals("stylestats")) {
+					// "stylestats": the style's state, and runs / skipped / last run ms on the Neural Engine
+					mc.execute(() -> {
+						double[] st = dev.cadence.metal.neural.StyleFilter.stats();
+						LOGGER.info("[selftest] stylestats: {} '{}' runs {} skipped {} last {} ms", dev.cadence.metal.neural.StyleFilter.style(),
+							dev.cadence.metal.neural.StyleFilter.status(), (long) st[0], (long) st[1], st[2]);
+					});
 				} else if (lower.startsWith("rt=")) {
 					// "rt=off|shadows": Ray Tracing's mode (not saved)
 					dev.cadence.metal.rt.RayTracing.setMode(dev.cadence.metal.rt.RayTracing.Mode.valueOf(lower.substring(3).toUpperCase(Locale.ROOT)));
