@@ -262,3 +262,18 @@ int mc_fan_rpm(int i) {
 	if (n == 2 && type == mc_smc_key("fpe2")) return ((b[0] << 8) | b[1]) >> 2;
 	return -1;
 }
+
+// Cadence HDR (Hdr.java): the game screen's EDR headroom now (the brightest it shows at its current brightness: 1.0 = SDR white,
+// and 1.0 also while nothing on screen asks for more) and at most (what it reaches once content asks for it), x 1000.
+// AppKit's screens belong to the main thread: from any other thread both are -1.
+void mc_screen_headroom(int *out) {
+	if (![NSThread isMainThread]) {
+		out[0] = out[1] = -1;
+		return;
+	}
+	@autoreleasepool {
+		NSScreen *s = mc_game_screen();
+		out[0] = s ? (int) lround(s.maximumExtendedDynamicRangeColorComponentValue * 1000) : 1000;
+		out[1] = s ? (int) lround(s.maximumPotentialExtendedDynamicRangeColorComponentValue * 1000) : 1000;
+	}
+}

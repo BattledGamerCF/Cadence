@@ -153,6 +153,7 @@ public final class MetalPipeline implements BackendRenderPipeline {
 		this.depthState = depthState;
 		this.depthCompare = depthCompare;
 		this.name = info.name();
+		this.info = info;
 		this.uniforms = info.uniforms();
 		this.cull = info.cull();
 		this.wireframe = info.polygonMode() == PolygonMode.WIREFRAME;
@@ -252,6 +253,10 @@ public final class MetalPipeline implements BackendRenderPipeline {
 			long depthState = Native.depthStateNew(ctx, compare, depth != null && depth.writeDepth() ? 1 : 0);
 			MetalPipeline pipeline = new MetalPipeline(encoder, withDepth, withoutDepth, pulled, depthState, compare, info, slots);
 			pipeline.storage = storage;
+			// (HDR's float variant is compiled from these later: the game's SPIR-V may be gone by then)
+			pipeline.sources = new String[] {v.msl, v.entry, f.msl, f.entry};
+			pipeline.modes = modes;
+			pipeline.isNative = isNative;
 			return pipeline;
 		} finally {
 			if (vlib != 0) Native.release(vlib);
@@ -392,7 +397,8 @@ public final class MetalPipeline implements BackendRenderPipeline {
 			}
 			// MTLColorWriteMask is ABGR-ordered (red = 8), renderpearl's is RGBA-ordered (red = 1).
 			int mask = (c.writeRed() ? 8 : 0) | (c.writeGreen() ? 4 : 0) | (c.writeBlue() ? 2 : 0) | (c.writeAlpha() ? 1 : 0);
-			d.put(MetalConst.pixelFormat(c.format())).put(mask);
+			// (HDR: a variant for the game's float frame, forFloat)
+			d.put(compilingFloat && c.format() == com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM ? 115 : MetalConst.pixelFormat(c.format())).put(mask);
 			if (c.blendFunction().isPresent()) {
 				var b = c.blendFunction().get();
 				d.put(1).put(MetalConst.blendFactor(b.color().sourceFactor())).put(MetalConst.blendFactor(b.color().destFactor())).put(MetalConst.blendOp(b.color().op()))
@@ -575,14 +581,69 @@ public final class MetalPipeline implements BackendRenderPipeline {
 		return this.closed;
 	}
 
+	/** The CreateInfo it was made from, and its Metal sources (vertex msl, entry, fragment msl, entry), for HDR's float variant. */
+	private final CreateInfo info;
+	private String @Nullable [] sources;
+	private int @Nullable [] modes;
+	private boolean isNative;
+	/** HDR (dev.cadence.metal.Hdr): the same pipeline for the float frame target, made at its first use there. */
+	private @Nullable MetalPipeline floatVariant;
+	private boolean noFloatVariant, variant;
+	/** describe(): RGBA8 colour targets as RGBA16Float (render thread: pipelines compile on it). */
+	private static boolean compilingFloat;
+
+	/**
+	 * HDR: this pipeline for a pass into the float frame (the main target's colour is RGBA16Float there; a pipeline made for RGBA8
+	 * draws garbage into it): the same Metal sources and states, the colour targets RGBA16Float. Itself when it has no RGBA8
+	 * colour target, or when the variant can't be made.
+	 */
+	MetalPipeline forFloat() {
+		if (this.floatVariant != null) return this.floatVariant;
+		if (this.noFloatVariant) return this;
+		boolean rgba8 = false;
+		for (@Nullable ColorTargetState c : this.info.colorTargetStates()) rgba8 |= c != null && c.format() == com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM;
+		this.noFloatVariant = true;
+		if (!rgba8 || this.sources == null) return this;
+		long ctx = this.encoder.ctx, vlib = 0, flib = 0, withDepth = 0, withoutDepth = 0;
+		compilingFloat = true;
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			long err = stack.nmalloc(1, 4096);
+			vlib = library(ctx, this.sources[0], this.modes == null ? -1 : this.modes[0], err);
+			if (vlib != 0 && !this.isNative) flib = library(ctx, this.sources[2], this.modes == null ? -1 : this.modes[1], err);
+			long fragmentLib = this.isNative ? vlib : flib;
+			if (vlib != 0 && fragmentLib != 0) {
+				long vname = MemoryUtil.memAddress(stack.UTF8(this.sources[1])), fname = MemoryUtil.memAddress(stack.UTF8(this.sources[3]));
+				withDepth = pipelineNewCounted(ctx, vlib, vname, fragmentLib, fname, describe(stack, this.info, true, true), err, 4096);
+				if (withDepth != 0 && this.withoutDepth != 0)
+					withoutDepth = pipelineNewCounted(ctx, vlib, vname, fragmentLib, fname, describe(stack, this.info, false, true), err, 4096);
+			}
+			if (withDepth == 0 || this.withoutDepth != 0 && withoutDepth == 0) {
+				if (withDepth != 0) Native.release(withDepth);
+				System.out.println("[cadence] HDR: no float variant of " + this.name + ": " + MemoryUtil.memUTF8(err));
+				return this;
+			}
+		} finally {
+			compilingFloat = false;
+			if (vlib != 0) Native.release(vlib);
+			if (flib != 0) Native.release(flib);
+		}
+		MetalPipeline v = new MetalPipeline(this.encoder, withDepth, withoutDepth, 0, this.depthState, this.depthCompare, this.info, this.slots);
+		v.variant = true;  // (shares this one's depth state: closing it releases only its own pipelines)
+		v.storage = this.storage;
+		this.floatVariant = v;
+		this.noFloatVariant = false;
+		return v;
+	}
+
 	@Override
 	public void close() {
+		if (this.floatVariant != null) this.floatVariant.close();
 		if (!this.closed) {
 			this.closed = true;
 			this.encoder.releaseLater(this.withDepth);
 			if (this.withoutDepth != 0) this.encoder.releaseLater(this.withoutDepth);
 			if (this.pulled != 0) this.encoder.releaseLater(this.pulled);
-			this.encoder.releaseLater(this.depthState);
+			if (!this.variant) this.encoder.releaseLater(this.depthState);
 		}
 	}
 

@@ -18,6 +18,8 @@ class MetalTexture extends BaseGpuTexture {
 	long residentBytes;
 	/** Created with ShaderWrite usage (a compute kernel may write it). */
 	boolean shaderWrite;
+	/** HDR: the game's frame colour made as RGBA16Float (the game still sees RGBA8). */
+	boolean floatFrame;
 	private final MetalEncoder encoder;
 	private boolean closed;
 

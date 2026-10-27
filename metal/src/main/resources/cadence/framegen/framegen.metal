@@ -110,18 +110,16 @@ static inline bool inside(float2 uv) {
 	return all(uv >= 0.0f) && all(uv <= 1.0f);
 }
 
-fragment float4 fg_fs(VOut in [[stage_in]], constant Frame &f [[buffer(0)]],
-	texture2d<float> colorA [[texture(0)]], texture2d<float> distA [[texture(1)]],
-	texture2d<float> colorB [[texture(2)]], texture2d<float> distB [[texture(3)]],
-	texture2d<float> latest [[texture(4)]]) {
+static float3 fgColor(VOut in, constant Frame &f, texture2d<float> colorA, texture2d<float> distA, texture2d<float> colorB,
+	texture2d<float> distB, texture2d<float> latest) {
 	constexpr sampler near(coord::normalized, filter::nearest, address::clamp_to_edge);
 	constexpr sampler lin(coord::normalized, filter::linear, address::clamp_to_edge);
 	float2 uv = in.uv;
 	// drawn after the snapshot (the hand, the HUD, chat, a screen): as the newest frame has it
 	float4 fin = latest.sample(near, uv), snap = colorA.sample(near, uv);
-	if (any(abs(fin.rgb - snap.rgb) > 1.5f / 255.0f)) return float4(fin.rgb, 1.0f);
+	if (any(abs(fin.rgb - snap.rgb) > 1.5f / 255.0f)) return fin.rgb;
 	float here = distA.sample(near, uv).r;
-	if (here < f.params.z) return float4(snap.rgb, 1.0f);  // the hand (a shader pack's frame has it in its depth): on screen as it was
+	if (here < f.params.z) return snap.rgb;  // the hand (a shader pack's frame has it in its depth): on screen as it was
 	bool smooth = f.params.x < 0.5f, haveB = f.params.y > 0.5f;
 	float3 dir = rayOf(f.m, uv);
 	// the point this pixel sees: from the newest frame's depth, refined twice where that frame sees it
@@ -156,7 +154,33 @@ fragment float4 fg_fs(VOut in [[stage_in]], constant Frame &f [[buffer(0)]],
 		if (!inA) ua = clamp(ua, 0.0f, 1.0f);
 	}
 	float3 ca = colorA.sample(lin, ua).rgb;
-	if (okA && okB) return float4(smooth ? mix(ca, colorB.sample(lin, ub).rgb, 0.5f) : ca, 1.0f);
-	if (okB && !okA) return float4(colorB.sample(lin, ub).rgb, 1.0f);
-	return float4(ca, 1.0f);
+	if (okA && okB) return smooth ? mix(ca, colorB.sample(lin, ub).rgb, 0.5f) : ca;
+	if (okB && !okA) return colorB.sample(lin, ub).rgb;
+	return ca;
+}
+
+fragment float4 fg_fs(VOut in [[stage_in]], constant Frame &f [[buffer(0)]],
+	texture2d<float> colorA [[texture(0)]], texture2d<float> distA [[texture(1)]],
+	texture2d<float> colorB [[texture(2)]], texture2d<float> distB [[texture(3)]],
+	texture2d<float> latest [[texture(4)]]) {
+	return float4(fgColor(in, f, colorA, distA, colorB, distB, latest), 1.0f);
+}
+
+// HDR (dev.cadence.metal.Hdr): into the float, extended linear drawable with the present's tone mapping (mcmetal.m present_hdr_fs,
+// the same code)
+struct Tone { float headroom; float knee; uint mode; float pad; };
+static float3 srgbDecode(float3 c) { c = max(c, 0.0f); return select(pow((c + 0.055f) / 1.055f, 2.4f), c / 12.92f, c <= 0.04045f); }
+static float3 toneMap(float3 lin, constant Tone &tn) {
+	float m = max(max(lin.r, lin.g), lin.b);
+	if (tn.mode == 0) return m > 1.0f ? lin / m : lin;
+	if (m <= tn.knee) return lin;
+	float span = max(tn.headroom - tn.knee, 1e-4f), t = (m - tn.knee) / span;
+	return lin * ((tn.knee + span * (t / (1.0f + t))) / m);
+}
+
+fragment half4 fg_fs_hdr(VOut in [[stage_in]], constant Frame &f [[buffer(0)]], constant Tone &tn [[buffer(1)]],
+	texture2d<float> colorA [[texture(0)]], texture2d<float> distA [[texture(1)]],
+	texture2d<float> colorB [[texture(2)]], texture2d<float> distB [[texture(3)]],
+	texture2d<float> latest [[texture(4)]]) {
+	return half4(half3(toneMap(srgbDecode(fgColor(in, f, colorA, distA, colorB, distB, latest)), tn)), 1.0h);
 }

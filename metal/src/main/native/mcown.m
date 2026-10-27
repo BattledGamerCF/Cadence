@@ -692,6 +692,16 @@ static uint32_t ownVgClass(Own *w, int v, int id) {
 // Cadence: own_fs's flags (buffer 29), from mco_set_hiz_tiled bits 20-21: 1 = RGSS's samples skipped where vanilla's blend is 0 (exact),
 // 2 = verification (magenta where the shortcuts would change the sample)
 static uint32_t mco_cad_frag = 1;
+// Cadence HDR (OwnEmission, Hdr.emissiveGain): the gain of emissive texels in own_fs (1: off) and the atlas's emission mask
+static float mcoHdrGain = 1.0f;
+static id<MTLTexture> mcoEmission;
+void mco_hdr(float gain, id<MTLTexture> emission) {
+	mcoHdrGain = emission ? gain : 1.0f;
+	if (emission != mcoEmission) {
+		[mcoEmission release];
+		mcoEmission = [emission retain];
+	}
+}
 
 int mco_draw(Own *w, Enc *enc, int cutout, const void *frame, int frameLength, id<MTLBuffer> arena, id<MTLBuffer> sections, id<MTLBuffer> recs,
 	id<MTLBuffer> lists, id<MTLBuffer> args, int64_t argsOffset, const int64_t *u, id<MTLTexture> atlas, id<MTLSamplerState> atlasSampler, id<MTLTexture> light,
@@ -817,6 +827,8 @@ int mco_draw(Own *w, Enc *enc, int cutout, const void *frame, int frameLength, i
 	[r setFragmentSamplerState:atlasSampler atIndex:14];
 drawCall:
 	[r setFragmentBytes:&mco_cad_frag length:4 atIndex:29];
+	[r setFragmentBytes:&mcoHdrGain length:4 atIndex:30];
+	if (mcoHdrGain > 1.0f && mcoEmission) [r setFragmentTexture:mcoEmission atIndex:18];
 	if (w->vcount && !mesh) [r setVertexBuffer:w->vcount offset:0 atIndex:28];
 	if (cutout & (1 << 30)) {
 		// the visibility oracle: the drawn units (vertex stage) and the units with a visible pixel (fragment stage), this sample's number

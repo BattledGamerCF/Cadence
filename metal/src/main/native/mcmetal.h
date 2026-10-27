@@ -8,10 +8,16 @@ typedef struct {
 	id<MTLLibrary> builtins;
 	id<MTLRenderPipelineState> present;  // flips the frame into the drawable (same row order as GL/Vulkan)
 	id<MTLSamplerState> presentSampler;
+	id<MTLRenderPipelineState> presentHdr;  // Cadence HDR: the same into an RGBA16Float (extended linear) drawable, tone mapped
+	id<MTLComputePipelineState> convert;    // copies between textures of different formats (tex_convert)
 	NSMutableDictionary<NSNumber *, id<MTLRenderPipelineState>> *clearPipelines;  // keyed by attachment formats
 	id<MTLDepthStencilState> depthWrite, depthKeep;
 	id<MTLBuffer> fanIndices;  // {0, k+1, k+2} per triangle: Metal has no fans, so they're drawn as indexed triangle lists
 } Ctx;
+
+// Cadence HDR: the present's tone mapping (mc_hdr_tone), and binding the present pipeline for a drawable's format
+typedef struct { float headroom, knee; unsigned mode; float pad; } McTone;
+const McTone *mc_hdr_tone_now(void);
 
 // Metal 4 (mcm4.m): on when mc_metal4(1) was called before mc_create and the device has it
 extern int mc4On;

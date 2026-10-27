@@ -143,6 +143,11 @@ public final class WorldScale {
 		world = null;
 	}
 
+	static {
+		// (HDR on or off: the scaled world target is made again at its next use, in the new format)
+		dev.cadence.metal.Hdr.onRebuild(WorldScale::release);
+	}
+
 	/** Cadence (WorldClosed): the scaled targets go with the world. */
 	public static void releaseWorld() {
 		CrispText.drop();

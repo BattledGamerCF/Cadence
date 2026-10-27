@@ -12,7 +12,7 @@ void mc_present_drawable(id<MTLCommandBuffer> b, id<CAMetalDrawable> drawable);
 
 typedef struct {
 	id<MTLComputePipelineState> snap, snapF;
-	id<MTLFunction> vs, fs;
+	id<MTLFunction> vs, fs, fsHdr;
 	id<MTLRenderPipelineState> gen;
 	MTLPixelFormat genFormat;
 	id<MTLTexture> color[2], dist[2];
@@ -39,13 +39,15 @@ void *mcfg_new(Ctx *ctx, const char *source, char *err, int errCap) {
 		if (g->snap) g->snapF = [ctx->device newComputePipelineStateWithFunction:sf error:&e];
 		g->vs = [lib newFunctionWithName:@"fg_vs"];
 		g->fs = [lib newFunctionWithName:@"fg_fs"];
+		g->fsHdr = [lib newFunctionWithName:@"fg_fs_hdr"];
 		[lib release];
-		if (!g->snap || !g->snapF || !g->vs || !g->fs) {
+		if (!g->snap || !g->snapF || !g->vs || !g->fs || !g->fsHdr) {
 			copyErr(e, err, errCap);
 			[g->snap release];
 			[g->snapF release];
 			[g->vs release];
 			[g->fs release];
+			[g->fsHdr release];
 			free(g);
 			return NULL;
 		}
@@ -88,6 +90,14 @@ void mcfg_size(void *fg, Ctx *ctx, int w, int h) {
 int mcfg_snapshot(void *fg, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, const void *params, int len) {
 	Fg *g = fg;
 	if (!g->color[0] || !color || !depth) return -1;
+	if (g->color[0].pixelFormat != (color.pixelFormat == MTLPixelFormatRGBA16Float ? MTLPixelFormatRGBA16Float : MTLPixelFormatRGBA8Unorm)) {
+		// (HDR turned on or off: the snapshots in the frame's format, so highlights above 1.0 survive)
+		MTLPixelFormat f = color.pixelFormat == MTLPixelFormatRGBA16Float ? MTLPixelFormatRGBA16Float : MTLPixelFormatRGBA8Unorm;
+		for (int k = 0; k < 2; k++) {
+			[g->color[k] release];
+			g->color[k] = tex(enc->ctx, f, g->w, g->h);
+		}
+	}
 	int slot = g->cur ^ 1;
 	@autoreleasepool {
 		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
@@ -112,7 +122,7 @@ static id<MTLRenderPipelineState> genPipeline(Fg *g, Ctx *ctx, MTLPixelFormat fo
 	@autoreleasepool {
 		MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor new] autorelease];
 		d.vertexFunction = g->vs;
-		d.fragmentFunction = g->fs;
+		d.fragmentFunction = format == MTLPixelFormatRGBA16Float ? g->fsHdr : g->fs;  // (the HDR layer's drawable: tone mapped)
 		d.colorAttachments[0].pixelFormat = format;
 		NSError *e = nil;
 		id<MTLRenderPipelineState> p = [ctx->device newRenderPipelineStateWithDescriptor:d error:&e];
@@ -143,6 +153,7 @@ static int encodeGen(Fg *g, Ctx *ctx, id<MTLCommandBuffer> cb, id<CAMetalDrawabl
 	[r setRenderPipelineState:p];
 	int a = g->cur, b = g->cur ^ 1;
 	[r setFragmentBytes:frame length:len atIndex:0];
+	if (drawable.texture.pixelFormat == MTLPixelFormatRGBA16Float) [r setFragmentBytes:mc_hdr_tone_now() length:sizeof(McTone) atIndex:1];
 	[r setFragmentTexture:g->color[a] atIndex:0];
 	[r setFragmentTexture:g->dist[a] atIndex:1];
 	[r setFragmentTexture:g->color[b] atIndex:2];
@@ -247,6 +258,7 @@ void mcfg_free(void *fg) {
 	[g->snapF release];
 	[g->vs release];
 	[g->fs release];
+	[g->fsHdr release];
 	[g->gen release];
 	free(g);
 }

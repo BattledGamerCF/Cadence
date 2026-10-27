@@ -2,6 +2,6 @@
 	"required": true,
 	"package": "dev.cadence.metal.mixin",
 	"compatibilityLevel": "JAVA_25",
-	"client": ["ApiRenderMixin", "ApiHudMixin", "RingBufferDepthMixin", "FramerateLimiterMixin", "NativePipelineSourceMixin", "PreferredGraphicsApiMixin", "RetinaGuiScaleMixin", "AnimFramesResidentMixin", "LightmapDoubleMixin", "AtlasDoubleMixin", "AtlasDoubleAtlasAccess", "AtlasDoubleTextureAccess", "AtlasDoubleSpriteAccess", "AtlasDoubleStateAccess"],
+	"client": ["ApiRenderMixin", "ApiHudMixin", "RingBufferDepthMixin", "FramerateLimiterMixin", "NativePipelineSourceMixin", "PreferredGraphicsApiMixin", "RetinaGuiScaleMixin", "AnimFramesResidentMixin", "LightmapDoubleMixin", "AtlasDoubleMixin", "AtlasDoubleAtlasAccess", "AtlasDoubleTextureAccess", "AtlasDoubleSpriteAccess", "AtlasDoubleStateAccess", "HdrFrameTargetMixin", "HdrMainTargetMixin"],
 	"injectors": { "defaultRequire": 1 }
 }

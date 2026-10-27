@@ -87,6 +87,20 @@ final class MetalEncoder implements CommandEncoderBackend {
 	}
 	/** Above this, an upload is cheaper as an async GPU blit than as a memcpy on the render thread. */
 	private static final long CPU_COPY_MAX = 256 << 10;
+	/** Measurement: -Dcadence.metal.uploadStats=true prints every 10 s how many buffer-write bytes went straight into the buffer vs through a staging copy and a GPU blit. */
+	private static final boolean UPLOAD_STATS = Boolean.getBoolean("cadence.metal.uploadStats");
+	private static long directBytes, stagedBytes, directWrites, stagedWrites, stagedArena, statsAt;
+
+	private static void uploadStat(boolean direct, long bytes, boolean arena) {
+		if (direct) { directBytes += bytes; directWrites++; } else { stagedBytes += bytes; stagedWrites++; if (arena) stagedArena += bytes; }
+		long now = System.nanoTime();
+		if (statsAt == 0) statsAt = now;
+		if (now - statsAt < 10_000_000_000L) return;
+		statsAt = now;
+		System.out.printf(java.util.Locale.ROOT, "[cadence] uploads 10s: direct %d writes %.1f MB, staged %d writes %.1f MB (arena %.1f MB)%n",
+			directWrites, directBytes / 1048576.0, stagedWrites, stagedBytes / 1048576.0, stagedArena / 1048576.0);
+		directBytes = stagedBytes = directWrites = stagedWrites = stagedArena = 0;
+	}
 	private static final int PROFILE_FRAMES = 100, PROFILE_ENCODERS = 256;
 	private static final boolean GPU_TIMES = Boolean.getBoolean("cadence.metal.gpuTimes");
 	/**
@@ -527,6 +541,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 		}
 		this.currentPass = new MetalRenderPass(this, depth != null, area.x(), area.y(), area.width(), area.height(),
 			redirect != null ? redirect.delegate() : keptDelegate);
+		if (redirect == null && !colors.isEmpty() && colors.get(0) != null && colors.get(0).textureView().texture() instanceof MetalTexture t && t.floatFrame)
+			this.currentPass.floatColor = true;
 		return this.currentPass;
 	}
 
@@ -736,10 +752,12 @@ final class MetalEncoder implements CommandEncoderBackend {
 			boolean whole = destination.offset() == 0 && data.remaining() == dst.size();
 			if (data.remaining() <= CPU_COPY_MAX && (this.idle(dst) || whole && dst.rename())) {
 				this.trace("writeToBuffer (cpu)", data.remaining());
+				if (UPLOAD_STATS) uploadStat(true, data.remaining(), dst.arena);
 				MemoryUtil.memCopy(MemoryUtil.memAddress(data), dst.address + destination.offset(), data.remaining());
 				if (dst.arena) this.terrain.invalidate(dst, destination.offset(), data.remaining());
 				return;
 			}
+			if (UPLOAD_STATS) uploadStat(false, data.remaining(), dst.arena);
 			this.trace("writeToBuffer", data.remaining());
 			GpuBufferSlice staging = this.transientMemory.uploadGpu(data, 1L, GpuBuffer.USAGE_COPY_SRC);
 			this.blitBuffer(this.use(staging.buffer()), staging.offset(), this.use(dst), destination.offset(), data.remaining());

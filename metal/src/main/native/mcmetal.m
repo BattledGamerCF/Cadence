@@ -34,6 +34,33 @@ static NSString *presentSource = @
 	"fragment float4 present_fs(V v [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]]) {\n"
 	"  return t.sample(s, v.uv);\n"
 	"}\n"
+	// Cadence HDR (dev.cadence.metal.Hdr): the frame is a float target holding the game's sRGB-encoded values, with light sources
+	// above 1.0; the drawable is extended linear sRGB, where 1.0 is the display's SDR white and its headroom the brightest it shows
+	// now. Values up to the knee pass unchanged; above it, by the brightest channel (hue kept), they roll off into the headroom.
+	// mode 0: no headroom (SDR or the screen at full brightness): above 1.0 scaled back to 1.0, hue kept. (fg_fs_hdr in
+	// framegen.metal does the same.)
+	"struct Tone { float headroom; float knee; uint mode; float pad; };\n"
+	"static float3 srgbDecode(float3 c) { c = max(c, 0.0); return select(pow((c + 0.055) / 1.055, 2.4), c / 12.92, c <= 0.04045); }\n"
+	"static float3 srgbEncode(float3 l) { l = max(l, 0.0); return select(1.055 * pow(l, 1.0 / 2.4) - 0.055, l * 12.92, l <= 0.0031308); }\n"
+	"static float3 toneMap(float3 lin, constant Tone &tn) {\n"
+	"  float m = max(max(lin.r, lin.g), lin.b);\n"
+	"  if (tn.mode == 0) return m > 1.0 ? lin / m : lin;\n"
+	"  if (m <= tn.knee) return lin;\n"
+	"  float span = max(tn.headroom - tn.knee, 1e-4), t = (m - tn.knee) / span;\n"
+	"  return lin * ((tn.knee + span * (t / (1.0 + t))) / m);\n"
+	"}\n"
+	"fragment half4 present_hdr_fs(V v [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]], constant Tone &tn [[buffer(0)]]) {\n"
+	"  return half4(half3(toneMap(srgbDecode(t.sample(s, v.uv).rgb), tn)), 1.0h);\n"
+	"}\n"
+	// a copy between textures of different formats (a float frame read back as 8-bit: screenshots; or into a float one): r = source
+	// x, y, width, height. Into 8 bits, values above 1.0 are scaled back (hue kept), as an SDR screen shows them.
+	"kernel void tex_convert(texture2d<float, access::read> s [[texture(0)]], texture2d<float, access::write> d [[texture(1)]],\n"
+	"    constant int4 &r [[buffer(0)]], constant uint &toSdr [[buffer(1)]], uint2 g [[thread_position_in_grid]]) {\n"
+	"  if (g.x >= uint(r.z) || g.y >= uint(r.w)) return;\n"
+	"  float4 c = s.read(uint2(r.xy) + g);\n"
+	"  if (toSdr != 0) { c = max(c, 0.0); float m = max(max(c.r, c.g), c.b); if (m > 1.0) c.rgb /= m; c.a = min(c.a, 1.0); }\n"
+	"  d.write(c, g);\n"
+	"}\n"
 	"struct Clear { float4 color; float depth; };\n"
 	"vertex float4 clear_vs(uint id [[vertex_id]], constant Clear &c [[buffer(0)]]) {\n"
 	"  float2 p = float2((id << 1) & 2, id & 2);\n"
@@ -54,6 +81,13 @@ Ctx *mc_create(char *name, int nameCap, char *err, int errCap) {
 		pd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
 		id<MTLRenderPipelineState> present = [device newRenderPipelineStateWithDescriptor:pd error:&e];
 		if (!present) { copyError(e, err, errCap); return NULL; }
+		pd.fragmentFunction = [[lib newFunctionWithName:@"present_hdr_fs"] autorelease];
+		pd.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA16Float;
+		id<MTLRenderPipelineState> presentHdr = [device newRenderPipelineStateWithDescriptor:pd error:&e];
+		if (!presentHdr) { copyError(e, err, errCap); return NULL; }
+		id<MTLFunction> convertFn = [[lib newFunctionWithName:@"tex_convert"] autorelease];
+		id<MTLComputePipelineState> convert = convertFn ? [device newComputePipelineStateWithFunction:convertFn error:&e] : nil;
+		if (!convert) { copyError(e, err, errCap); return NULL; }
 		MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor new] autorelease];
 		sd.minFilter = sd.magFilter = MTLSamplerMinMagFilterNearest;
 		MTLDepthStencilDescriptor *dd = [[MTLDepthStencilDescriptor new] autorelease];
@@ -69,6 +103,8 @@ Ctx *mc_create(char *name, int nameCap, char *err, int errCap) {
 		}
 		ctx->builtins = lib;
 		ctx->present = present;
+		ctx->presentHdr = presentHdr;
+		ctx->convert = convert;
 		sd.supportArgumentBuffers = YES;  // (Metal 4 binds samplers by resource id)
 		ctx->presentSampler = [device newSamplerStateWithDescriptor:sd];
 		ctx->clearPipelines = [NSMutableDictionary new];
@@ -1201,13 +1237,62 @@ void mc_blit_buffer_to_volume(Enc *enc, id<MTLBuffer> src, uint64_t offset, int 
 		sourceSize:MTLSizeMake(w, h, d) toTexture:dst destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
 }
 
+// Cadence HDR: a float texture's rectangle as a texture of another format (tex_convert), on the frame's command buffer; released
+// once the GPU is done with it. toSdr: values above 1.0 scaled back (an 8-bit reader: screenshots). nil if it can't be made.
+static id<MTLTexture> convertedCopy(Enc *enc, id<MTLTexture> src, int mip, int x, int y, int w, int h, MTLPixelFormat format, int toSdr) {
+	@autoreleasepool {
+		MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format width:(NSUInteger) w height:(NSUInteger) h mipmapped:NO];
+		d.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
+		d.storageMode = MTLStorageModePrivate;
+		id<MTLTexture> t = [enc->ctx->device newTextureWithDescriptor:d];
+		if (!t) return nil;
+		id<MTLTexture> level = mip == 0 ? src : [[src newTextureViewWithPixelFormat:src.pixelFormat textureType:MTLTextureType2D
+			levels:NSMakeRange((NSUInteger) mip, 1) slices:NSMakeRange(0, 1)] autorelease];
+		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
+		id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
+		[c setComputePipelineState:enc->ctx->convert];
+		[c setTexture:level atIndex:0];
+		[c setTexture:t atIndex:1];
+		int r[4] = {x, y, w, h};
+		uint32_t sdr = (uint32_t) toSdr;
+		[c setBytes:r length:sizeof r atIndex:0];
+		[c setBytes:&sdr length:4 atIndex:1];
+		[c dispatchThreads:MTLSizeMake((NSUInteger) w, (NSUInteger) h, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+		[c endEncoding];
+		[cb addCompletedHandler:^(id<MTLCommandBuffer> done) { [t release]; }];
+		return t;
+	}
+}
+
+static int isFloat16(id<MTLTexture> t) {
+	return t.pixelFormat == MTLPixelFormatRGBA16Float;
+}
+
 void mc_blit_texture_to_buffer(Enc *enc, id<MTLTexture> src, int mip, int x, int y, int w, int h,
 	id<MTLBuffer> dst, uint64_t offset, int bytesPerRow) {
+	// (Cadence HDR: the game asked for 4 bytes a pixel of a target that is a float one in HDR: read as 8-bit, highlights scaled back)
+	if (isFloat16(src) && bytesPerRow == w * 4) {
+		id<MTLTexture> t = convertedCopy(enc, src, mip, x, y, w, h, MTLPixelFormatRGBA8Unorm, 1);
+		if (t) {
+			[blit(enc) copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(w, h, 1)
+				toBuffer:dst destinationOffset:offset destinationBytesPerRow:bytesPerRow destinationBytesPerImage:(NSUInteger) bytesPerRow * h];
+			return;
+		}
+	}
 	[blit(enc) copyFromTexture:src sourceSlice:0 sourceLevel:mip sourceOrigin:MTLOriginMake(x, y, 0) sourceSize:MTLSizeMake(w, h, 1)
 		toBuffer:dst destinationOffset:offset destinationBytesPerRow:bytesPerRow destinationBytesPerImage:(NSUInteger) bytesPerRow * h];
 }
 
 void mc_blit_texture_to_texture(Enc *enc, id<MTLTexture> src, id<MTLTexture> dst, int mip, int dx, int dy, int sx, int sy, int w, int h) {
+	// (Cadence HDR: a copy into or out of a target that is a float one in HDR, where the other side is 8-bit: converted first)
+	if (src.pixelFormat != dst.pixelFormat && (isFloat16(src) || isFloat16(dst))) {
+		id<MTLTexture> t = convertedCopy(enc, src, mip, sx, sy, w, h, dst.pixelFormat, !isFloat16(dst));
+		if (t) {
+			[blit(enc) copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(w, h, 1)
+				toTexture:dst destinationSlice:0 destinationLevel:mip destinationOrigin:MTLOriginMake(dx, dy, 0)];
+			return;
+		}
+	}
 	[blit(enc) copyFromTexture:src sourceSlice:0 sourceLevel:mip sourceOrigin:MTLOriginMake(sx, sy, 0) sourceSize:MTLSizeMake(w, h, 1)
 		toTexture:dst destinationSlice:0 destinationLevel:mip destinationOrigin:MTLOriginMake(dx, dy, 0)];
 }
@@ -1789,9 +1874,35 @@ void mc_clear_rect(Enc *enc, id<MTLTexture> color, id<MTLTexture> depthTex, floa
 
 // ---- surface ----
 
+// Cadence HDR: the tone mapping of HDR presents (Hdr.java sets it every frame from the screen's headroom), and the present
+// pipeline for a drawable's format (an RGBA16Float drawable is the HDR layer's)
+static McTone hdrTone = {1.0f, 1.0f, 0, 0};
+void mc_hdr_tone(float headroom, float knee, int mode) {
+	hdrTone.headroom = headroom;
+	hdrTone.knee = knee;
+	hdrTone.mode = (unsigned) mode;
+}
+const McTone *mc_hdr_tone_now(void) { return &hdrTone; }
+static void bindPresent(id<MTLRenderCommandEncoder> r, Ctx *ctx, id<MTLTexture> drawable) {
+	if (drawable.pixelFormat == MTLPixelFormatRGBA16Float) {
+		[r setRenderPipelineState:ctx->presentHdr];
+		[r setFragmentBytes:&hdrTone length:sizeof hdrTone atIndex:0];
+	} else {
+		[r setRenderPipelineState:ctx->present];
+	}
+}
+
 void mc_layer_configure(Ctx *ctx, CAMetalLayer *layer, int width, int height, int vsync) {
 	layer.device = ctx->device;
-	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	// bit 18 (Cadence HDR): a float layer in extended linear sRGB that may show values above 1.0 (the display's EDR headroom)
+	int hdr = (vsync >> 18) & 1;
+	if (hdr != (layer.pixelFormat == MTLPixelFormatRGBA16Float)) {
+		layer.pixelFormat = hdr ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGRA8Unorm;
+		CGColorSpaceRef cs = hdr ? CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB) : NULL;
+		layer.colorspace = cs;
+		if (cs) CGColorSpaceRelease(cs);
+		layer.wantsExtendedDynamicRangeContent = hdr ? YES : NO;
+	}
 	layer.framebufferOnly = YES;
 	// Cadence: the game covers its window completely: an opaque layer spares macOS's compositor the blend, and in full screen
 	// lets it hand the frames to the display directly (no composition pass at all)
@@ -1960,14 +2071,14 @@ void mc_present(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src) {
 		rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
 		rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 		id<MTLRenderCommandEncoder> r = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
-		[r setRenderPipelineState:enc->ctx->present];
+		bindPresent(r, enc->ctx, drawable.texture);
 		[r setFragmentTexture:src atIndex:0];
 		[r setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
 		[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 		[r endEncoding];
 		if (bwFlags & 2) {
 			id<MTLRenderCommandEncoder> r2 = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
-			[r2 setRenderPipelineState:enc->ctx->present];
+			bindPresent(r2, enc->ctx, drawable.texture);
 			[r2 setFragmentTexture:src atIndex:0];
 			[r2 setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
 			[r2 drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
@@ -1992,7 +2103,7 @@ void mc_present_fenced(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> sr
 		rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 		id<MTLRenderCommandEncoder> r = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
 		if (fence) [r waitForFence:fence beforeStages:MTLRenderStageFragment];
-		[r setRenderPipelineState:enc->ctx->present];
+		bindPresent(r, enc->ctx, drawable.texture);
 		[r setFragmentTexture:src atIndex:0];
 		[r setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
 		[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
@@ -2000,7 +2111,7 @@ void mc_present_fenced(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> sr
 		if (bwFlags & 2) {
 			id<MTLRenderCommandEncoder> r2 = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
 			if (fence) [r2 waitForFence:fence beforeStages:MTLRenderStageFragment];
-			[r2 setRenderPipelineState:enc->ctx->present];
+			bindPresent(r2, enc->ctx, drawable.texture);
 			[r2 setFragmentTexture:src atIndex:0];
 			[r2 setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
 			[r2 drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
@@ -2081,7 +2192,7 @@ static void pqEncodePresent(id<CAMetalDrawable> drawable, int slot, uint64_t wai
 	rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
 	rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 	id<MTLRenderCommandEncoder> r = [p renderCommandEncoderWithDescriptor:rp];
-	[r setRenderPipelineState:ctx->present];
+	bindPresent(r, ctx, drawable.texture);
 	[r setFragmentTexture:pqStaging[slot] atIndex:0];
 	[r setFragmentSamplerState:ctx->presentSampler atIndex:0];
 	[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];

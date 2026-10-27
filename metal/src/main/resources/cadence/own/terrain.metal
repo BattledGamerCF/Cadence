@@ -2239,7 +2239,8 @@ constant bool CUTOUT [[function_constant(0)]];
 constant float CUTOUT_LIMIT [[function_constant(5)]];  // vanilla's ALPHA_CUTOUT: 0.5 cutout, 0.1 translucent
 
 fragment float4 own_fs(VOut in [[stage_in]], constant Globals &g [[buffer(22)]], constant Terrain &t [[buffer(23)]], constant Fog &fog [[buffer(24)]],
-	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]], constant uint &cadFrag [[buffer(29)]]) {
+	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]], constant uint &cadFrag [[buffer(29)]],
+	constant float &hdrGain [[buffer(30)]], texture2d<float> emission [[texture(18)]]) {
 #ifdef OWN_TPROBE
 	// (probes 1 and 3: the translucent fragment stage returns a constant, blending kept; translucent = cutout at limit 0.1)
 	if ((OWN_TPROBE == 1 || OWN_TPROBE == 3) && CUTOUT && CUTOUT_LIMIT < 0.2) return float4(0.2, 0.3, 0.8, 0.5);
@@ -2258,6 +2259,17 @@ fragment float4 own_fs(VOut in [[stage_in]], constant Globals &g [[buffer(22)]],
 	// F_LEAN: the chunk visibility is 1 (mix(x, y, 1) is y), the render-distance fog value 0 (max(e, 0) is e for e >= 0)
 	if (F_RICH) color = mix(fog.FogColor * float4(1, 1, 1, color.a), color, in.chunkVisibility);
 	if (CUTOUT && color.a < CUTOUT_LIMIT) discard_fragment();
+	// HDR (dev.cadence.metal.Hdr, hdrGain > 1): emissive blocks' bright texels above SDR white. emission: the atlas's emissive
+	// sprites (OwnEmission: the block's light level / 15 over each sprite only emissive blocks use); the weight follows the texel's
+	// brightness, so a torch's flame glows and its stick doesn't. The gain is linear; the colour here is sRGB-encoded.
+	if (hdrGain > 1.0f) {
+		constexpr sampler nearestS(coord::normalized, filter::nearest, address::clamp_to_edge);
+		float e = emission.sample(nearestS, in.texCoord0, level(0.0)).r;
+		if (e > 0.0f) {
+			float w = e * smoothstep(0.3f, 0.8f, max(max(color.r, color.g), color.b));
+			color.rgb *= pow(1.0f + (hdrGain - 1.0f) * w, 1.0f / 2.2f);
+		}
+	}
 	float fogValue;
 	if (F_FVT && in.fogIn != 0) {
 		fogValue = in.fogF;

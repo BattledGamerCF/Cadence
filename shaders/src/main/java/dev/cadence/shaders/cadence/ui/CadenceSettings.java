@@ -170,7 +170,7 @@ public final class CadenceSettings {
 	}
 
 	/** After any change: every Cadence button's label follows, and the status rows above them. */
-	static void refreshAll() {
+	public static void refreshAll() {
 		for (Runnable r : refreshers) r.run();
 		List<net.minecraft.client.gui.components.AbstractWidget> rows = statusRows;
 		if (rows.isEmpty() || statusFont == null) return;
@@ -212,7 +212,7 @@ public final class CadenceSettings {
 		refreshers.clear();
 	}
 
-	static void onRefresh(Runnable r) {
+	public static void onRefresh(Runnable r) {
 		refreshers.add(r);
 	}
 

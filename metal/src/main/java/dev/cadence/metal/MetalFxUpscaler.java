@@ -22,7 +22,8 @@ public final class MetalFxUpscaler {
 		if (device == null || !(((FrontendCommandEncoder) device.createCommandEncoder()).backend() instanceof MetalEncoder encoder)) return false;
 		var a = source.texture();
 		var b = destination.texture();
-		String k = a.getWidth(0) + "x" + a.getHeight(0) + ":" + a.getFormat() + ">" + b.getWidth(0) + "x" + b.getHeight(0) + ":" + b.getFormat();
+		String k = a.getWidth(0) + "x" + a.getHeight(0) + ":" + a.getFormat() + ">" + b.getWidth(0) + "x" + b.getHeight(0) + ":" + b.getFormat()
+			+ (Hdr.active() ? " hdr" : "");  // (HDR: the game's frame textures are float ones under the same Java format)
 		if (!k.equals(key)) {
 			release();
 			scaler = Native.fxSpatialNew(encoder.ctx, in.handle, out.handle);

@@ -177,6 +177,13 @@ public final class CadenceSelfTest {
 						dev.cadence.metal.audio.AppleAudio.setWanted(apple);
 						mc.getSoundManager().reload();
 					});
+				} else if (lower.startsWith("hdr=")) {
+					// "hdr=on|off": the HDR button's switch (not saved), applied at the next frame
+					dev.cadence.metal.Hdr.setWanted(lower.endsWith("on"));
+				} else if (lower.equals("hdrstats")) {
+					// "hdrstats": the main target's brightest value and the share of pixels above SDR white (dev.cadence.metal.Hdr)
+					mc.execute(() -> dev.cadence.metal.Hdr.debugStats(line -> LOGGER.info("[selftest] hdrstats: {}", line)));
+					sleep(500);
 				} else if (lower.equals("serverchunks")) {
 					// "serverchunks": Keep Server Chunks' state (multiplayer guest checks): chunks loaded and kept, the distances
 					mc.execute(() -> LOGGER.info("[selftest] serverchunks: on {} loaded {} kept {} effective rd {} option rd {} pos {}",

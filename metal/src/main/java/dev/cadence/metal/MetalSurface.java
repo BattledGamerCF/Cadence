@@ -85,7 +85,12 @@ final class MetalSurface implements GpuSurfaceBackend {
 		this.paced = !vsync && PACE;
 		if (PACE_ADAPT) Native.paceAdapt(this.paced ? 1 : 0);
 		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || (PACE_SYNC || sync && !immediate) && this.paced ? 1 : 0) | DRAWABLES << 8
-			| (Retina.on() ? 0 : 1 << 16) | (OPAQUE ? 0 : 1 << 17));
+			| (Retina.on() ? 0 : 1 << 16) | (OPAQUE ? 0 : 1 << 17) | (Hdr.layerHdr() ? 1 << 18 : 0));
+	}
+
+	/** The last configuration again (HDR changed the layer's format). */
+	void reconfigure() {
+		if (this.lastConfig != null) this.configure(this.lastConfig);
 	}
 
 	@Override
@@ -99,6 +104,7 @@ final class MetalSurface implements GpuSurfaceBackend {
 
 	@Override
 	public void blitFromTexture(CommandEncoderBackend commandEncoder, GpuTextureView textureView) {
+		Hdr.frame(this);
 		// cadence.rec hook: the opt-in recorder (-Dcadence.rec, dev.cadence.metal.rec) takes the finished frame, GUI included. Rec.ON is a constant false without it.
 		if (dev.cadence.metal.rec.Rec.ON) dev.cadence.metal.rec.Rec.frame(this.encoder, textureView);
 		// (Instant Replay: nothing unless it's on; not while Render Max FPS presents its own frame, which this isn't, BH4-04)

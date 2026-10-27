@@ -75,6 +75,7 @@
 		"render.PanoramaMixin",
 		"render.ShaderIncludeMixin",
 		"render.SkyRendererTargetMixin",
+		"render.SkySunHdrMixin",
 		"render.WorldTextDeferMixin",
 		"shadow.ChunkSectionsToRenderAccessor",
 		"shadow.SectionDirtyProxyMixin",

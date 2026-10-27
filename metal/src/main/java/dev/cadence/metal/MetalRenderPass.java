@@ -65,6 +65,9 @@ final class MetalRenderPass implements RenderPassBackend {
 	/** With a delegate: the current pipeline's uniform slots (index -> slot, -1 unbound); null drops its draws. */
 	private int @Nullable [] slots;
 
+	/** HDR: the pass's first colour attachment is the float frame (MetalTexture.floatFrame): pipelines bind their float variant. */
+	boolean floatColor;
+
 	MetalRenderPass(MetalEncoder encoder, boolean hasDepth, int x, int y, int width, int height, @Nullable PassDelegate delegate) {
 		this.encoder = encoder;
 		this.enc = encoder.enc;
@@ -111,7 +114,8 @@ final class MetalRenderPass implements RenderPassBackend {
 		if (!p.sameSlots(this.pipeline)) Arrays.fill(this.bound, null);
 		this.pipeline = p;
 		this.recording = record ? p : null;
-		Native.pipeline(this.enc, this.hasDepth ? p.withDepth : p.withoutDepth, p.depthState, p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
+		MetalPipeline q = this.floatColor ? p.forFloat() : p;  // (HDR: the variant made for the float frame)
+		Native.pipeline(this.enc, this.hasDepth ? q.withDepth : q.withoutDepth, q.depthState, q.cull ? 1 : 0, q.wireframe ? 1 : 0, q.depthBiasConstant, q.depthBiasSlope, q.primitive);
 		if (p.storage != null) MetalStorage.bind(this.enc, p.storage);  // Cadence: a shader pack's images and buffer objects
 		Arrays.fill(this.pending, 0, p.uniforms.size(), null);
 		this.dirtyUpTo = p.uniforms.size();
@@ -129,7 +133,8 @@ final class MetalRenderPass implements RenderPassBackend {
 			this.slots = this.delegate.setPipeline(this.enc, p, p.uniforms);
 			return;
 		}
-		Native.pipeline(this.enc, this.hasDepth ? p.withDepth : p.withoutDepth, p.depthState, p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
+		MetalPipeline q = this.floatColor ? p.forFloat() : p;  // (HDR: the variant made for the float frame)
+		Native.pipeline(this.enc, this.hasDepth ? q.withDepth : q.withoutDepth, q.depthState, q.cull ? 1 : 0, q.wireframe ? 1 : 0, q.depthBiasConstant, q.depthBiasSlope, q.primitive);
 	}
 
 	/** Called by the encoder when the frontend ends the pass. */

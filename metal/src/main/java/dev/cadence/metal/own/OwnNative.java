@@ -38,6 +38,7 @@ final class OwnNative {
 	private static final MethodHandle QUADS_PRE = fn("mco_quads_pre", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle GPUTIME = fn("mco_set_gputime", false, null, JAVA_INT);
+	private static final MethodHandle HDR = fn("mco_hdr", false, null, java.lang.foreign.ValueLayout.JAVA_FLOAT, JAVA_LONG);
 	private static final MethodHandle QREC_VERIFY = fn("mco_qrec_verify", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle HIZ_TILED = fn("mco_set_hiz_tiled", false, null, JAVA_INT);
 	private static final MethodHandle SPLIT = fn("mco_split", false, JAVA_INT, JAVA_LONG, JAVA_LONG);
@@ -377,6 +378,15 @@ final class OwnNative {
 		if (OwnCapture.ON) OwnCapture.unsupported("qrecVerify");
 		try {
 			QREC_VERIFY.invokeExact(own, enc, sections, recs, arena, stats, slots);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	/** HDR (OwnEmission): emissive texels' gain in own_fs and the atlas's emission mask (0: off). */
+	static void hdr(float gain, long emission) {
+		try {
+			HDR.invokeExact(gain, emission);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}
