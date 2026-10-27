@@ -7,6 +7,7 @@
 | `cadence-test.sh` | Runs the development client through a list of test steps and saves screenshots and logs (see CONTRIBUTING.md) |
 | `cadence-guest.sh` | A second dev client that joins the first one's LAN world (multiplayer tests) |
 | `cadence-guard.sh` | Memory guard used by `cadence-test.sh`: stops the test game if the Mac runs short of memory |
+| `HeapPaths.java` | What keeps objects alive: the reference chains from GC roots to each instance of a class in a heap dump (`java tools/HeapPaths.java run/heap-*.hprof CLASS`; the self-test's `heapdump` step writes one) |
 | `mixin-check.sh`, `MixinCheck.java` | Checks every compiled mixin against the Minecraft jar without starting the game |
 | `offline-checks/run.sh` | Offline regression checks: the vanilla RGSS patch, shader profile tolerance, per-pack settings files and the compatibility layers' mixin reading |
 | `compat-test-mod/build.sh` | Builds a tiny test mod that hooks code Cadence replaces (for the compatibility layers) |

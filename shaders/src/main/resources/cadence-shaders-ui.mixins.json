@@ -81,6 +81,7 @@
 		"shadow.ChunkSectionsToRenderAccessor",
 		"shadow.SectionDirtyProxyMixin",
 		"system.FramerateCapMixin",
+		"system.RecipeSearchLevelMixin",
 		"system.ThreadRolesMixin",
 		"system.ThreadRolesWorkerMixin",
 		"system.WorldClosedMixin",

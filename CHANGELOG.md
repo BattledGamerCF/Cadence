@@ -2,6 +2,15 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased
+
+- **The previous dimension's world is let go after a dimension change.** Two things held the whole level (its chunks,
+  entities and light data: 787 chunks in memory instead of 574 in the Nether test) until the world was left: Keep Server
+  Chunks' note of which level its storage size was set for (now a weak reference), and vanilla's recipe search tree, whose
+  language-change rebuild kept the level of the last recipe book update (the rebuild now takes the current level when it
+  runs). Found with the self-test's new `heapdump` step and `tools/HeapPaths.java` (the reference chains from GC roots to
+  every instance of a class in a heap dump).
+
 ## 0.4.0-beta.23 / shaders 0.3.22 (2026-10-27)
 
 **Cadence: Apple Hardware**, a new section in Video Settings: features built on the Mac's display, its ray tracing and its

@@ -686,6 +686,17 @@ public final class CadenceSelfTest {
 					} catch (Exception e) {
 						LOGGER.info("[selftest] histo failed: {}", e.toString());
 					}
+				} else if (lower.equals("heapdump")) {
+					// "heapdump": the live heap to run/heap-HHmmss.hprof (full GC first), for tools/HeapPaths.java
+					try {
+						java.nio.file.Path file = mc.gameDirectory.toPath().resolve("heap-" + java.time.LocalTime.now().format(
+							java.time.format.DateTimeFormatter.ofPattern("HHmmss")) + ".hprof");
+						java.lang.management.ManagementFactory.getPlatformMXBean(com.sun.management.HotSpotDiagnosticMXBean.class)
+							.dumpHeap(file.toString(), true);
+						LOGGER.info("[selftest] heap dumped to {}", file.getFileName());
+					} catch (Exception e) {
+						LOGGER.info("[selftest] heapdump failed: {}", e.toString());
+					}
 				} else if (lower.startsWith("cmd=")) {
 					// "cmd=COMMAND": a server command (no commas; "@me" = the player)
 					String command = step.substring(4).replace("@me", mc.getUser().getName());

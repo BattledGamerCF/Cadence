@@ -24,7 +24,9 @@ public final class ServerChunks {
 		&& !net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("bobby");
 	/** The server's view distance as it sent it (-1 before any), and the storage radius applied for it in appliedIn. */
 	private static int serverRadius = -1, applied = -1;
-	private static ClientLevel appliedIn;
+	/** Weak: storageRadius runs as a new level's chunk storage is made, while mc.level is still the old one (single player never
+	 * replaces it), and a strong reference here kept the previous dimension's whole level alive. */
+	private static java.lang.ref.WeakReference<ClientLevel> appliedIn = new java.lang.ref.WeakReference<>(null);
 	/** Whether Options' server render distance was last set with the cap lifted (0), so a change of the setting puts it back (BH5-05). */
 	private static boolean capLifted;
 	private static final LongOpenHashSet KEPT = new LongOpenHashSet();
@@ -71,7 +73,7 @@ public final class ServerChunks {
 		Minecraft mc = Minecraft.getInstance();
 		int r = active(mc) ? Math.max(radius, playerDistance(mc)) : radius;
 		applied = r;
-		appliedIn = mc.level;
+		appliedIn = new java.lang.ref.WeakReference<>(mc.level);
 		return r;
 	}
 
@@ -132,7 +134,7 @@ public final class ServerChunks {
 			KEPT.clear();
 			keptIn = null;
 			serverRadius = applied = -1;
-			appliedIn = null;
+			appliedIn = new java.lang.ref.WeakReference<>(null);
 			capLifted = false;
 			return;
 		}
@@ -145,9 +147,9 @@ public final class ServerChunks {
 		if (mc.player != null && !KEPT.isEmpty())
 			release(mc, mc.player.chunkPosition().x(), mc.player.chunkPosition().z(), active(mc) ? playerDistance(mc) : -1);
 		// (the level's stored chunks, once its storage is as big as the render distance)
-		if (active(mc) && appliedIn == level && applied >= playerDistance(mc) && mc.player != null)
+		if (active(mc) && appliedIn.get() == level && applied >= playerDistance(mc) && mc.player != null)
 			ServerChunkStore.open(mc, level, mc.player.chunkPosition().x(), mc.player.chunkPosition().z(), playerDistance(mc));
-		if (want != applied || appliedIn != level || capLifted != active(mc)) {
+		if (want != applied || appliedIn.get() != level || capLifted != active(mc)) {
 			int server = serverRadius;
 			level.getChunkSource().updateViewRadius(server);  // (raised by storageRadius)
 			mc.options.setServerRenderDistance(server);  // (the cap: lifted or put back)
@@ -169,7 +171,7 @@ public final class ServerChunks {
 		if (!ServerChunkStore.ENABLED) return;
 		Minecraft mc = Minecraft.getInstance();
 		ClientLevel level = mc.level;
-		if (level == null || !active(mc) || appliedIn != level) return;
+		if (level == null || !active(mc) || appliedIn.get() != level) return;
 		ServerChunkStore.apply(mc, level, packed -> {
 			if (keptIn != level) {
 				KEPT.clear();
