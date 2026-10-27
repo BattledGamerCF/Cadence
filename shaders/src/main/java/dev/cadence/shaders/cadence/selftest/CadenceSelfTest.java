@@ -180,6 +180,9 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("hdr=")) {
 					// "hdr=on|off": the HDR button's switch (not saved), applied at the next frame
 					dev.cadence.metal.Hdr.setWanted(lower.endsWith("on"));
+				} else if (lower.startsWith("smooth=")) {
+					// "smooth=on|off": Smooth Textures (not saved)
+					dev.cadence.metal.neural.SmoothTextures.setWanted(lower.endsWith("on"));
 				} else if (lower.startsWith("style=")) {
 					// "style=off|sunflowers|sunset|wanderer|pond": Style Filter (not saved)
 					dev.cadence.metal.neural.StyleFilter.setStyle(dev.cadence.metal.neural.StyleFilter.Style.valueOf(lower.substring(6).toUpperCase(Locale.ROOT)));

@@ -18,8 +18,30 @@ public final class AppleHardwareSettings {
 		Hdr.setWanted("true".equalsIgnoreCase(ShaderToggle.configValue("hdr", "false").strip()));
 		RayTracing.setMode(parse(RayTracing.Mode.class, ShaderToggle.configValue("rayTracing", "OFF"), RayTracing.Mode.OFF));
 		RayTracing.setTracer(parse(RayTracing.Tracer.class, ShaderToggle.configValue("rayTracer", "AUTO"), RayTracing.Tracer.AUTO));
+		dev.cadence.metal.neural.SmoothTextures.setWanted("true".equalsIgnoreCase(ShaderToggle.configValue("smoothTextures", "false").strip()));
 		dev.cadence.metal.neural.StyleFilter.setStyle(parse(dev.cadence.metal.neural.StyleFilter.Style.class, ShaderToggle.configValue("styleFilter", "OFF"),
 			dev.cadence.metal.neural.StyleFilter.Style.OFF));
+	}
+
+	/** Smooth Textures: Off / On (dev.cadence.metal.neural.SmoothTextures). */
+	public static Button smoothButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(smoothLabel(), b -> {
+			boolean on = !dev.cadence.metal.neural.SmoothTextures.wanted();
+			dev.cadence.metal.neural.SmoothTextures.setWanted(on);
+			ShaderToggle.saveKey("smoothTextures", Boolean.toString(on));
+			CadenceSettings.refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Block textures at twice their resolution, upscaled by an ML model on your Mac's Neural Engine.",
+			"#The pixel art keeps its look with smooth, sharp detail instead of square pixels up close. Done once in a few seconds "
+				+ "(again after a resource pack change); animated textures (water, lava, fire) stay as they are. Uses about 64 MB more "
+				+ "graphics memory. Needs Cadence's terrain renderer (not with a shader pack).")).build();
+		CadenceSettings.onRefresh(() -> self[0].setMessage(smoothLabel()));
+		return self[0];
+	}
+
+	private static Component smoothLabel() {
+		String st = dev.cadence.metal.neural.SmoothTextures.status();
+		return Component.literal("Smooth Textures: " + (dev.cadence.metal.neural.SmoothTextures.wanted() ? "On" : "Off") + (st.isEmpty() ? "" : " (" + st + ")"));
 	}
 
 	/** Style Filter: Off / a painting's style (dev.cadence.metal.neural.StyleFilter, on the Neural Engine). */

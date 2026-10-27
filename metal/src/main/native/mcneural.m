@@ -51,6 +51,12 @@ static NSString *neuralSource = @
 	"  float3 c = 0; for (int k = 0; k < 4; k++) c += src.sample(s, uv + float2((k & 1) ? step.x : -step.x, (k & 2) ? step.y : -step.y)).rgb;\n"
 	"  dst.write(float4(saturate(c * 0.25), 1.0), g);\n"
 	"}\n"
+	// Smooth Textures: the animated sprites' current frames (level 0) copied into the 2x atlas, each pixel twice each way
+	"kernel void nn_anim(texture2d<float, access::read> src [[texture(0)]], texture2d<float, access::write> dst [[texture(1)]],\n"
+	"    device const int4 *rects [[buffer(0)]], uint3 g [[thread_position_in_grid]]) {\n"
+	"  int4 r = rects[g.z]; if (int(g.x) >= r.z * 2 || int(g.y) >= r.w * 2) return;\n"
+	"  dst.write(src.read(uint2(r.x + int(g.x) / 2, r.y + int(g.y) / 2)), uint2(r.x * 2 + int(g.x), r.y * 2 + int(g.y)));\n"
+	"}\n"
 	"struct V { float4 pos [[position]]; float2 uv; };\n"
 	"vertex V nn_vs(uint id [[vertex_id]]) { float2 p = float2((id << 1) & 2, id & 2); V v; v.pos = float4(p * 2.0 - 1.0, 0.0, 1.0); v.uv = float2(p.x, 1.0 - p.y); return v; }\n"
 	// the model's output (rows top first) over the frame (rows bottom first: the pass's y is flipped by the game's row order)
@@ -289,4 +295,198 @@ void mcst_free(void *st) {
 	if (s->cache) CFRelease(s->cache);
 	dispatch_release(s->q);
 	free(s);
+}
+
+// ---- Smooth Textures (SmoothTextures.java): the block atlas's still sprites upscaled 2x once by VideoToolbox's low-latency
+// super resolution (an ML model on the Neural Engine). Each sprite is upscaled on its own, wrapped (its 3 x 3 tiling, as it repeats
+// on a wall), so neither its edges nor its neighbours in the atlas bleed into it; 25 at a time on a 256 x 256 sheet. The scaler
+// takes and gives 4:2:0 video (luma at full size): colour goes there and back by BT.709 video range; alpha is the sprite's own,
+// pixel for pixel (cutout edges stay as drawn). Animated sprites are left out (their frames change: SmoothTextures copies them).
+#import <VideoToolbox/VideoToolbox.h>
+
+static Class cVTLLSRConfig, cVTLLSRParams, cVTFrameProcessor, cVTFrameProcessorFrame;
+
+static int vtfpLoad(char *err, int errCap) {
+	if (cVTLLSRConfig) return 0;
+	if (!dlopen("/System/Library/Frameworks/VideoToolbox.framework/VideoToolbox", RTLD_NOW | RTLD_LOCAL)) {
+		snprintf(err, errCap, "can't open VideoToolbox: %s", dlerror());
+		return -1;
+	}
+	cVTLLSRConfig = NSClassFromString(@"VTLowLatencySuperResolutionScalerConfiguration");
+	cVTLLSRParams = NSClassFromString(@"VTLowLatencySuperResolutionScalerParameters");
+	cVTFrameProcessor = NSClassFromString(@"VTFrameProcessor");
+	cVTFrameProcessorFrame = NSClassFromString(@"VTFrameProcessorFrame");
+	if (!cVTLLSRConfig || !cVTLLSRParams || !cVTFrameProcessor || !cVTFrameProcessorFrame || ![(id) cVTLLSRConfig isSupported]) {
+		snprintf(err, errCap, "this Mac has no low-latency super resolution (macOS 26 and Apple silicon)");
+		cVTLLSRConfig = nil;
+		return -1;
+	}
+	return 0;
+}
+
+static inline uint8_t clamp8(float v) {
+	return (uint8_t) (v < 0 ? 0 : v > 255 ? 255 : v + 0.5f);
+}
+
+// RGBA (w x h, rows top first) into a 420v pixel buffer: BT.709, video range.
+static void rgbaTo420v(const uint8_t *rgba, int w, int h, CVPixelBufferRef pb) {
+	CVPixelBufferLockBaseAddress(pb, 0);
+	uint8_t *yp = CVPixelBufferGetBaseAddressOfPlane(pb, 0), *cp = CVPixelBufferGetBaseAddressOfPlane(pb, 1);
+	size_t yr = CVPixelBufferGetBytesPerRowOfPlane(pb, 0), cr = CVPixelBufferGetBytesPerRowOfPlane(pb, 1);
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++) {
+			const uint8_t *p = rgba + ((size_t) y * w + x) * 4;
+			yp[y * yr + x] = clamp8(16 + 219 * (0.2126f * p[0] + 0.7152f * p[1] + 0.0722f * p[2]) / 255.0f);
+		}
+	for (int y = 0; y < h / 2; y++)
+		for (int x = 0; x < w / 2; x++) {
+			float r = 0, g = 0, b = 0;
+			for (int k = 0; k < 4; k++) {
+				const uint8_t *p = rgba + ((size_t) (2 * y + (k >> 1)) * w + 2 * x + (k & 1)) * 4;
+				r += p[0]; g += p[1]; b += p[2];
+			}
+			r /= 1020.0f; g /= 1020.0f; b /= 1020.0f;
+			float yy = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+			cp[y * cr + 2 * x] = clamp8(128 + 224 * (b - yy) / 1.8556f);
+			cp[y * cr + 2 * x + 1] = clamp8(128 + 224 * (r - yy) / 1.5748f);
+		}
+	CVPixelBufferUnlockBaseAddress(pb, 0);
+}
+
+// One pixel of a 420v buffer back to RGB.
+static void rgbAt420v(const uint8_t *yp, size_t yr, const uint8_t *cp, size_t cr, int x, int y, uint8_t *out) {
+	float Y = (yp[y * yr + x] - 16) / 219.0f, Cb = (cp[(y / 2) * cr + (x / 2) * 2] - 128) / 224.0f, Cr = (cp[(y / 2) * cr + (x / 2) * 2 + 1] - 128) / 224.0f;
+	float r = Y + 1.5748f * Cr, b = Y + 1.8556f * Cb, g = (Y - 0.2126f * r - 0.0722f * b) / 0.7152f;
+	out[0] = clamp8(r * 255);
+	out[1] = clamp8(g * 255);
+	out[2] = clamp8(b * 255);
+}
+
+// src: the atlas's level 0 (RGBA, w x h, rows top first); out: 2w x 2h RGBA, already holding a 2x nearest copy (what isn't
+// upscaled stays that). rects: n sprites (x, y, w, h in src pixels), the still ones. Returns the sprites upscaled, or -1 (err).
+int mcsm_upscale(const uint8_t *src, int w, int h, uint8_t *out, const int *rects, int n, char *err, int errCap) {
+	@autoreleasepool {
+		if (vtfpLoad(err, errCap) != 0) return -1;
+		const int S = 256;  // the sheet
+		// (typed receivers: through a bare id the compiler may pass the float scale factor where the method doesn't read it)
+		VTLowLatencySuperResolutionScalerConfiguration *cfg = [(VTLowLatencySuperResolutionScalerConfiguration *) [cVTLLSRConfig alloc]
+			initWithFrameWidth:S frameHeight:S scaleFactor:2.0f];
+		if (!cfg) { snprintf(err, errCap, "no 2x scaler for %dx%d", S, S); return -1; }
+		[cfg autorelease];
+		VTFrameProcessor *proc = [[(VTFrameProcessor *) [cVTFrameProcessor alloc] init] autorelease];
+		NSError *e = nil;
+		if (![proc startSessionWithConfiguration:cfg error:&e]) { snprintf(err, errCap, "start: %s", e.localizedDescription.UTF8String); return -1; }
+		CVPixelBufferRef in = NULL, res = NULL;
+		CVPixelBufferCreate(NULL, S, S, '420v', (CFDictionaryRef) [cfg sourcePixelBufferAttributes], &in);
+		CVPixelBufferCreate(NULL, S * 2, S * 2, '420v', (CFDictionaryRef) [cfg destinationPixelBufferAttributes], &res);
+		// what isn't upscaled (animated sprites, padding, sprites too big for a sheet) as a plain 2x copy
+		for (int y = 0; y < h * 2; y++)
+			for (int x = 0; x < w * 2; x++) memcpy(out + ((size_t) y * w * 2 + x) * 4, src + ((size_t) (y / 2) * w + x / 2) * 4, 4);
+		uint8_t *sheet = calloc((size_t) S * S * 4, 1);
+		int done = 0, frame = 0;
+		for (int i = 0; i < n;) {
+			// lay out as many wrapped sprites (3w x 3h each) as fit on the sheet, row by row
+			int placed[64][3];  // sprite index, sheet x, sheet y
+			int count = 0, cx = 0, cy = 0, rowH = 0;
+			memset(sheet, 0, (size_t) S * S * 4);
+			while (i < n && count < 64) {
+				int rw = rects[i * 4 + 2], rh = rects[i * 4 + 3], tw = rw * 3, th = rh * 3;
+				if (tw > S || th > S || rw < 1 || rh < 1) { i++; continue; }  // (too big for the sheet: stays nearest)
+				if (cx + tw > S) { cx = 0; cy += rowH; rowH = 0; }
+				if (cy + th > S) break;
+				int sx = rects[i * 4], sy = rects[i * 4 + 1];
+				for (int y = 0; y < th; y++)
+					for (int x = 0; x < tw; x++) {
+						const uint8_t *p = src + ((size_t) (sy + y % rh) * w + sx + x % rw) * 4;
+						uint8_t *q = sheet + ((size_t) (cy + y) * S + cx + x) * 4;
+						q[0] = p[0]; q[1] = p[1]; q[2] = p[2]; q[3] = 255;
+					}
+				placed[count][0] = i;
+				placed[count][1] = cx;
+				placed[count][2] = cy;
+				count++;
+				cx += tw;
+				if (th > rowH) rowH = th;
+				i++;
+			}
+			if (count == 0) continue;
+			rgbaTo420v(sheet, S, S, in);
+			CMTime t = {frame++, 60, kCMTimeFlags_Valid, 0};
+			VTFrameProcessorFrame *sf = [[(VTFrameProcessorFrame *) [cVTFrameProcessorFrame alloc] initWithBuffer:in presentationTimeStamp:t] autorelease];
+			VTFrameProcessorFrame *df = [[(VTFrameProcessorFrame *) [cVTFrameProcessorFrame alloc] initWithBuffer:res presentationTimeStamp:t] autorelease];
+			VTLowLatencySuperResolutionScalerParameters *params = [[(VTLowLatencySuperResolutionScalerParameters *) [cVTLLSRParams alloc]
+				initWithSourceFrame:sf destinationFrame:df] autorelease];
+			if (![proc processWithParameters:params error:&e]) { snprintf(err, errCap, "process: %s", e.localizedDescription.UTF8String); break; }
+			// the middle copy of each, at twice the size, into the atlas
+			CVPixelBufferLockBaseAddress(res, kCVPixelBufferLock_ReadOnly);
+			const uint8_t *yp = CVPixelBufferGetBaseAddressOfPlane(res, 0), *cp = CVPixelBufferGetBaseAddressOfPlane(res, 1);
+			size_t yr = CVPixelBufferGetBytesPerRowOfPlane(res, 0), cr = CVPixelBufferGetBytesPerRowOfPlane(res, 1);
+			for (int k = 0; k < count; k++) {
+				int si = placed[k][0], rx = rects[si * 4], ry = rects[si * 4 + 1], rw = rects[si * 4 + 2], rh = rects[si * 4 + 3];
+				int ox = (placed[k][1] + rw) * 2, oy = (placed[k][2] + rh) * 2;
+				for (int y = 0; y < rh * 2; y++)
+					for (int x = 0; x < rw * 2; x++) {
+						uint8_t *q = out + ((size_t) (ry * 2 + y) * (w * 2) + rx * 2 + x) * 4;
+						rgbAt420v(yp, yr, cp, cr, ox + x, oy + y, q);
+						q[3] = src[((size_t) (ry + y / 2) * w + rx + x / 2) * 4 + 3];
+					}
+				done++;
+			}
+			CVPixelBufferUnlockBaseAddress(res, kCVPixelBufferLock_ReadOnly);
+		}
+		[proc endSession];
+		free(sheet);
+		CVPixelBufferRelease(in);
+		CVPixelBufferRelease(res);
+		return done;
+	}
+}
+
+// Smooth Textures, each frame before the terrain is drawn: the animated sprites (rects: n of them, x y w h in the 1x atlas, an
+// int4 each; maxW, maxH their largest size) copied from the game's atlas into the 2x one: level 0 twice the size (nn_anim),
+// the 1x atlas's level k into the 2x one's level k + 1 (the same size: a blit).
+static id<MTLComputePipelineState> animPso;
+void mcsm_anim(Ctx *ctx, Enc *enc, id<MTLTexture> src, id<MTLTexture> dst, const int *rects, int n, int maxW, int maxH) {
+	if (n <= 0 || !src || !dst) return;
+	@autoreleasepool {
+		if (!animPso) {
+			NSError *e = nil;
+			id<MTLLibrary> lib = [[ctx->device newLibraryWithSource:neuralSource options:[[MTLCompileOptions new] autorelease] error:&e] autorelease];
+			id<MTLFunction> fn = [[lib newFunctionWithName:@"nn_anim"] autorelease];
+			animPso = fn ? [ctx->device newComputePipelineStateWithFunction:fn error:&e] : nil;
+			if (!animPso) { NSLog(@"cadence-smooth: %@", e); return; }
+		}
+		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
+		id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
+		c.label = @"Cadence smooth textures (animated sprites)";
+		[c setComputePipelineState:animPso];
+		[c setTexture:src atIndex:0];
+		[c setTexture:dst atIndex:1];
+		[c setBytes:rects length:(NSUInteger) n * 16 atIndex:0];
+		[c dispatchThreads:MTLSizeMake((NSUInteger) maxW * 2, (NSUInteger) maxH * 2, (NSUInteger) n) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+		[c endEncoding];
+		id<MTLBlitCommandEncoder> b = [cb blitCommandEncoder];
+		NSUInteger levels = MIN(src.mipmapLevelCount, dst.mipmapLevelCount - 1);
+		for (int i = 0; i < n; i++) {
+			const int *r = rects + i * 4;
+			for (NSUInteger k = 0; k < levels; k++) {
+				NSUInteger x = (NSUInteger) r[0] >> k, y = (NSUInteger) r[1] >> k, w = MAX(1u, (NSUInteger) r[2] >> k), h = MAX(1u, (NSUInteger) r[3] >> k);
+				if (x + w > MAX(1u, src.width >> k) || y + h > MAX(1u, src.height >> k)) continue;
+				[b copyFromTexture:src sourceSlice:0 sourceLevel:k sourceOrigin:MTLOriginMake(x, y, 0) sourceSize:MTLSizeMake(w, h, 1)
+					toTexture:dst destinationSlice:0 destinationLevel:k + 1 destinationOrigin:MTLOriginMake(x, y, 0)];
+			}
+		}
+		[b endEncoding];
+	}
+}
+
+// Smooth Textures: the 1x atlas's level k into the 2x atlas's level k + 1, every level (the same sizes).
+void mcsm_copy_levels(Enc *enc, id<MTLTexture> src, id<MTLTexture> dst) {
+	@autoreleasepool {
+		id<MTLBlitCommandEncoder> b = [mc_frame_cmd(enc) blitCommandEncoder];
+		NSUInteger levels = MIN(src.mipmapLevelCount, dst.mipmapLevelCount - 1);
+		for (NSUInteger k = 0; k < levels; k++)
+			[b copyFromTexture:src sourceSlice:0 sourceLevel:k toTexture:dst destinationSlice:0 destinationLevel:k + 1 sliceCount:1 levelCount:1];
+		[b endEncoding];
+	}
 }

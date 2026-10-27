@@ -68,6 +68,16 @@ public final class MetalBridge {
 		return Native.bufferContents(buffer);
 	}
 
+	/** Runs r on the render thread once the GPU has finished the frame being recorded now. */
+	public static void afterGpu(Object encoder, Runnable r) {
+		((MetalEncoder) encoder).afterGpuFinishes(r);
+	}
+
+	/** Lets go of a native object (a buffer from newBuffer). */
+	public static void releaseObject(long handle) {
+		Native.release(handle);
+	}
+
 	public static void readTexture(long enc, long texture, int width, int height, int bytesPerPixel, long buffer) {
 		Native.blitTextureToBuffer(enc, texture, 0, 0, 0, width, height, buffer, 0, width * bytesPerPixel);
 	}

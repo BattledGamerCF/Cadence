@@ -2090,6 +2090,7 @@ public final class OwnTerrain {
 	public boolean drawOpaque(CameraRenderState camera, int renderDistance, long fadeMs, GpuSampler sampler, GpuTextureView atlas,
 		List<SectionRenderDispatcher.RenderSection> visible) {
 		if (!MetalBridge.inRenderPass(this.encoder)) return false;
+		atlas = dev.cadence.metal.neural.SmoothTextures.substitute(atlas);  // (Smooth Textures: the 2x atlas once it's ready)
 		if (NO_FADE) fadeMs = 0;
 		this.beginFrame();
 		if (PROBE_MS <= 0) OwnAdaptive.frame();
@@ -2677,6 +2678,7 @@ public final class OwnTerrain {
 
 	public boolean drawTranslucent(CameraRenderState camera, long fadeMs, GpuSampler sampler, GpuTextureView atlas, List<SectionRenderDispatcher.RenderSection> visible) {
 		if (!TRANSLUCENT || !MetalBridge.inRenderPass(this.encoder)) return false;
+		atlas = dev.cadence.metal.neural.SmoothTextures.substitute(atlas);
 		// (probe modes "notrans" / "skipall": our translucent terrain not drawn, the frame's translucent cost measured apart)
 		if (PROBE_MS > 0 && (PROBE_MODES[this.probeMode].equals("notrans") || PROBE_MODES[this.probeMode].equals("skipall"))) return true;
 		if (NO_FADE) fadeMs = 0;

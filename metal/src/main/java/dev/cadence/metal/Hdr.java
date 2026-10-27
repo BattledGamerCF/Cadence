@@ -92,6 +92,7 @@ public final class Hdr {
 			System.out.println("[cadence] HDR " + (active ? "on" : "off") + " (headroom " + now + ", at most " + potential + ")");
 		}
 		dev.cadence.metal.own.OwnEmission.prepare();
+		dev.cadence.metal.neural.SmoothTextures.frame();
 		if (!active) return;
 		long t = System.nanoTime();
 		if (t - readAt > 250_000_000L) {
