@@ -180,6 +180,17 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("hdr=")) {
 					// "hdr=on|off": the HDR button's switch (not saved), applied at the next frame
 					dev.cadence.metal.Hdr.setWanted(lower.endsWith("on"));
+				} else if (lower.startsWith("rt=")) {
+					// "rt=off|shadows": Ray Tracing's mode (not saved)
+					dev.cadence.metal.rt.RayTracing.setMode(dev.cadence.metal.rt.RayTracing.Mode.valueOf(lower.substring(3).toUpperCase(Locale.ROOT)));
+				} else if (lower.startsWith("rttracer=")) {
+					// "rttracer=auto|hardware|voxel": the Ray Tracer setting (not saved)
+					dev.cadence.metal.rt.RayTracing.setTracer(dev.cadence.metal.rt.RayTracing.Tracer.valueOf(lower.substring(9).toUpperCase(Locale.ROOT)));
+				} else if (lower.equals("rtstats")) {
+					// "rtstats": the ray tracer in use and the voxel window's state
+					mc.execute(() -> LOGGER.info("[selftest] rtstats: mode {} tracer {} hardware used {} support {} backlog {}", dev.cadence.metal.rt.RayTracing.mode(),
+						dev.cadence.metal.rt.RayTracing.tracer(), dev.cadence.metal.rt.RayTracing.usedHardware(), dev.cadence.metal.rt.RayTracing.support(),
+						dev.cadence.metal.rt.RayTracing.backlog()));
 				} else if (lower.equals("hdrstats")) {
 					// "hdrstats": the main target's brightest value and the share of pixels above SDR white (dev.cadence.metal.Hdr)
 					mc.execute(() -> dev.cadence.metal.Hdr.debugStats(line -> LOGGER.info("[selftest] hdrstats: {}", line)));
