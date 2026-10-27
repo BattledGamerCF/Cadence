@@ -20,6 +20,6 @@ public abstract class SoundOptionsEngineMixin extends OptionsSubScreen {
 	@Inject(method = "addOptions", at = @At("TAIL"))
 	private void cadence$engine(CallbackInfo ci) {
 		if (this.list == null) return;
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.SoundEngineSetting.button(), null);
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.SoundEngineSetting.button(), dev.cadence.shaders.cadence.ui.SoundEngineSetting.reverbButton());
 	}
 }

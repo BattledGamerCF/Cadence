@@ -27,6 +27,7 @@ typedef struct Voice {
 	atomic_int generation;         // a stop or a new attach starts a new one: older completions are ignored
 	int state, looping, relative, attenuate, scheduled;
 	float x, y, z, pitch, volume, maxDistance;
+	float occlusion;               // World Reverb: dB of the blocks between the listener and the sound (0: none)
 } Voice;
 
 #define MAX_VOICES 512
@@ -42,6 +43,10 @@ static atomic_int gRestarts;
 // Apple's own rendering on the Mac's speakers)
 static AVAudio3DMixingRenderingAlgorithm gAlgorithm = AVAudio3DMixingRenderingAlgorithmAuto;
 static void playNode(Voice *v);
+// World Reverb (WorldAcoustics.java): the reverb of the space around the listener (Apple's environment reverb, its preset and
+// level from rays cast into the blocks around) and how much of each spatial sound goes into it
+static int gReverbOn;
+static float gReverbBlend;
 
 // ---- loudness and placement (gLock held) ----
 
@@ -62,6 +67,9 @@ static void place(Voice *v) {
 	v->node.sourceMode = v->relative && fabsf(v->x) + fabsf(v->y) + fabsf(v->z) < 1e-3f ? AVAudio3DMixingSourceModeBypass
 		: AVAudio3DMixingSourceModeSpatializeIfMono;
 	v->node.position = AVAudioMake3DPoint(px, py, pz);
+	int spatial = v->node.sourceMode != AVAudio3DMixingSourceModeBypass;
+	v->node.reverbBlend = gReverbOn && spatial ? gReverbBlend : 0.0f;
+	v->node.occlusion = gReverbOn && spatial ? v->occlusion : 0.0f;
 }
 
 // ---- the engine ----
@@ -449,5 +457,58 @@ void mca_stats(int *out) {
 	out[2] = atomic_load(&gRestarts);
 	out[3] = gEngine && gEngine.running ? 1 : 0;
 	out[4] = rendering;
+	os_unfair_lock_unlock(&gLock);
+}
+
+// ---- World Reverb (dev.cadence.metal.audio.WorldAcoustics) ----
+
+// on: reverb and occlusion used; preset: an AVAudioUnitReverbPreset; level: the reverb's level (dB); blend: how much of each
+// spatial sound goes into it (0..1).
+void mca_environment(int on, int preset, float level, float blend) {
+	@autoreleasepool {
+		os_unfair_lock_lock(&gLock);
+		if (gEnv) {
+			static int lastPreset = -1;
+			gEnv.reverbParameters.enable = on ? YES : NO;
+			if (on && preset != lastPreset) {
+				[gEnv.reverbParameters loadFactoryReverbPreset:(AVAudioUnitReverbPreset) preset];
+				lastPreset = preset;
+			}
+			gEnv.reverbParameters.level = level;
+		}
+		gReverbOn = on;
+		gReverbBlend = blend;
+		for (int i = 0; i < gVoiceCount; i++) if (gVoices[i]->connected) place(gVoices[i]);
+		os_unfair_lock_unlock(&gLock);
+	}
+}
+
+// The playing spatial sounds now: up to max of them, their handles into ids and positions (x, y, z) into pos. Returns how many.
+int mca_snapshot(void **ids, float *pos, int max) {
+	os_unfair_lock_lock(&gLock);
+	int n = 0;
+	for (int i = 0; i < gVoiceCount && n < max; i++) {
+		Voice *v = gVoices[i];
+		if (v->state != V_PLAYING || v->relative || !v->attenuate) continue;
+		ids[n] = v;
+		pos[n * 3] = v->x;
+		pos[n * 3 + 1] = v->y;
+		pos[n * 3 + 2] = v->z;
+		n++;
+	}
+	os_unfair_lock_unlock(&gLock);
+	return n;
+}
+
+// A sound's occlusion (dB, <= 0), if it still exists (the sound thread may have let it go since the snapshot).
+void mca_occlusion(void *p, float db) {
+	os_unfair_lock_lock(&gLock);
+	for (int i = 0; i < gVoiceCount; i++)
+		if (gVoices[i] == p) {
+			Voice *v = p;
+			v->occlusion = db;
+			if (v->connected) place(v);
+			break;
+		}
 	os_unfair_lock_unlock(&gLock);
 }

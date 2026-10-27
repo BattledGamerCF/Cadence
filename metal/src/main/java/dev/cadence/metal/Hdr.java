@@ -93,6 +93,7 @@ public final class Hdr {
 		}
 		dev.cadence.metal.own.OwnEmission.prepare();
 		dev.cadence.metal.neural.SmoothTextures.frame();
+		dev.cadence.metal.audio.WorldAcoustics.frame();
 		if (!active) return;
 		long t = System.nanoTime();
 		if (t - readAt > 250_000_000L) {

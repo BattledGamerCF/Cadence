@@ -18,6 +18,26 @@ public final class SoundEngineSetting {
 	/** At startup (ShaderLoaderMod), before the sound system starts. */
 	public static void load() {
 		AppleAudio.setWanted(!"openal".equalsIgnoreCase(ShaderToggle.configValue("soundEngine", "apple").strip()));
+		dev.cadence.metal.audio.WorldAcoustics.setWanted(!"false".equalsIgnoreCase(ShaderToggle.configValue("worldReverb", "true").strip()));
+	}
+
+	/** World Reverb: On / Off (dev.cadence.metal.audio.WorldAcoustics; the Apple engine only). */
+	public static Button reverbButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(reverbLabel(), b -> {
+			boolean on = !dev.cadence.metal.audio.WorldAcoustics.wanted();
+			dev.cadence.metal.audio.WorldAcoustics.setWanted(on);
+			ShaderToggle.saveKey("worldReverb", Boolean.toString(on));
+			self[0].setMessage(reverbLabel());
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Sounds take on the space around you.",
+			"#Caves echo, rooms ring, open fields stay dry, and a sound behind a wall is muffled by the blocks in between. Cadence measures "
+				+ "the blocks around you a few times a second and sets Apple's reverb to match. With the Apple sound engine.")).build();
+		self[0].active = AppleAudio.wanted();
+		return self[0];
+	}
+
+	private static Component reverbLabel() {
+		return Component.literal("World Reverb: " + (dev.cadence.metal.audio.WorldAcoustics.wanted() ? "On" : "Off"));
 	}
 
 	public static Button button() {

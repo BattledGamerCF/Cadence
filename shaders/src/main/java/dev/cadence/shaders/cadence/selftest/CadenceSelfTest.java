@@ -133,6 +133,9 @@ public final class CadenceSelfTest {
 					LOGGER.info("[selftest] batteryinfo: {} Wh left, Mac draws {} W, on battery {}, Low Power Mode {}, estimate '{}'",
 						String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.batteryWh()), String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.systemWatts()),
 						dev.cadence.metal.MacSystem.onBattery(), dev.cadence.metal.MacSystem.lowPowerMode(), dev.cadence.metal.MacSystem.batteryTimeLeft());
+				} else if (lower.equals("acoustics")) {
+					// "acoustics": World Reverb's last estimate of the space around the listener
+					LOGGER.info("[selftest] acoustics: {}", dev.cadence.metal.audio.WorldAcoustics.last());
 				} else if (lower.equals("audio")) {
 					// "audio": the sound engine in use and, on Apple's, its voices: made, playing, rendering (their audio advancing)
 					int[] a = dev.cadence.metal.audio.AppleAudio.stats();
