@@ -18,9 +18,31 @@ public final class AppleHardwareSettings {
 		Hdr.setWanted("true".equalsIgnoreCase(ShaderToggle.configValue("hdr", "false").strip()));
 		RayTracing.setMode(parse(RayTracing.Mode.class, ShaderToggle.configValue("rayTracing", "OFF"), RayTracing.Mode.OFF));
 		RayTracing.setTracer(parse(RayTracing.Tracer.class, ShaderToggle.configValue("rayTracer", "AUTO"), RayTracing.Tracer.AUTO));
+		dev.cadence.shaders.cadence.voice.VoiceControl.setWanted("true".equalsIgnoreCase(ShaderToggle.configValue("voiceControl", "false").strip()));
 		dev.cadence.metal.neural.SmoothTextures.setWanted("true".equalsIgnoreCase(ShaderToggle.configValue("smoothTextures", "false").strip()));
 		dev.cadence.metal.neural.StyleFilter.setStyle(parse(dev.cadence.metal.neural.StyleFilter.Style.class, ShaderToggle.configValue("styleFilter", "OFF"),
 			dev.cadence.metal.neural.StyleFilter.Style.OFF));
+	}
+
+	/** Voice Control: Off / On (dev.cadence.shaders.cadence.voice.VoiceControl). */
+	public static Button voiceButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(voiceLabel(), b -> {
+			boolean on = !dev.cadence.shaders.cadence.voice.VoiceControl.wanted();
+			dev.cadence.shaders.cadence.voice.VoiceControl.setWanted(on);
+			ShaderToggle.saveKey("voiceControl", Boolean.toString(on));
+			CadenceSettings.refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Spoken commands, recognised on your Mac only (Apple's on-device speech recognition; nothing is sent anywhere).",
+			"#Say \"open inventory\", \"jump\", \"screenshot\", \"take a photo\", \"save replay\", \"pause\", \"third person\", \"slot three\", "
+				+ "\"say hello\" (a chat message) or \"slash time set day\" (a command). The first time, macOS asks to let Cadence Helper use the "
+				+ "microphone and speech recognition.")).build();
+		CadenceSettings.onRefresh(() -> self[0].setMessage(voiceLabel()));
+		return self[0];
+	}
+
+	private static Component voiceLabel() {
+		String st = dev.cadence.shaders.cadence.voice.VoiceControl.status();
+		return Component.literal("Voice Control: " + (dev.cadence.shaders.cadence.voice.VoiceControl.wanted() ? "On" : "Off") + (st.isEmpty() ? "" : " (" + st + ")"));
 	}
 
 	/** Smooth Textures: Off / On (dev.cadence.metal.neural.SmoothTextures). */

@@ -76,6 +76,7 @@
 		"render.ShaderIncludeMixin",
 		"render.SkyRendererTargetMixin",
 		"render.SkySunHdrMixin",
+		"ui.VoiceTickMixin",
 		"render.WorldTextDeferMixin",
 		"shadow.ChunkSectionsToRenderAccessor",
 		"shadow.SectionDirtyProxyMixin",

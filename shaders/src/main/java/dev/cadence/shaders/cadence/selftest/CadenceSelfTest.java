@@ -133,6 +133,13 @@ public final class CadenceSelfTest {
 					LOGGER.info("[selftest] batteryinfo: {} Wh left, Mac draws {} W, on battery {}, Low Power Mode {}, estimate '{}'",
 						String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.batteryWh()), String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.systemWatts()),
 						dev.cadence.metal.MacSystem.onBattery(), dev.cadence.metal.MacSystem.lowPowerMode(), dev.cadence.metal.MacSystem.batteryTimeLeft());
+				} else if (lower.startsWith("voice=")) {
+					// "voice=PHRASE": a phrase as if Voice Control heard it (the helper's recognition aside), what it did logged
+					String phrase = step.substring(6).replace('_', ' ');
+					mc.execute(() -> {
+						dev.cadence.shaders.cadence.voice.VoiceControl.handle(mc, phrase);
+						LOGGER.info("[selftest] voice: {}", dev.cadence.shaders.cadence.voice.VoiceControl.last());
+					});
 				} else if (lower.equals("acoustics")) {
 					// "acoustics": World Reverb's last estimate of the space around the listener
 					LOGGER.info("[selftest] acoustics: {}", dev.cadence.metal.audio.WorldAcoustics.last());

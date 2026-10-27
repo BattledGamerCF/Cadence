@@ -80,7 +80,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addHeader(heading("Cadence: Apple Hardware"));
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.hdrButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.rayTracingButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.tracerButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.styleButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.smoothButton(), null);
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.smoothButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.voiceButton());
 		this.list.addHeader(heading("Cadence: Power & Heat"));
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.batteryButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.backgroundButton(), null);
