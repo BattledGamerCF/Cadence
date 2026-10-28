@@ -2,6 +2,19 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased
+
+Measured on an M2 MacBook Air (8 GPU cores), unless noted.
+
+- **Style Filter about 3.5x faster.** Create ML's style networks pad with reflection before every convolution and end with a
+  scale layer, and the Neural Engine runs neither: Core ML split each network into 17 pieces with a trip through the CPU between
+  them (28.7 ms a picture). When a style loads, Cadence now rewrites the network so all of it runs on the Neural Engine (zero
+  padding, the scale as a linear activation) and sizes it to the window's shape, 512 pixels wide, instead of a 512 x 512
+  square that squeezed the picture. Zero padding darkens a picture's edges, so the input gets a 16-pixel margin mirrored from
+  inside the picture, cut off again when the result is drawn. A picture now takes 8.5 ms (10 ms in the game), at most 60 a
+  second: the styled world keeps up with the game instead of trailing it, and the game runs at 995 fps instead of 870 with
+  a style on (1080p, render distance 6, no shader pack). The fitted network is kept beside the trained one.
+
 ## 0.4.0-beta.24 / shaders 0.3.23 (2026-10-27)
 
 The ideas queue (docs/IDEAS.md), built. Measured on an M2 MacBook Air (8 GPU cores), 1080p, unless noted.
