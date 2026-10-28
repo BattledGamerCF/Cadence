@@ -24,6 +24,8 @@ Responsive (the newest frame turned to where your mouse looks now: no added dela
   can't shadow anything skipped.
 - **Heat Control:** fanless Macs hold a steady frame rate instead of overheating and throttling.
 - **Quick Setup** tests the Mac once and picks settings; the Shader Packs list marks each pack Light, Medium or Heavy.
+- **Quick pack switching:** turning a pack on pauses the game for about 0.2 s (Complementary took up to 4 s before
+  0.4.0-beta.26).
 
 **Very high frame rates without shaders.** Measured on an M2 MacBook Air (8 GB, 8-core GPU) with Cadence's benchmark
 (Video Settings > Benchmark), no frame cap:
