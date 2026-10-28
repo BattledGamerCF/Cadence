@@ -13,7 +13,7 @@ import java.lang.invoke.MethodHandle;
 /** Downcalls into mcneural.m. Pointers cross as longs, as everywhere in the backend. */
 final class NeuralNative {
 	private static final Linker LINKER = Linker.nativeLinker();
-	private static final MethodHandle ST_NEW = fn("mcst_new", JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
+	private static final MethodHandle ST_NEW = fn("mcst_new", JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle ST_FRAME = fn("mcst_frame", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_FLOAT);
 	private static final MethodHandle ST_STATS = fn("mcst_stats", null, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle ST_FREE = fn("mcst_free", null, JAVA_LONG);
@@ -36,8 +36,8 @@ final class NeuralNative {
 		return new RuntimeException(t);
 	}
 
-	static long styleNew(long ctx, long model, long compiled, long err, int errCap) {
-		try { return (long) ST_NEW.invokeExact(ctx, model, compiled, err, errCap); } catch (Throwable t) { throw rethrow(t); }
+	static long styleNew(long ctx, long model, long compiled, int margin, long err, int errCap) {
+		try { return (long) ST_NEW.invokeExact(ctx, model, compiled, margin, err, errCap); } catch (Throwable t) { throw rethrow(t); }
 	}
 
 	static int styleFrame(long st, long enc, long color, float strength) {

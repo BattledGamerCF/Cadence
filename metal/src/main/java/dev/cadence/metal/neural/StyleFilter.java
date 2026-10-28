@@ -17,8 +17,9 @@ import org.lwjgl.system.MemoryUtil;
 
 /**
  * Style Filters (Video Settings > Cadence: Visuals > Style Filter): the world repainted in the style of one of the game's
- * own paintings, by a neural network on the Neural Engine (mcneural.m: about 28 ms a picture on an M2, beside the GPU; the newest
- * picture is blended over the world, the hand and the HUD drawn on top as always).
+ * own paintings, by a neural network on the Neural Engine (mcneural.m: about 8.5 ms a picture on an M2, beside the GPU, at most 60
+ * a second; the newest picture is blended over the world, the hand and the HUD drawn on top as always). The trained network is
+ * fitted to the Neural Engine and the window's shape first (StyleSpec).
  *
  * <p>Each style's network is trained on this Mac the first time it's chosen: Cadence Helper runs Create ML's style transfer
  * (about 4 minutes on an M2, in the background at low priority) with the painting (from the game's resources, so a resource pack's
@@ -47,9 +48,12 @@ public final class StyleFilter {
 	private static volatile String status = "";
 	private static long handle, ctx, enc;
 	private static Style loadedFor;
+	/** The model's input size the loaded network was fitted to (a window of another shape loads it again). */
+	private static String loadedSize = "";
 	private static volatile boolean busy;
 	private static volatile long ready;  // a loaded network handed over by the loading thread
 	private static volatile Style readyFor;
+	private static volatile String readySize = "";
 	/** The style whose training or loading failed: not tried again until another style is chosen (BH7-02). */
 	private static volatile Style failedFor;
 	/** The running training (destroyed when the style is turned off or another is chosen, BH7-15). */
@@ -116,11 +120,14 @@ public final class StyleFilter {
 			if (handle != 0) drop();
 			handle = ready;
 			loadedFor = readyFor;
+			loadedSize = readySize;
 			ready = 0;
 		}
 		if (handle != 0 && loadedFor != s) drop();
 		if (handle != 0) {
 			NeuralNative.styleFrame(handle, enc, MetalBridge.textureHandle(color), STRENGTH);
+			// (the window changed shape: fitted again, the old network shown until the new one is ready)
+			if (!busy && failedFor != s && !sizeKey(color.getWidth(0), color.getHeight(0)).equals(loadedSize)) prepare(s);
 			return;
 		}
 		if (capturing != null) {
@@ -256,23 +263,48 @@ public final class StyleFilter {
 		t.start();
 	}
 
-	/** The network loaded (compiled by Core ML the first time) off the render thread, then handed over. */
+	private static String sizeKey(int w, int h) {
+		int[] size = StyleSpec.size(w, h);
+		return size[0] + "x" + size[1];
+	}
+
+	/**
+	 * The network fitted to the Neural Engine and the window's shape (StyleSpec; the network as trained if that can't be done)
+	 * and loaded (compiled by Core ML the first time) off the render thread, then handed over.
+	 */
 	private static void load(Style s, Path model) {
 		busy = true;
+		var window = Minecraft.getInstance().getWindow();
+		int[] size = StyleSpec.size(window.getWidth(), window.getHeight());
+		String key = size[0] + "x" + size[1];
 		Thread t = new Thread(() -> {
 			long src = 0, cmp = 0, err = MemoryUtil.nmemCalloc(1, 1024);
 			try {
-				src = MemoryUtil.memAddress(MemoryUtil.memUTF8(model.toString()));
-				cmp = MemoryUtil.memAddress(MemoryUtil.memUTF8(model.resolveSibling(s.painting + ".mlmodelc").toString()));
-				long h = NeuralNative.styleNew(ctx, src, cmp, err, 1024);
+				Path use = model, compiled = model.resolveSibling(s.painting + ".mlmodelc");
+				int margin = 0;
+				Path fitted = model.resolveSibling(s.painting + ".ane-" + key + ".mlmodel");
+				try {
+					if (Files.exists(fitted) || StyleSpec.rewrite(model, fitted, size[0], size[1])) {
+						use = fitted;
+						compiled = model.resolveSibling(s.painting + ".ane-" + key + ".mlmodelc");
+						margin = StyleSpec.MARGIN;
+					}
+				} catch (Exception e) {
+					System.out.println("[cadence] style filter: network not fitted (" + e + "), used as trained");
+				}
+				src = MemoryUtil.memAddress(MemoryUtil.memUTF8(use.toString()));
+				cmp = MemoryUtil.memAddress(MemoryUtil.memUTF8(compiled.toString()));
+				long h = NeuralNative.styleNew(ctx, src, cmp, margin, err, 1024);
 				if (h == 0) {
 					failed(s, MemoryUtil.memUTF8(err));
 				} else if (style != s) {
 					NeuralNative.styleFree(h);  // (turned off or changed while it loaded)
 				} else {
 					readyFor = s;
+					readySize = key;
 					ready = h;
-					System.out.println("[cadence] style filter: " + s.label + " on the Neural Engine");
+					System.out.println("[cadence] style filter: " + s.label + " on the Neural Engine (" + key + ")");
+					forgetOtherSizes(s, key);
 				}
 			} finally {
 				if (src != 0) MemoryUtil.nmemFree(src);
@@ -283,6 +315,24 @@ public final class StyleFilter {
 		}, "cadence-style-load");
 		t.setDaemon(true);
 		t.start();
+	}
+
+	/** The style's networks fitted to other window shapes deleted (each is a few MB; the window's shape rarely changes back). */
+	private static void forgetOtherSizes(Style s, String keep) {
+		try (var files = Files.list(dir())) {
+			for (Path p : files.toList()) {
+				String n = p.getFileName().toString();
+				if (!n.startsWith(s.painting + ".ane-") || n.startsWith(s.painting + ".ane-" + keep + ".")) continue;
+				if (Files.isDirectory(p)) {
+					try (var walk = Files.walk(p)) {
+						for (Path q : walk.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(q);
+					}
+				} else {
+					Files.deleteIfExists(p);
+				}
+			}
+		} catch (Exception ignored) {
+		}
 	}
 
 	/** Frames run through the network, frames sent while it was busy, the last run's ms. */

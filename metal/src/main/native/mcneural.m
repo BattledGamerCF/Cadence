@@ -43,11 +43,15 @@ static NSString *neuralSource = @
 	"#include <metal_stdlib>\n"
 	"using namespace metal;\n"
 	// the frame (rows bottom first, sRGB values, maybe above 1.0 with HDR) into the model's input (rows top first, BGRA)
-	"kernel void nn_down(texture2d<float, access::sample> src [[texture(0)]], texture2d<float, access::write> dst [[texture(1)]], uint2 g [[thread_position_in_grid]]) {\n"
+	// (margin: pixels on each side of the model's input mirrored from inside the picture, cut off again in nn_over: the network
+	// pads with zeros, which darkens the edges it sees)
+	"kernel void nn_down(texture2d<float, access::sample> src [[texture(0)]], texture2d<float, access::write> dst [[texture(1)]],\n"
+	"    constant int &margin [[buffer(0)]], uint2 g [[thread_position_in_grid]]) {\n"
 	"  uint w = dst.get_width(), h = dst.get_height(); if (g.x >= w || g.y >= h) return;\n"
 	"  constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::linear);\n"
-	"  float2 uv = (float2(g) + 0.5) / float2(w, h); uv.y = 1.0 - uv.y;\n"
-	"  float2 px = 1.0 / float2(src.get_width(), src.get_height()), step = float2(src.get_width() / float(w), src.get_height() / float(h)) * px * 0.25;\n"
+	"  float2 inner = float2(w, h) - 2.0 * float(margin);\n"
+	"  float2 uv = (float2(g) + 0.5 - float(margin)) / inner; uv = select(uv, -uv, uv < 0.0); uv = select(uv, 2.0 - uv, uv > 1.0); uv.y = 1.0 - uv.y;\n"
+	"  float2 px = 1.0 / float2(src.get_width(), src.get_height()), step = float2(src.get_width() / inner.x, src.get_height() / inner.y) * px * 0.25;\n"
 	"  float3 c = 0; for (int k = 0; k < 4; k++) c += src.sample(s, uv + float2((k & 1) ? step.x : -step.x, (k & 2) ? step.y : -step.y)).rgb;\n"
 	"  dst.write(float4(saturate(c * 0.25), 1.0), g);\n"
 	"}\n"
@@ -79,16 +83,18 @@ static NSString *neuralSource = @
 	"struct V { float4 pos [[position]]; float2 uv; };\n"
 	"vertex V nn_vs(uint id [[vertex_id]]) { float2 p = float2((id << 1) & 2, id & 2); V v; v.pos = float4(p * 2.0 - 1.0, 0.0, 1.0); v.uv = float2(p.x, 1.0 - p.y); return v; }\n"
 	// the model's output (rows top first) over the frame (rows bottom first: the pass's y is flipped by the game's row order)
-	"fragment float4 nn_over(V v [[stage_in]], texture2d<float> t [[texture(0)]], constant float &strength [[buffer(0)]]) {\n"
+	"fragment float4 nn_over(V v [[stage_in]], texture2d<float> t [[texture(0)]], constant float2 &p [[buffer(0)]]) {\n"
 	"  constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::linear);\n"
-	"  return float4(t.sample(s, float2(v.uv.x, 1.0 - v.uv.y)).rgb, strength);\n"
+	"  float2 size = float2(t.get_width(), t.get_height()), uv = (p.y + float2(v.uv.x, 1.0 - v.uv.y) * (size - 2.0 * p.y)) / size;\n"
+	"  return float4(t.sample(s, uv).rgb, p.x);\n"
 	"}\n";
 
 typedef struct {
 	Ctx *ctx;
 	MLModel *model;
 	NSString *inName, *outName;
-	int inW, inH;
+	int inW, inH, margin;
+	double lastStart;  // when the newest run was sent (at most 60 a second: the Neural Engine isn't kept busy for frames not seen)
 	CVPixelBufferPoolRef pool, outPool;  // the model's input, and its output (Metal-compatible: Core ML writes into it)
 	CVMetalTextureCacheRef cache;
 	id<MTLComputePipelineState> down;
@@ -107,7 +113,7 @@ static void nnErr(NSError *e, const char *what, char *err, int cap) {
 }
 
 // modelPath: a .mlmodel (compiled to compiledPath, a .mlmodelc, the first time) or the compiled model itself.
-void *mcst_new(Ctx *ctx, const char *modelPath, const char *compiledPath, char *err, int errCap) {
+void *mcst_new(Ctx *ctx, const char *modelPath, const char *compiledPath, int margin, char *err, int errCap) {
 	@autoreleasepool {
 		if (nnLoad(err, errCap) != 0) return NULL;
 		NSError *e = nil;
@@ -143,6 +149,7 @@ void *mcst_new(Ctx *ctx, const char *modelPath, const char *compiledPath, char *
 		s->outName = [outName retain];
 		s->inW = (int) ic.pixelsWide;
 		s->inH = (int) ic.pixelsHigh;
+		s->margin = margin;
 		s->down = down;
 		s->vs = [lib newFunctionWithName:@"nn_vs"];
 		s->over = [lib newFunctionWithName:@"nn_over"];
@@ -186,7 +193,11 @@ int mcst_frame(void *st, Enc *enc, id<MTLTexture> color, float strength) {
 	@autoreleasepool {
 		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
 		// 1. the frame into the model's input, then the model on the queue once the GPU is done
-		if (atomic_exchange(&s->busy, 1) == 0) {
+		double now = CACurrentMediaTime();
+		if (now - s->lastStart < 1.0 / 60.0) {
+			// (the last run is newer than a 60 Hz frame: this frame shows it)
+		} else if (atomic_exchange(&s->busy, 1) == 0) {
+			s->lastStart = now;
 			CVPixelBufferRef in = NULL;
 			CVMetalTextureRef tin = NULL;
 			if (CVPixelBufferPoolCreatePixelBuffer(NULL, s->pool, &in) == kCVReturnSuccess
@@ -198,6 +209,7 @@ int mcst_frame(void *st, Enc *enc, id<MTLTexture> color, float strength) {
 				[c setComputePipelineState:s->down];
 				[c setTexture:color atIndex:0];
 				[c setTexture:CVMetalTextureGetTexture(tin) atIndex:1];
+				[c setBytes:&s->margin length:4 atIndex:0];
 				[c dispatchThreads:MTLSizeMake((NSUInteger) s->inW, (NSUInteger) s->inH, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
 				[c endEncoding];
 				NnStyle *ss = s;
@@ -268,7 +280,8 @@ int mcst_frame(void *st, Enc *enc, id<MTLTexture> color, float strength) {
 				re.label = @"Cadence style (over the frame)";
 				[re setRenderPipelineState:p];
 				[re setFragmentTexture:CVMetalTextureGetTexture(tout) atIndex:0];
-				[re setFragmentBytes:&strength length:4 atIndex:0];
+				float over[2] = {strength, (float) s->margin};
+				[re setFragmentBytes:over length:8 atIndex:0];
 				[re drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 				[re endEncoding];
 				[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
