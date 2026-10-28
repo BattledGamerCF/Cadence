@@ -79,12 +79,8 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		this.list.addSmall(cycle("Far Clouds", "farTerrain.clouds", "off", new String[] {"off", "on"}, new String[] {"Off", "On"},
 				Tips.of(Tips.Impact.LOW, "Clouds reach out with the far terrain (to 256 chunks at most) instead of stopping at Cloud Distance.",
 					"#Costs some frame time and memory for the bigger cloud layer.")),
-			cycle("Renderer", "farTerrain.meshShaders", "off", new String[] {"off", "on"}, new String[] {"Compute", "Mesh Shaders"},
-				Tips.of(Tips.Impact.VARIES, "How the far terrain's faces reach the screen (the picture is the same).",
-					"Compute|a compute pass culls the faces and lists the survivors, then one draw (the default)",
-					"Mesh Shaders|the draw culls and builds the faces itself, in Metal's object and mesh stages: no list in between",
-					"#Applies now. Not with a shader pack (it draws the far terrain's records itself).")));
-		this.list.addHeader(Component.literal("Look (applies now)").withStyle(ChatFormatting.GRAY));
+			null);
+		this.list.addHeader(Component.literal("Look and Renderer (apply now)").withStyle(ChatFormatting.GRAY));
 		this.list.addSmall(cycle("Brightness", "farTerrain.brightness", "1.0", new String[] {"0.6", "0.8", "1.0", "1.2", "1.4"},
 				new String[] {"60%", "80%", "100%", "120%", "140%"}, Tips.of(Tips.Impact.NONE, "How bright the far terrain is drawn (100%: as generated).")),
 			cycle("Saturation", "farTerrain.saturation", "1.0", new String[] {"0.5", "0.75", "1.0", "1.25", "1.5"},
@@ -94,7 +90,11 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 				Tips.of(Tips.Impact.NONE, "The world curving away like a planet, as Distant Horizons' option: far land sinks below the horizon.",
 					"Off|flat, as Minecraft is", "Gentle|a planet 1/50 the Earth's size", "Strong|1/200",
 					"Tiny Planet|1/1000: a few kilometres around")),
-			null);
+			cycle("Renderer", "farTerrain.meshShaders", "off", new String[] {"off", "on"}, new String[] {"Compute", "Mesh Shaders"},
+				Tips.of(Tips.Impact.VARIES, "How the far terrain's faces reach the screen (the picture is the same).",
+					"Compute|a compute pass culls the faces and lists the survivors, then one draw (the default)",
+					"Mesh Shaders|the draw culls and builds the faces itself, in Metal's object and mesh stages: no list in between",
+					"#Applies the next time the view moves. Not with a shader pack (it draws the far terrain's records itself).")));
 		if (running()) {
 			this.list.addHeader(Component.literal("Pre-generate the far terrain around you, to disk").withStyle(ChatFormatting.GRAY));
 			this.list.addSmall(pregen("Pre-generate 1 km", 64), pregen("Pre-generate 4 km", 256));

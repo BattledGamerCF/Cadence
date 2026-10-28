@@ -42,7 +42,9 @@ public final class BiomeGrade {
 
 	private static volatile Strength strength = Strength.OFF;
 	private static volatile GradeNet net;
-	private static volatile boolean training;
+	private static volatile boolean training, failed;
+	/** The level the grade was last asked in: another one (a world, a dimension) starts at its own grade, not eased from the old. */
+	private static java.lang.ref.WeakReference<Object> askedIn = new java.lang.ref.WeakReference<>(null);
 	private static long ctx, enc, params;
 	private static long askedAt;
 	/** The grade being shown (eased) and the one asked for, as the network's 7 outputs. */
@@ -70,10 +72,20 @@ public final class BiomeGrade {
 	/** Render thread, after the world is drawn (before the hand and the HUD). color null: not this frame (a shader pack). */
 	public static void afterWorld(GpuTexture color) {
 		Strength s = strength;
-		if (s == Strength.OFF || color == null) {
+		if (s == Strength.OFF || color == null || failed) {
 			first = true;
 			return;
 		}
+		try {
+			frame(color, s);
+		} catch (RuntimeException | LinkageError e) {
+			// (once: a broken pass or a stale native library isn't retried every frame, BH8-14)
+			failed = true;
+			System.out.println("[cadence] biome colours: off after an error: " + e);
+		}
+	}
+
+	private static void frame(GpuTexture color, Strength s) {
 		GradeNet n = net;
 		if (n == null) {
 			train();
@@ -82,6 +94,10 @@ public final class BiomeGrade {
 		Minecraft mc = Minecraft.getInstance();
 		ClientLevel lv = mc.level;
 		if (lv == null || mc.gameRenderer == null) return;
+		if (askedIn.get() != lv) {
+			askedIn = new java.lang.ref.WeakReference<>(lv);
+			first = true;
+		}
 		long now = System.nanoTime();
 		if (now - askedAt > 250_000_000L || first) {
 			askedAt = now;
@@ -129,11 +145,16 @@ public final class BiomeGrade {
 		if (training) return;
 		training = true;
 		Thread t = new Thread(() -> {
-			long t0 = System.nanoTime();
-			GradeNet n = GradeNet.trained();
-			System.out.println(String.format(java.util.Locale.ROOT, "[cadence] biome colours: network trained in %.0f ms (loss %.4f, held-out %.4f)",
-				(System.nanoTime() - t0) / 1e6, n.trainLoss, n.testLoss));
-			net = n;
+			try {
+				long t0 = System.nanoTime();
+				GradeNet n = GradeNet.trained();
+				System.out.println(String.format(java.util.Locale.ROOT, "[cadence] biome colours: network trained in %.0f ms (loss %.4f, held-out %.4f)",
+					(System.nanoTime() - t0) / 1e6, n.trainLoss, n.testLoss));
+				net = n;
+			} catch (Throwable e) {
+				failed = true;  // (said, not waiting for a network forever, BH8-14)
+				System.out.println("[cadence] biome colours: training failed: " + e);
+			}
 		}, "cadence-grade-train");
 		t.setDaemon(true);
 		t.setPriority(Thread.MIN_PRIORITY);

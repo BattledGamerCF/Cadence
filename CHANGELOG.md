@@ -45,6 +45,19 @@ The ideas queue (docs/IDEAS.md), built. Measured on an M2 MacBook Air (8 GPU cor
   a corner, never into a block); Look turns the view with your head, amplified, and your aim with it. Straight ahead is found
   again by itself. Tested with the helper's made-up head (`-Dcadence.head.fake=true`); not with real AirPods (macOS asks for
   Motion & Fitness the first time).
+- **Bug hunt (BH8, a Sonnet 5.5 review of all of the above: 17 findings, all fixed).** Sound Around Corners kept the left
+  world (or the previous dimension) in memory, undoing the dimension-leak fix: now a weak reference, reset when a world
+  closes (retested: 1 level after a dimension change with a sound behind a wall, 0 after leaving). Torch Shadows listed every
+  light-giving block, a Nether lava sea's insides too, and built its grid on the render thread (24-26 ms frames): now only
+  lights with an open side, at most 64 a section and 4,096 in the window, built on a worker while the last grid (with its
+  own place in the window) stays in use (worst frame 3-4 ms). Light-giving blocks' own faces were darkened by Torch
+  Shadows. Neural Frame Generation could end up "ready" without its processor after overlapping model loads (a resize):
+  loads are now numbered, only the latest publishes, and a load starts once the size holds still for 30 frames; with HDR on
+  it uses Smooth (the interpolator is 8-bit). Neural Lighting's training summed rows of edge threadgroups nobody wrote (now
+  whole groups only; it now matches Lighting's brightness), and its network is let go on a dimension change. Also: the
+  Mesh Shaders fallback stuck, Head Tracking's Look restarts with a new player and says why it couldn't start, Biome
+  Colours stops after an error instead of retrying every frame, -D flags for the sound features win over the saved
+  values, and tooltips and labels match what the code does.
 - **Every setting says what it does to the frame rate.** The tooltip's last line: "Performance impact: High (lowers fps)",
   only the word coloured (Low green, Medium yellow, High gold, Improves aqua); None and Varies plain.
 

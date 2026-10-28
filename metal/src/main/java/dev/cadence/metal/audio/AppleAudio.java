@@ -23,7 +23,8 @@ import org.lwjgl.system.MemoryUtil;
  * (SoundManager.reload). -Dcadence.audio=openal: OpenAL as before; it is also kept when another mod hooks the game's audio
  * classes (CompatLayers: sound physics and reverb mods drive OpenAL themselves), or when the engine can't start.
  *
- * <p>Every call comes from the game's sound thread.
+ * <p>The game's calls come from its sound thread; World Reverb's (environment, snapshot, occlusion, route) from the render
+ * thread. The native side guards its voices with one lock.
  */
 public final class AppleAudio {
 	private static final Linker LINKER = Linker.nativeLinker();

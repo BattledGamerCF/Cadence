@@ -40,7 +40,9 @@ public final class LookSettings {
 
 	private static Component headLabel() {
 		String st = HeadTracking.status();
-		return Component.literal("Head Tracking: " + HeadTracking.mode().label + (st.isEmpty() || HeadTracking.mode() == HeadTracking.Mode.OFF ? "" : " (" + st + ")"));
+		// (a failure turns it Off: its reason still shows, BH8-11)
+		boolean show = !st.isEmpty() && (HeadTracking.mode() != HeadTracking.Mode.OFF || st.startsWith("Can't"));
+		return Component.literal("Head Tracking: " + HeadTracking.mode().label + (show ? " (" + st + ")" : ""));
 	}
 
 	/** Biome Colours: Off / Subtle / Normal / Strong (dev.cadence.metal.grade.BiomeGrade). */

@@ -49,6 +49,8 @@ public final class HeadTracking {
 	/** The head's turn from looking at the screen (degrees, smoothed), and what Look has added to the player's turn. */
 	private static float yaw, pitch, roll, appliedYaw, appliedPitch;
 	private static long lastFrame, lastPose;
+	/** The player Look's turn was added to: another one (respawn, a dimension, another world) starts from none (BH8-07). */
+	private static java.lang.ref.WeakReference<Object> turned = new java.lang.ref.WeakReference<>(null);
 
 	private HeadTracking() {
 	}
@@ -87,6 +89,7 @@ public final class HeadTracking {
 		try {
 			long pid = ProcessHandle.current().pid();
 			Files.createDirectories(dir());
+			cleanStale(pid);
 			out = dir().resolve("head-" + pid + "-" + ++session + ".bin");
 			Files.write(out, new byte[32]);
 			try (FileChannel ch = FileChannel.open(out, StandardOpenOption.READ)) {
@@ -102,12 +105,32 @@ public final class HeadTracking {
 			var cmd = new java.util.ArrayList<>(java.util.List.of("/usr/bin/open", "-n", "-g", "-a", app.toString(), "--args", "head", out.toString(),
 				"--parent", String.valueOf(pid)));
 			if (FAKE) cmd.add("--fake");
-			new ProcessBuilder(cmd).start().waitFor();
+			int code = new ProcessBuilder(cmd).start().waitFor();
+			if (code != 0) {
+				// (LaunchServices couldn't start it: said, not "Starting" forever, BH8-13)
+				Files.deleteIfExists(out);
+				out = null;
+				map = null;
+				status = "Can't: Cadence Helper didn't start";
+				mode = Mode.OFF;
+				return;
+			}
 			running = true;
 			status = "Starting";
 		} catch (Exception e) {
 			status = "Can't: " + e.getMessage();
 			mode = Mode.OFF;
+		}
+	}
+
+	/** head-PID-N.bin files of games that are gone (a helper that never started or was killed leaves its file, BH8-13). */
+	private static void cleanStale(long pid) {
+		try (var files = Files.list(dir())) {
+			for (Path f : files.filter(p -> p.getFileName().toString().matches("head-\\d+-\\d+\\.bin(\\.stop)?")).toList()) {
+				long owner = Long.parseLong(f.getFileName().toString().split("-")[1]);
+				if (owner != pid && ProcessHandle.of(owner).isEmpty()) Files.deleteIfExists(f);
+			}
+		} catch (Exception ignored) {
 		}
 	}
 
@@ -130,6 +153,14 @@ public final class HeadTracking {
 			return;
 		}
 		if (!running) start();
+	}
+
+	/** The world closed: Look's turn and the pose start again with the next world's player (BH8-07). */
+	public static void worldClosed() {
+		appliedYaw = appliedPitch = 0;
+		yaw = pitch = roll = 0;
+		based = false;
+		turned = new java.lang.ref.WeakReference<>(null);
 	}
 
 	/** Look's turn given back (Off, or the helper stopped): the view goes back to where the mouse put it. */
@@ -192,6 +223,11 @@ public final class HeadTracking {
 		pitch += ((fresh ? dead(rawPitch - basePitch) : 0) - pitch) * k;
 		roll += ((fresh ? dead(rawRoll - baseRoll) : 0) - roll) * k;
 		var player = mc.player;
+		if (player != null && turned.get() != player) {
+			// (a new player object: what was added to the old one isn't in this one's turn)
+			appliedYaw = appliedPitch = 0;
+			turned = new java.lang.ref.WeakReference<>(player);
+		}
 		boolean firstPerson = mc.options.getCameraType().isFirstPerson();
 		if (md == Mode.LOOK && player != null && firstPerson) {
 			// (head turning left is Core Motion's +yaw; the game's yaw turns right as it grows; head up is +pitch, the game's is down)

@@ -396,8 +396,7 @@ public final class CadenceSettings {
 		return Component.literal("On Battery: " + dev.cadence.shaders.cadence.system.BatteryMode.mode().label);
 	}
 
-	/** Dynamic Lights (DynamicLights): Off, Held Items, All. */
-	/** Frame Generation (FrameGenSetting, FrameGen): Smooth, Responsive, Off. */
+	/** Frame Generation (FrameGenSetting, FrameGen): Smooth, Responsive, Neural, Off. */
 	public static Button frameGenButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(frameGenLabel(), b -> {
@@ -418,7 +417,7 @@ public final class CadenceSettings {
 		var mode = dev.cadence.metal.framegen.FrameGen.mode();
 		String neural = mode != dev.cadence.metal.framegen.FrameGen.Mode.NEURAL ? "" : switch (dev.cadence.metal.framegen.FrameGen.neuralState()) {
 			case 1 -> " (loading)";
-			case -1 -> " (Smooth: needs macOS 26)";
+			case -1 -> " (not here: Smooth)";
 			default -> "";
 		};
 		if (!neural.isEmpty()) return Component.literal("Frame Generation: " + mode.label + neural);
@@ -463,6 +462,7 @@ public final class CadenceSettings {
 		return Component.literal("Auto Render Distance: " + (dev.cadence.shaders.cadence.render.AutoRenderDistance.on() ? held > 0 ? "On (" + held + ")" : "On" : "Off"));
 	}
 
+	/** Dynamic Lights (DynamicLights): Off, Held Items, All. */
 	public static Button dynamicLightsButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(dynamicLightsLabel(), b -> {

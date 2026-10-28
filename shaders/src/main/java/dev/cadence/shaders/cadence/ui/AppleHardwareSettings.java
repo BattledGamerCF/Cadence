@@ -115,7 +115,8 @@ public final class AppleHardwareSettings {
 			"Neural Lighting (Experimental)|the same light, its cache a small neural network that learns the world's lighting as you play "
 				+ "(trained on the graphics chip every frame)",
 			"Off|as vanilla",
-			"#About 1 ms a frame for Shadows and 2.5 ms for Lighting on an M2 at 1080p. Not with a shader pack (it has its own shadows) "
+			"#On an M2 at 1080p, about 1 ms a frame for Shadows, 2.5 ms for Lighting and 3.5 ms for Neural Lighting; Torch Shadows "
+					+ "adds about 1 ms where torches light the view. Not with a shader pack (it has its own shadows) "
 					+ "or World Resolution below 100%. Players and mobs don't cast shadows yet.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(rtLabel()));
 		return self[0];

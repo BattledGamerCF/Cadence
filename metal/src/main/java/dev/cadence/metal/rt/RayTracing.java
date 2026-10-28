@@ -111,7 +111,6 @@ public final class RayTracing {
 		return support;
 	}
 
-	/** Whether the last frame's shadows went through the acceleration structure. */
 	/**
 	 * Torch Shadows (Video Settings > Cadence: Visuals, with Ray Tracing on): the light of torches, lanterns, lava and other
 	 * blocks that give light traced too (rt.metal rt_torch): a wall between a torch and the floor shadows it.
@@ -130,6 +129,20 @@ public final class RayTracing {
 
 	private static final int NRC_T = 32768, NRC_FEAT = 4 * NRC_T * 2, NRC_PAD = 520;
 	private static long nrc;
+
+	/** Neural Lighting's network let go (what it learned is that world's), a second later: frames in flight may read it. */
+	private static void freeNrc() {
+		if (nrc == 0) return;
+		long old = nrc;
+		nrc = 0;
+		Thread.ofVirtual().start(() -> {
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException ignored) {
+			}
+			Minecraft.getInstance().execute(() -> RtNative.release(old));
+		});
+	}
 
 	/** The network's buffer, made (and its weights drawn) at its first use; it learns from there. */
 	private static long nrcBuffer() {
@@ -158,6 +171,7 @@ public final class RayTracing {
 		return world == null ? 0 : world.lightCount;
 	}
 
+	/** Whether the last frame's shadows went through the acceleration structure. */
 	public static boolean usedHardware() {
 		return usedHw;
 	}
@@ -264,7 +278,11 @@ public final class RayTracing {
 		ClientLevel level = mc.level;
 		if (level == null) return;
 		// (a world for another level or tracer goes first: dropping a hardware one lets go of its native state, made again below)
-		if (world != null && (world.level() != level || stale)) dropWorld();
+		if (world != null && (world.level() != level || stale)) {
+			// (another level: Neural Lighting's network learned the old one's light at the same coordinates, BH8-08)
+			if (world.level() != level) freeNrc();
+			dropWorld();
+		}
 		stale = false;
 		if (!init()) return;
 		if (world == null) {
@@ -320,6 +338,8 @@ public final class RayTracing {
 		// (Torch Shadows: the light grid, and RtFrame screen.w says the kernel ran)
 		long lights = torchShadows ? world.lights() : 0;
 		MemoryUtil.memPutInt(frameBuf + 204, lights != 0 ? 1 : 0);
+		MemoryUtil.memPutInt(frameBuf + 272, lights != 0 ? world.gridDx() : 0);  // RtFrame torchGrid: the grid's place in the window
+		MemoryUtil.memPutInt(frameBuf + 276, lights != 0 ? world.gridDz() : 0);
 		int flags = (rtHw ? 1 : 0) | (DEBUG ? 2 : 0) | (lighting ? 4 : 0) | (lighting && clearCache ? 8 : 0) | SCALE << 8 | (lights != 0 ? 0x10000 : 0) | (nrc != 0 ? 0x20000 : 0);
 		if (lighting) clearCache = false;
 		int r = RtNative.frame(rt, enc, MetalBridge.textureHandle(color), MetalBridge.textureHandle(depth), light, world.vox, world.bricks, world.sections,
@@ -455,18 +475,7 @@ public final class RayTracing {
 	 */
 	public static void release() {
 		dropWorld();
-		if (nrc != 0) {
-			// (Neural Lighting's network: what it learned is this world's; let go a second later, frames in flight may read it)
-			long old = nrc;
-			nrc = 0;
-			Thread.ofVirtual().start(() -> {
-				try {
-					Thread.sleep(1000);
-				} catch (InterruptedException ignored) {
-				}
-				Minecraft.getInstance().execute(() -> RtNative.release(old));
-			});
-		}
+		freeNrc();
 		if (rt != 0) {
 			long old = rt;
 			rt = 0;

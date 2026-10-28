@@ -50,6 +50,15 @@ public final class WorldAcoustics {
 		return last + (lastSounds.isEmpty() ? "" : " | " + lastSounds);
 	}
 
+	/** The world closed (WorldClosed): nothing of it kept (BH8-01), the sounds' last sends forgotten. */
+	public static void worldClosed() {
+		PATHS.reset();
+		LAST.clear();
+	}
+
+	/** Per playing sound (its native handle): [unused, whether a route was last sent]: "no route" is sent only after a route. */
+	private static final java.util.HashMap<Long, float[]> LAST = new java.util.HashMap<>();
+
 	public static void setPaths(boolean on) {
 		paths = on;
 	}
@@ -135,6 +144,7 @@ public final class WorldAcoustics {
 		int n = AppleAudio.snapshot(ids, pos, MAX_SOUNDS), occluded = 0, routed = 0;
 		boolean searched = false;
 		String first = "";
+		java.util.HashSet<Long> seen = new java.util.HashSet<>();
 		for (int i = 0; i < n; i++) {
 			float sx = MemoryUtil.memGetFloat(pos + i * 12L), sy = MemoryUtil.memGetFloat(pos + i * 12L + 4), sz = MemoryUtil.memGetFloat(pos + i * 12L + 8);
 			double dx = sx - eye.x, dy = sy - eye.y, dz = sz - eye.z, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -145,6 +155,9 @@ public final class WorldAcoustics {
 				db = Math.max(-40f, -9f * blocks[0]);
 			}
 			long id = MemoryUtil.memGetAddress(ids + i * 8L);
+			seen.add(id);
+			// (the occlusion every pass, as before: a channel reused for a new sound starts again at none, mca_voice_static)
+			float[] last = LAST.computeIfAbsent(id, k -> new float[] {0, 0});
 			AppleAudio.occlusion(id, db);
 			// behind a wall: the way round, if there is one (the search only once a pass, and only when a sound needs it)
 			boolean round = false;
@@ -160,14 +173,18 @@ public final class WorldAcoustics {
 				}
 			}
 			if (round) {
+				last[1] = 1;
 				if (routed++ == 0)
 					first = String.format(java.util.Locale.ROOT, " (first: from %.1f %.1f %.1f, way %.1f blocks, %d corners, straight %.1f, wall %.0f dB)", PATHS.ax, PATHS.ay,
 						PATHS.az, PATHS.length, PATHS.corners, d, db);
 				AppleAudio.route(id, true, PATHS.ax, PATHS.ay, PATHS.az, PATHS.length, Math.max(-15f, -3f * PATHS.corners));
-			} else {
+			} else if (last[1] != 0) {
+				// (only when it was routed: an unrouted sound's route call was a second locked update a pass, BH8-15)
 				AppleAudio.route(id, false, 0, 0, 0, 0, 0);
+				last[1] = 0;
 			}
 		}
+		LAST.keySet().retainAll(seen);
 		lastSounds = "sounds " + n + " occluded " + occluded + " round corners " + routed + first + String.format(java.util.Locale.ROOT, " search %.2f ms", searchMs);
 	}
 

@@ -63,7 +63,7 @@ typedef struct {
 	// Far Terrain > Mesh Shaders: the quad cull in the object stage and the survivors' corners from the mesh stage, in the draw
 	// itself (no quad-cull pass, no survivor buffer); horizon: the cull's buffer the object stage tests against
 	id<MTLFunction> meshObj, meshMsh;
-	int meshShader;
+	int meshShader, meshShaderFailed;  // (failed: the pipeline couldn't be made here; Compute from then on, BH8-06)
 	id<MTLBuffer> horizon;
 	id<MTLBuffer> meshIdx, plantIdx;   // {0, 1, 2, 2, 3, 0} + 4q for the survivors' 64-quad and the plants' 32-quad instances
 	id<MTLDepthStencilState> depthTest;
@@ -520,7 +520,7 @@ void mcl_mesh_cull(LodCols *l, Enc *enc, const void *frame, int frameLength, con
 
 // Far Terrain > Mesh Shaders on or off (the draw falls back to the compute quad cull where it can't).
 void mcl_mesh_shaders(LodCols *l, int on) {
-	l->meshShader = on;
+	l->meshShader = on && !l->meshShaderFailed;
 }
 
 // (Cadence) Whether a shader pack draws the far terrain (color: the clipmap's colour words) or the far terrain draws itself
@@ -541,8 +541,10 @@ int mcl_mesh_draw(LodCols *l, Enc *enc, int gbuffer, const void *comp, int compL
 	id<MTLRenderPipelineState> pso = colPipeline(l, enc, gbuffer, meshShaders ? LOD_PSO_MESH_SHADER : LOD_PSO_MESH, err, errCap);
 	if (!pso && meshShaders) {
 		// (no mesh-shader pipeline here: the compute path from now on)
+		// (this frame's cull skipped the compute quad cull for it: nothing drawn this once, Compute from the next frame)
 		NSLog(@"cadence-lod: mesh shaders off: %s", err);
 		l->meshShader = 0;
+		l->meshShaderFailed = 1;
 		return 0;
 	}
 	id<MTLRenderPipelineState> ppso = pso ? colPipeline(l, enc, gbuffer, LOD_PSO_PLANT, err, errCap) : nil;

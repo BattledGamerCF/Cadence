@@ -11,6 +11,7 @@
 #import <VideoToolbox/VTFrameProcessor.h>
 #import <VideoToolbox/VTFrameProcessor_LowLatencyFrameInterpolation.h>
 #include <dlfcn.h>
+#include <os/lock.h>
 #include <stdatomic.h>
 #import "mcmetal.h"
 
@@ -60,6 +61,11 @@ typedef struct {
 	id<MTLRenderPipelineState> genN;
 	MTLPixelFormat genNFormat;
 	long neuralFrames;
+	// (each start or drop is a new generation: a model load publishes only if its generation is still the current one, under
+	// vtLock; overlapping loads after a resize left "ready" with no processor, BH8-04)
+	atomic_int neuralGen;
+	os_unfair_lock vtLock;
+	int stableFrames;  // generated frames since the snapshots' size last changed (a load starts once it holds still)
 } Fg;
 
 static void copyErr(NSError *e, char *err, int cap) {
@@ -128,21 +134,26 @@ static CVPixelBufferRef yuvBuffer(Fg *g, int w, int h) {
 static id<MTLTexture> planeOf(Fg *g, CVPixelBufferRef pb, int plane, CVMetalTextureRef *ref) {
 	MTLPixelFormat f = plane == 0 ? MTLPixelFormatR8Unorm : MTLPixelFormatRG8Unorm;
 	size_t w = CVPixelBufferGetWidthOfPlane(pb, (size_t) plane), h = CVPixelBufferGetHeightOfPlane(pb, (size_t) plane);
-	if (CVMetalTextureCacheCreateTextureFromImage(NULL, g->cache, pb, NULL, f, w, h, (size_t) plane, ref) != kCVReturnSuccess) return nil;
+	// (fg_to_yuv writes the snapshots' planes: their textures made writable, as mcneural.m's)
+	NSDictionary *usage = @{(id) kCVMetalTextureUsage: @(MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite)};
+	if (CVMetalTextureCacheCreateTextureFromImage(NULL, g->cache, pb, (CFDictionaryRef) usage, f, w, h, (size_t) plane, ref) != kCVReturnSuccess) return nil;
 	return CVMetalTextureGetTexture(*ref);
 }
 
 // Everything Neural made let go (its frames may still be in flight: the processor and buffers go a second later).
 static void neuralDrop(Fg *g) {
+	atomic_fetch_add(&g->neuralGen, 1);
+	os_unfair_lock_lock(&g->vtLock);
 	int was = atomic_exchange(&g->neural, 0);
-	if (was == 0 && !g->vt && !g->cache) return;
 	id vt = g->vt;
+	g->vt = nil;
+	os_unfair_lock_unlock(&g->vtLock);
+	if (was == 0 && !vt && !g->cache) return;
 	// (CF objects to release later: the texture refs first, then the buffers; a block can't capture an array)
 	const void **cf = calloc(9, sizeof(void *));
 	const void *list[9] = {g->yuvRef[0][0], g->yuvRef[0][1], g->yuvRef[1][0], g->yuvRef[1][1], g->outRef[0], g->outRef[1], g->yuv[0], g->yuv[1], g->out};
 	memcpy(cf, list, sizeof list);
 	CVMetalTextureCacheRef cache = g->cache;
-	g->vt = nil;
 	g->cache = NULL;
 	memset(g->yuv, 0, sizeof g->yuv);
 	g->out = NULL;
@@ -172,6 +183,8 @@ int mcfg_neural(void *fg, Ctx *ctx, int on) {
 		return 0;
 	}
 	if (st != 0) return st;
+	// (a size that holds still for 30 frames first: a window being resized would start a ~1 s model load every frame)
+	if (++g->stableFrames < 30) return 0;
 	if (@available(macOS 26.0, *)) {
 	} else {
 		atomic_store(&g->neural, -1);
@@ -197,7 +210,7 @@ int mcfg_neural(void *fg, Ctx *ctx, int on) {
 		return -1;
 	}
 	atomic_store(&g->neural, 1);
-	int w = g->nw, h = g->nh;
+	int w = g->nw, h = g->nh, gen = atomic_fetch_add(&g->neuralGen, 1) + 1;
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
 		@autoreleasepool {
 			VTLowLatencyFrameInterpolationConfiguration *cfg = [[[(id) cVTConfig alloc] initWithFrameWidth:w frameHeight:h
@@ -205,19 +218,23 @@ int mcfg_neural(void *fg, Ctx *ctx, int on) {
 			VTFrameProcessor *p = [(id) cVTProcessor new];
 			NSError *e = nil;
 			if (cfg && [p startSessionWithConfiguration:cfg error:&e]) {
-				// (still wanted: the render thread may have let it go meanwhile)
+				// (still wanted, and this load still the current one: else it goes, and nothing of the current one is touched)
+				os_unfair_lock_lock(&g->vtLock);
 				int expected = 1;
-				g->vt = p;
-				if (!atomic_compare_exchange_strong(&g->neural, &expected, 2)) {
-					g->vt = nil;
+				int won = atomic_load(&g->neuralGen) == gen && atomic_compare_exchange_strong(&g->neural, &expected, 2);
+				if (won) g->vt = p;
+				os_unfair_lock_unlock(&g->vtLock);
+				if (!won) {
 					[p endSession];
 					[p release];
 				}
 			} else {
 				NSLog(@"cadence-fg: neural interpolation: %@", e);
 				[p release];
+				os_unfair_lock_lock(&g->vtLock);
 				int expected = 1;
-				atomic_compare_exchange_strong(&g->neural, &expected, -1);
+				if (atomic_load(&g->neuralGen) == gen) atomic_compare_exchange_strong(&g->neural, &expected, -1);
+				os_unfair_lock_unlock(&g->vtLock);
 			}
 		}
 	});
@@ -262,7 +279,10 @@ static void neuralSnapshot(Fg *g, id<MTLCommandBuffer> cb, int s) {
 // after it waits for it), drawn into the drawable with the newest frame's hand and GUI. 0 if it can't now (then reprojection).
 static int encodeNeural(Fg *g, Ctx *ctx, id<MTLCommandBuffer> cb, id<CAMetalDrawable> drawable, id<MTLTexture> latest, const void *frame, int len) {
 	int a = g->cur, b = g->cur ^ 1;
-	if (atomic_load(&g->neural) != 2 || !g->yuvOk[a] || !g->yuvOk[b]) return 0;
+	if (atomic_load(&g->neural) != 2 || !g->vt || !g->yuvOk[a] || !g->yuvOk[b]) return 0;
+	// (HDR: the snapshots hold highlights above 1.0 the 8-bit interpolator would clip, so every other frame's would dim: Smooth's
+	// reprojection instead, BH8-09)
+	if (g->color[a].pixelFormat == MTLPixelFormatRGBA16Float) return 0;
 	id<MTLRenderPipelineState> p = neuralPipeline(g, ctx, drawable.texture.pixelFormat);
 	if (!p) return 0;
 	if (@available(macOS 26.0, *)) {
@@ -328,7 +348,8 @@ static int encodeNeural(Fg *g, Ctx *ctx, id<MTLCommandBuffer> cb, id<CAMetalDraw
 void mcfg_size(void *fg, Ctx *ctx, int w, int h) {
 	Fg *g = fg;
 	if (g->w == w && g->h == h && (w == 0 || g->color[0])) return;
-	neuralDrop(g);  // (made again for the new size)
+	neuralDrop(g);  // (made again for the new size, once it holds still)
+	g->stableFrames = 0;
 	dropTextures(g);
 	if (w <= 0 || h <= 0) return;
 	for (int k = 0; k < 2; k++) {

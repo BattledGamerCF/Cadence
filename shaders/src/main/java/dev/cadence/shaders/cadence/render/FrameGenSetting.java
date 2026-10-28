@@ -5,7 +5,7 @@ import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import java.util.Locale;
 
 /**
- * Video Settings > Frame Generation (FrameGen in the metal module does the work): Smooth, Responsive or Off, saved as
+ * Video Settings > Frame Generation (FrameGen in the metal module does the work): Smooth, Responsive, Neural or Off, saved as
  * frameGeneration in the config; -Dcadence.frameGeneration overrides it. Smooth by default: it runs only where it adds frames
  * the screen can show (Battery Saver on any screen, Recommended and Max Quality on a 120 Hz one: FramerateCapMixin).
  */

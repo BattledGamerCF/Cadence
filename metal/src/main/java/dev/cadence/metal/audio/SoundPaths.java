@@ -31,7 +31,8 @@ final class SoundPaths {
 	private int ox, oy, oz;  // the grid's lowest corner in the world
 	private int lx = Integer.MIN_VALUE, ly, lz;  // the listener's block the search ran from
 	private long builtAt;
-	private Level builtFor;
+	/** The level the grid was read from (weak: a left world or dimension isn't kept alive by it, BH8-01). */
+	private java.lang.ref.WeakReference<Level> builtFor = new java.lang.ref.WeakReference<>(null);
 	/** The last route found: the apparent position, the whole way's length, the corners on it. */
 	float ax, ay, az, length;
 	int corners;
@@ -43,8 +44,8 @@ final class SoundPaths {
 	boolean update(Level lv, Vec3 eye) {
 		int bx = (int) Math.floor(eye.x), by = (int) Math.floor(eye.y), bz = (int) Math.floor(eye.z);
 		long now = System.nanoTime();
-		if (lv == builtFor && bx == lx && by == ly && bz == lz && now - builtAt < 1_000_000_000L) return false;
-		builtFor = lv;
+		if (lv == builtFor.get() && bx == lx && by == ly && bz == lz && now - builtAt < 1_000_000_000L) return false;
+		builtFor = new java.lang.ref.WeakReference<>(lv);
 		builtAt = now;
 		lx = bx;
 		ly = by;
@@ -61,6 +62,12 @@ final class SoundPaths {
 				}
 		search();
 		return true;
+	}
+
+	/** The world closed: built again for the next one. */
+	void reset() {
+		builtFor = new java.lang.ref.WeakReference<>(null);
+		lx = Integer.MIN_VALUE;
 	}
 
 	/** Whether sound travels through the block freely: anything without a full collision box, open doors, open gates. */
@@ -115,8 +122,10 @@ final class SoundPaths {
 			if (best < 0) return false;
 			c = best;
 		}
-		// the way back, listener first (cells by their centres; the ends are the real points)
+		// the way back, listener first (cells by their centres; the ends are the real points). A way longer than 64 blocks
+		// is no way: the sound is muffled through the wall instead (and pulling a long way tight costs, BH8-15)
 		int steps = dist[c];
+		if (steps > 64) return false;
 		float[] px = new float[steps + 2], py = new float[steps + 2], pz = new float[steps + 2];
 		px[0] = (float) eye.x;
 		py[0] = (float) eye.y;

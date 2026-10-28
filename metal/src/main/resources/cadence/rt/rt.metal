@@ -30,6 +30,8 @@ struct RtFrame {
 	                       // zw: the window's origin x, z minus its wrap (world x = window x + dims.z + extra.z)
 	float4 extra2;         // xyz: the sun's colour (linear, its strength folded in later by sun.w); w: the lighting cache's update stride
 	float4 cache;          // x: lighting cache entries (a power of two), y: bounce ray length, z: least blend per frame, w: exposure
+	int4 torchGrid;        // xy: where Torch Shadows' light grid was built, relative to the window (blocks, x and z): a grid stays
+	                       // right while the next one builds after the window moved
 };
 
 // ---- the voxels ----
@@ -359,6 +361,8 @@ static inline float blockLeft(uint block, float torchVis) {
 
 // The lightmap at fractional light levels (bilinear between its texels).
 static float3 lightmapF(texture2d<float, access::read> lm, float block, float sky) {
+	block = clamp(block, 0.0f, 15.0f);
+	sky = clamp(sky, 0.0f, 15.0f);
 	uint b0 = uint(floor(block)), b1 = min(b0 + 1u, 15u), s0 = uint(floor(sky)), s1 = min(s0 + 1u, 15u);
 	float fb = fract(block), fs = fract(sky);
 	return mix(mix(lm.read(uint2(b0, s0)).rgb, lm.read(uint2(b1, s0)).rgb, fb), mix(lm.read(uint2(b0, s1)).rgb, lm.read(uint2(b1, s1)).rgb, fb), fs);
@@ -860,14 +864,16 @@ kernel void rt_torch(depth2d<float, access::read> depth [[texture(0)]], texture2
 	float3 N = normalAt(depth, px, P, f);
 	float3 g = P - f.origin.xyz;
 	float vis = 1.0f;
-	int3 cell = int3(floor(g / 8.0f)), gdim = int3(int(f.dims.x / 8u), int(f.dims.y / 8u), int(f.dims.x / 8u));
+	float3 off = float3(float(f.torchGrid.x), 0.0f, float(f.torchGrid.y));  // (grid coordinates = window coordinates - off)
+	int3 cell = int3(floor((g - off) / 8.0f)), gdim = int3(int(f.dims.x / 8u), int(f.dims.y / 8u), int(f.dims.x / 8u));
 	if (all(cell >= 0) && all(cell < gdim) && edgeFade(P, f) < 0.999f && (lightAt(g, N, vox, f) & 15u) > 0u) {
 		uint base = (uint(cell.y * gdim.z + cell.z) * uint(gdim.x) + uint(cell.x)) * 16u, n = min(grid[base], 15u);
 		float w[15], total = 0.0f;
 		for (uint i = 0; i < n; i++) {
-			float3 v = lightPos(grid[base + 1u + i]) - g;
+			float3 v = lightPos(grid[base + 1u + i]) + off - g;
 			float l = length(v), e = float(grid[base + 1u + i] >> 28);
-			w[i] = max(e - l, 0.0f) * max(dot(N, v / max(l, 1e-3f)), 0.0f);
+			// (a light's own block: its faces are lit by it though its middle is behind them, BH8-03)
+			w[i] = l < 0.95f ? e : max(e - l, 0.0f) * max(dot(N, v / max(l, 1e-3f)), 0.0f);
 			total += w[i];
 		}
 		// (lights near but all behind the surface: none lights it directly; no lights listed at all: as the game has it)
@@ -885,7 +891,7 @@ kernel void rt_torch(depth2d<float, access::read> depth [[texture(0)]], texture2
 						break;
 					}
 				}
-				float3 v = lightPos(grid[base + 1u + pick]) - g;
+				float3 v = lightPos(grid[base + 1u + pick]) + off - g;
 				float l = length(v);
 				// (to just short of the light's own block: a glowstone or lava light is solid itself)
 				seen += rt_trace(g + N * 0.02f, v / l, 0.0f, max(l - 0.75f, 0.0f), own, bricks, sections, f) >= 0.0f ? 0.0f : 1.0f;
@@ -894,7 +900,8 @@ kernel void rt_torch(depth2d<float, access::read> depth [[texture(0)]], texture2
 		}
 	}
 	float4 prev = torch.read(gid);
-	if (abs(prev.g - dist) < 0.04f * dist + 0.08f) vis = mix(prev.r, vis, 0.25f);
+	// (the texture isn't cleared when made: a garbage history is only taken if it is a visibility, 0..1)
+	if (abs(prev.g - dist) < 0.04f * dist + 0.08f && prev.r >= 0.0f && prev.r <= 1.0f) vis = mix(prev.r, vis, 0.25f);
 	torch.write(float4(vis, dist, 0.0f, 0.0f), gid);
 }
 
@@ -912,8 +919,9 @@ kernel void rt_torch(depth2d<float, access::read> depth [[texture(0)]], texture2
 // rt_nrc_feat each touched feature (SGD on its averaged gradient). rt_nrc_gather asks the network for every
 // traced sample in place of the hash table. Trained on the GPU: the Neural Engine runs networks but can't train one live.
 //
-// The buffer (floats): the features (NRC_FEAT), the MLP's weights, their gradients (atomic), Adam's two moments; then a
-// sample count and Adam's step (uints).
+// The buffer (floats): the features (NRC_FEAT), the MLP's weights, a spare block (NRC_G, unused since the gradients went to
+// per-threadgroup rows), Adam's two moments; a sample count and Adam's step (uints); the per-threadgroup gradient rows; the
+// features' gradient sums and sample weights; the coarse cells' confidence.
 
 #define NRC_T 32768u
 #define NRC_FEAT (4u * NRC_T * 2u)

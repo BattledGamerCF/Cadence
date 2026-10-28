@@ -227,6 +227,9 @@ final class RtWorld {
 		}
 		if (this.hw && this.rt != 0) RtNative.section(this.rt, slot, sectionMask);
 		this.sectionsWritten++;
+		// (only lights that can light something: a block buried in others, the inside of a lava sea, can't, and a Nether lava sea
+		// listed in full stalled the grid's build for most of a second, BH8-02; at most SECTION_LIGHTS a section)
+		nl = this.exposedLights(sec, sx, sy, sz, nl);
 		long key = SectionPos.asLong(sx, sy, sz);
 		int[] had = nl > 0 ? this.sectionLights.put(key, java.util.Arrays.copyOf(this.lightScratch, nl)) : this.sectionLights.remove(key);
 		if (nl > 0 || had != null) this.lightsDirty = true;
@@ -244,7 +247,6 @@ final class RtWorld {
 	 * turn: one is rebuilt while the GPU may still read the others. */
 	private final long[] lightGrid = new long[3];
 	private int gridAt, gridOx = Integer.MIN_VALUE, gridOz;
-	private int[] gridScratch;
 	private boolean lightsDirty = true;
 	private long lightsBuiltAt;
 	/** Lights in the window at the last build. */
@@ -255,36 +257,105 @@ final class RtWorld {
 		int gx = this.w >> 3, gy = this.h >> 3, cells = gx * gy * gx;
 		if (this.lightGrid[0] == 0)
 			for (int i = 0; i < 3; i++) this.lightGrid[i] = RtNative.buffer(this.ctx, (long) cells * 64);
-		boolean moved = this.ox != this.gridOx || this.oz != this.gridOz;
+		// a grid built on the worker: into the next buffer (the GPU may still read the others)
+		var done = this.pendingGrid;
+		if (done != null && done.isDone()) {
+			this.pendingGrid = null;
+			Grid g = done.join();
+			if (g != null && g.cells.length == cells * 16) {
+				int next = (this.gridAt + 1) % 3;
+				MemoryUtil.memIntBuffer(RtNative.contents(this.lightGrid[next]), g.cells.length).put(g.cells);
+				this.gridAt = next;
+				this.lightCount = g.count;
+				this.gridOx = g.ox;
+				this.gridOz = g.oz;
+			}
+		}
+		boolean moved = this.ox != this.builtOx || this.oz != this.builtOz;
 		long now = System.nanoTime();
-		if (moved || this.lightsDirty && now - this.lightsBuiltAt > 250_000_000L) {
-			this.gridAt = (this.gridAt + 1) % 3;
-			this.buildGrid(gx, gy, cells, RtNative.contents(this.lightGrid[this.gridAt]));
-			this.gridOx = this.ox;
-			this.gridOz = this.oz;
+		if (this.pendingGrid == null && (moved || this.lightsDirty && now - this.lightsBuiltAt > 250_000_000L)) {
+			// (the lists as they are now: their arrays aren't changed once listed, only replaced; sections the window left go)
+			java.util.ArrayList<long[]> keys = new java.util.ArrayList<>();
+			java.util.ArrayList<int[]> lists = new java.util.ArrayList<>();
+			var it = this.sectionLights.entrySet().iterator();
+			while (it.hasNext()) {
+				var en = it.next();
+				long key = en.getKey();
+				if (!this.inWindow(SectionPos.x(key) << 4, SectionPos.z(key) << 4)) {
+					it.remove();  // (the window moved off it: written again if it comes back)
+					continue;
+				}
+				keys.add(new long[] {SectionPos.x(key), SectionPos.z(key)});
+				lists.add(en.getValue());
+			}
+			int ox = this.ox, oz = this.oz, w = this.w, h = this.h, minY = this.minY;
+			this.builtOx = ox;
+			this.builtOz = oz;
 			this.lightsDirty = false;
 			this.lightsBuiltAt = now;
+			// (on a worker: a window full of lights took tens of ms on the render thread, BH8-02)
+			this.pendingGrid = java.util.concurrent.CompletableFuture.supplyAsync(() -> buildGrid(keys, lists, ox, oz, w, h, minY), GRID_WORKER);
 		}
-		return this.lightGrid[this.gridAt];
+		// (the last grid built, also while the next one builds after the window moved: its own place goes to the GPU with it,
+		// gridDx/gridDz, so its lights stay where they are)
+		return this.gridOx != Integer.MIN_VALUE ? this.lightGrid[this.gridAt] : 0;
 	}
 
-	private void buildGrid(int gx, int gy, int cells, long addr) {
-		if (this.gridScratch == null || this.gridScratch.length != cells * 16) this.gridScratch = new int[cells * 16];
-		int[] g = this.gridScratch;
-		java.util.Arrays.fill(g, 0);
+	/** Where the grid in use was built, relative to the window (blocks, x and z): RtFrame torchGrid. */
+	int gridDx() {
+		return this.gridOx - this.ox;
+	}
+
+	int gridDz() {
+		return this.gridOz - this.oz;
+	}
+
+	/** A built grid: its cells, the lights in it, the window's place it was built for. */
+	private record Grid(int[] cells, int count, int ox, int oz) {
+	}
+
+	private java.util.concurrent.CompletableFuture<Grid> pendingGrid;
+	private int builtOx = Integer.MIN_VALUE, builtOz;
+	private static final java.util.concurrent.ExecutorService GRID_WORKER = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+		Thread t = new Thread(r, "cadence-rt-lights");
+		t.setDaemon(true);
+		t.setPriority(Thread.NORM_PRIORITY - 1);
+		return t;
+	});
+
+	/** The light grid for the window at (ox, oz) from the listed sections' lights (worker thread: touches nothing of the world). */
+	private static Grid buildGrid(java.util.List<long[]> keys, java.util.List<int[]> lists, int ox, int oz, int w, int h, int minY) {
+		int gx = w >> 3, gy = h >> 3, cells = gx * gy * gx;
+		int[] g = new int[cells * 16];
 		int count = 0;
-		var it = this.sectionLights.entrySet().iterator();
-		while (it.hasNext()) {
-			var en = it.next();
-			long key = en.getKey();
-			if (!this.inWindow(SectionPos.x(key) << 4, SectionPos.z(key) << 4)) {
-				it.remove();  // (the window moved off it: written again if it comes back)
-				continue;
+		// (more than WINDOW_LIGHTS in the window: only those within the nearest sections, by section distance from the middle)
+		int total = 0;
+		for (int[] l : lists) total += l.length / 4;
+		int ccx = (ox + (w >> 1)) >> 4, ccz = (oz + (w >> 1)) >> 4;
+		long maxDist2 = Long.MAX_VALUE;
+		if (total > WINDOW_LIGHTS) {
+			long[] byDist = new long[lists.size()];
+			for (int k = 0; k < lists.size(); k++) {
+				long dx = keys.get(k)[0] - ccx, dz = keys.get(k)[1] - ccz;
+				byDist[k] = (dx * dx + dz * dz) << 20 | Math.min(lists.get(k).length / 4, (1 << 20) - 1);
 			}
-			int[] l = en.getValue();
+			java.util.Arrays.sort(byDist);
+			int sum = 0;
+			for (long v : byDist) {
+				sum += (int) (v & ((1 << 20) - 1));
+				if (sum > WINDOW_LIGHTS) {
+					maxDist2 = v >>> 20;
+					break;
+				}
+			}
+		}
+		for (int k = 0; k < lists.size(); k++) {
+			long sdx = keys.get(k)[0] - ccx, sdz = keys.get(k)[1] - ccz;
+			if (sdx * sdx + sdz * sdz > maxDist2) continue;
+			int[] l = lists.get(k);
 			for (int i = 0; i < l.length; i += 4) {
-				int wx = l[i] - this.ox, wy = l[i + 1] - this.minY, wz = l[i + 2] - this.oz, e = l[i + 3];
-				if (wx < 0 || wz < 0 || wy < 0 || wx >= this.w || wz >= this.w || wy >= this.h) continue;
+				int wx = l[i] - ox, wy = l[i + 1] - minY, wz = l[i + 2] - oz, e = l[i + 3];
+				if (wx < 0 || wz < 0 || wy < 0 || wx >= w || wz >= w || wy >= h) continue;
 				count++;
 				int packed = wx | wz << 8 | wy << 16 | e << 28;
 				float lx = wx + 0.5f, ly = wy + 0.5f, lz = wz + 0.5f;
@@ -305,20 +376,45 @@ final class RtWorld {
 							float score = e - dist(lx, ly, lz, cx, cy, cz);
 							int weakest = -1;
 							float least = score;
-							for (int k = 0; k < 15; k++) {
-								int o = g[base + 1 + k];
+							for (int q = 0; q < 15; q++) {
+								int o = g[base + 1 + q];
 								float sc = (o >>> 28) - dist((o & 0xFF) + 0.5f, ((o >> 16) & 0xFFF) + 0.5f, ((o >> 8) & 0xFF) + 0.5f, cx, cy, cz);
 								if (sc < least) {
 									least = sc;
-									weakest = k;
+									weakest = q;
 								}
 							}
 							if (weakest >= 0) g[base + 1 + weakest] = packed;
 						}
 			}
 		}
-		this.lightCount = count;
-		MemoryUtil.memIntBuffer(addr, g.length).put(g);
+		return new Grid(g, count, ox, oz);
+	}
+
+	private static final int SECTION_LIGHTS = 64, WINDOW_LIGHTS = 4096;
+
+	/**
+	 * Keeps (in lightScratch, compacted) the section's lights that light can leave: with a block beside them that isn't solid (a
+	 * neighbour outside the section counts as open), at most SECTION_LIGHTS. Returns how many ints are left.
+	 */
+	private int exposedLights(LevelChunkSection sec, int sx, int sy, int sz, int nl) {
+		int kept = 0;
+		for (int i = 0; i < nl && kept < SECTION_LIGHTS * 4; i += 4) {
+			int x = this.lightScratch[i] - (sx << 4), y = this.lightScratch[i + 1] - (sy << 4), z = this.lightScratch[i + 2] - (sz << 4);
+			boolean open = false;
+			for (int d = 0; d < 6 && !open; d++) {
+				int nx = x + (d == 0 ? 1 : d == 1 ? -1 : 0), ny = y + (d == 2 ? 1 : d == 3 ? -1 : 0), nz = z + (d == 4 ? 1 : d == 5 ? -1 : 0);
+				if (nx < 0 || ny < 0 || nz < 0 || nx > 15 || ny > 15 || nz > 15) open = true;
+				else {
+					int id = this.id(sec.getBlockState(nx, ny, nz));
+					open = id <= 0 || (id & 0x8000) == 0;
+				}
+			}
+			if (!open) continue;
+			System.arraycopy(this.lightScratch, i, this.lightScratch, kept, 4);
+			kept += 4;
+		}
+		return kept;
 	}
 
 	private static float dist(float x, float y, float z, int cx, int cy, int cz) {

@@ -749,6 +749,8 @@ public final class Lod {
 				if (pk != null && LodPk.LOAD && sample && !timed) this.cullTimes = false;
 				boolean listsRan = pk != null && pk.lists(this.camX, this.camY, this.camZ, this.viewProj, LodConfig.reachBlocks(), LodPk.LOAD && this.cullTimes,
 					timed);
+				// (Mesh Shaders on the default cull only: the position-keyed lists' cull feeds the compute path, BH8-16)
+				LodNative.meshShaders(this.lod, !listsRan && LodConfig.meshShaders());
 				if (listsRan) {
 					// the position-keyed lists: this frame's rebuilds, the live cull (the live ring, stale sectors), the lists' per-frame pass
 					pk.prepare(this.viewProj, this.camX, this.camY, this.camZ, LodConfig.reachBlocks(), this.forward.x, this.forward.z,
@@ -770,7 +772,6 @@ public final class Lod {
 						}
 						LodNative.cullTimeSlot(this.lod, cs);
 					}
-					LodNative.meshShaders(this.lod, LodConfig.meshShaders());
 					LodNative.meshCull(this.lod, enc, mesh.frame, LodMesh.FRAME_BYTES, this.compFrame, COMP_FRAME_BYTES, table, mesh.arena(), maskBuf, mesh.argsBuf,
 						mesh.instBuf, mesh.plantBuf, mesh.survBuf, mesh.horizonBuf, mesh.listBuf, clip.geomBuf, clip.crownBuf, mesh.blocks(), LodMesh.FENCES);
 				}

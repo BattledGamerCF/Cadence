@@ -315,6 +315,9 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 		id<MTLIntersectionFunctionTable> table = r->table[r->ring];
 		r->ring = (r->ring + 1) % RT_RING;
 		memcpy(fb.contents, frame, (size_t) len);
+		// (RtFrame screen.w: whether rt_torch runs this frame, decided here where its pipeline is known, BH8-10)
+		int torch = (flags & 0x10000) && lights && r->torch;
+		if (len >= 208) ((uint32_t *) fb.contents)[51] = torch ? 1u : 0u;
 		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
 		if (useHw) buildAccel(r, cb, sox, soz);
 		if (useHw && !r->tlasBuilt) useHw = 0;
@@ -338,7 +341,6 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 		[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		[c endEncoding];
 		// Torch Shadows (flags bit 16, with the light grid): the share of each sample's block light that reaches it
-		int torch = (flags & 0x10000) && lights && r->torch;
 		if (torch) {
 			if (!r->torchTex || r->torchTex.width != w || r->torchTex.height != h) {
 				[r->torchTex release];
@@ -365,7 +367,8 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 		}
 		int lighting = (flags & 4) != 0 && palette;
 		// Neural Lighting (flags bit 17, with the network's buffer): trained, stepped, then asked, in place of the table
-		int neural = lighting && (flags & 0x20000) && nrc && r->nrcTrain && r->nrcAdam && r->nrcFinish && r->nrcGather && r->nrcFeat;
+		int neural = lighting && (flags & 0x20000) && nrc && r->nrcTrain && r->nrcAdam && r->nrcFinish && r->nrcGather && r->nrcFeat
+			&& r->nrcTrain.maxTotalThreadsPerThreadgroup >= 256;  // (its 16 x 16 groups; else the table cache)
 		if (neural) {
 			if (!r->irr || r->irr.width != w || r->irr.height != h) {
 				[r->irr release];
@@ -390,8 +393,11 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 			const char *skip = getenv("CADENCE_NRC_SKIP");  // (profiling: "train" or "gather" left out)
 			[u setComputePipelineState:r->nrcTrain];
 			NSUInteger tw = (w + 15) / 16, th = (h + 15) / 16;  // (rt.metal NRC_STRIDE)
-			if (!skip || strcmp(skip, "train") != 0) [u dispatchThreads:MTLSizeMake(tw, th, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
-			uint32_t groups = (uint32_t) (((tw + 15) / 16) * ((th + 15) / 16));
+			// (whole 16 x 16 groups: the kernel sums 8 simdgroups' rows and writes all of its row; threads past the edge add zero.
+			// Partial edge groups summed rows nobody wrote, BH8-05)
+			NSUInteger gx = (tw + 15) / 16, gy = (th + 15) / 16;
+			if (!skip || strcmp(skip, "train") != 0) [u dispatchThreadgroups:MTLSizeMake(gx, gy, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+			uint32_t groups = (uint32_t) (gx * gy);
 			[u memoryBarrierWithScope:MTLBarrierScopeBuffers];
 			[u setComputePipelineState:r->nrcAdam];
 			[u setBytes:&groups length:4 atIndex:13];
