@@ -949,6 +949,57 @@ public final class CadenceSelfTest {
 						spin.setDaemon(true);
 						spin.start();
 					}
+				} else if (lower.startsWith("mobs=")) {
+					// "mobs=S[:N]": for S seconds, twice a second, the N (3) nearest water mobs as the server has them (position, speed,
+					// ticks without a player near, in water / under water) and as this client shows them (position, speed, body turn)
+					String[] g = lower.substring(5).split(":");
+					int seconds = Integer.parseInt(g[0]), count = g.length > 1 ? Integer.parseInt(g[1]) : 3;
+					var mobServer = mc.getSingleplayerServer();
+					if (mobServer != null) {
+						for (int k = 0; k < seconds * 2; k++) {
+							String onServer = mobServer.submit(() -> {
+								var player = mobServer.getPlayerList().getPlayerByName(mc.getUser().getName());
+								if (player == null) return "no player";
+								var list = new java.util.ArrayList<net.minecraft.world.entity.Mob>();
+								for (var e : player.level().getAllEntities()) {
+									if (!(e instanceof net.minecraft.world.entity.Mob m)) continue;
+									var cat = e.getType().getCategory();
+									if (cat == net.minecraft.world.entity.MobCategory.WATER_CREATURE || cat == net.minecraft.world.entity.MobCategory.WATER_AMBIENT
+										|| cat == net.minecraft.world.entity.MobCategory.UNDERGROUND_WATER_CREATURE) list.add(m);
+								}
+								list.sort(java.util.Comparator.comparingDouble(m -> m.distanceToSqr(player)));
+								StringBuilder b = new StringBuilder();
+								for (var m : list.subList(0, Math.min(count, list.size()))) {
+									var v = m.getDeltaMovement();
+									b.append(String.format(Locale.ROOT, " | #%d %s d=%.0f pos %.1f %.1f %.1f v %.3f %.3f %.3f idle %d water %s/%s fh %.2f",
+										m.getId(), m.getType().toShortString(), Math.sqrt(m.distanceToSqr(player)), m.getX(), m.getY(), m.getZ(), v.x, v.y, v.z,
+										m.getNoActionTime(), m.isInWater(), m.isUnderWater(), m.getFluidHeight(net.minecraft.tags.FluidTags.WATER)));
+								}
+								return b.toString();
+							}).join();
+							String client = mc.submit(() -> {
+								if (mc.level == null) return "";
+								StringBuilder b = new StringBuilder();
+								for (String part : onServer.split(" \\| #")) {
+									int sp = part.indexOf(' ');
+									if (sp <= 0 || !Character.isDigit(part.charAt(0))) continue;
+									var e = mc.level.getEntity(Integer.parseInt(part.substring(0, sp)));
+									if (e == null) {
+										b.append(" | ").append(part, 0, sp).append(" not on the client");
+										continue;
+									}
+									var v = e.getDeltaMovement();
+									float body = e instanceof net.minecraft.world.entity.LivingEntity l ? l.yBodyRot : e.getYRot();
+									b.append(String.format(Locale.ROOT, " | #%s pos %.1f %.1f %.1f v %.3f %.3f %.3f body %.0f pitch %.0f", part.substring(0, sp),
+										e.getX(), e.getY(), e.getZ(), v.x, v.y, v.z, body, e.getXRot()));
+								}
+								return b.toString();
+							}).join();
+							LOGGER.info("[selftest] mobs server{}", onServer);
+							LOGGER.info("[selftest] mobs client{}", client);
+							sleep(500);
+						}
+					}
 				} else if (lower.startsWith("ahead=")) {
 					// "ahead=S": for S seconds, once a second, the chunks this client has east of the player (the direction a host's
 					// "glide=...:NAME" moves it), then the average and minimum (multiplayer: how well chunks keep up)
