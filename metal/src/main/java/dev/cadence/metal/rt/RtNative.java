@@ -16,7 +16,7 @@ final class RtNative {
 	private static final MethodHandle HW = fn("mcrt_hw", JAVA_INT, JAVA_LONG);
 	private static final MethodHandle SECTION = fn("mcrt_section", null, JAVA_LONG, JAVA_INT, JAVA_LONG);
 	private static final MethodHandle FRAME = fn("mcrt_frame", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG,
-		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT);
+		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG);
 	private static final MethodHandle FREE = fn("mcrt_free", null, JAVA_LONG);
 	private static final MethodHandle PATH = fn("mcrt_path", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG);
@@ -54,9 +54,9 @@ final class RtNative {
 	}
 
 	static int frame(long rt, long enc, long color, long depth, long lightmap, long vox, long bricks, long sections, long palette, long frame, int len,
-		int sox, int soz, int flags) {
+		int sox, int soz, int flags, long lights) {
 		try {
-			return (int) FRAME.invokeExact(rt, enc, color, depth, lightmap, vox, bricks, sections, palette, frame, len, sox, soz, flags);
+			return (int) FRAME.invokeExact(rt, enc, color, depth, lightmap, vox, bricks, sections, palette, frame, len, sox, soz, flags, lights);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}

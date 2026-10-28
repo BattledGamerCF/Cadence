@@ -18,6 +18,7 @@ public final class AppleHardwareSettings {
 		Hdr.setWanted("true".equalsIgnoreCase(ShaderToggle.configValue("hdr", "false").strip()));
 		RayTracing.setMode(parse(RayTracing.Mode.class, ShaderToggle.configValue("rayTracing", "OFF"), RayTracing.Mode.OFF));
 		RayTracing.setTracer(parse(RayTracing.Tracer.class, ShaderToggle.configValue("rayTracer", "AUTO"), RayTracing.Tracer.AUTO));
+		RayTracing.setTorchShadows(!"false".equalsIgnoreCase(ShaderToggle.configValue("torchShadows", "true").strip()));
 		dev.cadence.shaders.cadence.voice.VoiceControl.setWanted("true".equalsIgnoreCase(ShaderToggle.configValue("voiceControl", "false").strip()));
 		dev.cadence.metal.neural.SmoothTextures.setWanted("true".equalsIgnoreCase(ShaderToggle.configValue("smoothTextures", "false").strip()));
 		dev.cadence.metal.neural.StyleFilter.setStyle(parse(dev.cadence.metal.neural.StyleFilter.Style.class, ShaderToggle.configValue("styleFilter", "OFF"),
@@ -120,6 +121,26 @@ public final class AppleHardwareSettings {
 
 	private static Component rtLabel() {
 		return Component.literal("Ray Tracing: " + RayTracing.mode().label);
+	}
+
+	/** Torch Shadows: On / Off (RayTracing.setTorchShadows; with Ray Tracing on). */
+	public static Button torchButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(torchLabel(), b -> {
+			boolean on = !RayTracing.torchShadows();
+			RayTracing.setTorchShadows(on);
+			ShaderToggle.saveKey("torchShadows", Boolean.toString(on));
+			CadenceSettings.refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.MEDIUM, "Torches, lanterns, lava and glowstone cast ray-traced shadows.",
+			"#A wall or a pillar between a torch and the floor shadows it, as the sun's shadows do. Each lit spot picks the lights that "
+				+ "reach it (up to 15 nearby) by how much each gives and traces a ray to one or two of them a frame; the result builds "
+				+ "up over a few frames. With Ray Tracing on (Shadows or Lighting).")).build();
+		CadenceSettings.onRefresh(() -> self[0].setMessage(torchLabel()));
+		return self[0];
+	}
+
+	private static Component torchLabel() {
+		return Component.literal("Torch Shadows: " + (RayTracing.torchShadows() ? "On" : "Off"));
 	}
 
 	/** Ray Tracer: Auto / Hardware / Voxel. */

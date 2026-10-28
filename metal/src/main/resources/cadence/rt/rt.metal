@@ -23,7 +23,7 @@ struct RtFrame {
 	float4 sun;            // xyz: towards the light (the sun, or the moon at night); w: its strength (0: no direct light)
 	uint4 dims;            // x: W (a power of two), y: H, z: the window's origin x & (W - 1), w: its origin z & (W - 1)
 	float4 params;         // x: longest shadow ray (blocks), y: frame number, z: sky light levels a full shadow removes, w: soft shadow radius
-	uint4 screen;          // xy: the frame's size; z: flags (bit 0: debug view of the visibility)
+	uint4 screen;          // xy: the frame's size; z: flags (bit 0: debug view of the visibility); w: Torch Shadows on (rt_torch ran)
 	float4 sky;            // xyz: the sky's colour (linear), w: sky brightness 0..1 (path tracing)
 	float4 extra;          // x: one above the highest solid cell in the window (window y): a ray climbing past it is in the open;
 	                       // y: the trace's scale (1: a ray per pixel, 2: per 2 x 2 pixels, rt_apply_fs upsamples);
@@ -343,21 +343,45 @@ static float4 traced(texture2d<float, access::read> rt, depth2d<float, access::r
 	return float4((sum / wsum).r, best.g, dist, best.a);
 }
 
+// ---- Torch Shadows: how much of the block light (torches, lanterns, lava, glowstone) really reaches a pixel ----
+
+// Torch Shadows' visibility at a pixel (rt_torch's, at the trace's scale): 1 where every light that lights it is in sight.
+static float torchAt(texture2d<float, access::read> torch, uint2 p, constant RtFrame &f) {
+	if (f.screen.w == 0u) return 1.0f;
+	uint2 q = min(uint2(float2(p) / f.extra.y), uint2(torch.get_width() - 1u, torch.get_height() - 1u));
+	return torch.read(q).r;
+}
+
+// The block light levels a pixel keeps where its lights are hidden: some always stays (light also comes round corners).
+static inline float blockLeft(uint block, float torchVis) {
+	return float(block) * mix(0.45f, 1.0f, torchVis);
+}
+
+// The lightmap at fractional light levels (bilinear between its texels).
+static float3 lightmapF(texture2d<float, access::read> lm, float block, float sky) {
+	uint b0 = uint(floor(block)), b1 = min(b0 + 1u, 15u), s0 = uint(floor(sky)), s1 = min(s0 + 1u, 15u);
+	float fb = fract(block), fs = fract(sky);
+	return mix(mix(lm.read(uint2(b0, s0)).rgb, lm.read(uint2(b1, s0)).rgb, fb), mix(lm.read(uint2(b0, s1)).rgb, lm.read(uint2(b1, s1)).rgb, fb), fs);
+}
+
 // The factor at a pixel: 1 where the light reaches it; in shadow, the game's lightmap at fewer sky light levels over the
 // lightmap at the levels it has (per channel), so the darkening is the one the game itself shows for less sky light.
 fragment float4 rt_apply_fs(VOut in [[stage_in]], texture2d<float, access::read> rt [[texture(0)]],
-	texture2d<float, access::read> lightmap [[texture(1)]], depth2d<float, access::read> depth [[texture(2)]], constant RtFrame &f [[buffer(2)]]) {
+	texture2d<float, access::read> lightmap [[texture(1)]], depth2d<float, access::read> depth [[texture(2)]], constant RtFrame &f [[buffer(2)]],
+	texture2d<float, access::read> torch [[texture(4)]]) {
 	uint2 p = uint2(in.pos.xy);
 	float4 s = traced(rt, depth, p, f);
-	if (s.r >= 0.999f || f.sun.w <= 0.0f) return float4(1.0f);
+	float tv = torchAt(torch, p, f);
+	bool sunLit = s.r >= 0.999f || f.sun.w <= 0.0f;
+	if (sunLit && tv >= 0.999f) return float4(1.0f);
 	uint code = uint(s.g + 0.5f), sky = (code >> 4) & 15u, block = code & 15u;
-	float drop = f.params.z * f.sun.w;
-	float lower = max(0.0f, float(sky) - drop);
-	uint s0 = uint(floor(lower)), s1 = min(s0 + 1u, 15u);
+	float drop = sunLit ? 0.0f : f.params.z * f.sun.w;
+	float lower = max(0.0f, float(sky) - drop), b = blockLeft(block, tv);
 	float3 lit = lightmap.read(uint2(block, sky)).rgb;
-	float3 dark = mix(lightmap.read(uint2(block, s0)).rgb, lightmap.read(uint2(block, s1)).rgb, fract(lower));
-	float3 ratio = clamp(dark / max(lit, float3(1e-3f)), 0.0f, 1.0f);
-	return float4(mix(ratio, float3(1.0f), s.r), 1.0f);
+	// in the sun's shadow: fewer sky levels; where the lights are hidden: fewer block levels
+	float3 dark = lightmapF(lightmap, b, lower), torchOnly = lightmapF(lightmap, b, float(sky));
+	float3 ratio = clamp(dark / max(lit, float3(1e-3f)), 0.0f, 1.0f), ratioT = clamp(torchOnly / max(lit, float3(1e-3f)), 0.0f, 1.0f);
+	return float4(sunLit ? ratioT : mix(ratio, ratioT, s.r), 1.0f);
 }
 
 // Debug view (-Dcadence.rt.debug): the visibility itself, white lit, black shadowed (blend off: replaces the frame).
@@ -676,7 +700,7 @@ static inline float vanillaShade(uint face) {
 // the game's block light plus the traced sun and the cached sky and bounce light.
 fragment float4 rt_light_fs(VOut in [[stage_in]], texture2d<float, access::read> rt [[texture(0)]],
 	texture2d<float, access::read> lightmap [[texture(1)]], depth2d<float, access::read> depth [[texture(2)]], constant RtFrame &f [[buffer(2)]],
-	texture2d<float, access::read> irr [[texture(3)]]) {
+	texture2d<float, access::read> irr [[texture(3)]], texture2d<float, access::read> torchVis [[texture(4)]]) {
 	uint2 p = uint2(in.pos.xy);
 	float d = depth.read(p);
 	if (d <= 1e-7f) return float4(1.0f);
@@ -691,7 +715,7 @@ fragment float4 rt_light_fs(VOut in [[stage_in]], texture2d<float, access::read>
 	if (gl.a < 0.5f) return float4(1.0f);  // (not lit yet: as the game draws it)
 	float3 cached = gl.rgb;
 	float3 vanilla = srgbToLinear(lightmap.read(uint2(block, sky)).rgb) * vanillaShade(face);
-	float3 torch = srgbToLinear(lightmap.read(uint2(block, 0u)).rgb);
+	float3 torch = srgbToLinear(lightmapF(lightmap, blockLeft(block, torchAt(torchVis, p, f)), 0.0f));
 	float vis = sky == 0u ? 0.0f : s.r;
 	float3 sun = f.extra2.xyz * (f.sun.w * vis * max(dot(faceNormal(face), f.sun.xyz), 0.0f));
 	float3 relit = torch * vanillaShade(face) + (sun + cached) * f.cache.w;
@@ -810,4 +834,66 @@ fragment float4 rt_path_out_fs(VOut in [[stage_in]], texture2d<float, access::re
 // The denoised photo (MetalFX's denoiser over the average so far, linear), into the frame.
 fragment float4 rt_path_den_fs(VOut in [[stage_in]], texture2d<float, access::read> den [[texture(0)]]) {
 	return float4(linearToSrgb(den.read(uint2(in.pos.xy)).rgb), 1.0f);
+}
+
+// Torch Shadows: per traced sample, the lights (the block-light grid's cell: every block that gives light within reach of it,
+// listed by RtWorld) weighed by what each would give here unshadowed (its level less the distance, times the cosine: a light
+// behind the surface gives it none); two of them picked in proportion to that (resampled importance sampling) and a shadow ray traced to each through the
+// voxels. The share that reached it is an unbiased estimate of how much of the direct block light arrives; it is blended over
+// frames where the sample still sees the same surface (two rays a frame add up to a smooth shadow).
+static inline float3 lightPos(uint l) {
+	return float3(float(l & 0xFFu), float((l >> 16) & 0xFFFu), float((l >> 8) & 0xFFu)) + 0.5f;
+}
+
+kernel void rt_torch(depth2d<float, access::read> depth [[texture(0)]], texture2d<float, access::read_write> torch [[texture(1)]],
+	device const ushort *vox [[buffer(0)]], device const uint2 *bricks [[buffer(1)]], constant RtFrame &f [[buffer(2)]],
+	device const uchar *sections [[buffer(5)]], device const uint *grid [[buffer(8)]], uint2 gid [[thread_position_in_grid]]) {
+	if (gid.x >= torch.get_width() || gid.y >= torch.get_height()) return;
+	uint2 px = min(gid * uint(f.extra.y), f.screen.xy - 1);
+	float d = depth.read(px);
+	if (d <= 1e-7f) {
+		torch.write(float4(1.0f, 60000.0f, 0.0f, 0.0f), gid);
+		return;
+	}
+	float3 P = pointAt(px, d, f);
+	float dist = length(P);
+	float3 N = normalAt(depth, px, P, f);
+	float3 g = P - f.origin.xyz;
+	float vis = 1.0f;
+	int3 cell = int3(floor(g / 8.0f)), gdim = int3(int(f.dims.x / 8u), int(f.dims.y / 8u), int(f.dims.x / 8u));
+	if (all(cell >= 0) && all(cell < gdim) && edgeFade(P, f) < 0.999f && (lightAt(g, N, vox, f) & 15u) > 0u) {
+		uint base = (uint(cell.y * gdim.z + cell.z) * uint(gdim.x) + uint(cell.x)) * 16u, n = min(grid[base], 15u);
+		float w[15], total = 0.0f;
+		for (uint i = 0; i < n; i++) {
+			float3 v = lightPos(grid[base + 1u + i]) - g;
+			float l = length(v), e = float(grid[base + 1u + i] >> 28);
+			w[i] = max(e - l, 0.0f) * max(dot(N, v / max(l, 1e-3f)), 0.0f);
+			total += w[i];
+		}
+		// (lights near but all behind the surface: none lights it directly; no lights listed at all: as the game has it)
+		if (n > 0u && total <= 0.0f) vis = 0.0f;
+		if (total > 0.0f) {
+			float seen = 0.0f;
+			int3 own = int3(floor(g - N * 0.01f));
+			for (uint k = 0; k < 2u; k++) {
+				float u = rand2(gid + uint2(k * 977u, 31u), uint(f.params.y)).x * total, acc = 0.0f;
+				uint pick = n - 1u;
+				for (uint i = 0; i < n; i++) {
+					acc += w[i];
+					if (u < acc) {
+						pick = i;
+						break;
+					}
+				}
+				float3 v = lightPos(grid[base + 1u + pick]) - g;
+				float l = length(v);
+				// (to just short of the light's own block: a glowstone or lava light is solid itself)
+				seen += rt_trace(g + N * 0.02f, v / l, 0.0f, max(l - 0.75f, 0.0f), own, bricks, sections, f) >= 0.0f ? 0.0f : 1.0f;
+			}
+			vis = seen * 0.5f;
+		}
+	}
+	float4 prev = torch.read(gid);
+	if (abs(prev.g - dist) < 0.04f * dist + 0.08f) vis = mix(prev.r, vis, 0.25f);
+	torch.write(float4(vis, dist, 0.0f, 0.0f), gid);
 }

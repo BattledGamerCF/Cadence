@@ -107,6 +107,25 @@ public final class RayTracing {
 	}
 
 	/** Whether the last frame's shadows went through the acceleration structure. */
+	/**
+	 * Torch Shadows (Video Settings > Cadence: Visuals, with Ray Tracing on): the light of torches, lanterns, lava and other
+	 * blocks that give light traced too (rt.metal rt_torch): a wall between a torch and the floor shadows it.
+	 */
+	private static volatile boolean torchShadows = true;
+
+	public static void setTorchShadows(boolean on) {
+		torchShadows = on;
+	}
+
+	public static boolean torchShadows() {
+		return torchShadows;
+	}
+
+	/** Lights in the voxel window (Torch Shadows), for the self-test. */
+	public static int lightCount() {
+		return world == null ? 0 : world.lightCount;
+	}
+
 	public static boolean usedHardware() {
 		return usedHw;
 	}
@@ -265,10 +284,13 @@ public final class RayTracing {
 			return;
 		}
 		boolean lighting = mode == Mode.LIGHTING;
-		int flags = (rtHw ? 1 : 0) | (DEBUG ? 2 : 0) | (lighting ? 4 : 0) | (lighting && clearCache ? 8 : 0) | SCALE << 8;
+		// (Torch Shadows: the light grid, and RtFrame screen.w says the kernel ran)
+		long lights = torchShadows ? world.lights() : 0;
+		MemoryUtil.memPutInt(frameBuf + 204, lights != 0 ? 1 : 0);
+		int flags = (rtHw ? 1 : 0) | (DEBUG ? 2 : 0) | (lighting ? 4 : 0) | (lighting && clearCache ? 8 : 0) | SCALE << 8 | (lights != 0 ? 0x10000 : 0);
 		if (lighting) clearCache = false;
 		int r = RtNative.frame(rt, enc, MetalBridge.textureHandle(color), MetalBridge.textureHandle(depth), light, world.vox, world.bricks, world.sections,
-			world.palette, frameBuf, FRAME_BYTES, world.ox >> 4, world.oz >> 4, flags);
+			world.palette, frameBuf, FRAME_BYTES, world.ox >> 4, world.oz >> 4, flags, lights);
 		usedHw = r == 1;
 		// (the GPU's time per frame, every half second: Frame Generation fills in for Lighting when the Mac can't hold the screen's rate)
 		gpuFrames++;

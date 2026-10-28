@@ -215,6 +215,10 @@ public final class CadenceSelfTest {
 						LOGGER.info("[selftest] stylestats: {} '{}' runs {} skipped {} last {} ms", dev.cadence.metal.neural.StyleFilter.style(),
 							dev.cadence.metal.neural.StyleFilter.status(), (long) st[0], (long) st[1], st[2]);
 					});
+				} else if (lower.startsWith("torch=")) {
+					// "torch=on|off": Torch Shadows (with Ray Tracing on)
+					dev.cadence.metal.rt.RayTracing.setTorchShadows(lower.endsWith("on"));
+					LOGGER.info("[selftest] torch shadows {} ({} lights in the window)", lower.endsWith("on") ? "on" : "off", dev.cadence.metal.rt.RayTracing.lightCount());
 				} else if (lower.startsWith("rt=")) {
 					// "rt=off|shadows": Ray Tracing's mode (not saved)
 					dev.cadence.metal.rt.RayTracing.setMode(dev.cadence.metal.rt.RayTracing.Mode.valueOf(lower.substring(3).toUpperCase(Locale.ROOT)));

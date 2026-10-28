@@ -22,6 +22,8 @@ typedef struct {
 	id<MTLBuffer> cache;  // the lighting cache (Ray Traced Lighting), made at its first use
 	id<MTLBuffer> touched;  // the entries the frame's samples touched: a count, then their slots
 	id<MTLComputePipelineState> path;
+	id<MTLComputePipelineState> torch;  // Torch Shadows (rt_torch)
+	id<MTLTexture> torchTex;            // its visibility and distance per traced sample (RGBA16Float, kept between frames)
 	id<MTLFunction> pathOutFs;
 	id<MTLRenderPipelineState> pathOut[2];
 	id<MTLTexture> accum;  // path traced photos: the sum of the samples so far (RGBA32Float; a = the count)
@@ -76,6 +78,9 @@ void *mcrt_new(Ctx *ctx, const char *source, int hw, int w, int h, char *err, in
 		id<MTLFunction> cu = [[lib newFunctionWithName:@"rt_cache_update"] autorelease], cr = [[lib newFunctionWithName:@"rt_cache_resolve"] autorelease];
 		r->cacheUpdate = cu ? [ctx->device newComputePipelineStateWithFunction:cu error:&e] : nil;
 		r->cacheResolve = cr ? [ctx->device newComputePipelineStateWithFunction:cr error:&e] : nil;
+		id<MTLFunction> tf = [[lib newFunctionWithName:@"rt_torch"] autorelease];
+		r->torch = tf ? [ctx->device newComputePipelineStateWithFunction:tf error:&e] : nil;  // (optional: no Torch Shadows without it)
+		if (!r->torch) NSLog(@"cadence-rt: rt_torch: %@", e);
 		id<MTLFunction> gf = [[lib newFunctionWithName:@"rt_gather"] autorelease];
 		r->gather = gf ? [ctx->device newComputePipelineStateWithFunction:gf error:&e] : nil;
 		if (!r->shadow || !r->applyVs || !r->applyFs || !r->debugFs || !r->lightFs || !r->cacheUpdate || !r->cacheResolve || !r->gather || !r->path || !r->pathOutFs) {
@@ -281,7 +286,7 @@ static id<MTLRenderPipelineState> applyPipeline(Rt *r, MTLPixelFormat format, in
 // Lighting (the lighting cache updated and the frame relit instead of only shadowed), bit 3 the cache cleared first.
 // 0, or -1 when nothing could be done.
 int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, id<MTLTexture> lightmap, id<MTLBuffer> vox,
-	id<MTLBuffer> bricks, id<MTLBuffer> sections, id<MTLBuffer> palette, const void *frame, int len, int sox, int soz, int flags) {
+	id<MTLBuffer> bricks, id<MTLBuffer> sections, id<MTLBuffer> palette, const void *frame, int len, int sox, int soz, int flags, id<MTLBuffer> lights) {
 	Rt *r = rt;
 	if (!color || !depth || !vox || !bricks || !sections || len > RT_FRAME_BYTES) return -1;
 	int useHw = (flags & 1) && r->hw;
@@ -322,6 +327,32 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 		}
 		[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		[c endEncoding];
+		// Torch Shadows (flags bit 16, with the light grid): the share of each sample's block light that reaches it
+		int torch = (flags & 0x10000) && lights && r->torch;
+		if (torch) {
+			if (!r->torchTex || r->torchTex.width != w || r->torchTex.height != h) {
+				[r->torchTex release];
+				MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA16Float width:w height:h mipmapped:NO];
+				d.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+				d.storageMode = MTLStorageModePrivate;
+				r->torchTex = [r->ctx->device newTextureWithDescriptor:d];
+			}
+			id<MTLComputeCommandEncoder> t = [cb computeCommandEncoder];
+			t.label = @"Cadence torch shadows";
+			[t setComputePipelineState:r->torch];
+			[t setTexture:depth atIndex:0];
+			[t setTexture:r->torchTex atIndex:1];
+			[t setBuffer:vox offset:0 atIndex:0];
+			[t setBuffer:bricks offset:0 atIndex:1];
+			[t setBuffer:fb offset:0 atIndex:2];
+			[t setBuffer:sections offset:0 atIndex:5];
+			[t setBuffer:lights offset:0 atIndex:8];
+			[t dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+			[t endEncoding];
+		} else if (r->torchTex) {
+			[r->torchTex release];
+			r->torchTex = nil;
+		}
 		int lighting = (flags & 4) != 0 && palette;
 		if (lighting) {
 			if (!r->cache) {
@@ -384,6 +415,7 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 		[re setFragmentTexture:depth atIndex:2];
 		[re setFragmentBuffer:fb offset:0 atIndex:2];
 		if (lighting) [re setFragmentTexture:r->irr atIndex:3];
+		[re setFragmentTexture:torch ? r->torchTex : r->out atIndex:4];  // (read only when RtFrame screen.w says it ran)
 		[re drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 		[re endEncoding];
 	}
@@ -565,6 +597,8 @@ void mcrt_free(void *rt) {
 	[r->pathOutFs release];
 	releaseDenoise(r);
 	[r->pathDenFs release];
+	[r->torch release];
+	[r->torchTex release];
 	[r->pathDen[0] release];
 	[r->pathDen[1] release];
 	[r->accum release];

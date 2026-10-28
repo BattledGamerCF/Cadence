@@ -49,12 +49,14 @@ final class RtWorld {
 	private int[] stateToId = new int[32768];
 	private int nextId = 1;
 	private final long[] brickScratch = new long[64];
+	private final long ctx;
 	/** mcrt.m's state for hardware ray tracing (its sections' structures), 0 without. */
 	long rt;
 	boolean hw;
 	long sectionsWritten;
 
 	RtWorld(long ctx, ClientLevel level, int w) {
+		this.ctx = ctx;
 		this.level = level;
 		this.w = w;
 		this.minY = level.getMinY();
@@ -77,6 +79,7 @@ final class RtWorld {
 	}
 
 	void release() {
+		for (long b : this.lightGrid) if (b != 0) RtNative.release(b);
 		RtNative.release(this.vox);
 		RtNative.release(this.bricks);
 		RtNative.release(this.palette);
@@ -176,6 +179,8 @@ final class RtWorld {
 		int skyFill = this.skyLight ? 15 : 0;
 		long[] bm = this.brickScratch;
 		java.util.Arrays.fill(bm, 0L);
+		int nl = 0;
+		this.lastEmission = 0;
 		for (int y = 0; y < 16; y++) {
 			int iy = (si << 4) + y;
 			for (int z = 0; z < 16; z++) {
@@ -183,6 +188,14 @@ final class RtWorld {
 				for (int x = 0; x < 16; x++) {
 					int ix = ((sx << 4) + x) & m;
 					int id = empty ? -1 : this.id(sec.getBlockState(x, y, z));
+					if (this.lastEmission > 0 && !empty) {
+						// (a block that gives light: Torch Shadows' lights)
+						if (nl + 4 > this.lightScratch.length) this.lightScratch = java.util.Arrays.copyOf(this.lightScratch, this.lightScratch.length * 2);
+						this.lightScratch[nl++] = (sx << 4) + x;
+						this.lightScratch[nl++] = (sy << 4) + y;
+						this.lightScratch[nl++] = (sz << 4) + z;
+						this.lightScratch[nl++] = this.lastEmission;
+					}
 					int v;
 					if (id > 0 && (id & 0x8000) != 0) {
 						v = id;
@@ -214,6 +227,103 @@ final class RtWorld {
 		}
 		if (this.hw && this.rt != 0) RtNative.section(this.rt, slot, sectionMask);
 		this.sectionsWritten++;
+		long key = SectionPos.asLong(sx, sy, sz);
+		int[] had = nl > 0 ? this.sectionLights.put(key, java.util.Arrays.copyOf(this.lightScratch, nl)) : this.sectionLights.remove(key);
+		if (nl > 0 || had != null) this.lightsDirty = true;
+	}
+
+	// ---- Torch Shadows: the blocks that give light, as a grid the GPU reads (rt.metal rt_torch) ----
+
+	/** Per section (SectionPos key): its blocks that give light, world x, y, z and level, four ints each. */
+	private final java.util.HashMap<Long, int[]> sectionLights = new java.util.HashMap<>();
+	private int[] lightScratch = new int[256];
+	/** Per global block state id: its light level + 1 (0: not known yet); the last id() call's level. */
+	private byte[] emission = new byte[32768];
+	private int lastEmission;
+	/** The grid: a cell per 8 x 8 x 8 blocks of the window, 16 ints (a count, then up to 15 lights within reach). Three buffers in
+	 * turn: one is rebuilt while the GPU may still read the others. */
+	private final long[] lightGrid = new long[3];
+	private int gridAt, gridOx = Integer.MIN_VALUE, gridOz;
+	private int[] gridScratch;
+	private boolean lightsDirty = true;
+	private long lightsBuiltAt;
+	/** Lights in the window at the last build. */
+	int lightCount;
+
+	/** The light grid for this frame (rebuilt when lights changed, at most 4 times a second, or the window moved). */
+	long lights() {
+		int gx = this.w >> 3, gy = this.h >> 3, cells = gx * gy * gx;
+		if (this.lightGrid[0] == 0)
+			for (int i = 0; i < 3; i++) this.lightGrid[i] = RtNative.buffer(this.ctx, (long) cells * 64);
+		boolean moved = this.ox != this.gridOx || this.oz != this.gridOz;
+		long now = System.nanoTime();
+		if (moved || this.lightsDirty && now - this.lightsBuiltAt > 250_000_000L) {
+			this.gridAt = (this.gridAt + 1) % 3;
+			this.buildGrid(gx, gy, cells, RtNative.contents(this.lightGrid[this.gridAt]));
+			this.gridOx = this.ox;
+			this.gridOz = this.oz;
+			this.lightsDirty = false;
+			this.lightsBuiltAt = now;
+		}
+		return this.lightGrid[this.gridAt];
+	}
+
+	private void buildGrid(int gx, int gy, int cells, long addr) {
+		if (this.gridScratch == null || this.gridScratch.length != cells * 16) this.gridScratch = new int[cells * 16];
+		int[] g = this.gridScratch;
+		java.util.Arrays.fill(g, 0);
+		int count = 0;
+		var it = this.sectionLights.entrySet().iterator();
+		while (it.hasNext()) {
+			var en = it.next();
+			long key = en.getKey();
+			if (!this.inWindow(SectionPos.x(key) << 4, SectionPos.z(key) << 4)) {
+				it.remove();  // (the window moved off it: written again if it comes back)
+				continue;
+			}
+			int[] l = en.getValue();
+			for (int i = 0; i < l.length; i += 4) {
+				int wx = l[i] - this.ox, wy = l[i + 1] - this.minY, wz = l[i + 2] - this.oz, e = l[i + 3];
+				if (wx < 0 || wz < 0 || wy < 0 || wx >= this.w || wz >= this.w || wy >= this.h) continue;
+				count++;
+				int packed = wx | wz << 8 | wy << 16 | e << 28;
+				float lx = wx + 0.5f, ly = wy + 0.5f, lz = wz + 0.5f;
+				for (int cy = Math.max(0, (wy - e) >> 3); cy <= Math.min(gy - 1, (wy + e) >> 3); cy++)
+					for (int cz = Math.max(0, (wz - e) >> 3); cz <= Math.min(gx - 1, (wz + e) >> 3); cz++)
+						for (int cx = Math.max(0, (wx - e) >> 3); cx <= Math.min(gx - 1, (wx + e) >> 3); cx++) {
+							// (within reach of the cell's box at all)
+							float dx = Math.max(Math.max(cx * 8 - lx, lx - (cx * 8 + 8)), 0), dy = Math.max(Math.max(cy * 8 - ly, ly - (cy * 8 + 8)), 0),
+								dz = Math.max(Math.max(cz * 8 - lz, lz - (cz * 8 + 8)), 0);
+							if (dx * dx + dy * dy + dz * dz >= e * e) continue;
+							int base = ((cy * gx + cz) * gx + cx) * 16, n = g[base];
+							if (n < 15) {
+								g[base + 1 + n] = packed;
+								g[base] = n + 1;
+								continue;
+							}
+							// (a crowded cell: the 15 that give it the most, by level less the distance to its middle)
+							float score = e - dist(lx, ly, lz, cx, cy, cz);
+							int weakest = -1;
+							float least = score;
+							for (int k = 0; k < 15; k++) {
+								int o = g[base + 1 + k];
+								float sc = (o >>> 28) - dist((o & 0xFF) + 0.5f, ((o >> 16) & 0xFFF) + 0.5f, ((o >> 8) & 0xFF) + 0.5f, cx, cy, cz);
+								if (sc < least) {
+									least = sc;
+									weakest = k;
+								}
+							}
+							if (weakest >= 0) g[base + 1 + weakest] = packed;
+						}
+			}
+		}
+		this.lightCount = count;
+		MemoryUtil.memIntBuffer(addr, g.length).put(g);
+	}
+
+	private static float dist(float x, float y, float z, int cx, int cy, int cz) {
+		float dx = x - (cx * 8 + 4), dy = y - (cy * 8 + 4), dz = z - (cz * 8 + 4);
+		return (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
 	}
 
 	// ---- the palette ----
@@ -222,6 +332,10 @@ final class RtWorld {
 	private int id(BlockState s) {
 		int g = Block.getId(s);
 		if (g >= this.stateToId.length) this.stateToId = java.util.Arrays.copyOf(this.stateToId, Math.max(g + 1, this.stateToId.length * 2));
+		if (g >= this.emission.length) this.emission = java.util.Arrays.copyOf(this.emission, Math.max(g + 1, this.emission.length * 2));
+		int em = this.emission[g];
+		if (em == 0) this.emission[g] = (byte) (em = Math.min(15, s.getLightEmission()) + 1);
+		this.lastEmission = em - 1;
 		int id = this.stateToId[g];
 		if (id != 0) return id;
 		boolean liquid = s.getBlock() instanceof LiquidBlock;
