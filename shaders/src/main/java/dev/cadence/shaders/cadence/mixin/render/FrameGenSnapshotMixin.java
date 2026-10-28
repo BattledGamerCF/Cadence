@@ -24,6 +24,8 @@ abstract class FrameGenSnapshotMixin {
 		var main = ((GameRenderer) (Object) this).mainRenderTarget();
 		boolean pack = ShaderRuntime.get() != null, scaled = dev.cadence.shaders.cadence.render.RenderScale.get() < 0.995f;
 		dev.cadence.metal.rt.RayTracing.afterWorld(main.getColorTexture(), main.getDepthTexture(), pack, scaled);
+		// (Biome Colours: the grade first, so a style filter and the generated frames see it; a pack grades its own picture)
+		dev.cadence.metal.grade.BiomeGrade.afterWorld(pack ? null : main.getColorTexture());
 		// (Style Filters: the newest styled picture over the world, before the snapshot too; off, with a pack or scaled, its network
 		// is let go, BH7-05)
 		dev.cadence.metal.neural.StyleFilter.afterWorld(pack || scaled ? null : main.getColorTexture());

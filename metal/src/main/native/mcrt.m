@@ -3,6 +3,7 @@
 // section, an instance per non-empty section, rebuilt for the sections and window moves Java reports). Render thread only.
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#import <MetalFX/MetalFX.h>
 #import "mcmetal.h"
 #include <string.h>
 
@@ -24,6 +25,12 @@ typedef struct {
 	id<MTLFunction> pathOutFs;
 	id<MTLRenderPipelineState> pathOut[2];
 	id<MTLTexture> accum;  // path traced photos: the sum of the samples so far (RGBA32Float; a = the count)
+	// denoised photos: the average so far and the denoiser's other inputs (rt_path writes them), its output, the denoiser
+	id<MTLTexture> noisy, albedo, normal, rough, dcopy, motion, spec, denoised;
+	id denoiser;
+	id<MTLFunction> pathDenFs;
+	id<MTLRenderPipelineState> pathDen[2];
+	int lastDenoised;  // (the last sample was denoised: the denoiser's history goes on; else it starts again)
 	id<MTLTexture> out;
 	id<MTLBuffer> frames[RT_RING];  // the frame's constants, for the intersection function too (it can't take setBytes)
 	int ring;
@@ -63,6 +70,7 @@ void *mcrt_new(Ctx *ctx, const char *source, int hw, int w, int h, char *err, in
 		r->debugFs = [lib newFunctionWithName:@"rt_debug_fs"];
 		r->lightFs = [lib newFunctionWithName:@"rt_light_fs"];
 		r->pathOutFs = [lib newFunctionWithName:@"rt_path_out_fs"];
+		r->pathDenFs = [lib newFunctionWithName:@"rt_path_den_fs"];
 		id<MTLFunction> pf = [[lib newFunctionWithName:@"rt_path"] autorelease];
 		r->path = pf ? [ctx->device newComputePipelineStateWithFunction:pf error:&e] : nil;
 		id<MTLFunction> cu = [[lib newFunctionWithName:@"rt_cache_update"] autorelease], cr = [[lib newFunctionWithName:@"rt_cache_resolve"] autorelease];
@@ -382,32 +390,92 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 	return useHw ? 1 : 0;
 }
 
+static id<MTLTexture> photoTexture(Ctx *ctx, MTLPixelFormat f, NSUInteger w, NSUInteger h, MTLTextureUsage usage) {
+	MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:f width:w height:h mipmapped:NO];
+	d.usage = usage;
+	d.storageMode = MTLStorageModePrivate;
+	return [ctx->device newTextureWithDescriptor:d];
+}
+
+static void releaseDenoise(Rt *r) {
+	[r->noisy release];
+	[r->albedo release];
+	[r->normal release];
+	[r->rough release];
+	[r->dcopy release];
+	[r->motion release];
+	[r->spec release];
+	[r->denoised release];
+	[r->denoiser release];
+	r->noisy = r->albedo = r->normal = r->rough = r->dcopy = r->motion = r->spec = r->denoised = nil;
+	r->denoiser = nil;
+}
+
+// The denoiser and its textures for a w x h photo (made once per size); 0 if MetalFX can't denoise here (then the photo is the
+// plain average).
+static int makeDenoise(Rt *r, NSUInteger w, NSUInteger h) {
+	if (r->denoiser && r->denoised.width == w && r->denoised.height == h) return 1;
+	releaseDenoise(r);
+	if (@available(macOS 26.0, *)) {
+	} else {
+		return 0;
+	}
+	if (mc4On || ![MTLFXTemporalDenoisedScalerDescriptor supportsDevice:r->ctx->device]) return 0;
+	MTLFXTemporalDenoisedScalerDescriptor *d = [[MTLFXTemporalDenoisedScalerDescriptor new] autorelease];
+	d.colorTextureFormat = MTLPixelFormatRGBA16Float;
+	d.depthTextureFormat = MTLPixelFormatR32Float;
+	d.motionTextureFormat = MTLPixelFormatRG16Float;
+	d.diffuseAlbedoTextureFormat = MTLPixelFormatRGBA8Unorm;
+	d.specularAlbedoTextureFormat = MTLPixelFormatRGBA8Unorm;
+	d.normalTextureFormat = MTLPixelFormatRGBA16Float;
+	d.roughnessTextureFormat = MTLPixelFormatR8Unorm;
+	d.outputTextureFormat = MTLPixelFormatRGBA16Float;
+	d.inputWidth = w;
+	d.inputHeight = h;
+	d.outputWidth = w;
+	d.outputHeight = h;
+	id<MTLFXTemporalDenoisedScaler> den = [d newTemporalDenoisedScalerWithDevice:r->ctx->device];
+	if (!den) return 0;
+	MTLTextureUsage in = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+	r->denoiser = den;
+	r->noisy = photoTexture(r->ctx, MTLPixelFormatRGBA16Float, w, h, in | den.colorTextureUsage);
+	r->albedo = photoTexture(r->ctx, MTLPixelFormatRGBA8Unorm, w, h, in | den.diffuseAlbedoTextureUsage);
+	r->normal = photoTexture(r->ctx, MTLPixelFormatRGBA16Float, w, h, in | den.normalTextureUsage);
+	r->rough = photoTexture(r->ctx, MTLPixelFormatR8Unorm, w, h, in | den.roughnessTextureUsage);
+	r->dcopy = photoTexture(r->ctx, MTLPixelFormatR32Float, w, h, in | den.depthTextureUsage);
+	r->motion = photoTexture(r->ctx, MTLPixelFormatRG16Float, w, h, in | den.motionTextureUsage);
+	r->spec = photoTexture(r->ctx, MTLPixelFormatRGBA8Unorm, w, h, in | den.specularAlbedoTextureUsage);
+	r->denoised = photoTexture(r->ctx, MTLPixelFormatRGBA16Float, w, h, MTLTextureUsageShaderRead | den.outputTextureUsage);
+	return 1;
+}
+
 // A path traced photo's sample: the view path traced once more and added to the sum (reset: start a new sum), the average drawn
-// into color. The caller makes sure the camera hasn't moved. 0, or -1.
+// into color. denoise: the average goes through MetalFX's denoiser first (with the surfaces' colours, normals and depth the
+// kernel writes, and viewProj: the camera-relative view-projection, 16 floats), and the denoised photo is drawn. The caller makes
+// sure the camera hasn't moved. 0 (1: denoised), or -1.
 int mcrt_path(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, id<MTLTexture> lightmap, id<MTLBuffer> vox, id<MTLBuffer> bricks,
-	id<MTLBuffer> sections, id<MTLBuffer> palette, const void *frame, int len, int reset) {
+	id<MTLBuffer> sections, id<MTLBuffer> palette, const void *frame, int len, int reset, int denoise, const float *viewProj) {
 	Rt *r = rt;
 	if (!color || !depth || !lightmap || len > RT_FRAME_BYTES) return -1;
 	@autoreleasepool {
 		NSUInteger w = color.width, h = color.height;
 		if (!r->accum || r->accum.width != w || r->accum.height != h) {
 			[r->accum release];
-			MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float width:w height:h mipmapped:NO];
-			d.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
-			d.storageMode = MTLStorageModePrivate;
-			r->accum = [r->ctx->device newTextureWithDescriptor:d];
+			r->accum = photoTexture(r->ctx, MTLPixelFormatRGBA32Float, w, h, MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite);
 			reset = 1;
 		}
+		if (denoise && !makeDenoise(r, w, h)) denoise = 0;
 		int k = color.pixelFormat == MTLPixelFormatRGBA16Float ? 1 : 0;
-		if (!r->pathOut[k]) {
+		id<MTLRenderPipelineState> *pso = denoise ? &r->pathDen[k] : &r->pathOut[k];
+		if (!*pso) {
 			MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor new] autorelease];
 			d.vertexFunction = r->applyVs;
-			d.fragmentFunction = r->pathOutFs;
+			d.fragmentFunction = denoise ? r->pathDenFs : r->pathOutFs;
 			d.colorAttachments[0].pixelFormat = color.pixelFormat;
 			d.colorAttachments[0].writeMask = MTLColorWriteMaskRed | MTLColorWriteMaskGreen | MTLColorWriteMaskBlue;
 			NSError *e = nil;
-			r->pathOut[k] = [r->ctx->device newRenderPipelineStateWithDescriptor:d error:&e];
-			if (!r->pathOut[k]) { NSLog(@"cadence-rt: path out: %@", e); return -1; }
+			*pso = [r->ctx->device newRenderPipelineStateWithDescriptor:d error:&e];
+			if (!*pso) { NSLog(@"cadence-rt: path out: %@", e); return -1; }
 		}
 		id<MTLBuffer> fb = r->frames[r->ring];
 		r->ring = (r->ring + 1) % RT_RING;
@@ -420,27 +488,54 @@ int mcrt_path(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, id
 		[c setTexture:color atIndex:1];
 		[c setTexture:r->accum atIndex:2];
 		[c setTexture:lightmap atIndex:3];
+		id<MTLTexture> aux[7] = {r->noisy, r->albedo, r->normal, r->rough, r->dcopy, r->motion, r->spec};
+		for (int i = 0; i < 7; i++) [c setTexture:denoise ? aux[i] : r->accum atIndex:(NSUInteger) (4 + i)];  // (unused when not denoising)
 		[c setBuffer:vox offset:0 atIndex:0];
 		[c setBuffer:bricks offset:0 atIndex:1];
 		[c setBuffer:fb offset:0 atIndex:2];
 		[c setBuffer:palette offset:0 atIndex:4];
 		[c setBuffer:sections offset:0 atIndex:5];
-		uint32_t rs = (uint32_t) (reset != 0);
+		uint32_t rs = (uint32_t) (reset != 0), dn = (uint32_t) (denoise != 0);
 		[c setBytes:&rs length:4 atIndex:6];
+		[c setBytes:&dn length:4 atIndex:7];
 		[c dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		[c endEncoding];
+		if (@available(macOS 26.0, *)) if (denoise) {
+			id<MTLFXTemporalDenoisedScaler> den = r->denoiser;
+			den.colorTexture = r->noisy;
+			den.depthTexture = r->dcopy;
+			den.motionTexture = r->motion;
+			den.diffuseAlbedoTexture = r->albedo;
+			den.specularAlbedoTexture = r->spec;
+			den.normalTexture = r->normal;
+			den.roughnessTexture = r->rough;
+			den.outputTexture = r->denoised;
+			den.depthReversed = YES;
+			den.shouldResetHistory = reset != 0 || !r->lastDenoised;
+			den.jitterOffsetX = 0;
+			den.jitterOffsetY = 0;
+			den.motionVectorScaleX = 1;
+			den.motionVectorScaleY = 1;
+			// (the frame's points are camera-relative world space: that is the "view" here, the normals are in it too)
+			den.worldToViewMatrix = matrix_identity_float4x4;
+			simd_float4x4 vp;
+			memcpy(&vp, viewProj, sizeof(vp));
+			den.viewToClipMatrix = vp;
+			[den encodeToCommandBuffer:cb];
+		}
 		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
 		rp.colorAttachments[0].texture = color;
 		rp.colorAttachments[0].loadAction = MTLLoadActionLoad;
 		rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 		id<MTLRenderCommandEncoder> re = [cb renderCommandEncoderWithDescriptor:rp];
 		re.label = @"Cadence path traced photo (out)";
-		[re setRenderPipelineState:r->pathOut[k]];
-		[re setFragmentTexture:r->accum atIndex:0];
+		[re setRenderPipelineState:*pso];
+		[re setFragmentTexture:denoise ? r->denoised : r->accum atIndex:0];
 		[re drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 		[re endEncoding];
+		r->lastDenoised = denoise;
+		return denoise ? 1 : 0;
 	}
-	return 0;
 }
 
 // Lets go of a path traced photo's sum (33 MB at 1080p).
@@ -448,6 +543,7 @@ void mcrt_path_done(void *rt) {
 	Rt *r = rt;
 	[r->accum release];
 	r->accum = nil;
+	releaseDenoise(r);
 }
 
 void mcrt_free(void *rt) {
@@ -467,6 +563,10 @@ void mcrt_free(void *rt) {
 	[r->irr release];
 	[r->path release];
 	[r->pathOutFs release];
+	releaseDenoise(r);
+	[r->pathDenFs release];
+	[r->pathDen[0] release];
+	[r->pathDen[1] release];
 	[r->accum release];
 	for (int k = 0; k < 2; k++) [r->pathOut[k] release];
 	for (int k = 0; k < 2; k++) {

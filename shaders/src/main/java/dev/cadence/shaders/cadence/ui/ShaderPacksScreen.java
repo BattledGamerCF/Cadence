@@ -69,7 +69,7 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 		LinearLayout rows = this.layout.addToFooter(LinearLayout.vertical().spacing(4));
 		LinearLayout top = rows.addChild(LinearLayout.horizontal().spacing(8));
 		this.profileButton = top.addChild(Button.builder(Component.empty(), b -> this.cycleProfile())
-			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The pack author's quality presets.", "Lower|faster: simpler shadows and lighting",
+			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES, "The pack author's quality presets.", "Lower|faster: simpler shadows and lighting",
 				"Higher|nicer, slower", "#Shift-click for the previous one. Your own changes in Pack Settings stay on top.")).build());
 		this.settingsButton = top.addChild(Button.builder(Component.literal("Pack Settings..."), b -> this.openSettings())
 			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The selected pack's own options (sun, clouds, water, shadows...).")).build());

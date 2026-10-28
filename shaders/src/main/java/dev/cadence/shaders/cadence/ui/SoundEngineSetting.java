@@ -19,6 +19,7 @@ public final class SoundEngineSetting {
 	public static void load() {
 		AppleAudio.setWanted(!"openal".equalsIgnoreCase(ShaderToggle.configValue("soundEngine", "apple").strip()));
 		dev.cadence.metal.audio.WorldAcoustics.setWanted(!"false".equalsIgnoreCase(ShaderToggle.configValue("worldReverb", "true").strip()));
+		dev.cadence.metal.audio.WorldAcoustics.setPaths(!"false".equalsIgnoreCase(ShaderToggle.configValue("soundPaths", "true").strip()));
 	}
 
 	/** World Reverb: On / Off (dev.cadence.metal.audio.WorldAcoustics; the Apple engine only). */
@@ -32,12 +33,35 @@ public final class SoundEngineSetting {
 			dev.cadence.metal.audio.WorldAcoustics.setWanted(on);
 			ShaderToggle.saveKey("worldReverb", Boolean.toString(on));
 			self[0].setMessage(reverbLabel());
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Sounds take on the space around you.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.LOW, "Sounds take on the space around you.",
 			"#Caves echo, rooms ring, open fields stay dry, and a sound behind a wall is muffled by the blocks in between. Cadence measures "
 				+ "the blocks around you a few times a second and sets Apple's reverb to match. With the Apple sound engine.")).build();
 		self[0].active = AppleAudio.wanted();
 		reverb = self[0];
 		return self[0];
+	}
+
+	/** Sound Around Corners: On / Off (dev.cadence.metal.audio.SoundPaths, with World Reverb on the Apple engine). */
+	private static Button paths;
+
+	public static Button pathsButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(pathsLabel(), b -> {
+			boolean on = !dev.cadence.metal.audio.WorldAcoustics.paths();
+			dev.cadence.metal.audio.WorldAcoustics.setPaths(on);
+			ShaderToggle.saveKey("soundPaths", Boolean.toString(on));
+			self[0].setMessage(pathsLabel());
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.LOW, "Sounds behind a wall come round the corner they really come by.",
+			"#A zombie in the next room is heard through the open door, from the door's side; a cave sound comes down the tunnel. "
+				+ "Cadence finds the way through the air around you (about 16 blocks each way), a little duller for each corner. "
+				+ "Where there is no way round, the wall muffles the sound as before. With World Reverb on the Apple sound engine.")).build();
+		self[0].active = AppleAudio.wanted();
+		paths = self[0];
+		return self[0];
+	}
+
+	private static Component pathsLabel() {
+		return Component.literal("Sound Around Corners: " + (dev.cadence.metal.audio.WorldAcoustics.paths() ? "On" : "Off"));
 	}
 
 	private static Component reverbLabel() {
@@ -54,10 +78,11 @@ public final class SoundEngineSetting {
 			Minecraft.getInstance().getSoundManager().reload();
 			self[0].setMessage(label());
 			if (reverb != null) reverb.active = apple;
+			if (paths != null) paths.active = apple;
 		}).width(Button.DEFAULT_WIDTH).tooltip(forced
 			? Tips.of("OpenAL: another mod drives OpenAL itself (sound physics, reverb), so Cadence keeps it.",
 				"#" + String.join(", ", compatMods()))
-			: Tips.of("Which engine plays the game's sound.",
+			: Tips.of(Tips.Impact.NONE, "Which engine plays the game's sound.",
 				"Apple Spatial Audio|Apple's own audio engine: spatial audio on headphones and AirPods, Apple's speaker rendering on the Mac's speakers, follows the output you pick in macOS",
 				"OpenAL|Minecraft's own engine (OpenAL Soft)")).build();
 		self[0].active = !forced;

@@ -30,7 +30,7 @@ public final class AppleAudio {
 	private static volatile boolean wanted = !"openal".equalsIgnoreCase(System.getProperty("cadence.audio", "apple"));
 	private static volatile boolean running;
 	private static MethodHandle INIT, SHUTDOWN, LISTENER, BUFFER, BUFFER_FREE, VOICE_NEW, VOICE_FREE, VOICE_STATIC, VOICE_PUSH, VOICE_PROCESSED,
-		VOICE_PLAY, VOICE_PAUSE, VOICE_UNPAUSE, VOICE_STOP, VOICE_STATE, VOICE_SET, STATS, ENVIRONMENT, SNAPSHOT, OCCLUSION;
+		VOICE_PLAY, VOICE_PAUSE, VOICE_UNPAUSE, VOICE_STOP, VOICE_STATE, VOICE_SET, STATS, ENVIRONMENT, SNAPSHOT, OCCLUSION, ROUTE;
 	/** mcaudio.m mca_voice_state */
 	public static final int INITIAL = 0, PLAYING = 1, PAUSED = 2, STOPPED = 3;
 	/** mcaudio.m mca_voice_set */
@@ -241,6 +241,16 @@ public final class AppleAudio {
 		}
 	}
 
+	/** Sound Around Corners: a sound's way round (mca_route); ignored if the sound is gone. */
+	public static void route(long voice, boolean routed, float ax, float ay, float az, float length, float db) {
+		if (!running) return;
+		try {
+			ROUTE.invokeExact(voice, routed ? 1 : 0, ax, ay, az, length, db);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
 	// ---- plumbing ----
 
 	/** pcm itself when it is direct (address set), else a direct copy the caller frees. */
@@ -289,6 +299,7 @@ public final class AppleAudio {
 		ENVIRONMENT = fn("mca_environment", null, JAVA_INT, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT);
 		SNAPSHOT = fn("mca_snapshot", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT);
 		OCCLUSION = fn("mca_occlusion", null, JAVA_LONG, JAVA_FLOAT);
+		ROUTE = fn("mca_route", null, JAVA_LONG, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT);
 	}
 
 	private static MethodHandle fn(String name, MemoryLayout result, MemoryLayout... args) {

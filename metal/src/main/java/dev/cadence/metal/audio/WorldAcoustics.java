@@ -13,11 +13,18 @@ import org.lwjgl.system.MemoryUtil;
  * sounds. Four times a second 26 rays go out from the listener through the blocks (up to 24 blocks): how many hit something and how
  * far tells a field from a forest, a room, a tunnel or a great cave, and sets Apple's environment reverb (its room preset, its
  * level, how much of each sound goes in). Ten times a second each playing sound gets the blocks between you and it as occlusion:
- * a mob behind a wall is muffled, one in the open isn't. Measured on the render thread from the game's own blocks; the sound
+ * a mob behind a wall is muffled, one in the open isn't, and with Sound Around Corners one behind a wall with a way round
+ * (an open door, a corridor) is heard from that way instead, if that is louder (SoundPaths). Measured on the render thread from the game's own blocks; the sound
  * thread's voices are only touched through AppleAudio (they're checked to still exist).
  */
 public final class WorldAcoustics {
 	private static volatile boolean wanted = !"false".equals(System.getProperty("cadence.audio.reverb"));
+	/** Sound Around Corners (SoundPaths): sounds behind walls heard round the corner they come by. */
+	private static volatile boolean paths = !"false".equals(System.getProperty("cadence.audio.paths"));
+	private static final SoundPaths PATHS = new SoundPaths();
+	/** The last sounds pass, for the self-test: sounds, occluded, routed round a corner. */
+	private static volatile String lastSounds = "";
+	private static float searchMs;
 	private static long roomAt, soundsAt;
 	private static boolean applied;
 	private static float level = -40f, blend;
@@ -40,7 +47,15 @@ public final class WorldAcoustics {
 	}
 
 	public static String last() {
-		return last;
+		return last + (lastSounds.isEmpty() ? "" : " | " + lastSounds);
+	}
+
+	public static void setPaths(boolean on) {
+		paths = on;
+	}
+
+	public static boolean paths() {
+		return paths;
 	}
 
 	/** Render thread, every frame (MetalSurface's present): the room and the sounds' occlusion, each on its own clock. */
@@ -117,7 +132,9 @@ public final class WorldAcoustics {
 			ids = MemoryUtil.nmemAlloc(MAX_SOUNDS * 8L);
 			pos = MemoryUtil.nmemAlloc(MAX_SOUNDS * 12L);
 		}
-		int n = AppleAudio.snapshot(ids, pos, MAX_SOUNDS);
+		int n = AppleAudio.snapshot(ids, pos, MAX_SOUNDS), occluded = 0, routed = 0;
+		boolean searched = false;
+		String first = "";
 		for (int i = 0; i < n; i++) {
 			float sx = MemoryUtil.memGetFloat(pos + i * 12L), sy = MemoryUtil.memGetFloat(pos + i * 12L + 4), sz = MemoryUtil.memGetFloat(pos + i * 12L + 8);
 			double dx = sx - eye.x, dy = sy - eye.y, dz = sz - eye.z, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -127,8 +144,31 @@ public final class WorldAcoustics {
 				march(lv, eye, (float) (dx / d), (float) (dy / d), (float) (dz / d), (float) d - 0.5f, blocks);
 				db = Math.max(-40f, -9f * blocks[0]);
 			}
-			AppleAudio.occlusion(MemoryUtil.memGetAddress(ids + i * 8L), db);
+			long id = MemoryUtil.memGetAddress(ids + i * 8L);
+			AppleAudio.occlusion(id, db);
+			// behind a wall: the way round, if there is one (the search only once a pass, and only when a sound needs it)
+			boolean round = false;
+			if (db < -1f) {
+				occluded++;
+				if (paths) {
+					if (!searched) {
+						long t0 = System.nanoTime();
+						if (PATHS.update(lv, eye)) searchMs = (System.nanoTime() - t0) / 1e6f;
+						searched = true;
+					}
+					round = PATHS.route(eye, sx, sy, sz);
+				}
+			}
+			if (round) {
+				if (routed++ == 0)
+					first = String.format(java.util.Locale.ROOT, " (first: from %.1f %.1f %.1f, way %.1f blocks, %d corners, straight %.1f, wall %.0f dB)", PATHS.ax, PATHS.ay,
+						PATHS.az, PATHS.length, PATHS.corners, d, db);
+				AppleAudio.route(id, true, PATHS.ax, PATHS.ay, PATHS.az, PATHS.length, Math.max(-15f, -3f * PATHS.corners));
+			} else {
+				AppleAudio.route(id, false, 0, 0, 0, 0, 0);
+			}
 		}
+		lastSounds = "sounds " + n + " occluded " + occluded + " round corners " + routed + first + String.format(java.util.Locale.ROOT, " search %.2f ms", searchMs);
 	}
 
 	/**

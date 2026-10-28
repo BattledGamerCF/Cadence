@@ -184,7 +184,7 @@ public final class ShaderToggle {
 			.width(Button.DEFAULT_WIDTH)
 			.tooltip(none ? Tips.of("No shader packs installed yet.",
 					"#Open this, then drop a pack's .zip file on the window (BSL, Complementary...), or put it in the folder.")
-				: Tips.of("Realistic light, shadows and water, at a cost in speed.", "#Pick a pack or Off from the list.",
+				: Tips.of(Tips.Impact.HIGH, "Realistic light, shadows and water, at a cost in speed.", "#Pick a pack or Off from the list.",
 					"#In game: O opens this list, K turns shaders off and back on (Controls > Miscellaneous).")).build();
 	}
 
@@ -257,7 +257,7 @@ public final class ShaderToggle {
 				else RenderScale.set(next);
 			}
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How sharp the world is drawn (menus and text always stay sharp).",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES.because("below 100%: raises fps"), "How sharp the world is drawn (menus and text always stay sharp).",
 			"Auto|lower only when your Mac can't keep up (recommended)",
 			"100%|always full sharpness",
 			"85% to 50%|more fps with shaders, softer",
@@ -290,7 +290,7 @@ public final class ShaderToggle {
 		self[0] = Button.builder(retinaLabel(), b -> {
 			setRetina(!retinaConfigured());
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How many pixels the game draws on a Retina display.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES.because("off: raises fps"), "How many pixels the game draws on a Retina display.",
 			"On|every pixel of your display, the sharpest picture",
 			"Off|a quarter of the pixels, each a crisp 2x2 block: about twice the fps",
 			"#Takes effect when you restart Minecraft.")).build();
@@ -304,7 +304,7 @@ public final class ShaderToggle {
 		self[0] = Button.builder(upscalerLabel(), b -> {
 			RenderScale.setUpscaler((RenderScale.upscaler() + 1) % RenderScale.UPSCALERS);
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("When Resolution is below 100%, how the picture is sharpened back:",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES, "When Resolution is below 100%, how the picture is sharpened back:",
 			"Apple|sharpest edges, Apple's MetalFX (recommended with shaders)",
 			"Smooth|a little softer, very even",
 			"Fast|cheapest, the most fps; crisp pixel edges (at 50% exactly sharp)",
@@ -328,7 +328,7 @@ public final class ShaderToggle {
 			ShadowReuse.setRate(ShadowReuse.rate() == 1 ? 2 : 1);
 			saveKey("shadowRate", Integer.toString(ShadowReuse.rate()));
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Shaders only: how often sun shadows are redrawn.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES, "Shaders only: how often sun shadows are redrawn.",
 			"Every 2nd Frame|about 15% more fps; moving shadows a little less smooth (recommended)",
 			"Every Frame|smoothest, slower")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(shadowRateLabel()));

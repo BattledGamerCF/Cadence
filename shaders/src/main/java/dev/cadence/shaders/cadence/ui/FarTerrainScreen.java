@@ -43,7 +43,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		this.list.addHeader(Component.literal(on == running() ? (on ? "Far Distance and Look apply now, the rest at the next launch" : "Changes take effect at the next launch")
 			: "Restart Minecraft to turn Far Terrain " + (on ? "on" : "off")).withStyle(on == running() ? ChatFormatting.GRAY : ChatFormatting.YELLOW));
 		this.list.addSmall(cycle("Far Terrain", "farTerrain", "off", new String[] {"off", "on"}, new String[] {"Off", "On"},
-				Tips.of("The world drawn far past your render distance, like the Distant Horizons mod (experimental).",
+				Tips.of(Tips.Impact.MEDIUM, "The world drawn far past your render distance, like the Distant Horizons mod (experimental).",
 					"#Generated from the world's own terrain and trees, replaced by the real chunks as you explore. Uses some memory "
 						+ "and power while it fills in; takes effect at the next launch.")),
 			distanceSlider());
@@ -51,7 +51,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		// 1-block cells reach (N / 2 - 68) blocks and every level after doubles the cells and the distance)
 		this.list.addSmall(cycle("Full Detail", "farTerrain.quality", "auto", new String[] {"auto", "low", "medium", "high"},
 				new String[] {"Auto", "190 Blocks", "440 Blocks", "960 Blocks"},
-				Tips.of("How far the far terrain keeps full detail (1-block steps, textures, plants) before it turns blockier.",
+				Tips.of(Tips.Impact.MEDIUM, "How far the far terrain keeps full detail (1-block steps, textures, plants) before it turns blockier.",
 					"#Farther costs GPU time and memory; every level after it doubles the step size and the distance.",
 					"Auto|440 blocks on Macs with up to 16 GB (190 on GPUs of 6 cores or fewer), 960 above",
 					"190 Blocks|about 150 MB: the lightest",
@@ -59,35 +59,35 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 					"960 Blocks|about 580 MB: for 5K displays")),
 			cycle("CPU Load", "farTerrain.cpu", "balanced", new String[] {"low", "balanced", "high"},
 				new String[] {"Low", "Balanced", "High"},
-				Tips.of("How many cores fill in new far terrain.",
+				Tips.of(Tips.Impact.VARIES.because("more cores fill in faster but leave less for the game"), "How many cores fill in new far terrain.",
 					"Low|one core: slowest to fill in, coolest",
 					"Balanced|the cores the game leaves free",
 					"High|all but two cores: fastest to fill in")));
 		this.list.addSmall(cycle("Land", "farTerrain.generate", "true", new String[] {"true", "false"},
 				new String[] {"Generated", "Explored Only"},
-				Tips.of("Where the far terrain comes from.",
+				Tips.of(Tips.Impact.NONE, "Where the far terrain comes from.",
 					"Generated|the world's own generator draws land you haven't been to (single player and LAN hosts)",
 					"Explored Only|only land you have seen: nothing is generated (also what servers show)")),
 			cycle("Trees & Plants", "farTerrain.trees", "true", new String[] {"true", "false"}, new String[] {"On", "Off"},
-				Tips.of("Trees, grass and flowers in the far terrain. Off: bare ground, faster to fill in.")));
+				Tips.of(Tips.Impact.LOW, "Trees, grass and flowers in the far terrain. Off: bare ground, faster to fill in.")));
 		this.list.addSmall(cycle("Fog", "farTerrain.fog", "normal", new String[] {"normal", "light", "off"},
 				new String[] {"Normal", "Light", "Off"},
-				Tips.of("Haze over the far terrain.", "Normal|the game's own fog, stretched to the far terrain's reach",
+				Tips.of(Tips.Impact.NONE, "Haze over the far terrain.", "Normal|the game's own fog, stretched to the far terrain's reach",
 					"Light|half as dense", "Off|clear to the horizon")),
 			cycle("Progress Line", "farTerrain.progress", "on", new String[] {"on", "off"}, new String[] {"On", "Off"},
-				Tips.of("A line under the fps counter while the far terrain fills in or pre-generates (\"Far terrain: 63% filled\").")));
+				Tips.of(Tips.Impact.NONE, "A line under the fps counter while the far terrain fills in or pre-generates (\"Far terrain: 63% filled\").")));
 		this.list.addSmall(cycle("Far Clouds", "farTerrain.clouds", "off", new String[] {"off", "on"}, new String[] {"Off", "On"},
-				Tips.of("Clouds reach out with the far terrain (to 256 chunks at most) instead of stopping at Cloud Distance.",
+				Tips.of(Tips.Impact.LOW, "Clouds reach out with the far terrain (to 256 chunks at most) instead of stopping at Cloud Distance.",
 					"#Costs some frame time and memory for the bigger cloud layer.")),
 			null);
 		this.list.addHeader(Component.literal("Look (applies now)").withStyle(ChatFormatting.GRAY));
 		this.list.addSmall(cycle("Brightness", "farTerrain.brightness", "1.0", new String[] {"0.6", "0.8", "1.0", "1.2", "1.4"},
-				new String[] {"60%", "80%", "100%", "120%", "140%"}, Tips.of("How bright the far terrain is drawn (100%: as generated).")),
+				new String[] {"60%", "80%", "100%", "120%", "140%"}, Tips.of(Tips.Impact.NONE, "How bright the far terrain is drawn (100%: as generated).")),
 			cycle("Saturation", "farTerrain.saturation", "1.0", new String[] {"0.5", "0.75", "1.0", "1.25", "1.5"},
-				new String[] {"50%", "75%", "100%", "125%", "150%"}, Tips.of("How vivid the far terrain's colours are (100%: as generated).")));
+				new String[] {"50%", "75%", "100%", "125%", "150%"}, Tips.of(Tips.Impact.NONE, "How vivid the far terrain's colours are (100%: as generated).")));
 		this.list.addSmall(cycle("Earth Curvature", "farTerrain.curvature", "0", new String[] {"0", "50", "200", "1000"},
 				new String[] {"Off", "Gentle", "Strong", "Tiny Planet"},
-				Tips.of("The world curving away like a planet, as Distant Horizons' option: far land sinks below the horizon.",
+				Tips.of(Tips.Impact.NONE, "The world curving away like a planet, as Distant Horizons' option: far land sinks below the horizon.",
 					"Off|flat, as Minecraft is", "Gentle|a planet 1/50 the Earth's size", "Strong|1/200",
 					"Tiny Planet|1/1000: a few kilometres around")),
 			null);
@@ -155,7 +155,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 			int queued = dev.cadence.metal.lod.LodPackFrame.pregenerate(chunks);
 			b.setMessage(Component.literal(queued < 0 ? "Not here (no generator)" : queued == 0 ? "Already generated" : "Queued " + queued + " tiles"));
 			b.active = false;
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Generates the far terrain within " + chunks * 16 / 1000 + " km of you now, in the background, and keeps it"
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.LOW.because("lowers fps only while it runs"), "Generates the far terrain within " + chunks * 16 / 1000 + " km of you now, in the background, and keeps it"
 			+ " on disk: travelling there later shows it at once.",
 			"#Single player and LAN hosts. About " + (chunks <= 64 ? "40 MB, under a minute" : "250 MB, a few minutes") + "; progress on the progress line.")).build();
 	}

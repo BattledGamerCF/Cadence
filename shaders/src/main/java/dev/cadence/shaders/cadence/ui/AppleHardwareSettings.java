@@ -32,7 +32,7 @@ public final class AppleHardwareSettings {
 			dev.cadence.shaders.cadence.voice.VoiceControl.setWanted(on);
 			ShaderToggle.saveKey("voiceControl", Boolean.toString(on));
 			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Spoken commands, recognised on your Mac only (Apple's on-device speech recognition; nothing is sent anywhere).",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.LOW, "Spoken commands, recognised on your Mac only (Apple's on-device speech recognition; nothing is sent anywhere).",
 			"#Say \"open inventory\", \"jump\", \"screenshot\", \"take a photo\", \"save replay\", \"pause\", \"third person\", \"slot three\", "
 				+ "\"Cadence say hello\" (a chat message) or \"Cadence command time set day\" (a command). Only whole phrases count: talk that "
 				+ "contains a command word does nothing. The first time, macOS asks to let Cadence Helper use the microphone and speech "

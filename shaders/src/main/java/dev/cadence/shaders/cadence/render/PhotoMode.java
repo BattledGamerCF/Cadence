@@ -15,8 +15,13 @@ public final class PhotoMode {
 	/** Frames left before the shot (the scale change takes a frame to reach the pack's targets), 0: not taking one. */
 	private static int countdown;
 	private static boolean hudWasHidden, frozeScale;
-	/** With Ray Tracing on: the photo is path traced (dev.cadence.metal.rt.RayTracing.startPhoto), this many samples added up first. */
-	private static final int PATH_SAMPLES = Integer.getInteger("cadence.photo.samples", 256);
+	/**
+	 * With Ray Tracing on: the photo is path traced (dev.cadence.metal.rt.RayTracing.startPhoto), this many samples added up first
+	 * and the average cleaned by MetalFX's denoiser (about 1 s at 1080p on an M2; -Dcadence.photo.denoise=false: no denoiser, 256
+	 * samples, about 7 s).
+	 */
+	private static final boolean DENOISE = !"false".equals(System.getProperty("cadence.photo.denoise"));
+	private static final int PATH_SAMPLES = Integer.getInteger("cadence.photo.samples", DENOISE ? 32 : 256);
 	private static boolean pathTraced;
 	private static long pathStarted;
 
@@ -37,7 +42,7 @@ public final class PhotoMode {
 		RenderScale.frozen = true;
 		countdown = 4;  // (ticks: ~0.2 s for the full-size frame to reach the screen)
 		// (Ray Tracing on, no shader pack: path traced, the shot taken once enough samples are added up, at most 30 s)
-		pathTraced = dev.cadence.shaders.runtime.ShaderRuntime.get() == null && dev.cadence.metal.rt.RayTracing.startPhoto(PATH_SAMPLES);
+		pathTraced = dev.cadence.shaders.runtime.ShaderRuntime.get() == null && dev.cadence.metal.rt.RayTracing.startPhoto(PATH_SAMPLES, DENOISE);
 		pathStarted = System.nanoTime();
 	}
 
@@ -61,16 +66,19 @@ public final class PhotoMode {
 		if (countdown <= 0) return;
 		if (countdown > 1 || !pathTraced) {
 			if (--countdown > 0) return;
-		} else if (dev.cadence.metal.rt.RayTracing.photoSamples() < PATH_SAMPLES && System.nanoTime() - pathStarted < 30_000_000_000L) {
+		} else if (dev.cadence.metal.rt.RayTracing.photoSamples() < dev.cadence.metal.rt.RayTracing.photoTarget() && System.nanoTime() - pathStarted < 30_000_000_000L) {
 			return;  // (still adding up samples: the shot waits)
 		} else {
 			countdown = 0;
 		}
 		int samples = pathTraced ? dev.cadence.metal.rt.RayTracing.photoSamples() : 0;
+		boolean denoised = pathTraced && dev.cadence.metal.rt.RayTracing.photoDenoised();
+		long took = (System.nanoTime() - pathStarted) / 1_000_000L;
 		// (milliseconds in the name: two shots in one second overwrote the first)
 		String name = "cadence-photo-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")) + ".png";
 		Screenshot.grab(mc.gameDirectory, name, mc.gameRenderer.mainRenderTarget(), 1, message -> mc.execute(() -> {
-			if (mc.player != null) mc.player.sendSystemMessage(Component.literal(samples > 0 ? "Photo Mode (path traced, " + samples + " samples): " : "Photo Mode: ")
+			if (mc.player != null) mc.player.sendSystemMessage(Component.literal(samples > 0 ? "Photo Mode (path traced, " + samples + " samples"
+				+ (denoised ? ", denoised" : "") + ", " + took + " ms): " : "Photo Mode: ")
 				.append(message));
 		}));
 		restore(mc);

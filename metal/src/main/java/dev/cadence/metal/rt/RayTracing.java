@@ -114,20 +114,38 @@ public final class RayTracing {
 	// ---- path traced photos (Photo Mode) ----
 
 	private static int photoTarget, photoSamples;
-	private static boolean photoReset;
+	private static boolean photoReset, photoDenoise, photoDenoised;
+	/** The photo's camera-relative view-projection for the denoiser (16 floats). */
+	private static long photoVp;
+	/** Samples for a photo the denoiser can't clean (MetalFX's denoiser needs macOS 26): the plain average needs many more. */
+	private static final int PLAIN_SAMPLES = 256;
+	private static final int DENOISE_FRAMES = 6;
 	private static final Matrix4f photoView = new Matrix4f();
 	private static double photoX, photoY, photoZ;
 
 	/**
 	 * Photo Mode with Ray Tracing on: the next frames path trace the view, adding up samples until `samples` (the camera moving
-	 * starts the sum again). False when Ray Tracing is off (an ordinary photo).
+	 * starts the sum again). denoise: the average goes through MetalFX's denoiser (a clean photo from a few dozen samples); where
+	 * it can't run, the photo waits for PLAIN_SAMPLES instead. False when Ray Tracing is off (an ordinary photo).
 	 */
-	public static boolean startPhoto(int samples) {
+	public static boolean startPhoto(int samples, boolean denoise) {
 		if (mode == Mode.OFF || failed) return false;
 		photoTarget = samples;
 		photoSamples = 0;
 		photoReset = true;
+		photoDenoise = denoise;
+		photoDenoised = false;
 		return true;
+	}
+
+	/** The samples the photo being path traced waits for. */
+	public static int photoTarget() {
+		return photoTarget;
+	}
+
+	/** Whether the photo being path traced is denoised. */
+	public static boolean photoDenoised() {
+		return photoDenoised;
 	}
 
 	/** Samples added up so far for the photo being path traced. */
@@ -227,8 +245,19 @@ public final class RayTracing {
 				photoZ = camZ;
 				photoSamples = 0;
 			}
-			RtNative.path(rt, enc, MetalBridge.textureHandle(color), MetalBridge.textureHandle(depth), light, world.vox, world.bricks, world.sections, world.palette,
-				frameBuf, FRAME_BYTES, photoSamples == 0);
+			// (the denoiser over the last DENOISE_FRAMES samples only: its own history needs a few frames, and each costs ~90 ms at
+			// 1080p on an M2; the samples before add up as usual)
+			boolean denoiseNow = photoDenoise && photoSamples >= photoTarget - DENOISE_FRAMES;
+			if (photoVp == 0) photoVp = MemoryUtil.nmemAlloc(64);
+			viewProj.getToAddress(photoVp);
+			int got = RtNative.path(rt, enc, MetalBridge.textureHandle(color), MetalBridge.textureHandle(depth), light, world.vox, world.bricks, world.sections,
+				world.palette, frameBuf, FRAME_BYTES, photoSamples == 0, denoiseNow, photoVp);
+			photoDenoised = got == 1;
+			if (denoiseNow && got == 0) {
+				// (no denoiser here: the plain average, with the samples it needs)
+				photoDenoise = false;
+				photoTarget = Math.max(photoTarget, PLAIN_SAMPLES);
+			}
 			photoReset = false;
 			photoSamples++;
 			prevViewProj.set(viewProj);

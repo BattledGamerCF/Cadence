@@ -28,6 +28,10 @@ typedef struct Voice {
 	int state, looping, relative, attenuate, scheduled;
 	float x, y, z, pitch, volume, maxDistance;
 	float occlusion;               // World Reverb: dB of the blocks between the listener and the sound (0: none)
+	// Sound Around Corners (SoundPaths.java): the way round to the listener, if one was found: where the sound seems to come
+	// from (the first corner, as far away as the way is long), the way's length and the dB its corners take off
+	int routed;
+	float ax, ay, az, routeLength, routeDb;
 } Voice;
 
 #define MAX_VOICES 512
@@ -51,6 +55,11 @@ static int gLastPreset = -1;  // (the reverb preset loaded into gEnv: -1 for a n
 
 // ---- loudness and placement (gLock held) ----
 
+// The game's linear distance falloff for this sound at distance d.
+static float falloff(Voice *v, float d) {
+	return v->maxDistance > 0 ? fminf(fmaxf(1.0f - fminf(d, v->maxDistance) / v->maxDistance, 0.0f), 1.0f) : 0.0f;
+}
+
 static void place(Voice *v) {
 	float px = v->x, py = v->y, pz = v->z;
 	if (v->relative) {
@@ -62,7 +71,24 @@ static void place(Voice *v) {
 	}
 	float dx = px - gLx, dy = py - gLy, dz = pz - gLz, d = sqrtf(dx * dx + dy * dy + dz * dz);
 	float gain = fminf(fmaxf(v->volume, 0.0f), 1.0f);
-	if (v->attenuate) gain *= v->maxDistance > 0 ? fminf(fmaxf(1.0f - fminf(d, v->maxDistance) / v->maxDistance, 0.0f), 1.0f) : 0.0f;
+	float occlusion = v->occlusion, obstruction = 0.0f;
+	if (v->attenuate) {
+		float fall = falloff(v, d);
+		// round the corner or through the wall, whichever is louder (the way round as far as it is long, duller per corner)
+		if (v->routed && gReverbOn && !v->relative) {
+			float round = falloff(v, v->routeLength) * powf(10.0f, v->routeDb / 20.0f);
+			float through = fall * powf(10.0f, v->occlusion / 20.0f);
+			if (round > through) {
+				px = v->ax;
+				py = v->ay;
+				pz = v->az;
+				fall = falloff(v, v->routeLength);
+				occlusion = 0.0f;
+				obstruction = v->routeDb;
+			}
+		}
+		gain *= fall;
+	}
 	v->node.volume = gain;
 	// a relative sound at the listener (the menu, music) isn't placed anywhere: it plays as recorded
 	v->node.sourceMode = v->relative && fabsf(v->x) + fabsf(v->y) + fabsf(v->z) < 1e-3f ? AVAudio3DMixingSourceModeBypass
@@ -70,7 +96,8 @@ static void place(Voice *v) {
 	v->node.position = AVAudioMake3DPoint(px, py, pz);
 	int spatial = v->node.sourceMode != AVAudio3DMixingSourceModeBypass;
 	v->node.reverbBlend = gReverbOn && spatial ? gReverbBlend : 0.0f;
-	v->node.occlusion = gReverbOn && spatial ? v->occlusion : 0.0f;
+	v->node.occlusion = gReverbOn && spatial ? occlusion : 0.0f;
+	v->node.obstruction = gReverbOn && spatial ? obstruction : 0.0f;
 }
 
 // ---- the engine ----
@@ -323,6 +350,8 @@ void mca_voice_static(void *p, void *buf) {
 		if (!v || !b) return;
 		os_unfair_lock_lock(&gLock);
 		resetQueue(v);
+		v->occlusion = 0.0f;  // (a new sound on this channel: the last one's wall and way round don't apply)
+		v->routed = 0;
 		[b retain];
 		[v->staticBuf release];
 		v->staticBuf = b;
@@ -508,6 +537,24 @@ void mca_occlusion(void *p, float db) {
 		if (gVoices[i] == p) {
 			Voice *v = p;
 			v->occlusion = db;
+			if (v->connected) place(v);
+			break;
+		}
+	os_unfair_lock_unlock(&gLock);
+}
+
+// Sound Around Corners: a sound's way round to the listener (routed 0: none found, only the occlusion through the wall counts).
+void mca_route(void *p, int routed, float ax, float ay, float az, float length, float db) {
+	os_unfair_lock_lock(&gLock);
+	for (int i = 0; i < gVoiceCount; i++)
+		if (gVoices[i] == p) {
+			Voice *v = p;
+			v->routed = routed;
+			v->ax = ax;
+			v->ay = ay;
+			v->az = az;
+			v->routeLength = length;
+			v->routeDb = db;
 			if (v->connected) place(v);
 			break;
 		}

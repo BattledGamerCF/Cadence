@@ -12,6 +12,7 @@
 	<key>LSMinimumSystemVersion</key><string>15.0</string>
 	<key>LSUIElement</key><true/>
 	<key>NSMicrophoneUsageDescription</key><string>Cadence's Voice Control listens for your commands while it is on in Minecraft. Speech is recognised on this Mac only.</string>
+	<key>NSMotionUsageDescription</key><string>Cadence's Head Tracking turns or leans your view in Minecraft as you move your head, from your AirPods' motion, on this Mac only.</string>
 	<key>NSSpeechRecognitionUsageDescription</key><string>Cadence's Voice Control turns what you say into game commands, on this Mac only (nothing is sent anywhere).</string>
 </dict>
 </plist>

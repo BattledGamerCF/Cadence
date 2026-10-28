@@ -34,7 +34,7 @@ public final class SharpnessScreen extends OptionsSubScreen {
 	/** The Video Settings button that opens this page. */
 	public static Button button(Screen parent) {
 		return Button.builder(Component.literal("Sharpness & Speed..."), b -> Minecraft.getInstance().gui.setScreen(new SharpnessScreen(parent)))
-			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Trade picture sharpness for frame rate: Resolution, Sharpening, Retina, and shader shadows.",
+			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES, "Trade picture sharpness for frame rate: Resolution, Sharpening, Retina, and shader shadows.",
 				"#Lower resolution or Retina off draws fewer pixels: much higher fps, especially in full screen, with a softer picture.")).build();
 	}
 }

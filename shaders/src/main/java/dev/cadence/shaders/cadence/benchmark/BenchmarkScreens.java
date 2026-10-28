@@ -28,7 +28,7 @@ public final class BenchmarkScreens {
 		Minecraft mc = Minecraft.getInstance();
 		Button b = Button.builder(Component.literal("Benchmark..."), x -> mc.gui.setScreen(offer(parent)))
 			.width(Button.DEFAULT_WIDTH)
-			.tooltip(Tips.of("Measures how smooth the game is on your Mac (about 30 seconds).",
+			.tooltip(Tips.of(Tips.Impact.NONE, "Measures how smooth the game is on your Mac (about 30 seconds).",
 				"#Your view turns once round in place. Compare two settings, or two Macs.",
 				"#Needs a world. Results stay on this Mac."))
 			.build();

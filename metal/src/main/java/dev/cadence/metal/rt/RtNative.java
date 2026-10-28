@@ -19,7 +19,7 @@ final class RtNative {
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT);
 	private static final MethodHandle FREE = fn("mcrt_free", null, JAVA_LONG);
 	private static final MethodHandle PATH = fn("mcrt_path", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG,
-		JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT);
+		JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG);
 	private static final MethodHandle PATH_DONE = fn("mcrt_path_done", null, JAVA_LONG);
 	private static final MethodHandle BUFFER = fn("mcrt_buffer", JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle CONTENTS = fn("mcrt_contents", JAVA_LONG, JAVA_LONG);
@@ -62,9 +62,10 @@ final class RtNative {
 		}
 	}
 
-	static int path(long rt, long enc, long color, long depth, long lightmap, long vox, long bricks, long sections, long palette, long frame, int len, boolean reset) {
+	static int path(long rt, long enc, long color, long depth, long lightmap, long vox, long bricks, long sections, long palette, long frame, int len, boolean reset,
+		boolean denoise, long viewProj) {
 		try {
-			return (int) PATH.invokeExact(rt, enc, color, depth, lightmap, vox, bricks, sections, palette, frame, len, reset ? 1 : 0);
+			return (int) PATH.invokeExact(rt, enc, color, depth, lightmap, vox, bricks, sections, palette, frame, len, reset ? 1 : 0, denoise ? 1 : 0, viewProj);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}

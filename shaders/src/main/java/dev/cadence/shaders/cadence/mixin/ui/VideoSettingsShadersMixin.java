@@ -56,7 +56,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 						"Its files couldn't be read (see the log). The pack itself may still work.");
 				})
 			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
-			.tooltip(dev.cadence.shaders.cadence.ui.Tips.of("The chosen pack's own options (sun, clouds, water, shadows...), on its own pages."))
+			.tooltip(dev.cadence.shaders.cadence.ui.Tips.of(dev.cadence.shaders.cadence.ui.Tips.Impact.VARIES, "The chosen pack's own options (sun, clouds, water, shadows...), on its own pages."))
 			.build();
 		settings.active = !ShaderToggle.selectedPack().isEmpty();
 		if (!settings.active) settings.setTooltip(dev.cadence.shaders.cadence.ui.Tips.of("Pick a shader pack first (the Shaders button)."));
@@ -78,6 +78,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.hdrButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.dynamicLightsButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.styleButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.smoothButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.leavesButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.keepServerChunksButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.LookSettings.biomeColoursButton(), null);
 		this.list.addHeader(heading("Cadence: Speed"));
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.SharpnessScreen.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.frameGenButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.autoRenderDistanceButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.maxFpsButton());
@@ -88,7 +89,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addSmall(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.fpsCounterButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.overlayButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.messagesButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.replayButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.voiceButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.javaButton(), null);
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.LookSettings.headTrackingButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.javaButton());
 	}
 
 	/**

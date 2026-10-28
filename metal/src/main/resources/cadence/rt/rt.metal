@@ -706,7 +706,9 @@ fragment float4 rt_light_fs(VOut in [[stage_in]], texture2d<float, access::read>
 // gives the surface's colour, texture detail included). From there the path goes on through the voxels: at every surface the sun
 // or moon (a shadow ray, its disc's size jittered: soft shadows), then a bounce in a cosine-weighted direction; out to the sky, the
 // sky's light; onto a block, its colour (its texture's average) and, for blocks that give light, their glow. Torch light at the
-// first hit is the game's block light. accum keeps the sum; rt_path_out_fs draws the average into the frame.
+// first hit is the game's block light. accum keeps the sum; rt_path_out_fs draws the average into the frame. Denoised photos:
+// the average so far, the surfaces' colours and normals and the depth also go to MetalFX's denoiser (mcrt.m), and
+// rt_path_den_fs draws what it gives: a clean photo from far fewer samples.
 
 static float3 skyRadiance(float3 dir, constant RtFrame &f) {
 	return f.sky.xyz * f.sky.w * (dir.y > 0.0f ? 0.6f + 0.4f * dir.y : 0.2f);
@@ -729,12 +731,19 @@ kernel void rt_path(depth2d<float, access::read> depth [[texture(0)]], texture2d
 	texture2d<float, access::read_write> accum [[texture(2)]], texture2d<float, access::read> lightmap [[texture(3)]],
 	device const ushort *vox [[buffer(0)]], device const uint2 *bricks [[buffer(1)]], constant RtFrame &f [[buffer(2)]],
 	device const uint2 *palette [[buffer(4)]], device const uchar *sections [[buffer(5)]], constant uint &reset [[buffer(6)]],
+	texture2d<float, access::write> noisy [[texture(4)]], texture2d<float, access::write> albedoOut [[texture(5)]],
+	texture2d<float, access::write> normalOut [[texture(6)]], texture2d<float, access::write> roughOut [[texture(7)]],
+	texture2d<float, access::write> depthOut [[texture(8)]], texture2d<float, access::write> motionOut [[texture(9)]],
+	texture2d<float, access::write> specOut [[texture(10)]], constant uint &denoise [[buffer(7)]],
 	uint2 gid [[thread_position_in_grid]]) {
 	if (gid.x >= f.screen.x || gid.y >= f.screen.y) return;
 	float4 sum = reset != 0u ? float4(0.0f) : accum.read(gid);
 	float3 c0 = srgbToLinear(clamp(color.read(gid).rgb, 0.0f, 64.0f));
 	float d = depth.read(gid);
 	float3 result = c0;
+	// (for the denoiser: the surface's colour and normal as the first hit sees them; where nothing is traced (the sky, past the
+	// voxels) the pixel's own colour, so its detail is taken as the surface's and not smoothed away as noise)
+	float3 albedoAux = clamp(c0, float3(0.02f), float3(1.0f)), normalAux = float3(0.0f, 1.0f, 0.0f);
 	uint frame = uint(f.params.y);
 	if (d > 1e-7f) {
 		float3 P = pointAt(gid, d, f);
@@ -747,6 +756,8 @@ kernel void rt_path(depth2d<float, access::read> depth [[texture(0)]], texture2d
 			float shade = vanillaShade(face);
 			float3 vanilla = srgbToLinear(lightmap.read(uint2(block, sky)).rgb) * shade;
 			float3 albedo = clamp(c0 / max(vanilla, float3(0.02f)), 0.0f, 1.0f);
+			albedoAux = mix(max(albedo, float3(0.02f)), albedoAux, fade);
+			normalAux = N;
 			float3 L = srgbToLinear(lightmap.read(uint2(block, 0u)).rgb) * shade / max(f.cache.w, 1e-3f);
 			L += sunSoft(g, N, gid, frame, bricks, sections, f);
 			float3 thr = float3(1.0f), o = g + N * 0.02f, n = N;
@@ -772,7 +783,17 @@ kernel void rt_path(depth2d<float, access::read> depth [[texture(0)]], texture2d
 			result = mix(albedo * L * f.cache.w, c0, fade);
 		}
 	}
-	accum.write(sum + float4(result, 1.0f), gid);
+	float4 total = sum + float4(result, 1.0f);
+	accum.write(total, gid);
+	if (denoise != 0u) {
+		noisy.write(float4(total.rgb / total.a, 1.0f), gid);
+		albedoOut.write(float4(albedoAux, 1.0f), gid);
+		normalOut.write(float4(normalAux, 0.0f), gid);
+		roughOut.write(float4(1.0f), gid);
+		depthOut.write(float4(d), gid);
+		motionOut.write(float4(0.0f), gid);
+		specOut.write(float4(0.0f), gid);
+	}
 }
 
 static float3 linearToSrgb(float3 l) {
@@ -784,4 +805,9 @@ static float3 linearToSrgb(float3 l) {
 fragment float4 rt_path_out_fs(VOut in [[stage_in]], texture2d<float, access::read> accum [[texture(0)]]) {
 	float4 s = accum.read(uint2(in.pos.xy));
 	return float4(linearToSrgb(s.rgb / max(s.a, 1.0f)), 1.0f);
+}
+
+// The denoised photo (MetalFX's denoiser over the average so far, linear), into the frame.
+fragment float4 rt_path_den_fs(VOut in [[stage_in]], texture2d<float, access::read> den [[texture(0)]]) {
+	return float4(linearToSrgb(den.read(uint2(in.pos.xy)).rgb), 1.0f);
 }

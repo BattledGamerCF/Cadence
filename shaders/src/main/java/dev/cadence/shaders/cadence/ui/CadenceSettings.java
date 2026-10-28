@@ -228,7 +228,7 @@ public final class CadenceSettings {
 			};
 			apply(next);
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("One click sets the options below.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES, "One click sets the options below.",
 			"Battery Saver|coolest and quietest, aims for 40 fps",
 			"Recommended|smooth 60 fps, sharp whenever it can be",
 			"Max Quality|always full sharpness; the Mac may run hot",
@@ -272,7 +272,7 @@ public final class CadenceSettings {
 			"Off|never eases off"));
 		if (fans > 0) lines.add("#Fan speed itself needs administrator rights, so Cadence doesn't set it.");
 		lines.add(now);
-		return Tips.of("Keeps your Mac's temperature steady, so the game stays smooth.", lines.toArray(String[]::new));
+		return Tips.of(Tips.Impact.VARIES.because("lowers fps only to keep your Mac cool"), "Keeps your Mac's temperature steady, so the game stays smooth.", lines.toArray(String[]::new));
 	}
 
 	private static Component heatLabel() {
@@ -315,7 +315,7 @@ public final class CadenceSettings {
 			System.setProperty("cadence.fpsCounter", Boolean.toString(on));
 			ShaderToggle.saveKey("fpsCounter", Boolean.toString(on));
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The frame rate in the top-left corner while you play.")).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.NONE, "The frame rate in the top-left corner while you play.")).build();
 		onRefresh(() -> self[0].setMessage(fpsCounterLabel()));
 		return self[0];
 	}
@@ -327,7 +327,7 @@ public final class CadenceSettings {
 			dev.cadence.metal.rec.Replay.setEnabled(on);
 			ShaderToggle.saveKey("instantReplay", Boolean.toString(on));
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Keeps the last 30 seconds of play; Save Replay (F10) saves them as a video in the replays folder.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.LOW, "Keeps the last 30 seconds of play; Save Replay (F10) saves them as a video in the replays folder.",
 			"#Recorded by your Mac's video encoder in 1080p HEVC (10-bit HDR with HDR on; about 45 MB of memory, a small GPU cost each frame); no sound.")).build();
 		onRefresh(() -> self[0].setMessage(replayLabel()));
 		return self[0];
@@ -342,7 +342,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(overlayLabel(), b -> {
 			dev.cadence.shaders.cadence.render.PerformanceOverlay.toggle();
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("A few lines under the fps counter: frames shown and rendered, frame and GPU time, the Mac's heat and power, battery time left.")).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.NONE, "A few lines under the fps counter: frames shown and rendered, frame and GPU time, the Mac's heat and power, battery time left.")).build();
 		onRefresh(() -> self[0].setMessage(overlayLabel()));
 		return self[0];
 	}
@@ -367,7 +367,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(maxFpsLabel(), b -> {
 			MaxFpsMode.set(!MaxFpsMode.chosen());
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The most frames a second this Mac can render Minecraft, still playable.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES, "The most frames a second this Mac can render Minecraft, still playable.",
 			"#Everything is set for you: each block drawn in one colour (a 1x1 texture), lit and shaded as Minecraft's flat lighting does, entities as boxes, the hotbar, health, food and an F3 counter, at a low resolution with no upscaling, frame limit or VSync. Frame interpolation doubles the frames shown; the counter shows both. Any open screen draws the game as usual. Off again after a restart.")).build();
 		onRefresh(() -> self[0].setMessage(maxFpsLabel()));
 		return self[0];
@@ -383,7 +383,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(batteryLabel(), b -> {
 			dev.cadence.shaders.cadence.system.BatteryMode.cycle();
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("How fast Minecraft draws while your Mac runs on its battery.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES.because("lowers fps on battery to save power"), "How fast Minecraft draws while your Mac runs on its battery.",
 			"Match Display|at most your display's refresh rate (60, or 120 on ProMotion): nothing you can see is lost",
 			"Saver|at most 30 frames a second, for long sessions away from a charger",
 			"Off|as when plugged in",
@@ -403,7 +403,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(frameGenLabel(), b -> {
 			dev.cadence.shaders.cadence.render.FrameGenSetting.cycle();
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Twice the frames on screen for the frames your Mac renders: a frame made between each two.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES, "Twice the frames on screen for the frames your Mac renders: a frame made between each two.",
 			"Smooth|the frame halfway between the last two, shown before the newest (one frame later on screen)",
 			"Responsive|the newest frame turned to where your mouse looks now: no added delay, a little blur at moving edges",
 			"Off|every frame rendered",
@@ -425,7 +425,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(autoRdLabel(), b -> {
 			dev.cadence.shaders.cadence.render.AutoRenderDistance.toggle();
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Lowers the render distance when your Mac can't hold its frame rate, and raises it again when it can.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES, "Lowers the render distance when your Mac can't hold its frame rate, and raises it again when it can.",
 			"#With a shader pack and Auto resolution, once the resolution is as low as Auto takes it: 2 chunks at a time, not below 8 and never past the distance you chose; "
 				+ "changes are rare (each makes the game build the nearby chunks again). Far terrain still reaches past it. Off: your distance always.")).build();
 		onRefresh(() -> self[0].setMessage(autoRdLabel()));
@@ -488,7 +488,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(messagesLabel(), b -> {
 			dev.cadence.shaders.cadence.system.CadenceMessages.setEnabled(!dev.cadence.shaders.cadence.system.CadenceMessages.enabled());
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Cadence's chat line and corner pop-ups.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.NONE, "Cadence's chat line and corner pop-ups.",
 			"On|a line when you join, a pop-up when Cadence adjusts something",
 			"Off|quiet; what Cadence is doing still shows here")).build();
 		onRefresh(() -> self[0].setMessage(messagesLabel()));
@@ -505,7 +505,7 @@ public final class CadenceSettings {
 		self[0] = Button.builder(backgroundLabel(), b -> {
 			dev.cadence.shaders.cadence.system.BackgroundFps.setEnabled(!dev.cadence.shaders.cadence.system.BackgroundFps.enabled());
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("While another app is in front:",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.NONE.because("only while another app is in front"), "While another app is in front:",
 			dev.cadence.shaders.cadence.system.BackgroundFps.FPS + " fps|the game keeps running, drawn slowly; saves battery and heat",
 			"Normal|full Max Framerate, as in vanilla")).build();
 		onRefresh(() -> self[0].setMessage(backgroundLabel()));
@@ -527,7 +527,7 @@ public final class CadenceSettings {
 			ShaderToggle.saveKey("java", on ? "vivace" : "launcher");
 			if (on) dev.cadence.metal.Vivace.clearFailure(gameDir);
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Which Java runs Minecraft, from the next launch.",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES.because("Vivace: smoother, fewer pauses"), "Which Java runs Minecraft, from the next launch.",
 			"Launcher's|the Java your launcher chose",
 			"Vivace|Cadence's companion Java build: shorter garbage-collection pauses",
 			"#Vivace is a separate, free download (open source, GPLv2 with the Classpath Exception). Cadence only starts it when you"
@@ -580,7 +580,7 @@ public final class CadenceSettings {
 			if (dev.cadence.shaders.runtime.ShaderRuntime.get() == null) return;
 			dev.cadence.shaders.cadence.packcheck.PackCheck.start(CadenceSettings::refreshAll);
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Shaders only: Cadence's faster shadow drawing (often 10-25% more fps).",
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES, "Shaders only: Cadence's faster shadow drawing (often 10-25% more fps).",
 			"On|this pack uses it",
 			"Test|click to check whether this pack can: the picture is compared with it on and off, and it's kept only if identical"
 				+ " (about 10 seconds, game paused)",
