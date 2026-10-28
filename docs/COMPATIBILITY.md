@@ -59,7 +59,7 @@ both installed, naming the two mods.
 from Cadence's shader packs without claiming the mod id `iris` ([API.md](API.md#the-iris-api)). Xaero's Minimap finds it
 ("Iris found!"). Mods that check for the mod id see no Iris; the optional `cadence-iris-provider` jar from the release zip
 adds it, and refuses ImmediatelyFast and Distant Horizons (they load code into Iris's internals or take Iris-only paths).
-Tested 2026-10-25 with the release jar and the 17 mods above: everything loads, no mixin errors; with the provider (and
+Tested 2026-10-25 with the release jar and the 17 mods above, and again 2026-10-28 with 0.4.0-beta.26 (`tools/compat-run.sh`: PASS): everything loads, no mixin errors; with the provider (and
 without ImmediatelyFast), Essential starts on its Iris path.
 
 **Sound mods that drive OpenAL themselves** (sound physics, reverb: their mixins hook the game's `com.mojang.blaze3d.audio`

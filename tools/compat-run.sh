@@ -31,6 +31,6 @@ mixin=$(grep -cE "Mixin apply.*failed|MixinApplyError|InvalidInjectionException|
 exc=$(grep -E "^[[:space:]]*at |Exception|Error" "$LOG" | grep -vE "InvalidCredentialsException|MinecraftClientHttpException|authlib|status=401|ErrorResponse" | grep -cE "Exception|Error:")
 [ "$exc" -gt 0 ] && { echo "WARN: $exc exception lines (see $LOG)"; grep -E "Exception|Error:" "$LOG" | grep -vE "InvalidCredentialsException|MinecraftClientHttpException|authlib|status=401|ErrorResponse" | sort | uniq -c | sort -rn | head -5; }
 grep -E "\[selftest\] benchmark: avg" "$LOG" | sed 's/.*\[selftest\] /  /'
-grep -hE "\[cadence\] stall:" "$RUN/results/$d/stdout.log" "$LOG" 2>/dev/null | head -3
+grep -hE "\[cadence\] stall:" "$RUN/results/$d/stdout.log" 2>/dev/null | head -3
 [ $fail = 0 ] && echo "PASS ($RUN/results/$d)" || echo "FAIL ($RUN/results/$d)"
 exit $fail
