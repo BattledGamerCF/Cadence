@@ -47,6 +47,8 @@ public final class MetalBackend implements GpuBackend {
 		} catch (BackendCreationException | RuntimeException | LinkageError e) {
 			String why = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
 			failure = why;
+			// (what Cadence's other parts read to know whether Metal draws: shader packs, the Graphics API option)
+			System.setProperty("cadence.metal", "false");
 			System.out.println("[cadence] Metal couldn't start (" + why + "); the game runs on Minecraft's own renderer instead");
 			e.printStackTrace(System.out);
 			tellLater(why);
@@ -57,9 +59,9 @@ public final class MetalBackend implements GpuBackend {
 	/** A toast once the game's window is up: Cadence's renderer isn't running, why, and that the game itself is fine. */
 	private static void tellLater(String why) {
 		Thread.ofVirtual().name("cadence-metal-failure").start(() -> {
-			for (int i = 0; i < 600; i++) {
+			for (int i = 0; i < 1200; i++) {
 				var mc = net.minecraft.client.Minecraft.getInstance();
-				if (mc != null && mc.gui != null) {
+				if (mc != null && mc.gui != null && (mc.gui.screen() instanceof net.minecraft.client.gui.screens.TitleScreen || mc.level != null)) {  // (once loading is done)
 					mc.execute(() -> net.minecraft.client.gui.components.toasts.SystemToast.addOrUpdate(mc.gui.toastManager(),
 						new net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId(10000L),
 						net.minecraft.network.chat.Component.literal("Cadence's Metal renderer couldn't start"),

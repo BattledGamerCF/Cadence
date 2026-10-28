@@ -43,7 +43,9 @@ public final class FrameLog {
 	private static final long[] curWait = new long[5], curRegion = new long[7], regionStart = new long[7];
 	private static final int[] curEvents = new int[4];
 	private static final java.lang.management.ThreadMXBean THREADS = ManagementFactory.getThreadMXBean();
-	private static final List<GarbageCollectorMXBean> GCS = ManagementFactory.getGarbageCollectorMXBeans();
+	/** The collectors' pause beans (G1's "G1 Concurrent GC" and ZGC's "Cycles" count concurrent work, not pauses). */
+	private static final List<GarbageCollectorMXBean> GCS = ManagementFactory.getGarbageCollectorMXBeans().stream()
+		.filter(g -> !g.getName().contains("Concurrent") && !g.getName().contains("Cycles")).toList();
 	private static int n;
 	private static long lastNs, lastCpu = -1, lastAlloc = -1, lastGcCount = -1, lastGcMs;
 	private static Thread renderThread;

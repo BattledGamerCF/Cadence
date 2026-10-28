@@ -55,6 +55,29 @@ for a slightly wider view and reused for up to three frames while the view stays
 step (5%) of resolution. Flying over new land, the far terrain generated in the background kept up with no missing tiles.
 On GPUs of 6 cores or fewer, Auto quality picks Low.
 
+## Stalls
+
+A frame over 50 ms in a world is logged with its cause (the stall recorder, `[cadence] stall:` lines). Switching a shader
+pack on, the longest frame (fullscreen Retina, render distance 16, each pack loaded before in earlier runs):
+
+| | Before 0.4.0-beta.26 | Now |
+|---|---|---|
+| BSL | 0.37-0.51 s | 0.21-0.26 s |
+| Complementary Reimagined | 1.2-4.2 s | 0.16-0.17 s |
+| Either, while flying over new land with Far Terrain | 2.0-2.2 s | 0.4-0.5 s |
+
+What remains of it is the game rebuilding its chunk meshes for the pack and Metal making ~130 pipelines (about 150 ms of
+compiler time over 4 threads: macOS's shader cache makes them quick after the first time).
+
+## Measured and not adopted
+
+| Idea | Measured | |
+|---|---|---|
+| Merging coplanar terrain faces | Only 4.4% of solid faces could merge without changing the picture: half have different light at their corners, a third different shading or tint | Not worth the cost |
+| Mesh shaders for near terrain | 326 fps, GPU 3.07 ms, against 1,390 fps and 0.72 ms for Cadence's renderer (Max FPS preset, render distance 16) | Slower |
+| Skipping the in-place depth clears before the hand and the HUD | 1,336 vs 1,333 and 1,363 vs 1,360 fps | No difference |
+| Apple's MetalFX frame interpolation | 28 ms a frame at the screen's resolution on an M2 | Much slower than Cadence's Frame Generation |
+
 ## Power: Battery Saver
 
 The whole Mac's draw at render distance 16, fullscreen Retina, turning:

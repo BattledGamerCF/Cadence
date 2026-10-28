@@ -113,6 +113,14 @@ Essential didn't load. Now, when any other mod has a pre-launch step, Cadence's 
 
 ## Testing
 
+`tools/compat-run.sh` runs the newest release jar (`dist/`, from `tools/release`) with the tested mods above in a production
+launch (`metal/run-compat`) and says PASS or FAIL: the game reached a world and finished its self-test, no mixin failed to
+apply, the benchmark ran; exceptions in the log are listed. Run it before every release.
+
+If Cadence's Metal renderer can't start on a Mac (a failure while it sets up), the game now starts on Minecraft's own
+renderer instead of crashing, and says so on screen (tested with `-Dcadence.metal.fakeFailure=true`: the world loads and
+plays on OpenGL).
+
 `tools/compat-test-mod` is a tiny mod whose hook targets the method Cadence's entity model writer replaces. With it in
 `mods`, Cadence's writer steps aside, the test mod's hook runs, and entities draw as in vanilla.
 

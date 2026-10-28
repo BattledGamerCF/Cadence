@@ -50,32 +50,51 @@ public final class Stalls {
 	private static void watch() {
 		while (true) {
 			try {
-				Thread.sleep(10);
+				Thread.sleep(20);
 			} catch (InterruptedException e) {
 				return;
 			}
 			long start = frameStart;
 			Thread render = renderThread;
 			if (start == 0 || render == null) continue;
-			long past = (System.nanoTime() - start - THRESHOLD_NS) / 1_000_000L;
+			long past = (System.nanoTime() - start - thresholdNs()) / 1_000_000L;
 			if (past < 0) continue;
+			int n;
 			synchronized (sampled) {
 				if (sampledFor != start) {
 					sampledFor = start;
 					samples = 0;
 				}
-				int n = samples;
+				n = samples;
 				if (n >= SAMPLE_AT_MS.length || past < SAMPLE_AT_MS[n]) continue;
-				sampled[n] = render.getStackTrace();
-				sampledAtMs[n] = past + THRESHOLD_NS / 1_000_000L;
+			}
+			// (taken outside the lock: the render thread's frame() takes it too; kept only if that frame is still the one running)
+			StackTraceElement[] stack = render.getStackTrace();
+			synchronized (sampled) {
+				if (frameStart != start || sampledFor != start || samples != n) continue;
+				sampled[n] = stack;
+				sampledAtMs[n] = past + thresholdNs() / 1_000_000L;
 				samples = n + 1;
 			}
 		}
 	}
 
+	/**
+	 * A frame counts as a stall past 50 ms, or past three times the usual frame (a frame cap: In Background's 15 fps makes every
+	 * frame 67 ms; those aren't stalls).
+	 */
+	private static long thresholdNs() {
+		return Math.max(THRESHOLD_NS, 3 * usualNs);
+	}
+
+	/** The usual frame's length (an average of the frames that weren't stalls), without the pacer's waits. */
+	private static volatile long usualNs = 16_000_000L;
+
 	private static boolean inWorld() {
 		var mc = net.minecraft.client.Minecraft.getInstance();
-		return mc != null && mc.level != null && !(mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen);
+		// (in the background or minimized a frame can wait seconds for the window: not a stall)
+		return mc != null && mc.level != null && !(mc.gui.screen() instanceof net.minecraft.client.gui.screens.LevelLoadingScreen)
+			&& mc.getWindow() != null && mc.getWindow().isFocused();
 	}
 
 	/**
@@ -84,7 +103,7 @@ public final class Stalls {
 	 */
 	static void frame(long now, long wallNs, long cpuNs, long allocBytes, long gcCount, long gcMs, long[] waitNs, long[] regionNs, long[] ops) {
 		if (renderThread == null) renderThread = Thread.currentThread();
-		long libraryNs = MetalPipeline.LIBRARY_NS.getAndSet(0), stateNs = MetalPipeline.STATE_NS.getAndSet(0);
+		long libraryNs = MetalPipeline.LIBRARY_NS.getAndSet(0), stateNs = MetalPipeline.STATE_NS.getAndSet(0), made = MetalPipeline.MADE.getAndSet(0);
 		long started = frameStart;
 		boolean world = inWorld();
 		frameStart = world ? now : 0;
@@ -93,7 +112,13 @@ public final class Stalls {
 			return;
 		}
 		if (inWorldSince == 0) inWorldSince = now;
-		if (wallNs < THRESHOLD_NS || started == 0 || now - inWorldSince < SETTLE_NS) return;
+		long busyNs = wallNs - waitNs[3];  // (the pacer's wait is a frame cap at work, not a stall)
+		long threshold = thresholdNs();
+		if (busyNs < threshold) {
+			usualNs += (busyNs - usualNs) / 16;
+			return;
+		}
+		if (started == 0 || now - inWorldSince < SETTLE_NS) return;
 		StackTraceElement[][] stacks;
 		long[] stackMs;
 		synchronized (sampled) {
@@ -116,7 +141,7 @@ public final class Stalls {
 		appendTop(b, " | in: ", REGIONS, regionNs, wallNs);
 		b.append(gcCount > 0 ? " | GC: " + gcCount + " (" + gcMs + " ms)" : " | GC: none");
 		StringBuilder work = new StringBuilder();
-		if (ops[FrameLog.PIPELINES] > 0) work.append(", ").append(ops[FrameLog.PIPELINES]).append(String.format(Locale.ROOT, " pipelines made (shader libraries %.0f ms, pipeline states %.0f ms, over all threads)", libraryNs / 1e6, stateNs / 1e6));
+		if (made > 0) work.append(", ").append(made).append(String.format(Locale.ROOT, " pipelines made (shader libraries %.0f ms, pipeline states %.0f ms, over all threads)", libraryNs / 1e6, stateNs / 1e6));
 		if (ops[FrameLog.TEX_WRITES] > 0) work.append(String.format(Locale.ROOT, ", %d texture uploads (%.1f MP)", ops[FrameLog.TEX_WRITES], ops[FrameLog.TEX_PX] / 1e6));
 		if (ops[FrameLog.BUF_KB] + ops[FrameLog.COPY_KB] > 1024) work.append(String.format(Locale.ROOT, ", %.1f MB to buffers", (ops[FrameLog.BUF_KB] + ops[FrameLog.COPY_KB]) / 1024.0));
 		if (work.length() > 0) b.append(" | GPU work:").append(work.substring(1));

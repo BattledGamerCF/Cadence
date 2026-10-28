@@ -367,7 +367,7 @@ public record PackPipeline(
 
   /**
    * One source's identifiers, each with how often it appears as a whole word (as the regex \bNAME\b counts it: a word is a
-   * run of letters, digits and underscores) and how often it is declared as {@code uniform <type> NAME;} (as
+   * run of ASCII letters, digits and underscores) and how often it is declared as {@code uniform <type> NAME;} (as
    * \buniform\s+\w+\s+NAME\s*; counts it). A name is read when it appears more often than it is declared.
    */
   record SourceCounts(java.util.Map<String, Integer> tokens, java.util.Map<String, Integer> declared) {
@@ -417,10 +417,9 @@ public record PackPipeline(
       return j < n && s.charAt(j) == ';' ? name : null;
     }
 
-    /** \b's word characters (java.util.regex: letters and digits, any script, and the underscore). */
+    /** \b's word characters (java.util.regex since Java 19: ASCII letters, digits and the underscore). */
     private static boolean word(char c) {
-      if (c < 128) return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9';
-      return Character.isLetterOrDigit(c);
+      return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9';
     }
 
     /** \w: [a-zA-Z_0-9]. */

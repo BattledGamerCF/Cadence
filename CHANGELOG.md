@@ -2,15 +2,39 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased (0.4.0-beta.26)
+## 0.4.0-beta.26 / shaders 0.3.25 (2026-10-28)
 
-Video Settings, tidied:
-- **Overlay: Off / FPS / Full** replaces the separate FPS Counter and Performance Overlay buttons.
-- **Ray Tracing** now includes Torch Shadows: Off, Shadows, Shadows + Torches, Lighting, Lighting + Torches, Neural,
-  Neural + Torches. The Ray Tracer button is gone: Cadence uses the ray tracing hardware on M3 and newer and the voxel tracer
-  before (a `rayTracer=` line in the config still overrides it).
-- **Render Max FPS is now the Minimal Renderer**, under Cadence: Speed. Keep Server Chunks moved from Visuals to Speed.
-- **Head Tracking removed**, with Cadence Helper's Motion & Fitness permission.
+Measured on an M2 MacBook Air (8 GPU cores), render distance 16, unless noted.
+
+- **Switching a shader pack on no longer freezes the game.** Before a pack's first frame, Cadence works out which of the
+  pack's textures each of its pipelines really reads (packs declare every buffer in shared files but read few). That check ran
+  a regular-expression search over each pipeline's whole shader source once per texture: 93% of the time spent preparing a
+  pack. It is now one pass per source that counts every name (the same answers: checked against the old search on every
+  shader of 25 packs, 74,036 checks, no difference; 30 times faster). Turning a pack on: Complementary 1.2-4.2 s ->
+  0.16-0.17 s, BSL 0.37-0.51 s -> 0.21-0.26 s; while flying with Far Terrain, 2.0-2.2 s -> 0.4-0.5 s.
+- **Stall recorder.** A frame that takes longer than 50 ms in a world gets one line in the log (`[cadence] stall: ...`)
+  saying where the time went: the render thread's waits (GPU, display), what it was doing (client tick, frame building,
+  drawing), garbage collections, shader compiling, uploads, and where the render thread was, sampled while the frame ran.
+  At most one line every 2 seconds. It found the pack-switch freeze above. `-Dcadence.stalls=false` turns it off,
+  `-Dcadence.stalls.ms=N` changes the threshold.
+- **A Mac where Metal can't start no longer crashes.** Any failure while Cadence's Metal renderer starts now falls back
+  to Minecraft's own renderer, with a message on screen; the game is playable, just without Cadence's renderer.
+- **App Nap**: while a world runs with Minecraft in the background (a LAN world your friends are in, say), macOS is asked
+  not to nap the game, which would slow its ticks.
+- **Quick Setup** also suggests a Far Distance for your Mac when Far Terrain is on (at most 1,024 chunks with 8 GB).
+- Video Settings, tidied:
+  - **Overlay: Off / FPS / Full** replaces the separate FPS Counter and Performance Overlay buttons.
+  - **Ray Tracing** now includes Torch Shadows: Off, Shadows, Shadows + Torches, Lighting, Lighting + Torches, Neural,
+    Neural + Torches. The Ray Tracer button is gone: Cadence uses the ray tracing hardware on M3 and newer and the voxel
+    tracer before (a `rayTracer=` line in the config still overrides it).
+  - **Render Max FPS is now the Minimal Renderer**, under Cadence: Speed. Keep Server Chunks moved from Visuals to Speed.
+  - **Head Tracking removed**, with Cadence Helper's Motion & Fitness permission.
+- `tools/compat-run.sh` runs the release jar with the mod compatibility set and says PASS or FAIL.
+
+Measured and not adopted (docs/BENCHMARKS.md has the numbers): merging terrain faces (it would remove only 4.4% of them
+without changing the picture), mesh shaders for near terrain (4x slower on an M2 than Cadence's renderer), in-place depth
+clears and Apple's MetalFX frame interpolation (no gain), precompiled Metal pipelines (Metal's own cache already makes them
+cheap: about 150 ms for a whole pack).
 
 ## 0.4.0-beta.25 / shaders 0.3.24 (2026-10-28)
 
