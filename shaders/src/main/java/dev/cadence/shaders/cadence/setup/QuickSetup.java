@@ -192,6 +192,18 @@ public final class QuickSetup {
 			out.add(new Change("Cooling", HeatControl.cooling().label, cooling.label,
 				cooling == HeatControl.Cooling.PERFORMANCE ? (mac.fanless() ? "full speed until macOS slows it" : "lets the fans work")
 					: cooling == HeatControl.Cooling.OFF ? (preset == CadenceSettings.Preset.MAX_FPS ? "no limits" : "full quality") : "steady and cool", () -> HeatControl.setCooling(cooling)));
+		// Far Distance, when the player has Far Terrain on (it stays an opt-in): by GPU tier, held to 1,024 chunks with 8 GB
+		// (M2 Air, 8 GPU cores, render distance 16, 1,024 chunks at Medium: 0.4 ms a frame while turning; docs/BENCHMARKS.md)
+		if (dev.cadence.shaders.cadence.ui.FarTerrainScreen.chosen()) {
+			int far = new int[] {512, 1024, 2048, 4096, 4096}[tier - 1];
+			if (mac.memoryGB() <= 8) far = Math.min(far, 1024);
+			else if (mac.memoryGB() <= 16) far = Math.min(far, 2048);
+			int farNow = dev.cadence.shaders.cadence.ui.FarTerrainScreen.distance();
+			final int farTo = far;
+			if (farNow != far)
+				out.add(new Change("Far Distance", farNow + " chunks", far + " chunks", far > farNow ? "your Mac can show more" : "smoother",
+					() -> dev.cadence.shaders.cadence.ui.FarTerrainScreen.setDistance(farTo)));
+		}
 		boolean smart = mac.fanless() || tier <= 2;
 		if (smart != SmartLeaves.enabled())
 			out.add(new Change("Leaves", SmartLeaves.enabled() ? "Smart" : "Detailed", smart ? "Smart" : "Detailed",

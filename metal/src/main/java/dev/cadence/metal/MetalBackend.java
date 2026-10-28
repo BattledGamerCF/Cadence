@@ -31,8 +31,47 @@ public final class MetalBackend implements GpuBackend {
 		return SDLVideo.SDL_CreateWindow(title, width, height, SDLVideo.SDL_WINDOW_METAL | flags);
 	}
 
+	/** Why Metal couldn't start this launch (the game then runs on the next backend in the list), or null. */
+	public static volatile @Nullable String failure;
+
+	/**
+	 * Metal's device; any failure (not only the native context's) becomes a BackendCreationException, so the game moves on to
+	 * the next backend (OpenGL) instead of crashing, and the player is told once the game is up (a toast). -Dcadence.metal.fakeFailure=true
+	 * fails it on purpose, to test that path.
+	 */
 	@Override
 	public GpuDevice createDevice(GpuDebugOptions debugOptions) throws BackendCreationException {
-		return new FrontendGpuDevice(new MetalDevice());
+		try {
+			if (Boolean.getBoolean("cadence.metal.fakeFailure")) throw new IllegalStateException("a test failure (-Dcadence.metal.fakeFailure)");
+			return new FrontendGpuDevice(new MetalDevice());
+		} catch (BackendCreationException | RuntimeException | LinkageError e) {
+			String why = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+			failure = why;
+			System.out.println("[cadence] Metal couldn't start (" + why + "); the game runs on Minecraft's own renderer instead");
+			e.printStackTrace(System.out);
+			tellLater(why);
+			throw e instanceof BackendCreationException b ? b : new BackendCreationException("Cadence's Metal renderer couldn't start: " + why, BackendCreationException.Reason.OTHER);
+		}
+	}
+
+	/** A toast once the game's window is up: Cadence's renderer isn't running, why, and that the game itself is fine. */
+	private static void tellLater(String why) {
+		Thread.ofVirtual().name("cadence-metal-failure").start(() -> {
+			for (int i = 0; i < 600; i++) {
+				var mc = net.minecraft.client.Minecraft.getInstance();
+				if (mc != null && mc.gui != null) {
+					mc.execute(() -> net.minecraft.client.gui.components.toasts.SystemToast.addOrUpdate(mc.gui.toastManager(),
+						new net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId(10000L),
+						net.minecraft.network.chat.Component.literal("Cadence's Metal renderer couldn't start"),
+						net.minecraft.network.chat.Component.literal("Playing on Minecraft's own renderer. " + (why.length() > 90 ? why.substring(0, 90) + "..." : why))));
+					return;
+				}
+				try {
+					Thread.sleep(500);
+				} catch (InterruptedException e) {
+					return;
+				}
+			}
+		});
 	}
 }

@@ -33,7 +33,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		return Boolean.getBoolean("cadence.lod") || System.getProperty("cadence.lod.radius") != null;
 	}
 
-	static boolean chosen() {
+	public static boolean chosen() {
 		return "on".equalsIgnoreCase(ShaderToggle.configValue("farTerrain", "off").strip());
 	}
 
@@ -197,13 +197,19 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 	private static final int[] DISTANCES = {64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096};
 
 	/** The saved Far Distance, in chunks. */
-	static int distance() {
+	public static int distance() {
 		try {
 			return Math.clamp(Integer.parseInt(ShaderToggle.configValue("farTerrain.distance", "512").strip()), dev.cadence.metal.lod.LodConfig.MIN_RADIUS,
 				dev.cadence.metal.lod.LodConfig.MAX_RADIUS);
 		} catch (NumberFormatException e) {
 			return 512;
 		}
+	}
+
+	/** Sets Far Distance (Quick Setup): saved, and applied now while far terrain runs. */
+	public static void setDistance(int chunks) {
+		ShaderToggle.saveKey("farTerrain.distance", Integer.toString(chunks));
+		if (running()) dev.cadence.metal.lod.LodConfig.requestRadius(chunks);
 	}
 
 	/**
