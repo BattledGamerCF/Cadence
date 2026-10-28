@@ -33,9 +33,11 @@ public final class BackgroundFps {
 
 	/** The frame-rate limit this asks for, or Integer.MAX_VALUE for none. */
 	public static int fpsCap() {
-		if (!enabled) return Integer.MAX_VALUE;
 		Minecraft mc = Minecraft.getInstance();
 		boolean background = fakeBackground || mc.getWindow() != null && !mc.getWindow().isFocused();
+		// (a world running in the background, LAN players perhaps: App Nap would slow its ticks)
+		dev.cadence.metal.MacSystem.appNapBusy(background && mc.getSingleplayerServer() != null);
+		if (!enabled) return Integer.MAX_VALUE;
 		return background ? FPS : Integer.MAX_VALUE;
 	}
 }

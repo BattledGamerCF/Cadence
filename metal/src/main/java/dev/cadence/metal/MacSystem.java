@@ -11,6 +11,20 @@ public final class MacSystem {
 	private MacSystem() {
 	}
 
+	private static volatile boolean appNapBusy;
+
+	/** Keeps macOS from napping the game (App Nap) while busy; only calls macOS when it changes. */
+	public static void appNapBusy(boolean busy) {
+		if (busy == appNapBusy) return;
+		appNapBusy = busy;
+		try {
+			Native.appNapBusy(busy ? 1 : 0);
+			System.out.println("[cadence] App Nap " + (busy ? "held off: the world runs in the background" : "allowed again"));
+		} catch (Throwable t) {
+			// (an older native library: nothing to do)
+		}
+	}
+
 	/** 0 nominal, 1 fair (warming), 2 serious (throttling), 3 critical. */
 	public static int thermalState() {
 		try {

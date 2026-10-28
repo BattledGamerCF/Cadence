@@ -16,6 +16,22 @@ int mc_thermal_state(void) {
 	}
 }
 
+// App Nap: while busy (a world hosted with the window in the background) an activity keeps macOS from napping the game, which
+// slows its timers and lowers its priority; the integrated server's ticks (and LAN players) would slow with it.
+static id appNapActivity;
+void mc_app_nap_busy(int busy) {
+	@autoreleasepool {
+		if (busy && !appNapActivity) {
+			appNapActivity = [[[NSProcessInfo processInfo] beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep
+				reason:@"Running a Minecraft world"] retain];
+		} else if (!busy && appNapActivity) {
+			[[NSProcessInfo processInfo] endActivity:appNapActivity];
+			[appNapActivity release];
+			appNapActivity = nil;
+		}
+	}
+}
+
 int mc_low_power(void) {
 	@autoreleasepool {
 		NSProcessInfo *p = [NSProcessInfo processInfo];
