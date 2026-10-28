@@ -60,6 +60,8 @@ public abstract class FramerateCapMixin {
 		// to the display's rate; only where that is more than the base (on a 60 Hz screen: Battery Saver 30 -> 60, the others a
 		// true 60). Not with Max FPS (as many real frames as the Mac makes) or outside a world.
 		// (and not while vanilla holds the rate down itself: idle (its Inactivity FPS Limit), minimized, menus)
+		// (with a pack: Responsive, whose frames hold a steady 30 at Battery Saver's low clocks, FrameGen.saverResponsive)
+		dev.cadence.metal.framegen.FrameGen.saverResponsive = cadence$saver;
 		if (dev.cadence.metal.framegen.FrameGen.mode() != dev.cadence.metal.framegen.FrameGen.Mode.OFF && playing) {
 			int forced = dev.cadence.metal.framegen.FrameGen.forceBase;
 			int hz = HeatControl.refreshHz(), base = Math.min(forced > 0 ? forced : cadence$saver ? 30 : 60, cap), shown = 2 * base;

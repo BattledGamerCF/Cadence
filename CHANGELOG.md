@@ -27,6 +27,14 @@ Measured on an M2 MacBook Air (8 GPU cores), unless noted.
   size takes a second or more the first time (Apple's model is compiled); that used to stop the game whenever Auto resolution
   changed the size, and now happens on another thread while MetalFX upscales; the last two sizes' scalers are kept. HDR frames
   and enlargements under 1.3x stay with MetalFX.
+- **Battery Saver, measured by the whole Mac's power draw** (render distance 16, fullscreen Retina, turning):
+  - Without a shader pack it now renders a **true 60 fps**. Rendering such a frame costs no more than generating one (60
+    rendered 5.0-5.2 W, 30 rendered + 30 generated 5.1 W), so the real frames win: sharper, and a frame less delay.
+  - With a shader pack it still renders 30 and shows 60, now with the world held at **50% resolution** or below, and the
+    frames between generated the **Responsive** way (Smooth's slipped to 27-29 rendered at the low clocks Battery Saver runs
+    at; Responsive's held a steady 30). BSL: 21 W at 60 fps, 14.4-15.5 W with the old Battery Saver, 10.9-12.4 W now.
+  - On Battery: Saver and Low Power Mode do the same. Without Frame Generation, Battery Saver with a pack holds 30.
+- docs/BENCHMARKS.md: fps without shaders, shader packs with and without Auto resolution, far terrain on the 8-core M2, power.
 
 ## 0.4.0-beta.24 / shaders 0.3.23 (2026-10-27)
 

@@ -57,10 +57,10 @@ public final class ShadowReuse {
 		heatMin = Math.max(1, Math.min(4, n));
 	}
 
-	/** The rate in use: the setting, or the heat minimum if higher. */
 	/** Cadence (PackCheck): every frame drawn while a pack check runs. */
 	public static volatile boolean suspended;
 
+	/** The rate in use: the setting, or the heat minimum if higher. */
 	public static int effectiveRate() {
 		if (suspended) return 1;
 		return Math.max(rate, heatMin);

@@ -7,9 +7,10 @@ package dev.cadence.shaders.cadence.system;
  * <li>Without a shader pack (and without Ray Traced Lighting): a true 60 fps, every frame rendered. Rendering such a frame
  * costs no more than generating one: 30 rendered + 30 generated drew 5.1 W, 60 rendered 5.0-5.2 W, so the real frames win
  * (sharper, no reprojection edges, a frame less delay). 30 fps alone drew 3.9-4.4 W but isn't smooth.</li>
- * <li>With a shader pack (or Ray Traced Lighting), where a frame is expensive: 30 rendered, 60 shown (Frame Generation:
- * Smooth), and the world drawn at 50% at most (Auto resolution may go lower, never higher): BSL 21.5 W at 60 fps, 14.4-15.5 W
- * at 30 + 30 with Auto's ~65-70%, 10.1-10.6 W at 50%.</li>
+ * <li>With a shader pack (or Ray Traced Lighting), where a frame is expensive: 30 rendered, 60 shown, and the world drawn at
+ * 50% at most (Auto resolution may go lower, never higher): BSL 21.5 W at 60 fps, 14.4-15.5 W at 30 + 30 with Auto's
+ * ~65-70%, 9.4-10.6 W at 50%. Frame Generation runs Responsive (FrameGen.saverResponsive): Smooth's frames slipped to
+ * 27-29 rendered at Battery Saver's low clocks, Responsive's held a steady 30 for ~1 W more (10.9-11.3 W).</li>
  * </ul>
  * FramerateCapMixin decides every two seconds whether it is on ({@link #active}); RenderScale holds the resolution.
  */

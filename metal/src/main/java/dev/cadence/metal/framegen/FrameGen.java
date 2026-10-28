@@ -98,13 +98,26 @@ public final class FrameGen {
 	}
 
 	/**
+	 * Battery Saver with a shader pack (BatterySaver): Responsive whatever the chosen mode. Smooth draws its frame in the
+	 * real frame's work, and at Battery Saver's low clocks that pushed BSL's 30 rendered to 27-29 (56-58 shown); Responsive
+	 * held a steady 30 (60 shown) for ~1 W more (10.9-11.3 W against 9.4-10.5) and adds no delay.
+	 */
+	public static volatile boolean saverResponsive;
+
+	/** The mode in use: the chosen one, Responsive while Battery Saver asks for it. */
+	public static Mode effective() {
+		Mode m = mode;
+		return m != Mode.OFF && saverResponsive ? Mode.RESPONSIVE : m;
+	}
+
+	/**
 	 * The shaders module's frame cap, each time the game reads it: the rate rendered and the rate shown (0, 0: not running this
 	 * frame). Running only when shown is above rendered.
 	 */
 	public static void target(int renderedRate, int shownRate) {
 		long now = System.nanoTime();
-		boolean wanted = mode != Mode.OFF && !failed && HOOKS && renderedRate > 0 && shownRate > renderedRate
-			&& (mode != Mode.RESPONSIVE || dev.cadence.metal.FrameWait.ENABLED);
+		boolean wanted = effective() != Mode.OFF && !failed && HOOKS && renderedRate > 0 && shownRate > renderedRate
+			&& (effective() != Mode.RESPONSIVE || dev.cadence.metal.FrameWait.ENABLED);
 		// (the backend is up whenever this is asked for in a world: read once then)
 		if (wanted && metal4 < 0) metal4 = MetalBridge.metal4() ? 1 : 0;
 		// (no snapshots lately, World Resolution below 100% for one: not running for a few seconds, so the cap isn't halved for
@@ -251,8 +264,8 @@ public final class FrameGen {
 		if (!running() || fg == 0 || slot < 0 || !fresh || slotFrame[slot] != frames) return;
 		presented = frames;
 		int a = slot, b = slot ^ 1;
-		neuralState = FrameGenNative.neural(fg, ctx, mode == Mode.NEURAL);
-		if (mode == Mode.RESPONSIVE) {
+		neuralState = FrameGenNative.neural(fg, ctx, effective() == Mode.NEURAL);
+		if (effective() == Mode.RESPONSIVE) {
 			responsiveFor = frames;  // the limiter's wait makes this frame's in-between one
 			return;
 		}
@@ -277,7 +290,7 @@ public final class FrameGen {
 			return;
 		}
 		FrameGenNative.presentInFrame(fg, enc, drawable, latestTexture, frameBuf, FRAME_BYTES);
-		if (genCount++ == 0) System.out.println("[cadence] frame generation: first frame generated (" + mode.label + ")");
+		if (genCount++ == 0) System.out.println("[cadence] frame generation: first frame generated (" + effective().label + ")");
 	}
 
 	/**
@@ -285,7 +298,7 @@ public final class FrameGen {
 	 * (the middle of the wait), or -1 for none.
 	 */
 	public static long responsiveAt(long remainingNanos) {
-		if (mode != Mode.RESPONSIVE || !running() || responsiveFor != frames || remainingNanos < 2_000_000L) return -1;
+		if (effective() != Mode.RESPONSIVE || !running() || responsiveFor != frames || remainingNanos < 2_000_000L) return -1;
 		return remainingNanos / 2;
 	}
 
@@ -325,7 +338,7 @@ public final class FrameGen {
 		long drawable = MetalBridge.nextDrawable();
 		if (drawable == 0) return;
 		FrameGenNative.presentAlone(fg, ctx, drawable, latest, frameBuf, FRAME_BYTES);
-		if (genCount++ == 0) System.out.println("[cadence] frame generation: first frame generated (" + mode.label + ")");
+		if (genCount++ == 0) System.out.println("[cadence] frame generation: first frame generated (" + effective().label + ")");
 	}
 
 	/**

@@ -10,8 +10,9 @@ built for Apple's GPUs and tested together.
 ## Why Cadence
 
 **Frame Generation.** Twice the frames on screen for the frames rendered, with and without shader packs: a frame made between
-each two by reprojecting the world (the HUD, chat and your hand stay sharp). Battery Saver renders 30 and shows 60, saving
-power; on a 120 Hz screen Recommended and Max Quality render 60 and show 120. Smooth (between the last two frames) or
+each two by reprojecting the world (the HUD, chat and your hand stay sharp). With a shader pack, Battery Saver renders 30 and
+shows 60 (BSL at render distance 16: 10 W for the whole Mac instead of 21 W at 60 fps); on a 120 Hz screen Recommended and
+Max Quality render 60 and show 120. Smooth (between the last two frames) or
 Responsive (the newest frame turned to where your mouse looks now: no added delay), or Off; the counter shows "60 fps
 (30 rendered)".
 
@@ -66,7 +67,8 @@ ray tracing hardware on M3 and newer), **Torch Shadows** (every torch, lantern a
 **Neural Lighting** (the bounced light cached by a small neural network that learns the world as you play, trained on the
 GPU), denoised **path-traced Photo Mode** shots (about a second), and the **Neural Engine** at work: **Style Filters** (the
 world repainted like one of the game's paintings, trained on your Mac), **Smooth Textures** (block textures upscaled 2x by
-Apple's ML super resolution), a Neural Engine **upscaler** for World Resolution, **Frame Generation: Neural** (Apple's own
+Apple's ML super resolution), a Neural Engine **upscaler** for World Resolution (with shader packs too: BSL 80 fps instead of 74
+at 50%), **Frame Generation: Neural** (Apple's own
 frame interpolation) and **Voice Control** (spoken commands, recognised on your Mac only). **Biome Colours** grades the picture
 for where you are, **Head Tracking** follows your head from AirPods' motion. Sound: **World Reverb** (caves echo, walls
 muffle) and **Sound Around Corners** (sounds come through the doorway they really come by).
@@ -75,7 +77,8 @@ On top of that: a garbage-collection policy for games, faster startup (about 15%
 parallel, cached bootstrap data, a quicker loading fade), lighter chunk storage, threads placed on the right kind of core,
 exact frame caps and even pacing, and the optional Vivace Java build. Where another mod hooks code Cadence replaces,
 Cadence runs Minecraft's own code in that one area and keeps everything else
-([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). The full list: [docs/COVERAGE.md](docs/COVERAGE.md).
+([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). The full list: [docs/COVERAGE.md](docs/COVERAGE.md). Every number,
+how it was measured, and power draw: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Requirements
 
@@ -145,8 +148,10 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
   Mods that use Minecraft's own rendering API work; where one hooks code Cadence replaces, Cadence steps aside in that
   area (compatibility layers, first version). Addon mods can fill the gap for OpenGL-only mods with Cadence's API
   (render hooks, Metal handles, step-aside requests): [docs/API.md](docs/API.md).
-- Far terrain (Video Settings > Far Terrain) is experimental and best on Macs with 10 or more GPU cores. With a shader pack
-  it's drawn by packs that support Distant Horizons (their dh_terrain program); the Nether has none.
+- Far terrain (Video Settings > Far Terrain) is experimental. On the 8-core M2 Air it costs about 0.4 ms a frame while you
+  turn (494-504 fps instead of 603 at render distance 16, fullscreen Retina) and one 5% step of resolution with a shader pack
+  ([docs/BENCHMARKS.md](docs/BENCHMARKS.md)); GPUs of 6 cores or fewer use Low quality. With a shader pack it's drawn by
+  packs that support Distant Horizons (their dh_terrain program); the Nether has none.
 - Pegasus's rain draws as wide, blocky streaks (most likely the pack's own look; unverified).
 - PBR resource packs (labPBR or OldPBR normal and specular maps, `_n.png` / `_s.png`) aren't read yet: a shader pack's
   "labPBR / seuspbr (resource pack required)" mode draws as with a plain resource pack (flat normals, no reflections).
