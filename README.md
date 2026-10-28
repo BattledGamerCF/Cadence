@@ -11,7 +11,7 @@ built for Apple's GPUs and tested together.
 
 **Frame Generation.** Twice the frames on screen for the frames rendered, with and without shader packs: a frame made between
 each two by reprojecting the world (the HUD, chat and your hand stay sharp). With a shader pack, Battery Saver renders 30 and
-shows 60 (BSL at render distance 16: 10 W for the whole Mac instead of 21 W at 60 fps); on a 120 Hz screen Recommended and
+shows 60 (BSL at render distance 16: 11-12 W for the whole Mac instead of 21 W at 60 fps); on a 120 Hz screen Recommended and
 Max Quality render 60 and show 120. Smooth (between the last two frames) or
 Responsive (the newest frame turned to where your mouse looks now: no added delay), or Off; the counter shows "60 fps
 (30 rendered)".

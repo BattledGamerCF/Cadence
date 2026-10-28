@@ -88,6 +88,8 @@ fi
 # render distance for this run (CADENCE_RD), default 6
 sed -i '' -E "s/^renderDistance:[0-9]+$/renderDistance:${CADENCE_RD:-6}/" options.txt
 sed -i '' -E "s/^enableVsync:(true|false)$/enableVsync:${CADENCE_VSYNC:-false}/" options.txt  # CADENCE_VSYNC=true: as the player's default
+# windowed at launch (a "fullscreen" step's option is saved with the options: the next run would start fullscreen)
+sed -i '' -E "s/^fullscreen:(true|false)$/fullscreen:false/" options.txt
 # backgroundFps=false: the test window is often not the active app (the player is using the Mac); its few-fps cap
 # would hold every measurement at ~15 fps and freeze the GPU reading
 # CADENCE_ENV: extra environment for the game only (e.g. MallocStackLogging=lite for malloc_history)
