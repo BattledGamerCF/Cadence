@@ -10,8 +10,29 @@
 #import <VideoToolbox/VideoToolbox.h>
 #import <VideoToolbox/VTFrameProcessor.h>
 #import <VideoToolbox/VTFrameProcessor_LowLatencyFrameInterpolation.h>
+#include <dlfcn.h>
 #include <stdatomic.h>
 #import "mcmetal.h"
+
+// VideoToolbox's frame processor classes, looked up at run time when Neural is first turned on (VideoToolbox isn't linked:
+// nothing of it loads unless a feature needs it)
+static Class cVTProcessor, cVTFrame, cVTConfig, cVTParams;
+
+static int vtLoad(void) {
+	if (cVTProcessor) return 1;
+	if (!dlopen("/System/Library/Frameworks/VideoToolbox.framework/VideoToolbox", RTLD_NOW | RTLD_LOCAL)) return 0;
+	cVTFrame = NSClassFromString(@"VTFrameProcessorFrame");
+	cVTConfig = NSClassFromString(@"VTLowLatencyFrameInterpolationConfiguration");
+	cVTParams = NSClassFromString(@"VTLowLatencyFrameInterpolationParameters");
+	Class p = NSClassFromString(@"VTFrameProcessor");
+	if (!cVTFrame || !cVTConfig || !cVTParams || !p) return 0;
+	cVTProcessor = p;
+	return 1;
+}
+
+static CMTime frameTime(int64_t v) {
+	return (CMTime) {.value = v, .timescale = 120, .flags = kCMTimeFlags_Valid, .epoch = 0};
+}
 
 void mc_present_drawable(id<MTLCommandBuffer> b, id<CAMetalDrawable> drawable);
 
@@ -156,7 +177,7 @@ int mcfg_neural(void *fg, Ctx *ctx, int on) {
 		atomic_store(&g->neural, -1);
 		return -1;
 	}
-	if (!g->toYuv || !VTLowLatencyFrameInterpolationConfiguration.isSupported) {
+	if (!g->toYuv || !vtLoad() || ![(id) cVTConfig isSupported]) {
 		atomic_store(&g->neural, -1);
 		return -1;
 	}
@@ -179,9 +200,9 @@ int mcfg_neural(void *fg, Ctx *ctx, int on) {
 	int w = g->nw, h = g->nh;
 	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
 		@autoreleasepool {
-			VTLowLatencyFrameInterpolationConfiguration *cfg = [[[VTLowLatencyFrameInterpolationConfiguration alloc] initWithFrameWidth:w frameHeight:h
+			VTLowLatencyFrameInterpolationConfiguration *cfg = [[[(id) cVTConfig alloc] initWithFrameWidth:w frameHeight:h
 				numberOfInterpolatedFrames:1] autorelease];
-			VTFrameProcessor *p = [VTFrameProcessor new];
+			VTFrameProcessor *p = [(id) cVTProcessor new];
 			NSError *e = nil;
 			if (cfg && [p startSessionWithConfiguration:cfg error:&e]) {
 				// (still wanted: the render thread may have let it go meanwhile)
@@ -246,10 +267,10 @@ static int encodeNeural(Fg *g, Ctx *ctx, id<MTLCommandBuffer> cb, id<CAMetalDraw
 	if (!p) return 0;
 	if (@available(macOS 26.0, *)) {
 		long n = ++g->neuralFrames;
-		VTFrameProcessorFrame *src = [[[VTFrameProcessorFrame alloc] initWithBuffer:g->yuv[a] presentationTimeStamp:CMTimeMake(n * 2, 120)] autorelease];
-		VTFrameProcessorFrame *prev = [[[VTFrameProcessorFrame alloc] initWithBuffer:g->yuv[b] presentationTimeStamp:CMTimeMake(n * 2 - 2, 120)] autorelease];
-		VTFrameProcessorFrame *dst = [[[VTFrameProcessorFrame alloc] initWithBuffer:g->out presentationTimeStamp:CMTimeMake(n * 2 - 1, 120)] autorelease];
-		VTLowLatencyFrameInterpolationParameters *params = [[[VTLowLatencyFrameInterpolationParameters alloc] initWithSourceFrame:src previousFrame:prev
+		VTFrameProcessorFrame *src = [[[(id) cVTFrame alloc] initWithBuffer:g->yuv[a] presentationTimeStamp:frameTime(n * 2)] autorelease];
+		VTFrameProcessorFrame *prev = [[[(id) cVTFrame alloc] initWithBuffer:g->yuv[b] presentationTimeStamp:frameTime(n * 2 - 2)] autorelease];
+		VTFrameProcessorFrame *dst = [[[(id) cVTFrame alloc] initWithBuffer:g->out presentationTimeStamp:frameTime(n * 2 - 1)] autorelease];
+		VTLowLatencyFrameInterpolationParameters *params = [[[(id) cVTParams alloc] initWithSourceFrame:src previousFrame:prev
 			interpolationPhase:@[@0.5f] destinationFrames:@[dst]] autorelease];
 		if (!src || !prev || !dst || !params) return 0;
 		[(VTFrameProcessor *) g->vt processWithCommandBuffer:cb parameters:params];

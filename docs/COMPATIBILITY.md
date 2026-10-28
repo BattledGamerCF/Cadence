@@ -96,8 +96,16 @@ Essential didn't load. Now, when any other mod has a pre-launch step, Cadence's 
 - **Style Filter** is off with a shader pack and with World Resolution below 100%.
 - **Smooth Textures** applies to Cadence's own terrain renderer only; with a pack, or with mods that draw blocks
   themselves, those draws keep the game's atlas.
-- **World Reverb** needs the Apple sound engine; sound mods that replace OpenAL calls (Sound Physics Remastered and
-  similar) should be used with the OpenAL engine instead, where World Reverb is off.
+- **World Reverb** and **Sound Around Corners** need the Apple sound engine; sound mods that replace OpenAL calls (Sound
+  Physics Remastered and similar) should be used with the OpenAL engine instead, where both are off.
+- **Torch Shadows** and **Neural Lighting** follow Ray Tracing (off with a pack or World Resolution below 100%). Blocks added
+  by mods that give light cast shadows as vanilla's do (their light level is read from the block state).
+- **Biome Colours** is off with a shader pack (the pack grades its own picture); modded biomes get a grade from their
+  temperature, rain and colours.
+- **Frame Generation: Neural** follows Frame Generation (Smooth's rules: not with Render Max FPS or the Metal 4 path).
+- **Far Terrain > Renderer: Mesh Shaders** falls back to Compute with a shader pack (the pack draws the far terrain's records).
+- **Head Tracking** moves the camera in first person only; mods that set the camera themselves (freelook, zoom) apply on top
+  of it.
 
 ## Options
 

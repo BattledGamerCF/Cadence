@@ -4,6 +4,50 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
 
 ## Unreleased
 
+The ideas queue (docs/IDEAS.md), built. Measured on an M2 MacBook Air (8 GPU cores), 1080p, unless noted.
+
+- **Neural Lighting (Experimental)**, a fourth Ray Tracing mode: Lighting's light cache as a small neural network that learns
+  the world's lighting while you play, a neural radiance cache after Müller et al. 2021. A multiresolution hash grid of
+  trainable features (4 levels, 8/4/2/1-block cells) feeds an 11-16-16-3 MLP, trained on the GPU every frame from one-bounce
+  ray samples whose targets ask the network itself at the bounce, so light keeps bouncing frame after frame. MLP gradients
+  are reduced per simdgroup and per threadgroup (no contended atomics), stepped with Adam; hash features averaged per entry,
+  then SGD. Where it hasn't learned yet, the game's own light shows. 3.3-3.8 ms against Lighting's 2.7 ms; settles in about
+  10 s to within 1% of Lighting's brightness in the test view. It trains on the GPU: the Neural Engine runs networks but
+  can't train one live.
+- **Torch Shadows** (Visuals, with Ray Tracing on): torches, lanterns, lava, glowstone and every block that gives light cast
+  ray-traced shadows. The window's light-giving blocks go into a grid (8-block cells, up to 15 lights each); every lit
+  spot weighs its cell's lights by level-less-distance times the cosine, picks two in proportion (resampled importance
+  sampling), traces a shadow ray to each and blends over frames. Hidden lights take block-light levels away (45% stays: light
+  comes round corners). Torch-lit room: +0.9 ms (Shadows 0.8 -> 1.7 ms, Lighting 1.9 -> 2.7 ms).
+- **Denoised path-traced photos.** Photo Mode with Ray Tracing on now path traces 32 samples and runs MetalFX's denoiser over
+  the last 6 (with the surfaces' colours, normals and depth): 1.3 s instead of 7.7 s, and as clean as the 256-sample shot in
+  the test view. Before macOS 26 (no denoiser) it takes 256 samples as before. `-Dcadence.photo.denoise=false` for the old way.
+- **Frame Generation: Neural**, a fourth mode: the in-between frame made by Apple's own frame interpolation (VideoToolbox's
+  low-latency interpolator, a neural network running beside the GPU) from the last two frames at up to 1280 x 720, the hand
+  and HUD from the newest frame. M2: 3.9 ms at 720p (15 ms at 1080p, hence the cap), no GPU time; the frame's command buffer
+  waits for it (14 ms vs Smooth's 5 at 30 -> 60). MetalFX's own frame interpolator was measured too (10.5 ms of GPU at 1080p)
+  and isn't used. Until Apple's model has loaded (about a second), and before macOS 26, Smooth's reprojection.
+- **Far Terrain > Renderer: Mesh Shaders.** The object and mesh stages Cadence inherited from mcopt (the quad cull in the
+  object stage, the faces emitted by the mesh stage, no survivor list) were never drawn with; now they can be. Same picture;
+  no measurable difference on an M2 (GPU 3.2-3.5 ms either way at 2,048 chunks from y = 280), so Compute stays the default.
+- **Biome Colours** (Visuals: Subtle / Normal / Strong): the picture graded for where you are: warm in the desert, cool and pale
+  in the snow, lush in the jungle, grey-green in a swamp, golden at sunset, blue at night, washed out in the rain, red in the
+  Nether. A tiny network (15-16-7) trained on the Mac at first use (0.4 s, from looks authored for the vanilla biomes) reads the
+  biome's temperature and rain, the grass and water colours around you, the dimension, the time, the weather, sky light and
+  water, so modded biomes get a grade too; one full-screen pass reading each pixel in place (programmable blending), ~0.1 ms.
+- **Sound Around Corners** (Music & Sounds, with World Reverb): a sound behind a wall comes round the corner it really
+  comes by. The air around you (33 x 25 x 33 blocks) is searched from your block; a sound's way back is pulled tight between
+  corners; it is placed at the first corner, as loud as the whole way allows and a little duller per corner, whenever that is
+  louder than the muffled sound through the wall. Doorway test: heard from the door (16.5-block way, 1 corner); door closed:
+  through the wall only. The search: ~1.2 ms, at most once a second, only while a sound is behind something.
+- **Head Tracking** (Extras: Lean / Look): the view follows your head from AirPods' motion sensors (Cadence Helper reads
+  Core Motion's headphone motion, on the Mac only, into a small shared file). Lean moves only the camera (tilt to lean round
+  a corner, never into a block); Look turns the view with your head, amplified, and your aim with it. Straight ahead is found
+  again by itself. Tested with the helper's made-up head (`-Dcadence.head.fake=true`); not with real AirPods (macOS asks for
+  Motion & Fitness the first time).
+- **Every setting says what it does to the frame rate.** The tooltip's last line: "Performance impact: High (lowers fps)",
+  only the word coloured (Low green, Medium yellow, High gold, Improves aqua); None and Varies plain.
+
 - **Video Settings regrouped, with performance impact like Sodium.** A new **Cadence: Visuals** section holds the settings
   that cost frames for the picture (Far Terrain and Far Distance, Ray Tracing and its tracer, HDR, Dynamic Lights, Style
   Filter, Smooth Textures, leaves, Keep Server Chunks); each one's tooltip ends with "Performance impact:" Low (green),
