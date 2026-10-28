@@ -22,7 +22,7 @@ packs are translated the same way.
 | Text and GUI | Faster text layout (bidirectional text, glyph matrices), crisp text at any resolution, a compact Unicode font, lazily made HUD and panorama targets |
 | Shader packs | Run on Metal (Iris's format, compute, images, buffer objects, Distant Horizons programs), shadows reused every other frame, shadow casters that can't cast skipped; Iris's public API answered for other mods |
 | Resolution | Auto resolution, World Resolution, Retina off, MetalFX upscaling |
-| Frame timing | Exact frame caps, even pacing, refresh-locked presents on ProMotion, Heat Control, On Battery, In Background, Render Max FPS |
+| Frame timing | Exact frame caps, even pacing, refresh-locked presents on ProMotion, Heat Control, On Battery, In Background, Minimal Renderer |
 
 ## Running the game
 

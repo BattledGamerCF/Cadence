@@ -1,6 +1,6 @@
-# Render Max FPS (Record Mode)
+# Minimal Renderer
 
-Video Settings > Cadence: Extras > **Render Max FPS** draws Minecraft at the highest frame rate this Mac can render it while
+Video Settings > Cadence: Speed > **Minimal Renderer** (called Render Max FPS before 0.4.0-beta.26) draws Minecraft at the highest frame rate this Mac can render it while
 the game stays playable. It is Cadence's run at the Minecraft FPS record on Hone's list (21,632 fps), and it follows that
 list's rules: a playable resolution, the hardware and method disclosed, the world and entities rendered, every frame really
 rendered (interpolated frames are counted apart).
@@ -44,14 +44,14 @@ rendered (interpolated frames are counted apart).
 ## A record attempt
 
 1. Let the Mac cool (lid open, nothing else running, ~20 minutes idle), plugged in.
-2. In a world: Video Settings > Cadence: Extras > Render Max FPS: On. Leave the menu.
+2. In a world: Video Settings > Cadence: Extras > Minimal Renderer: On. Leave the menu.
 3. Stand on a pillar above everything around (~60 blocks up). Look up (~80 degrees, or 30 degrees for a view with the land
    in it), stand still ~5 s.
 4. The F3 text shows "N fps (M rendered)" and "Best": record both with a screenshot or video. Rendered frames alone count
    against the record; say in the submission what the view is.
 
 Disclosure for Hone: MacBook Air M2 (8-core GPU), 8 GB, macOS 27; Minecraft 26.3, Fabric, Cadence (native Metal backend)
-with Render Max FPS: every frame one GPU compute pass ray-tracing the loaded world (2 chunks each way) at 320 x 180, each
+with the Minimal Renderer: every frame one GPU compute pass ray-tracing the loaded world (2 chunks each way) at 320 x 180, each
 block face its texture's average colour with vanilla's flat lighting, entities as boxes, the HUD drawn by the CPU when it
 changes; no upscaling; frame interpolation counted separately; 4 frames committed to a command buffer.
 

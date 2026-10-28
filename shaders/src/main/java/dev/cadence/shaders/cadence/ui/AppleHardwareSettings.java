@@ -98,14 +98,26 @@ public final class AppleHardwareSettings {
 		}
 	}
 
-	/** Ray Tracing: Off / Shadows (dev.cadence.metal.rt.RayTracing). */
+	/**
+	 * Ray Tracing (dev.cadence.metal.rt.RayTracing): Off, then each mode without and with Torch Shadows. The tracer is chosen by
+	 * the chip (hardware on M3 and newer, voxel before: RayTracing.Tracer.AUTO); a saved rayTracer= still overrides it.
+	 */
 	public static Button rayTracingButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(rtLabel(), b -> {
-			RayTracing.Mode[] all = RayTracing.Mode.values();
-			RayTracing.Mode next = all[(RayTracing.mode().ordinal() + 1) % all.length];
-			RayTracing.setMode(next);
-			ShaderToggle.saveKey("rayTracing", next.name());
+			RayTracing.Mode mode = RayTracing.mode();
+			boolean torches = RayTracing.torchShadows();
+			if (mode != RayTracing.Mode.OFF && !torches) {
+				torches = true;
+			} else {
+				RayTracing.Mode[] all = RayTracing.Mode.values();
+				mode = all[(mode.ordinal() + 1) % all.length];
+				torches = false;
+			}
+			RayTracing.setMode(mode);
+			RayTracing.setTorchShadows(torches);
+			ShaderToggle.saveKey("rayTracing", mode.name());
+			ShaderToggle.saveKey("torchShadows", Boolean.toString(torches));
 			CadenceSettings.refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.HIGH, "Shadows from the sun and the moon, ray traced through the blocks around you (64 blocks each way).",
 			"Shadows|every pixel in the open is tested against the sun: houses, trees and cliffs cast real shadows, and walls facing away "
@@ -114,6 +126,8 @@ public final class AppleHardwareSettings {
 				+ "cache: shaded overhangs and caves' mouths, sunlit walls lighting the ground beside them",
 			"Neural Lighting (Experimental)|the same light, its cache a small neural network that learns the world's lighting as you play "
 				+ "(trained on the graphics chip every frame)",
+			"+ Torches|torches, lanterns, lava and glowstone cast ray-traced shadows too: a wall or a pillar between a torch and the "
+				+ "floor shadows it",
 			"Off|as vanilla",
 			"#On an M2 at 1080p, about 1 ms a frame for Shadows, 2.5 ms for Lighting and 3.5 ms for Neural Lighting; Torch Shadows "
 					+ "adds about 1 ms where torches light the view. Not with a shader pack (it has its own shadows) "
@@ -123,49 +137,15 @@ public final class AppleHardwareSettings {
 	}
 
 	private static Component rtLabel() {
-		return Component.literal("Ray Tracing: " + RayTracing.mode().label);
-	}
-
-	/** Torch Shadows: On / Off (RayTracing.setTorchShadows; with Ray Tracing on). */
-	public static Button torchButton() {
-		Button[] self = new Button[1];
-		self[0] = Button.builder(torchLabel(), b -> {
-			boolean on = !RayTracing.torchShadows();
-			RayTracing.setTorchShadows(on);
-			ShaderToggle.saveKey("torchShadows", Boolean.toString(on));
-			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.MEDIUM, "Torches, lanterns, lava and glowstone cast ray-traced shadows.",
-			"#A wall or a pillar between a torch and the floor shadows it, as the sun's shadows do. Each lit spot picks the lights that "
-				+ "reach it (up to 15 nearby) by how much each gives and traces a ray to one or two of them a frame; the result builds "
-				+ "up over a few frames. With Ray Tracing on (Shadows or Lighting).")).build();
-		CadenceSettings.onRefresh(() -> self[0].setMessage(torchLabel()));
-		return self[0];
-	}
-
-	private static Component torchLabel() {
-		return Component.literal("Torch Shadows: " + (RayTracing.torchShadows() ? "On" : "Off"));
-	}
-
-	/** Ray Tracer: Auto / Hardware / Voxel. */
-	public static Button tracerButton() {
-		Button[] self = new Button[1];
-		self[0] = Button.builder(tracerLabel(), b -> {
-			RayTracing.Tracer[] all = RayTracing.Tracer.values();
-			RayTracing.Tracer next = all[(RayTracing.tracer().ordinal() + 1) % all.length];
-			RayTracing.setTracer(next);
-			ShaderToggle.saveKey("rayTracer", next.name());
-			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES, "How rays are traced (the picture is the same).",
-			"Hardware|Metal ray tracing through an acceleration structure of the world: on M3 and newer the ray tracing hardware does it",
-			"Voxel|a walk through the blocks in a compute shader: fastest on M1 and M2, which have no ray tracing hardware",
-			"Auto|Hardware on M3 and newer, Voxel before")).build();
-		CadenceSettings.onRefresh(() -> self[0].setMessage(tracerLabel()));
-		return self[0];
-	}
-
-	private static Component tracerLabel() {
-		String now = RayTracing.mode() == RayTracing.Mode.OFF ? "" : RayTracing.usedHardware() ? " (hardware)" : " (voxel)";
-		return Component.literal("Ray Tracer: " + RayTracing.tracer().label + now);
+		RayTracing.Mode mode = RayTracing.mode();
+		if (mode == RayTracing.Mode.OFF) return Component.literal("Ray Tracing: Off");
+		String name = switch (mode) {
+			case SHADOWS -> "Shadows";
+			case LIGHTING -> "Lighting";
+			default -> "Neural";
+		};
+		// ("RT" with Torches: "Ray Tracing: Lighting + Torches" is wider than the button)
+		return Component.literal(RayTracing.torchShadows() ? "RT: " + name + " + Torches" : "Ray Tracing: " + name);
 	}
 
 	/** HDR: Off / On (dev.cadence.metal.Hdr). */

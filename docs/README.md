@@ -9,4 +9,4 @@
 - [COMPATIBILITY.md](COMPATIBILITY.md): other mods tested with Cadence, and how the compatibility layers work.
 - [CHANGES-FROM-MCOPT.md](CHANGES-FROM-MCOPT.md): what Cadence changed or added compared with mcopt.
 - [BENCHMARKS.md](BENCHMARKS.md): measured fps, shader packs, far terrain on a small GPU, and the whole Mac's power draw.
-- [RENDER-MAX-FPS.md](RENDER-MAX-FPS.md): Render Max FPS (Record Mode): what it draws, the results, a record attempt.
+- [MINIMAL-RENDERER.md](MINIMAL-RENDERER.md): the Minimal Renderer (Cadence's FPS-record renderer): what it draws, the results, a record attempt.

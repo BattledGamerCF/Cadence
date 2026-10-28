@@ -74,22 +74,21 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addHeader(heading("Cadence: Visuals"));
 		// (Far Distance beside Far Terrain, as Render Distance is a slider of its own)
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.FarTerrainScreen.button(self), dev.cadence.shaders.cadence.ui.FarTerrainScreen.distanceSlider());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.rayTracingButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.tracerButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.hdrButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.dynamicLightsButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.rayTracingButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.hdrButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.dynamicLightsButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.leavesButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.styleButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.smoothButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.leavesButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.keepServerChunksButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.torchButton(), dev.cadence.shaders.cadence.ui.LookSettings.biomeColoursButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.LookSettings.biomeColoursButton(), null);
 		this.list.addHeader(heading("Cadence: Speed"));
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.SharpnessScreen.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.frameGenButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.autoRenderDistanceButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.maxFpsButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.autoRenderDistanceButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.keepServerChunksButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.maxFpsButton(), null);
 		this.list.addHeader(heading("Cadence: Power & Heat"));
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.heatButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.batteryButton());
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.backgroundButton(), null);
 		this.list.addHeader(heading("Cadence: Extras"));
-		this.list.addSmall(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.fpsCounterButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.overlayButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.messagesButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.replayButton(), dev.cadence.shaders.cadence.ui.AppleHardwareSettings.voiceButton());
-		this.list.addSmall(dev.cadence.shaders.cadence.ui.LookSettings.headTrackingButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.javaButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.button(self), dev.cadence.shaders.cadence.ui.CadenceSettings.overlayButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.messagesButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.replayButton());
+		this.list.addSmall(dev.cadence.shaders.cadence.ui.AppleHardwareSettings.voiceButton(), dev.cadence.shaders.cadence.ui.CadenceSettings.javaButton());
 	}
 
 	/**

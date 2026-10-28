@@ -37,9 +37,9 @@ Responsive (the newest frame turned to where your mouse looks now: no added dela
 | Fullscreen, Max FPS preset | 12 chunks | 1,598 | 680 |
 | Fullscreen, Max FPS preset, simulation distance 16 | 16 chunks | 1,391 | 607 |
 
-And **Render Max FPS** (Video Settings > Cadence: Extras) is Cadence's run at the Minecraft FPS record: a playable,
+And the **Minimal Renderer** (Video Settings > Cadence: Speed) is Cadence's run at the Minecraft FPS record: a playable,
 lit, ray-traced 320 x 180 view at up to 66,000 frames rendered a second (132,000 shown with frame interpolation, counted
-apart); about 30,000 with the land in view. See [docs/RENDER-MAX-FPS.md](docs/RENDER-MAX-FPS.md).
+apart); about 30,000 with the land in view. See [docs/MINIMAL-RENDERER.md](docs/MINIMAL-RENDERER.md).
 
 **The Sodium stack in one jar.** Remove these; Cadence does their job (each part measured, most switchable):
 
@@ -61,16 +61,16 @@ full-resolution, full-quality screenshot), a **Performance Overlay** (frames, GP
 the current draw, macOS **Low Power Mode** followed as Battery Saver, **Auto Render Distance** for shader packs, and the game's
 sound on **Apple's audio engine** instead of OpenAL (spatial audio on headphones and AirPods; Options > Music & Sounds).
 
-**Apple hardware** (Video Settings > Cadence: Visuals; Voice Control and Head Tracking under Extras): **HDR** (light sources
+**Apple hardware** (Video Settings > Cadence: Visuals; Voice Control under Extras): **HDR** (light sources
 brighter than white on the display's extended range), **ray-traced shadows and lighting** (a voxel tracer on M1/M2, Metal's
-ray tracing hardware on M3 and newer), **Torch Shadows** (every torch, lantern and lava pool casts ray-traced shadows),
+ray tracing hardware on M3 and newer), **Torch Shadows** (Ray Tracing's "+ Torches": every torch, lantern and lava pool casts ray-traced shadows),
 **Neural Lighting** (the bounced light cached by a small neural network that learns the world as you play, trained on the
 GPU), denoised **path-traced Photo Mode** shots (about a second), and the **Neural Engine** at work: **Style Filters** (the
 world repainted like one of the game's paintings, trained on your Mac), **Smooth Textures** (block textures upscaled 2x by
 Apple's ML super resolution), a Neural Engine **upscaler** for World Resolution (with shader packs too: BSL 80 fps instead of 74
 at 50%), **Frame Generation: Neural** (Apple's own
 frame interpolation) and **Voice Control** (spoken commands, recognised on your Mac only). **Biome Colours** grades the picture
-for where you are, **Head Tracking** follows your head from AirPods' motion. Sound: **World Reverb** (caves echo, walls
+for where you are. Sound: **World Reverb** (caves echo, walls
 muffle) and **Sound Around Corners** (sounds come through the doorway they really come by).
 
 On top of that: a garbage-collection policy for games, faster startup (about 15% sooner in a world: block data built in
@@ -127,11 +127,11 @@ Details and known issues: [docs/SHADER-PACKS.md](docs/SHADER-PACKS.md).
 - **In game:** everything is in **Options > Video Settings**, at the top: the status lines, then **Shaders...** (the
   Shader Packs list, with the pack's profile) and **Shader Pack Settings...** (the pack's own options, on its own pages,
   as in Iris, with Apply), then the Performance preset and Quick Setup. Below them, **Cadence: Visuals** (the settings that cost
-  frames for the picture: Far Terrain and Far Distance, Ray Tracing and its tracer, HDR, Dynamic Lights, Style Filter, Smooth
-  Textures, leaves, Keep Server Chunks; each tooltip ends with its performance impact, as in Sodium: Low in green, Medium in
-  yellow, High in gold), **Cadence: Speed** (Sharpness & Speed, Frame Generation, Auto Render Distance, Render Max FPS),
-  **Cadence: Power & Heat** (cooling, On Battery, In Background) and **Cadence: Extras** (Benchmark, the fps counter, the
-  Performance Overlay, messages, Instant Replay, Voice Control, Java).
+  frames for the picture: Far Terrain and Far Distance, Ray Tracing (with or without Torch Shadows; the tracer is picked for your chip), HDR,
+  Dynamic Lights, leaves, Style Filter, Smooth Textures, Biome Colours; each tooltip ends with its performance impact, as in Sodium: Low in green, Medium in
+  yellow, High in gold), **Cadence: Speed** (Sharpness & Speed, Frame Generation, Auto Render Distance, Keep Server Chunks, Minimal Renderer),
+  **Cadence: Power & Heat** (cooling, On Battery, In Background) and **Cadence: Extras** (Benchmark, Overlay: Off / FPS / Full,
+  messages, Instant Replay, Voice Control, Java).
 - **Keys:** **O** opens Shader Packs, **K** turns shaders off and back on, **F9** takes a Photo Mode shot, **F10** saves an
   Instant Replay (Controls > Key Binds > Miscellaneous).
 - **Shader pack options** are kept per pack in `shaderpacks/<pack>.txt`, the same file Iris uses.
@@ -184,7 +184,7 @@ For the development and test tools, see [CONTRIBUTING.md](CONTRIBUTING.md).
 | [`fpshud/`](fpshud) | **Cadence HUD**: the fps counter |
 | [`irisapi/`](irisapi) | **Cadence Iris API**: Iris's public API answered by Cadence (mod id `cadence_iris_api`; the optional provider in `packaging/iris-provider` claims the id `iris`) |
 | [`tools/`](tools) | Release packaging, the automated in-game test harness, benchmarks |
-| [`docs/`](docs) | How it's built, shader-pack status, compatibility, Render Max FPS, changes from mcopt |
+| [`docs/`](docs) | How it's built, shader-pack status, compatibility, the Minimal Renderer, changes from mcopt |
 | [`packaging/`](packaging) | Release README, Modrinth page text, project icon |
 
 New to the code? [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) maps every package: what it does and where to start.

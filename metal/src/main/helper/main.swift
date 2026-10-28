@@ -8,12 +8,7 @@
 //       appended to OUT_FILE as a line. Runs as its own app (Cadence Helper.app), so macOS asks for the microphone and speech
 //       recognition for it, not for Java. --file: recognise a recording instead (tests). Ends when OUT_FILE.stop appears or the
 //       game (PID) is gone, and deletes both files then.
-//   cadence-helper head OUT_FILE [--parent PID] [--fake]
-//       Head Tracking: the head's turn from AirPods (or other headphones with head tracking: Core Motion's headphone motion),
-//       written to OUT_FILE (32 bytes, mapped by the game) as it comes, about 60 times a second. --fake: a slow made-up head
-//       movement instead, without headphones (tests). Ends as listen does, and deletes the file.
 import AVFoundation
-import CoreMotion
 import CreateML
 import Foundation
 import Speech
@@ -192,106 +187,8 @@ func listen() {
 	if let f = file { l.listenFile(URL(fileURLWithPath: f)) } else { l.listenMicrophone() }
 }
 
-// Head Tracking's file: int32 sequence (odd while being written), int32 state, float yaw, pitch, roll (radians, Core Motion's
-// attitude), float seconds since start. States: 0 starting, 1 tracking, 2 no headphones with head tracking connected, 3 not
-// allowed (Privacy & Security > Motion & Fitness), 4 not available on this Mac.
-final class HeadTracker: NSObject, CMHeadphoneMotionManagerDelegate {
-	let out: URL
-	let parent: pid_t
-	let manager = CMHeadphoneMotionManager()
-	let started = Date()
-	var map: UnsafeMutableRawPointer!
-	var seq: Int32 = 0
-	var state: Int32 = 0
-
-	init(out: URL, parent: pid_t) {
-		self.out = out
-		self.parent = parent
-		super.init()
-		let fd = open(out.path, O_RDWR | O_CREAT, 0o600)
-		if fd < 0 { fail("can't open \(out.path)") }
-		ftruncate(fd, 32)
-		guard let m = mmap(nil, 32, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0), m != MAP_FAILED else { fail("can't map \(out.path)") }
-		close(fd)
-		map = m
-	}
-
-	func publish(_ state: Int32, _ yaw: Double = 0, _ pitch: Double = 0, _ roll: Double = 0) {
-		self.state = state
-		seq &+= 1
-		map.storeBytes(of: seq, toByteOffset: 0, as: Int32.self)
-		OSMemoryBarrier()
-		map.storeBytes(of: state, toByteOffset: 4, as: Int32.self)
-		map.storeBytes(of: Float(yaw), toByteOffset: 8, as: Float.self)
-		map.storeBytes(of: Float(pitch), toByteOffset: 12, as: Float.self)
-		map.storeBytes(of: Float(roll), toByteOffset: 16, as: Float.self)
-		map.storeBytes(of: Float(Date().timeIntervalSince(started)), toByteOffset: 20, as: Float.self)
-		OSMemoryBarrier()
-		seq &+= 1
-		map.storeBytes(of: seq, toByteOffset: 0, as: Int32.self)
-	}
-
-	func finish() -> Never {
-		manager.stopDeviceMotionUpdates()
-		try? FileManager.default.removeItem(at: out)
-		try? FileManager.default.removeItem(atPath: out.path + ".stop")
-		exit(0)
-	}
-
-	func headphoneMotionManagerDidConnect(_ manager: CMHeadphoneMotionManager) {
-		if state == 2 { publish(0) }
-	}
-
-	func headphoneMotionManagerDidDisconnect(_ manager: CMHeadphoneMotionManager) {
-		publish(2)
-	}
-
-	func run(fake: Bool) {
-		publish(0)
-		if fake {
-			Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { _ in
-				let t = Date().timeIntervalSince(self.started)
-				self.publish(1, 0.35 * sin(t * 0.9), 0.12 * sin(t * 0.6), 0.15 * sin(t * 1.3))
-			}
-		} else if !manager.isDeviceMotionAvailable {
-			publish(4)
-		} else if CMHeadphoneMotionManager.authorizationStatus() == .denied || CMHeadphoneMotionManager.authorizationStatus() == .restricted {
-			publish(3)
-		} else {
-			manager.delegate = self
-			manager.startDeviceMotionUpdates(to: .main) { motion, error in
-				if let m = motion {
-					self.publish(1, m.attitude.yaw, m.attitude.pitch, m.attitude.roll)
-				} else if error != nil {
-					self.publish(CMHeadphoneMotionManager.authorizationStatus() == .denied ? 3 : 2)
-				}
-			}
-			// (no motion within 2 s of starting: no headphones that track the head are connected)
-			DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if self.state == 0 { self.publish(2) } }
-		}
-		Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
-			if FileManager.default.fileExists(atPath: self.out.path + ".stop") { self.finish() }
-			if self.parent > 0 && kill(self.parent, 0) != 0 && errno == ESRCH { self.finish() }
-		}
-		RunLoop.main.run()
-	}
-}
-
-func head() {
-	guard args.count >= 3 else { fail("usage: head OUT_FILE [--parent PID] [--fake]") }
-	var parent: pid_t = 0, fake = false
-	var i = 3
-	while i < args.count {
-		if args[i] == "--parent", i + 1 < args.count { parent = pid_t(args[i + 1]) ?? 0; i += 2 }
-		else if args[i] == "--fake" { fake = true; i += 1 }
-		else { i += 1 }
-	}
-	HeadTracker(out: URL(fileURLWithPath: args[2]), parent: parent).run(fake: fake)
-}
-
 switch args.count > 1 ? args[1] : "" {
 case "train-style": trainStyle()
 case "listen": listen()
-case "head": head()
-default: fail("usage: cadence-helper train-style ... | listen ... | head ...")
+default: fail("usage: cadence-helper train-style ... | listen ...")
 }

@@ -23,7 +23,7 @@ The release jar (`tools/release`) nests four Fabric mods built by Gradle from fo
 | `dev.cadence.metal` (root) | The Metal backend: Minecraft's `renderpearl` device/encoder/buffer/texture API implemented on Metal (`MetalDevice`, `MetalEncoder`, `MetalRenderPass`, `MetalBuffer`, `MetalTexture`, `MetalSurface`), `Native` (every native call, through Java's foreign-function API), `MacSystem` (thermal state, battery, fans, display, sysctl), `Profile` and `JvmDefaults` (startup settings), `Vivace` (restarting on the Vivace Java build when the player chose it), `PlatformCheck` (Apple Silicon, macOS, Rosetta). Kept as one package: the backend's classes share package-private state, as in mcopt. |
 | `own/` | Cadence's own terrain renderer: chunk meshes in one arena, GPU culling (`OwnFrag`, Hi-Z; the opt-in Far Plants, `OwnTerrain.farPlantBlocks`, is a test in the cull), the opaque/cutout draw path, dynamic lights. |
 | `lod/` | Far terrain (experimental, off by default). GPU code: `src/main/resources/cadence/lod/columns.metal`. |
-| `record/` | Render Max FPS (Record Mode): the compute-only renderer for the FPS record (`Record`, `RecordWorld`, `RecordHud`); GPU code `src/main/resources/cadence/record/record.metal`, native `mcrecord.m`, offline bench `tools/record_bench.m` (docs/RENDER-MAX-FPS.md). |
+| `record/` | The Minimal Renderer: the compute-only renderer for the FPS record (`Record`, `RecordWorld`, `RecordHud`); GPU code `src/main/resources/cadence/record/record.metal`, native `mcrecord.m`, offline bench `tools/record_bench.m` (docs/RENDER-MAX-FPS.md). |
 | `chunk/`, `chunkio/` | Opt-in chunk pipeline and save-file changes (each behind a `-Dcadence.chunk.*` switch). |
 | `logic/` | Cadence Logic: the game-logic optimizations that replace Lithium (see docs/GAME-LOGIC.md). |
 | `cpu/` | Render-thread CPU work: model and item vertex writers, text, A/B timers. |
@@ -37,7 +37,7 @@ The release jar (`tools/release`) nests four Fabric mods built by Gradle from fo
 | root: `Hdr` | HDR: the frame's float targets, the EDR layer, the tone-mapped present (`mcmetal.m` present_hdr_fs); `own/OwnEmission` is the emissive blocks' mask. |
 | `rec/` | Instant Replay (`Replay`: the last 30 s kept as hardware-encoded video, saved on request) and an opt-in video recorder for development (`Recorder`); native `rec.m`. |
 | `mixin/<area>/` | The mixins for each area above, one mixin config per area (`cadence-metal-<area>.mixins.json`), each with a plugin that decides whether it applies. Areas without a package of their own: `ownmesh` (own terrain's meshing), `framegen` (Frame Generation's camera hooks), `gen` (world-generation buffers and QoS), `qos` (thread priorities), `startup` (faster start), `edge` (the opt-in frame cap while terrain generates, `EdgeCap`). The mixins directly in `mixin/` are the backend's (`cadence-metal.mixins.json`). |
-| `src/main/native/` | The Objective-C/C native library: `mcmetal.m` (the backend), `mcown.m` (own terrain), `mccull.m` (Hi-Z), `mcfx.m` (MetalFX), `mcsys.m` (system signals), `mcpack.m` (shader-pack helpers), `mcbench.m` (Quick Setup's GPU test), `mclod.m`/`lod*.c` (far terrain), `mcrecord.m` (Render Max FPS), `mcfg.m` (Frame Generation), `mcaudio.m` (the Apple sound engine and World Reverb), `mcrt.m` (ray tracing), `mcneural.m`
+| `src/main/native/` | The Objective-C/C native library: `mcmetal.m` (the backend), `mcown.m` (own terrain), `mccull.m` (Hi-Z), `mcfx.m` (MetalFX), `mcsys.m` (system signals), `mcpack.m` (shader-pack helpers), `mcbench.m` (Quick Setup's GPU test), `mclod.m`/`lod*.c` (far terrain), `mcrecord.m` (the Minimal Renderer), `mcfg.m` (Frame Generation), `mcaudio.m` (the Apple sound engine and World Reverb), `mcrt.m` (ray tracing), `mcneural.m`
 (the Neural Engine features), `mcm4.m` (the opt-in Metal 4 path), `mcgrade.m` (Biome Colours), `mcfg.m` (Frame Generation, with Neural's VideoToolbox interpolation), `rec.m` (Instant Replay, the recorder). Built by clang from Gradle. |
 | `src/main/resources/cadence/` | Metal shaders: `own/terrain.metal`, `native/` (Minecraft's own shaders rewritten in Metal: `common.metal` plus one file per program), `lod/`, `rec/`. |
 
@@ -53,13 +53,12 @@ The release jar (`tools/release`) nests four Fabric mods built by Gradle from fo
 | `shaders/mixin/` | Hooks into Minecraft's renderer for shader packs. |
 | `scene/`, `sceneoptimizer/` | The Scene Optimizer port (from the Shader Loader). |
 | **`shaders/cadence/`** | **Cadence's own features**, by area: |
-| `cadence/ui/` | Video Settings rows and buttons (`CadenceSettings`, `AppleHardwareSettings` for the Apple hardware features' buttons, `LookSettings` for Biome Colours and Head Tracking, `Tips` = every tooltip, with the performance impact line, `ShaderToggle` = the shader settings and the config file), the Sharpness & Speed page, the Shader Packs list, Shader Pack Settings, tooltips (`Tips`), keys O/K, the Mod Menu entry. |
-| `cadence/render/` | Rendering features: Auto resolution and World Resolution (`RenderScale`, `WorldScale`), crisp text, dynamic lights, entity culling, Render Max FPS, the compile queue, lazy targets (outline, HUD, panorama), recovering from a failed frame, cleanup when a world closes. |
+| `cadence/ui/` | Video Settings rows and buttons (`CadenceSettings`, `AppleHardwareSettings` for the Apple hardware features' buttons, `LookSettings` for Biome Colours, `Tips` = every tooltip, with the performance impact line, `ShaderToggle` = the shader settings and the config file), the Sharpness & Speed page, the Shader Packs list, Shader Pack Settings, tooltips (`Tips`), keys O/K, the Mod Menu entry. |
+| `cadence/render/` | Rendering features: Auto resolution and World Resolution (`RenderScale`, `WorldScale`), crisp text, dynamic lights, entity culling, the Minimal Renderer, the compile queue, lazy targets (outline, HUD, panorama), recovering from a failed frame, cleanup when a world closes. |
 | `cadence/shaderpack/` | Switching packs live (`ShaderSwitcher`), the pack catalogue (tested/heavy), quality hints. |
 | `cadence/shadow/` | Shader-pack shadows: every-2nd-frame reuse, shadow proxies, skipping casters that can't shadow anything. |
 | `cadence/hiz/`, `cadence/facecull/`, `cadence/mesh/` | Occlusion (Hi-Z), face culling, chunk meshing caches and Smart Leaves. |
 | `cadence/voice/` | Voice Control (`VoiceControl`): the phrases Cadence Helper heard, turned into game actions. |
-| `cadence/head/` | Head Tracking (`HeadTracking`): the head pose Cadence Helper writes, as Lean (the camera) or Look (the player's turn); the camera hooks are in `mixin/head/`. |
 | `cadence/server/` | Keep Server Chunks (`ServerChunks`): on a server with a shorter view distance, the chunks it forgets kept within the render distance, and stored on disk (`ServerChunkStore`: the server's own chunk packets in region files, handed back to the game's packet handler when you return; mixins in `cadence/mixin/server/`). |
 | `cadence/system/` | The Mac: cooling (`HeatControl`), Battery Saver (`BatterySaver`: what saving power does, with and without a shader pack), On Battery, In Background, frame pacing, the memory guard, CPU core tiers, thread priorities, Cadence messages. |
 | `cadence/memory/` | Memory: the GC policy (`GcPolicy`), heap and native trimming, chunk heap compaction. |
@@ -82,5 +81,5 @@ The release jar (`tools/release`) nests four Fabric mods built by Gradle from fo
 - [FOR-REVIEWERS.md](FOR-REVIEWERS.md): for mod-platform reviewers: native code, network (none), files written, licences.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): building, the test harness, the rules for changes (exact or switch-gated, measured).
 - [tools/README.md](../tools/README.md): the scripts.
-- [RENDER-MAX-FPS.md](RENDER-MAX-FPS.md): Render Max FPS, its results and the record attempt.
+- [MINIMAL-RENDERER.md](MINIMAL-RENDERER.md): the Minimal Renderer, its results and the record attempt.
 - [CHANGELOG.md](../CHANGELOG.md): every change, with its measurements; older design notes are in the git history.

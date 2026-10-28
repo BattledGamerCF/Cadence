@@ -1,7 +1,6 @@
 package dev.cadence.shaders.cadence.ui;
 
 import dev.cadence.metal.grade.BiomeGrade;
-import dev.cadence.shaders.cadence.head.HeadTracking;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 
@@ -16,33 +15,6 @@ public final class LookSettings {
 	/** At startup (ShaderLoaderMod). */
 	public static void load() {
 		BiomeGrade.setStrength(parse(BiomeGrade.Strength.class, ShaderToggle.configValue("biomeColours", "OFF"), BiomeGrade.Strength.OFF));
-		HeadTracking.setMode(parse(HeadTracking.Mode.class, ShaderToggle.configValue("headTracking", "OFF"), HeadTracking.Mode.OFF));
-	}
-
-	/** Head Tracking: Off / Lean / Look (dev.cadence.shaders.cadence.head.HeadTracking). */
-	public static Button headTrackingButton() {
-		Button[] self = new Button[1];
-		self[0] = Button.builder(headLabel(), b -> {
-			var all = HeadTracking.Mode.values();
-			var next = all[(HeadTracking.mode().ordinal() + 1) % all.length];
-			HeadTracking.setMode(next);
-			ShaderToggle.saveKey("headTracking", next.name());
-			CadenceSettings.refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.NONE, "The view follows your head, from your AirPods' motion sensors.",
-			"Lean|tilt your head to lean round a corner, turn it to glance; your aim stays with the mouse",
-			"Look|your head turns the view (amplified, so your eyes stay on the screen) and your aim with it",
-			"Off|as vanilla",
-			"#AirPods Pro, AirPods (3rd generation and later), AirPods Max or Beats with head tracking. Straight ahead is found again by "
-				+ "itself. The first time, macOS asks to let Cadence Helper use Motion & Fitness; the motion stays on this Mac. First person only.")).build();
-		CadenceSettings.onRefresh(() -> self[0].setMessage(headLabel()));
-		return self[0];
-	}
-
-	private static Component headLabel() {
-		String st = HeadTracking.status();
-		// (a failure turns it Off: its reason still shows, BH8-11)
-		boolean show = !st.isEmpty() && (HeadTracking.mode() != HeadTracking.Mode.OFF || st.startsWith("Can't"));
-		return Component.literal("Head Tracking: " + HeadTracking.mode().label + (show ? " (" + st + ")" : ""));
 	}
 
 	/** Biome Colours: Off / Subtle / Normal / Strong (dev.cadence.metal.grade.BiomeGrade). */

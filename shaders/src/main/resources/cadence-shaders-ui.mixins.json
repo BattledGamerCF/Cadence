@@ -16,7 +16,6 @@
 		"entity.EntityRendererCullInvoker",
 		"entity.ParticleCullMixin",
 		"entity.ParticleMoveMixin",
-		"head.CameraHeadMixin",
 		"hiz.HiZDrawIndirectMixin",
 		"server.ServerBiomeSeedAccessor",
 		"server.ServerChunksCacheMixin",

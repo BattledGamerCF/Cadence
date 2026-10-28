@@ -308,18 +308,6 @@ public final class CadenceSettings {
 		return benchmarkDetailed;
 	}
 
-	public static Button fpsCounterButton() {
-		Button[] self = new Button[1];
-		self[0] = Button.builder(fpsCounterLabel(), b -> {
-			boolean on = "false".equals(System.getProperty("cadence.fpsCounter"));  // (anything but "false" shows it, as the HUD reads it)
-			System.setProperty("cadence.fpsCounter", Boolean.toString(on));
-			ShaderToggle.saveKey("fpsCounter", Boolean.toString(on));
-			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.NONE, "The frame rate in the top-left corner while you play.")).build();
-		onRefresh(() -> self[0].setMessage(fpsCounterLabel()));
-		return self[0];
-	}
-
 	public static Button replayButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(replayLabel(), b -> {
@@ -337,22 +325,26 @@ public final class CadenceSettings {
 		return Component.literal("Instant Replay: " + (dev.cadence.metal.rec.Replay.enabled() ? "On (F10 saves)" : "Off"));
 	}
 
+	/** Overlay: Off, FPS (the counter in the top-left corner), Full (the counter and the performance lines under it). */
 	public static Button overlayButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(overlayLabel(), b -> {
-			dev.cadence.shaders.cadence.render.PerformanceOverlay.toggle();
+			boolean counter = !"false".equals(System.getProperty("cadence.fpsCounter"));  // (anything but "false" shows it, as the HUD reads it)
+			boolean full = dev.cadence.shaders.cadence.render.PerformanceOverlay.on();
+			// Off -> FPS -> Full -> Off
+			boolean nextCounter = !full, nextFull = counter && !full;
+			System.setProperty("cadence.fpsCounter", Boolean.toString(nextCounter));
+			ShaderToggle.saveKey("fpsCounter", Boolean.toString(nextCounter));
+			if (nextFull != full) dev.cadence.shaders.cadence.render.PerformanceOverlay.toggle();
 			refreshAll();
-		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.NONE, "A few lines under the fps counter: frames shown and rendered, frame and GPU time, the Mac's heat and power, battery time left.")).build();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.NONE, "What shows in the top-left corner while you play: nothing, the frame rate, or the frame rate with a few lines under it (frames shown and rendered, frame and GPU time, the Mac's heat and power, battery time left).")).build();
 		onRefresh(() -> self[0].setMessage(overlayLabel()));
 		return self[0];
 	}
 
 	private static Component overlayLabel() {
-		return Component.literal("Performance Overlay: " + (dev.cadence.shaders.cadence.render.PerformanceOverlay.on() ? "On" : "Off"));
-	}
-
-	private static Component fpsCounterLabel() {
-		return Component.literal("FPS Counter: " + ("false".equals(System.getProperty("cadence.fpsCounter")) ? "Off" : "On"));
+		if (dev.cadence.shaders.cadence.render.PerformanceOverlay.on()) return Component.literal("Overlay: Full");
+		return Component.literal("Overlay: " + ("false".equals(System.getProperty("cadence.fpsCounter")) ? "Off" : "FPS"));
 	}
 
 	/** The Benchmark card's More/Fewer Details button; saved as benchmarkDetails=. */
@@ -361,7 +353,7 @@ public final class CadenceSettings {
 		ShaderToggle.saveKey("benchmarkDetails", on ? "detailed" : "simple");
 	}
 
-	/** Render Max FPS (MaxFpsMode): the game at the highest frame rate it can render while playable. Not saved. */
+	/** Minimal Renderer (MaxFpsMode): the game at the highest frame rate it can render while playable. Not saved. */
 	public static Button maxFpsButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(maxFpsLabel(), b -> {
@@ -374,7 +366,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component maxFpsLabel() {
-		return Component.literal("Render Max FPS: " + (MaxFpsMode.chosen() ? "On" : "Off"));
+		return Component.literal("Minimal Renderer: " + (MaxFpsMode.chosen() ? "On" : "Off"));
 	}
 
 	/** On Battery (system.BatteryMode): Match Display, Saver, Off. */
@@ -654,7 +646,7 @@ public final class CadenceSettings {
 			: Component.literal("Tuned automatically: " + String.join(" · ", auto)).withStyle(ChatFormatting.GREEN));
 		// (Render Max FPS: Heat Control, On Battery and Max Framerate don't apply, so their holds aren't shown)
 		if (dev.cadence.shaders.cadence.render.MaxFpsMode.chosen())
-			lines.add(Component.literal("Render Max FPS: nothing holds the frame rate back").withStyle(ChatFormatting.YELLOW));
+			lines.add(Component.literal("Minimal Renderer: nothing holds the frame rate back").withStyle(ChatFormatting.YELLOW));
 		else if (HeatControl.level() > 0) lines.add(Component.literal(HeatControl.shortDescribe()).withStyle(ChatFormatting.YELLOW));
 		// Retina changes at the next launch (a preset or the Retina button): said here too, so it's not missed
 		if (ShaderToggle.retinaConfigured() != dev.cadence.metal.Retina.on())

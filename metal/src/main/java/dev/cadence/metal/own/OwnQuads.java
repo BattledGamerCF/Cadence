@@ -542,8 +542,12 @@ public final class OwnQuads {
 				}
 				if (amax - amin != 1f || bmax - bmin != 1f || amin != (float) Math.floor(amin) || bmin != (float) Math.floor(bmin) || amin < 0 || bmin < 0 || amin > 15 || bmin > 15) {
 					reason = 2;
-				} else if (abgr[0] != abgr[1] || abgr[0] != abgr[2] || abgr[0] != abgr[3] || light[0] != light[1] || light[0] != light[2] || light[0] != light[3]) {
+				} else if (light[0] != light[1] || light[0] != light[2] || light[0] != light[3]) {
 					reason = 3;
+				} else if (abgr[0] != abgr[1] || abgr[0] != abgr[2] || abgr[0] != abgr[3]) {
+					int d = 0;
+					for (int v = 1; v < 4; v++) for (int s = 0; s < 32; s += 8) d = Math.max(d, Math.abs((abgr[v] >>> s & 255) - (abgr[0] >>> s & 255)));
+					reason = d <= 4 ? 5 : 6;
 				} else if (!this.spriteOk) {
 					reason = 4;
 				} else {
@@ -777,7 +781,7 @@ public final class OwnQuads {
 			abgr[v] = toABGR(instance.getColor(v));
 			light[v] = LightCoordsUtil.lightCoordsWithEmission(instance.getLightCoords(v), emission);
 		}
-		if (OwnMergeStat.ON) this.layers[layer].spriteOk = !quad.materialInfo().sprite().contents().isAnimated();
+		if (OwnMergeStat.ON) this.layers[layer].spriteOk = !quad.materialInfo().sprite().isAnimated();
 		if (OwnQrec.ON) {
 			Layer l = this.layers[layer];
 			l.hinted = this.hinted;

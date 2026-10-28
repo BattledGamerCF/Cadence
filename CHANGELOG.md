@@ -2,6 +2,16 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased (0.4.0-beta.26)
+
+Video Settings, tidied:
+- **Overlay: Off / FPS / Full** replaces the separate FPS Counter and Performance Overlay buttons.
+- **Ray Tracing** now includes Torch Shadows: Off, Shadows, Shadows + Torches, Lighting, Lighting + Torches, Neural,
+  Neural + Torches. The Ray Tracer button is gone: Cadence uses the ray tracing hardware on M3 and newer and the voxel tracer
+  before (a `rayTracer=` line in the config still overrides it).
+- **Render Max FPS is now the Minimal Renderer**, under Cadence: Speed. Keep Server Chunks moved from Visuals to Speed.
+- **Head Tracking removed**, with Cadence Helper's Motion & Fitness permission.
+
 ## 0.4.0-beta.25 / shaders 0.3.24 (2026-10-28)
 
 Measured on an M2 MacBook Air (8 GPU cores), unless noted.

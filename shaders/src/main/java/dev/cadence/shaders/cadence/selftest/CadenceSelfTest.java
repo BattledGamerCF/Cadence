@@ -140,12 +140,6 @@ public final class CadenceSelfTest {
 						dev.cadence.shaders.cadence.voice.VoiceControl.handle(mc, phrase);
 						LOGGER.info("[selftest] voice: {}", dev.cadence.shaders.cadence.voice.VoiceControl.last());
 					});
-				} else if (lower.startsWith("head=")) {
-					// "head=off|lean|look": Head Tracking (-Dcadence.head.fake=true: a made-up head movement, no headphones)
-					dev.cadence.shaders.cadence.head.HeadTracking.setMode(dev.cadence.shaders.cadence.head.HeadTracking.Mode.valueOf(lower.substring(5).toUpperCase(java.util.Locale.ROOT)));
-				} else if (lower.equals("head")) {
-					LOGGER.info("[selftest] head: {} | player yaw {} pitch {}", dev.cadence.shaders.cadence.head.HeadTracking.last(),
-						mc.player == null ? 0 : mc.player.getYRot(), mc.player == null ? 0 : mc.player.getXRot());
 				} else if (lower.startsWith("grade=")) {
 					// "grade=off|subtle|normal|strong": Biome Colours
 					dev.cadence.metal.grade.BiomeGrade.setStrength(dev.cadence.metal.grade.BiomeGrade.Strength.valueOf(lower.substring(6).toUpperCase(java.util.Locale.ROOT)));

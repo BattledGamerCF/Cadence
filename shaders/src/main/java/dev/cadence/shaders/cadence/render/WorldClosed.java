@@ -29,7 +29,6 @@ public final class WorldClosed {
 			dev.cadence.metal.neural.StyleFilter.release();
 			dev.cadence.metal.NeuralUpscaler.release();  // (BH7-11)
 			dev.cadence.metal.audio.WorldAcoustics.worldClosed();  // (Sound Around Corners' grid held the level, BH8-01)
-			dev.cadence.shaders.cadence.head.HeadTracking.worldClosed();  // (Look's turn belonged to the old player, BH8-07)
 			ShadowCompileCull.reset();
 			dev.cadence.scene.SceneViews.worldChanged();
 			var runtime = dev.cadence.shaders.runtime.ShaderRuntime.get();

@@ -102,10 +102,8 @@ Essential didn't load. Now, when any other mod has a pre-launch step, Cadence's 
   by mods that give light cast shadows as vanilla's do (their light level is read from the block state).
 - **Biome Colours** is off with a shader pack (the pack grades its own picture); modded biomes get a grade from their
   temperature, rain and colours.
-- **Frame Generation: Neural** follows Frame Generation (Smooth's rules: not with Render Max FPS or the Metal 4 path).
+- **Frame Generation: Neural** follows Frame Generation (Smooth's rules: not with the Minimal Renderer or the Metal 4 path).
 - **Far Terrain > Renderer: Mesh Shaders** falls back to Compute with a shader pack (the pack draws the far terrain's records).
-- **Head Tracking** moves the camera in first person only; mods that set the camera themselves (freelook, zoom) apply on top
-  of it.
 
 ## Options
 

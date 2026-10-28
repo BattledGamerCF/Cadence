@@ -16,7 +16,7 @@ final class OwnMergeStat {
 	static final boolean ON = Boolean.getBoolean("cadence.own.mesh.mergestat");
 	private static final long START = System.nanoTime();
 	/** per layer: [0] emitted, [1] eligible (placed on the grid), [2] rectangles, [3..6] ineligible by reason 1..4, [7] same-key duplicates on a cell */
-	private static final long[][] TOTAL = new long[2][8];
+	private static final long[][] TOTAL = new long[2][10];
 	private static long logAt;
 
 	private record Key(float plane, long k0, long k1, long k2) {
@@ -26,7 +26,7 @@ final class OwnMergeStat {
 	}
 
 	static void count(OwnQuads quads) {
-		long[][] add = new long[2][8];
+		long[][] add = new long[2][10];
 		for (int l = 0; l < 2; l++) {
 			OwnQuads.Layer layer = quads.layers[l];
 			long[] a = add[l];
@@ -38,7 +38,7 @@ final class OwnMergeStat {
 					long m2 = layer.mk2[b][i];
 					int reason = (int) (m2 >>> 48);
 					if (reason != 0) {
-						a[2 + reason]++;
+						a[reason >= 5 ? 3 + reason : 2 + reason]++;
 						continue;
 					}
 					int ca = (int) (m2 >>> 32 & 255), cb = (int) (m2 >>> 40 & 255);
@@ -55,7 +55,7 @@ final class OwnMergeStat {
 			}
 		}
 		synchronized (TOTAL) {
-			for (int l = 0; l < 2; l++) for (int k = 0; k < 8; k++) TOTAL[l][k] += add[l][k];
+			for (int l = 0; l < 2; l++) for (int k = 0; k < 10; k++) TOTAL[l][k] += add[l][k];
 			long now = System.nanoTime();
 			if (now > logAt) {
 				logAt = now + 2_000_000_000L;
@@ -64,8 +64,8 @@ final class OwnMergeStat {
 					long[] t = TOTAL[l];
 					// after merge = emitted - eligible + rectangles (ineligible and duplicates stay as they are)
 					long after = t[0] - t[1] + t[2];
-					sb.append(String.format("; %s emitted %d, eligible %d, rects %d, after merge %d (%.1f%%), ineligible: any-facing %d, not unit face %d, corners differ %d, sprite %d, dup %d",
-						l == 0 ? "solid" : "cutout", t[0], t[1], t[2], after, 100.0 * after / Math.max(1, t[0]), t[3], t[4], t[5], t[6], t[7]));
+					sb.append(String.format("; %s emitted %d, eligible %d, rects %d, after merge %d (%.1f%%), ineligible: any-facing %d, not unit face %d, light differs %d, colour near (<=4) %d, colour far %d, sprite %d, dup %d",
+						l == 0 ? "solid" : "cutout", t[0], t[1], t[2], after, 100.0 * after / Math.max(1, t[0]), t[3], t[4], t[5], t[8], t[9], t[6], t[7]));
 				}
 				System.out.println(sb);
 			}
