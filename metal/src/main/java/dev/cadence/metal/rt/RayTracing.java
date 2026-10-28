@@ -41,7 +41,12 @@ public final class RayTracing {
 	private static final int SCALE = Math.clamp(Integer.getInteger("cadence.rt.scale", 2), 1, 2);
 
 	public enum Mode {
-		OFF("Off"), SHADOWS("Shadows"), LIGHTING("Lighting (Experimental)");
+		OFF("Off"), SHADOWS("Shadows"), LIGHTING("Lighting (Experimental)"), NEURAL("Neural Lighting (Experimental)");
+
+		/** Whether the sky's and the sun's bounced light is traced (Lighting, and Neural Lighting's network in place of its table). */
+		public boolean lighting() {
+			return this == LIGHTING || this == NEURAL;
+		}
 
 		public final String label;
 
@@ -119,6 +124,33 @@ public final class RayTracing {
 
 	public static boolean torchShadows() {
 		return torchShadows;
+	}
+
+	// ---- Neural Lighting's network (rt.metal rt_nrc_*): its hash features, MLP weights, gradients and Adam's moments ----
+
+	private static final int NRC_T = 32768, NRC_FEAT = 4 * NRC_T * 2, NRC_PAD = 520;
+	private static long nrc;
+
+	/** The network's buffer, made (and its weights drawn) at its first use; it learns from there. */
+	private static long nrcBuffer() {
+		if (nrc != 0 || ctx == 0) return nrc;
+		// (+ rt_nrc_train's partial sums, 512 groups at most, and the features' gradients and sample weights)
+		long bytes = (NRC_FEAT + 4L * NRC_PAD + 8 + 512L * NRC_PAD + NRC_FEAT + NRC_FEAT / 2 + NRC_T) * 4;  // (+ the coarse cells' confidence)
+		long b = RtNative.buffer(ctx, bytes);
+		if (b == 0) return 0;
+		long a = RtNative.contents(b);
+		MemoryUtil.memSet(a, 0, bytes);
+		java.util.Random r = new java.util.Random(20261027L);
+		for (int i = 0; i < NRC_FEAT; i++) MemoryUtil.memPutFloat(a + i * 4L, (r.nextFloat() * 2 - 1) * 1e-4f);
+		// the MLP: He-initialised weights (ReLU), zero biases; the output layer small
+		int[][] layers = {{0, 16, 11}, {192, 16, 16}, {464, 3, 16}};
+		for (int[] l : layers) {
+			float scale = (float) Math.sqrt(2.0 / l[2]) * (l[0] == 464 ? 0.1f : 1f);
+			for (int i = 0; i < l[1] * l[2]; i++) MemoryUtil.memPutFloat(a + (NRC_FEAT + l[0] + i) * 4L, (float) r.nextGaussian() * scale);
+		}
+		nrc = b;
+		System.out.println("[cadence] ray tracing: neural lighting network made (" + bytes / 1024 + " KB)");
+		return nrc;
 	}
 
 	/** Lights in the voxel window (Torch Shadows), for the self-test. */
@@ -283,14 +315,15 @@ public final class RayTracing {
 			frames++;
 			return;
 		}
-		boolean lighting = mode == Mode.LIGHTING;
+		boolean lighting = mode.lighting();
+		long nrc = mode == Mode.NEURAL ? nrcBuffer() : 0;
 		// (Torch Shadows: the light grid, and RtFrame screen.w says the kernel ran)
 		long lights = torchShadows ? world.lights() : 0;
 		MemoryUtil.memPutInt(frameBuf + 204, lights != 0 ? 1 : 0);
-		int flags = (rtHw ? 1 : 0) | (DEBUG ? 2 : 0) | (lighting ? 4 : 0) | (lighting && clearCache ? 8 : 0) | SCALE << 8 | (lights != 0 ? 0x10000 : 0);
+		int flags = (rtHw ? 1 : 0) | (DEBUG ? 2 : 0) | (lighting ? 4 : 0) | (lighting && clearCache ? 8 : 0) | SCALE << 8 | (lights != 0 ? 0x10000 : 0) | (nrc != 0 ? 0x20000 : 0);
 		if (lighting) clearCache = false;
 		int r = RtNative.frame(rt, enc, MetalBridge.textureHandle(color), MetalBridge.textureHandle(depth), light, world.vox, world.bricks, world.sections,
-			world.palette, frameBuf, FRAME_BYTES, world.ox >> 4, world.oz >> 4, flags, lights);
+			world.palette, frameBuf, FRAME_BYTES, world.ox >> 4, world.oz >> 4, flags, lights, nrc);
 		usedHw = r == 1;
 		// (the GPU's time per frame, every half second: Frame Generation fills in for Lighting when the Mac can't hold the screen's rate)
 		gpuFrames++;
@@ -422,6 +455,18 @@ public final class RayTracing {
 	 */
 	public static void release() {
 		dropWorld();
+		if (nrc != 0) {
+			// (Neural Lighting's network: what it learned is this world's; let go a second later, frames in flight may read it)
+			long old = nrc;
+			nrc = 0;
+			Thread.ofVirtual().start(() -> {
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException ignored) {
+				}
+				Minecraft.getInstance().execute(() -> RtNative.release(old));
+			});
+		}
 		if (rt != 0) {
 			long old = rt;
 			rt = 0;

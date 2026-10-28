@@ -712,7 +712,7 @@ fragment float4 rt_light_fs(VOut in [[stage_in]], texture2d<float, access::read>
 	float fade = edgeFade(P, f);
 	if (fade >= 0.999f) return float4(1.0f);
 	float4 gl = gathered(rt, irr, depth, p, f);
-	if (gl.a < 0.5f) return float4(1.0f);  // (not lit yet: as the game draws it)
+	if (gl.a < 0.05f) return float4(1.0f);  // (not lit yet: as the game draws it)
 	float3 cached = gl.rgb;
 	float3 vanilla = srgbToLinear(lightmap.read(uint2(block, sky)).rgb) * vanillaShade(face);
 	float3 torch = srgbToLinear(lightmapF(lightmap, blockLeft(block, torchAt(torchVis, p, f)), 0.0f));
@@ -720,7 +720,7 @@ fragment float4 rt_light_fs(VOut in [[stage_in]], texture2d<float, access::read>
 	float3 sun = f.extra2.xyz * (f.sun.w * vis * max(dot(faceNormal(face), f.sun.xyz), 0.0f));
 	float3 relit = torch * vanillaShade(face) + (sun + cached) * f.cache.w;
 	float3 k = clamp(relit / max(vanilla, float3(0.03f)), 0.0f, 6.0f);
-	k = mix(k, float3(1.0f), fade);
+	k = mix(k, float3(1.0f), max(fade, 1.0f - smoothstep(0.3f, 0.7f, gl.a)));  // (half learned: half the game's)
 	return float4(pow(k, 1.0f / 2.2f), 1.0f);
 }
 
@@ -896,4 +896,292 @@ kernel void rt_torch(depth2d<float, access::read> depth [[texture(0)]], texture2
 	float4 prev = torch.read(gid);
 	if (abs(prev.g - dist) < 0.04f * dist + 0.08f) vis = mix(prev.r, vis, 0.25f);
 	torch.write(float4(vis, dist, 0.0f, 0.0f), gid);
+}
+
+// ---- Neural Lighting (experimental): a neural radiance cache, trained as you play ----
+//
+// The lighting cache's job done by a small neural network that learns the light of the world around you while it runs (after
+// Müller et al., "Real-time Neural Radiance Caching for Path Tracing"): a multiresolution hash grid of trainable features
+// (4 levels, cells of 8, 4, 2 and 1 blocks, 2 features per cell and face, blended across the face) feeds an MLP (11 inputs:
+// the features and the face's normal, two hidden layers of 16, ReLU; 3 outputs, softplus: the light arriving at the face).
+// Every frame rt_nrc_train takes one traced sample in 16 x 16, traces one bounce as rt_cache_update does (the sky, or the hit
+// block's colour times the sun on it and the network's own answer there: it teaches itself, bounce after bounce), and
+// backpropagates a relative L2 loss (the MLP's weights read from a constant buffer: one broadcast copy for every thread): the MLP's gradients summed per simdgroup, then per threadgroup into a row of
+// partial sums of its own (no atomics: 515 parameters added to by every simdgroup at once were 4.7 ms on an M2); the hash
+// features' gradients summed per entry with the weight of the samples behind them. rt_nrc_adam then steps the MLP (Adam),
+// rt_nrc_feat each touched feature (SGD on its averaged gradient). rt_nrc_gather asks the network for every
+// traced sample in place of the hash table. Trained on the GPU: the Neural Engine runs networks but can't train one live.
+//
+// The buffer (floats): the features (NRC_FEAT), the MLP's weights, their gradients (atomic), Adam's two moments; then a
+// sample count and Adam's step (uints).
+
+#define NRC_T 32768u
+#define NRC_FEAT (4u * NRC_T * 2u)
+#define NRC_IN 11u
+#define NRC_H 16u
+#define NRC_P 515u
+#define NRC_PAD 520u
+#define NRC_W NRC_FEAT
+#define NRC_G (NRC_FEAT + NRC_PAD)
+#define NRC_M (NRC_FEAT + 2u * NRC_PAD)
+#define NRC_V (NRC_FEAT + 3u * NRC_PAD)
+#define NRC_COUNT (NRC_FEAT + 4u * NRC_PAD)
+#define NRC_STEP (NRC_COUNT + 1u)
+// per threadgroup of rt_nrc_train, its parameters' gradient sums (no atomics: rt_nrc_adam adds the groups up)
+#define NRC_PART (NRC_FEAT + 4u * NRC_PAD + 8u)
+#define NRC_GROUPS_MAX 512u
+// the hash features' gradients and the weight of the samples behind them, summed over a frame (rt_nrc_feat averages and steps)
+#define NRC_FG (NRC_PART + NRC_GROUPS_MAX * NRC_PAD)
+#define NRC_FH (NRC_FG + NRC_FEAT)
+// per coarsest-level cell (8 blocks): how much the network has trained there, 0..1 (where it hasn't, the game's own light)
+#define NRC_SEEN (NRC_FH + NRC_FEAT / 2u)
+// one training sample per NRC_STRIDE x NRC_STRIDE traced samples a frame (mcrt.m dispatches the grid to match)
+#define NRC_STRIDE 16u
+// the MLP's parameters within the weights: W1 [16 x 11], b1, W2 [16 x 16], b2, W3 [3 x 16], b3
+#define NRC_B1 176u
+#define NRC_W2 192u
+#define NRC_B2 448u
+#define NRC_W3 464u
+#define NRC_B3 512u
+
+struct NrcIn {
+	float x[NRC_IN];
+	uint idx[16];
+	float wt[16];
+};
+
+// A surface point (window coordinates) and its face: the network's inputs, and where its features came from.
+static void nrcEncode(float3 g, uint face, constant RtFrame &f, device const float *nrc, thread NrcIn &e) {
+	float3 n = faceNormal(face);
+	uint ax = face >> 1, a1 = (ax + 1u) % 3u, a2 = (ax + 2u) % 3u;
+	float3 c = g + n * 0.5f;
+	float3 w = float3(c.x + float(f.dims.z) + f.extra.z, c.y, c.z + float(f.dims.w) + f.extra.w);
+	for (uint l = 0; l < 4u; l++) {
+		float s = float(8u >> l);
+		float u = w[a1] / s - 0.5f, v = w[a2] / s - 0.5f;
+		int cn = int(floor(w[ax] / s));
+		float fu = fract(u), fv = fract(v), f0 = 0.0f, f1 = 0.0f;
+		for (uint k = 0; k < 4u; k++) {
+			int3 cell;
+			cell[ax] = cn;
+			cell[a1] = int(floor(u)) + int(k & 1u);
+			cell[a2] = int(floor(v)) + int(k >> 1u);
+			uint h = (uint(cell.x) * 73856093u ^ uint(cell.y) * 19349663u ^ uint(cell.z) * 83492791u ^ (face + 8u * l) * 2654435761u) & (NRC_T - 1u);
+			uint i = (l * NRC_T + h) * 2u;
+			float wt = ((k & 1u) ? fu : 1.0f - fu) * ((k >> 1u) ? fv : 1.0f - fv);
+			e.idx[l * 4u + k] = i;
+			e.wt[l * 4u + k] = wt;
+			f0 += nrc[i] * wt;
+			f1 += nrc[i + 1u] * wt;
+		}
+		e.x[l * 2u] = f0;
+		e.x[l * 2u + 1u] = f1;
+	}
+	e.x[8] = n.x;
+	e.x[9] = n.y;
+	e.x[10] = n.z;
+}
+
+static inline float softplus(float y) {
+	return y > 20.0f ? y : log(1.0f + exp(y));
+}
+
+// The MLP: its hidden layers (for training) and its raw outputs y; the light is softplus(y).
+static void nrcForward(thread const float *x, constant float *W, thread float *h1, thread float *h2, thread float3 &y) {
+	for (uint j = 0; j < NRC_H; j++) {
+		float a = W[NRC_B1 + j];
+		for (uint i = 0; i < NRC_IN; i++) a += W[j * NRC_IN + i] * x[i];
+		h1[j] = max(a, 0.0f);
+	}
+	for (uint j = 0; j < NRC_H; j++) {
+		float a = W[NRC_B2 + j];
+		for (uint i = 0; i < NRC_H; i++) a += W[NRC_W2 + j * NRC_H + i] * h1[i];
+		h2[j] = max(a, 0.0f);
+	}
+	for (uint k = 0; k < 3u; k++) {
+		float a = W[NRC_B3 + k];
+		for (uint i = 0; i < NRC_H; i++) a += W[NRC_W3 + k * NRC_H + i] * h2[i];
+		y[k] = a;
+	}
+}
+
+static float3 nrcAt(float3 g, uint face, constant RtFrame &f, device const float *nrc, constant float *W) {
+	NrcIn e;
+	nrcEncode(g, face, f, nrc, e);
+	float h1[NRC_H], h2[NRC_H];
+	float3 y;
+	nrcForward(e.x, W, h1, h2, y);
+	return float3(softplus(y.x), softplus(y.y), softplus(y.z));
+}
+
+// (a gradient summed over the simdgroup into the threadgroup's row for that simdgroup)
+static inline void nrcGrad(threadgroup float *tg, uint i, float g, uint lane) {
+	float s = simd_sum(g);
+	if (lane == 0u) tg[i] = s;
+}
+
+kernel void rt_nrc_train(depth2d<float, access::read> depth [[texture(0)]], texture2d<float, access::read> traced [[texture(1)]],
+	device const ushort *vox [[buffer(0)]], device const uint2 *bricks [[buffer(1)]], constant RtFrame &f [[buffer(2)]],
+	device const uint2 *palette [[buffer(4)]], device const uchar *sections [[buffer(5)]], device float *nrc [[buffer(9)]],
+	device atomic_float *nrcA [[buffer(10)]], device atomic_uint *nrcU [[buffer(11)]], constant float *W [[buffer(12)]],
+	uint2 gid [[thread_position_in_grid]], uint lane [[thread_index_in_simdgroup]], uint sg [[simdgroup_index_in_threadgroup]],
+	uint tid [[thread_index_in_threadgroup]], uint2 tgp [[threadgroup_position_in_grid]], uint2 tgs [[threadgroups_per_grid]]) {
+	threadgroup float part[8][NRC_PAD];
+	// one traced sample in NRC_STRIDE x NRC_STRIDE, in a pattern that moves every frame (every thread runs to the end: the simdgroup sums)
+	uint frame = uint(f.params.y);
+	uint2 q = gid * NRC_STRIDE + uint2(frame % NRC_STRIDE, (frame / NRC_STRIDE) % NRC_STRIDE);
+	bool valid = q.x < traced.get_width() && q.y < traced.get_height();
+	uint2 px = min(q * uint(f.extra.y), f.screen.xy - 1);
+	float d = valid ? depth.read(px) : 0.0f;
+	valid = valid && d > 1e-7f;
+	float3 g = float3(0.0f), L = float3(0.0f);
+	uint face = 0u;
+	if (valid) {
+		float3 P = pointAt(px, d, f);
+		face = min(uint(traced.read(min(q, uint2(traced.get_width() - 1u, traced.get_height() - 1u))).a + 0.5f), 5u);
+		float3 N = faceNormal(face);
+		g = P - f.origin.xyz;
+		valid = inWindow(int3(floor(g + N * 0.5f)), f);
+		if (valid) {
+			float3 dir = cosineDir(N, rand2(q, frame));
+			int3 hit;
+			float3 hn;
+			float t = rt_hit(g + N * 0.02f, dir, f.cache.y, bricks, sections, f, hit, hn);
+			if (t < 0.0f) {
+				L = f.sky.xyz * f.sky.w * (dir.y > 0.0f ? 1.0f : 0.25f);
+			} else {
+				ushort v = vox[voxelIndex(hit, f)];
+				float3 albedo = srgbToLinear(float3((uint3(palette[v & 0x7FFFu].x) >> uint3(16, 8, 0)) & 0xFFu) / 255.0f);
+				float3 hp = g + dir * t;
+				L = albedo * (sunOn(hp, hn, bricks, sections, f) + nrcAt(hp, faceOf(hn), f, nrc, W));
+			}
+			L = clamp(L, 0.0f, 16.0f);
+		}
+	}
+	NrcIn e;
+	nrcEncode(g, face, f, nrc, e);
+	float h1[NRC_H], h2[NRC_H];
+	float3 y;
+	nrcForward(e.x, W, h1, h2, y);
+	// relative L2: (out - L)^2 / (out^2 + 0.01), out held fixed in the denominator
+	float dy[3];
+	for (uint k = 0; k < 3u; k++) {
+		float o = softplus(y[k]);
+		dy[k] = valid ? 2.0f * (o - L[k]) / (o * o + 0.01f) / (1.0f + exp(-y[k])) : 0.0f;
+	}
+	float dh2[NRC_H], dh1[NRC_H];
+	for (uint i = 0; i < NRC_H; i++) {
+		float s = 0.0f;
+		for (uint k = 0; k < 3u; k++) s += W[NRC_W3 + k * NRC_H + i] * dy[k];
+		dh2[i] = h2[i] > 0.0f ? s : 0.0f;
+	}
+	for (uint i = 0; i < NRC_H; i++) {
+		float s = 0.0f;
+		for (uint j = 0; j < NRC_H; j++) s += W[NRC_W2 + j * NRC_H + i] * dh2[j];
+		dh1[i] = h1[i] > 0.0f ? s : 0.0f;
+	}
+	threadgroup float *tg = part[sg];
+	for (uint k = 0; k < 3u; k++) {
+		for (uint i = 0; i < NRC_H; i++) nrcGrad(tg, NRC_W3 + k * NRC_H + i, dy[k] * h2[i], lane);
+		nrcGrad(tg, NRC_B3 + k, dy[k], lane);
+	}
+	for (uint j = 0; j < NRC_H; j++) {
+		for (uint i = 0; i < NRC_H; i++) nrcGrad(tg, NRC_W2 + j * NRC_H + i, dh2[j] * h1[i], lane);
+		nrcGrad(tg, NRC_B2 + j, dh2[j], lane);
+	}
+	for (uint j = 0; j < NRC_H; j++) {
+		for (uint i = 0; i < NRC_IN; i++) nrcGrad(tg, j * NRC_IN + i, dh1[j] * e.x[i], lane);
+		nrcGrad(tg, NRC_B1 + j, dh1[j], lane);
+	}
+	uint n = simd_sum(valid ? 1u : 0u);
+	if (lane == 0u && n > 0u) atomic_fetch_add_explicit(&nrcU[NRC_COUNT], n, memory_order_relaxed);
+	// the threadgroup's sums (its 8 simdgroups' rows) into its own row of the partial sums
+	threadgroup_barrier(mem_flags::mem_threadgroup);
+	uint group = tgp.y * tgs.x + tgp.x;
+	if (group < NRC_GROUPS_MAX)
+		for (uint i = tid; i < NRC_P; i += 256u) {
+			float sum = 0.0f;
+			for (uint k = 0; k < 8u; k++) sum += part[k][i];
+			nrc[NRC_PART + group * NRC_PAD + i] = sum;
+		}
+	if (!valid) return;
+	// the hash features' gradients, summed with the weight of each sample behind them (a coarse cell is hit by many samples in
+	// a frame: stepping for each, as plain SGD would, made its step that many times too big and the light collapsed)
+	for (uint l = 0; l < 4u; l++) {
+		float d0 = 0.0f, d1 = 0.0f;
+		for (uint j = 0; j < NRC_H; j++) {
+			d0 += W[j * NRC_IN + l * 2u] * dh1[j];
+			d1 += W[j * NRC_IN + l * 2u + 1u] * dh1[j];
+		}
+		for (uint k = 0; k < 4u; k++) {
+			float wt = e.wt[l * 4u + k];
+			if (wt <= 0.0f) continue;
+			uint i = e.idx[l * 4u + k];
+			// (not clipped per sample: a rare bright sample, sky seen from a wall, has a big gradient; clipping it made the light dark)
+			atomic_fetch_add_explicit(&nrcA[NRC_FG + i], wt * d0, memory_order_relaxed);
+			atomic_fetch_add_explicit(&nrcA[NRC_FG + i + 1u], wt * d1, memory_order_relaxed);
+			atomic_fetch_add_explicit(&nrcA[NRC_FH + i / 2u], wt, memory_order_relaxed);
+		}
+	}
+}
+
+// The hash features stepped with their frame's averaged gradient (SGD), then cleared: a thread per entry (2 features).
+kernel void rt_nrc_feat(device float *nrc [[buffer(9)]], uint e [[thread_position_in_grid]]) {
+	if (e >= NRC_FEAT / 2u) return;
+	float w = nrc[NRC_FH + e];
+	if (w <= 0.0f) return;
+	uint i = e * 2u;
+	nrc[i] -= 0.05f * clamp(nrc[NRC_FG + i] / w, -4.0f, 4.0f);
+	nrc[i + 1u] -= 0.05f * clamp(nrc[NRC_FG + i + 1u] / w, -4.0f, 4.0f);
+	nrc[NRC_FG + i] = 0.0f;
+	nrc[NRC_FG + i + 1u] = 0.0f;
+	nrc[NRC_FH + e] = 0.0f;
+	if (e < NRC_T) nrc[NRC_SEEN + e] = min(1.0f, nrc[NRC_SEEN + e] + w * 0.05f);
+}
+
+// Adam over the MLP's parameters with the frame's gradients (averaged over its samples), which are then cleared.
+kernel void rt_nrc_adam(device float *nrc [[buffer(9)]], device const uint *nrcU [[buffer(11)]], constant uint &groups [[buffer(13)]],
+	uint i [[thread_position_in_grid]]) {
+	if (i >= NRC_P) return;
+	uint n = nrcU[NRC_COUNT];
+	if (n == 0u) return;
+	float t = float(nrcU[NRC_STEP] + 1u);
+	float sum = 0.0f;
+	for (uint k = 0; k < min(groups, NRC_GROUPS_MAX); k++) sum += nrc[NRC_PART + k * NRC_PAD + i];
+	float g = clamp(sum / float(n), -10.0f, 10.0f);
+	float m = 0.9f * nrc[NRC_M + i] + 0.1f * g, v = 0.99f * nrc[NRC_V + i] + 0.01f * g * g;
+	nrc[NRC_M + i] = m;
+	nrc[NRC_V + i] = v;
+	float mh = m / (1.0f - pow(0.9f, t)), vh = v / (1.0f - pow(0.99f, min(t, 2000.0f)));
+	nrc[NRC_W + i] -= 5e-3f * mh / (sqrt(vh) + 1e-6f);
+}
+
+kernel void rt_nrc_finish(device atomic_uint *nrcU [[buffer(11)]], uint i [[thread_position_in_grid]]) {
+	if (i != 0u) return;
+	if (atomic_load_explicit(&nrcU[NRC_COUNT], memory_order_relaxed) > 0u) atomic_fetch_add_explicit(&nrcU[NRC_STEP], 1u, memory_order_relaxed);
+	atomic_store_explicit(&nrcU[NRC_COUNT], 0u, memory_order_relaxed);
+}
+
+// The network's answer per traced sample, in place of rt_gather's table lookups.
+kernel void rt_nrc_gather(depth2d<float, access::read> depth [[texture(0)]], texture2d<float, access::read> traced [[texture(1)]],
+	texture2d<float, access::write> irr [[texture(2)]], constant RtFrame &f [[buffer(2)]], device const float *nrc [[buffer(9)]],
+	constant float *W [[buffer(12)]], uint2 q [[thread_position_in_grid]]) {
+	if (q.x >= irr.get_width() || q.y >= irr.get_height()) return;
+	uint2 px = min(q * uint(f.extra.y), f.screen.xy - 1);
+	float d = depth.read(px);
+	if (d <= 1e-7f) {
+		irr.write(float4(0.0f), q);
+		return;
+	}
+	float3 g = pointAt(px, d, f) - f.origin.xyz;
+	uint face = min(uint(traced.read(q).a + 0.5f), 5u);
+	NrcIn e;
+	nrcEncode(g, face, f, nrc, e);
+	float h1[NRC_H], h2[NRC_H];
+	float3 y;
+	nrcForward(e.x, W, h1, h2, y);
+	// (a: how much the network has learned here; rt_light_fs leaves the game's light where it hasn't)
+	float seen = 0.0f;
+	for (uint k = 0; k < 4u; k++) seen += e.wt[k] * nrc[NRC_SEEN + e.idx[k] / 2u];
+	irr.write(float4(softplus(y.x), softplus(y.y), softplus(y.z), seen), q);
 }

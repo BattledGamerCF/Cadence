@@ -55,7 +55,7 @@ public abstract class FramerateCapMixin {
 			int forced = dev.cadence.metal.framegen.FrameGen.forceBase;
 			int hz = HeatControl.refreshHz(), base = Math.min(forced > 0 ? forced : cadence$saver ? 30 : 60, cap), shown = 2 * base;
 			// (Ray Traced Lighting, when the Mac can't render the screen's rate: half of it rendered, the rest generated, e.g. 30 -> 60)
-			float rtMs = dev.cadence.metal.rt.RayTracing.mode() == dev.cadence.metal.rt.RayTracing.Mode.LIGHTING ? dev.cadence.metal.rt.RayTracing.gpuMsPerFrame() : 0;
+			float rtMs = dev.cadence.metal.rt.RayTracing.mode().lighting() ? dev.cadence.metal.rt.RayTracing.gpuMsPerFrame() : 0;
 			if (forced <= 0 && rtMs > 0 && 1000f / rtMs < hz * 0.95f) {
 				base = Math.min(cap, Math.max(30, hz / 2));
 				shown = 2 * base;

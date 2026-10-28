@@ -112,6 +112,8 @@ public final class AppleHardwareSettings {
 				+ "from the sun are in shade; torch-lit places stay lit",
 			"Lighting (Experimental)|the shadows plus the sky's and the sun's light bounced between blocks, ray traced and kept in a lighting "
 				+ "cache: shaded overhangs and caves' mouths, sunlit walls lighting the ground beside them",
+			"Neural Lighting (Experimental)|the same light, its cache a small neural network that learns the world's lighting as you play "
+				+ "(trained on the graphics chip every frame)",
 			"Off|as vanilla",
 			"#About 1 ms a frame for Shadows and 2.5 ms for Lighting on an M2 at 1080p. Not with a shader pack (it has its own shadows) "
 					+ "or World Resolution below 100%. Players and mobs don't cast shadows yet.")).build();

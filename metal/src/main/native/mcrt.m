@@ -23,6 +23,7 @@ typedef struct {
 	id<MTLBuffer> touched;  // the entries the frame's samples touched: a count, then their slots
 	id<MTLComputePipelineState> path;
 	id<MTLComputePipelineState> torch;  // Torch Shadows (rt_torch)
+	id<MTLComputePipelineState> nrcTrain, nrcAdam, nrcFinish, nrcGather, nrcFeat;  // Neural Lighting (rt_nrc_*)
 	id<MTLTexture> torchTex;            // its visibility and distance per traced sample (RGBA16Float, kept between frames)
 	id<MTLFunction> pathOutFs;
 	id<MTLRenderPipelineState> pathOut[2];
@@ -78,6 +79,14 @@ void *mcrt_new(Ctx *ctx, const char *source, int hw, int w, int h, char *err, in
 		id<MTLFunction> cu = [[lib newFunctionWithName:@"rt_cache_update"] autorelease], cr = [[lib newFunctionWithName:@"rt_cache_resolve"] autorelease];
 		r->cacheUpdate = cu ? [ctx->device newComputePipelineStateWithFunction:cu error:&e] : nil;
 		r->cacheResolve = cr ? [ctx->device newComputePipelineStateWithFunction:cr error:&e] : nil;
+		const char *nrcNames[5] = {"rt_nrc_train", "rt_nrc_adam", "rt_nrc_finish", "rt_nrc_gather", "rt_nrc_feat"};
+		id<MTLComputePipelineState> *nrcSlots[5] = {&r->nrcTrain, &r->nrcAdam, &r->nrcFinish, &r->nrcGather, &r->nrcFeat};
+		for (int i = 0; i < 5; i++) {
+			// (optional: no Neural Lighting without them)
+			id<MTLFunction> nf = [[lib newFunctionWithName:[NSString stringWithUTF8String:nrcNames[i]]] autorelease];
+			*nrcSlots[i] = nf ? [ctx->device newComputePipelineStateWithFunction:nf error:&e] : nil;
+			if (!*nrcSlots[i]) NSLog(@"cadence-rt: %s: %@", nrcNames[i], e);
+		}
 		id<MTLFunction> tf = [[lib newFunctionWithName:@"rt_torch"] autorelease];
 		r->torch = tf ? [ctx->device newComputePipelineStateWithFunction:tf error:&e] : nil;  // (optional: no Torch Shadows without it)
 		if (!r->torch) NSLog(@"cadence-rt: rt_torch: %@", e);
@@ -286,7 +295,8 @@ static id<MTLRenderPipelineState> applyPipeline(Rt *r, MTLPixelFormat format, in
 // Lighting (the lighting cache updated and the frame relit instead of only shadowed), bit 3 the cache cleared first.
 // 0, or -1 when nothing could be done.
 int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, id<MTLTexture> lightmap, id<MTLBuffer> vox,
-	id<MTLBuffer> bricks, id<MTLBuffer> sections, id<MTLBuffer> palette, const void *frame, int len, int sox, int soz, int flags, id<MTLBuffer> lights) {
+	id<MTLBuffer> bricks, id<MTLBuffer> sections, id<MTLBuffer> palette, const void *frame, int len, int sox, int soz, int flags, id<MTLBuffer> lights,
+	id<MTLBuffer> nrc) {
 	Rt *r = rt;
 	if (!color || !depth || !vox || !bricks || !sections || len > RT_FRAME_BYTES) return -1;
 	int useHw = (flags & 1) && r->hw;
@@ -354,7 +364,49 @@ int mcrt_frame(void *rt, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, i
 			r->torchTex = nil;
 		}
 		int lighting = (flags & 4) != 0 && palette;
-		if (lighting) {
+		// Neural Lighting (flags bit 17, with the network's buffer): trained, stepped, then asked, in place of the table
+		int neural = lighting && (flags & 0x20000) && nrc && r->nrcTrain && r->nrcAdam && r->nrcFinish && r->nrcGather && r->nrcFeat;
+		if (neural) {
+			if (!r->irr || r->irr.width != w || r->irr.height != h) {
+				[r->irr release];
+				MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA16Float width:w height:h mipmapped:NO];
+				d.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+				d.storageMode = MTLStorageModePrivate;
+				r->irr = [r->ctx->device newTextureWithDescriptor:d];
+			}
+			id<MTLComputeCommandEncoder> u = [cb computeCommandEncoder];
+			u.label = @"Cadence neural lighting (train, step, ask)";
+			[u setTexture:depth atIndex:0];
+			[u setTexture:r->out atIndex:1];
+			[u setBuffer:vox offset:0 atIndex:0];
+			[u setBuffer:bricks offset:0 atIndex:1];
+			[u setBuffer:fb offset:0 atIndex:2];
+			[u setBuffer:palette offset:0 atIndex:4];
+			[u setBuffer:sections offset:0 atIndex:5];
+			[u setBuffer:nrc offset:0 atIndex:9];
+			[u setBuffer:nrc offset:0 atIndex:10];
+			[u setBuffer:nrc offset:0 atIndex:11];
+			[u setBuffer:nrc offset:(NSUInteger) (4 * 32768 * 2) * 4 atIndex:12];  // (the MLP's weights, as a constant buffer: rt.metal NRC_W)
+			const char *skip = getenv("CADENCE_NRC_SKIP");  // (profiling: "train" or "gather" left out)
+			[u setComputePipelineState:r->nrcTrain];
+			NSUInteger tw = (w + 15) / 16, th = (h + 15) / 16;  // (rt.metal NRC_STRIDE)
+			if (!skip || strcmp(skip, "train") != 0) [u dispatchThreads:MTLSizeMake(tw, th, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+			uint32_t groups = (uint32_t) (((tw + 15) / 16) * ((th + 15) / 16));
+			[u memoryBarrierWithScope:MTLBarrierScopeBuffers];
+			[u setComputePipelineState:r->nrcAdam];
+			[u setBytes:&groups length:4 atIndex:13];
+			[u dispatchThreads:MTLSizeMake(520, 1, 1) threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+			[u memoryBarrierWithScope:MTLBarrierScopeBuffers];
+			[u setComputePipelineState:r->nrcFeat];
+			[u dispatchThreads:MTLSizeMake(4 * 32768, 1, 1) threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];  // (NRC_FEAT / 2 entries)
+			[u setComputePipelineState:r->nrcFinish];
+			[u dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+			[u memoryBarrierWithScope:MTLBarrierScopeBuffers];
+			[u setTexture:r->irr atIndex:2];
+			[u setComputePipelineState:r->nrcGather];
+			if (!skip || strcmp(skip, "gather") != 0) [u dispatchThreads:MTLSizeMake(w, h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+			[u endEncoding];
+		} else if (lighting) {
 			if (!r->cache) {
 				r->cache = [r->ctx->device newBufferWithLength:(NSUInteger) RT_CACHE_ENTRIES * 32 options:MTLResourceStorageModePrivate];
 				flags |= 8;
@@ -598,6 +650,11 @@ void mcrt_free(void *rt) {
 	releaseDenoise(r);
 	[r->pathDenFs release];
 	[r->torch release];
+	[r->nrcTrain release];
+	[r->nrcAdam release];
+	[r->nrcFinish release];
+	[r->nrcGather release];
+	[r->nrcFeat release];
 	[r->torchTex release];
 	[r->pathDen[0] release];
 	[r->pathDen[1] release];
