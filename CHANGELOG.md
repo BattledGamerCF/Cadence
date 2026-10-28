@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased
+## 0.4.0-beta.24 / shaders 0.3.23 (2026-10-27)
 
 The ideas queue (docs/IDEAS.md), built. Measured on an M2 MacBook Air (8 GPU cores), 1080p, unless noted.
 
