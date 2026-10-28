@@ -22,7 +22,11 @@ public final class Stalls {
 	/** When the current frame began (the last frame's end), for the watchdog; 0 while not in a world. */
 	private static volatile long frameStart;
 	private static volatile Thread renderThread;
-	private static volatile StackTraceElement[] sampled;
+	/** When the watchdog samples a long frame, in ms into it. */
+	private static final long[] SAMPLE_AT_MS = {0, 250, 750, 1500, 3000};
+	private static final StackTraceElement[][] sampled = new StackTraceElement[SAMPLE_AT_MS.length][];
+	private static final long[] sampledAtMs = new long[SAMPLE_AT_MS.length];
+	private static volatile int samples;
 	private static volatile long sampledFor;
 	private static long inWorldSince, lastReport;
 	private static int suppressed;
@@ -39,7 +43,10 @@ public final class Stalls {
 		}
 	}
 
-	/** The watchdog: every 10 ms, a render thread still on the same frame past the threshold has its stack taken (once a frame). */
+	/**
+	 * The watchdog: every 10 ms, a render thread still on the same frame past the threshold has its stack taken, and again at
+	 * 250, 750, 1,500 and 3,000 ms past it while the frame lasts (a long stall can move on from where it began).
+	 */
 	private static void watch() {
 		while (true) {
 			try {
@@ -49,10 +56,20 @@ public final class Stalls {
 			}
 			long start = frameStart;
 			Thread render = renderThread;
-			if (start == 0 || render == null || sampledFor == start) continue;
-			if (System.nanoTime() - start < THRESHOLD_NS) continue;
-			sampledFor = start;
-			sampled = render.getStackTrace();
+			if (start == 0 || render == null) continue;
+			long past = (System.nanoTime() - start - THRESHOLD_NS) / 1_000_000L;
+			if (past < 0) continue;
+			synchronized (sampled) {
+				if (sampledFor != start) {
+					sampledFor = start;
+					samples = 0;
+				}
+				int n = samples;
+				if (n >= SAMPLE_AT_MS.length || past < SAMPLE_AT_MS[n]) continue;
+				sampled[n] = render.getStackTrace();
+				sampledAtMs[n] = past + THRESHOLD_NS / 1_000_000L;
+				samples = n + 1;
+			}
 		}
 	}
 
@@ -67,6 +84,7 @@ public final class Stalls {
 	 */
 	static void frame(long now, long wallNs, long cpuNs, long allocBytes, long gcCount, long gcMs, long[] waitNs, long[] regionNs, long[] ops) {
 		if (renderThread == null) renderThread = Thread.currentThread();
+		long libraryNs = MetalPipeline.LIBRARY_NS.getAndSet(0), stateNs = MetalPipeline.STATE_NS.getAndSet(0);
 		long started = frameStart;
 		boolean world = inWorld();
 		frameStart = world ? now : 0;
@@ -76,7 +94,14 @@ public final class Stalls {
 		}
 		if (inWorldSince == 0) inWorldSince = now;
 		if (wallNs < THRESHOLD_NS || started == 0 || now - inWorldSince < SETTLE_NS) return;
-		StackTraceElement[] stack = sampledFor == started ? sampled : null;
+		StackTraceElement[][] stacks;
+		long[] stackMs;
+		synchronized (sampled) {
+			int n = sampledFor == started ? samples : 0;
+			stacks = java.util.Arrays.copyOf(sampled, n);
+			stackMs = java.util.Arrays.copyOf(sampledAtMs, n);
+			sampledFor = 0;
+		}
 		if (now - lastReport < 2_000_000_000L) {
 			suppressed++;
 			return;
@@ -91,23 +116,22 @@ public final class Stalls {
 		appendTop(b, " | in: ", REGIONS, regionNs, wallNs);
 		b.append(gcCount > 0 ? " | GC: " + gcCount + " (" + gcMs + " ms)" : " | GC: none");
 		StringBuilder work = new StringBuilder();
-		if (ops[FrameLog.PIPELINES] > 0) work.append(", ").append(ops[FrameLog.PIPELINES]).append(" pipelines made");
+		if (ops[FrameLog.PIPELINES] > 0) work.append(", ").append(ops[FrameLog.PIPELINES]).append(String.format(Locale.ROOT, " pipelines made (shader libraries %.0f ms, pipeline states %.0f ms, over all threads)", libraryNs / 1e6, stateNs / 1e6));
 		if (ops[FrameLog.TEX_WRITES] > 0) work.append(String.format(Locale.ROOT, ", %d texture uploads (%.1f MP)", ops[FrameLog.TEX_WRITES], ops[FrameLog.TEX_PX] / 1e6));
 		if (ops[FrameLog.BUF_KB] + ops[FrameLog.COPY_KB] > 1024) work.append(String.format(Locale.ROOT, ", %.1f MB to buffers", (ops[FrameLog.BUF_KB] + ops[FrameLog.COPY_KB]) / 1024.0));
 		if (work.length() > 0) b.append(" | GPU work:").append(work.substring(1));
-		if (stack != null) {
-			b.append(" | render thread at ").append(THRESHOLD_NS / 1_000_000).append(" ms: ");
+		for (int k = 0; k < stacks.length; k++) {
+			StackTraceElement[] stack = stacks[k];
+			if (stack == null) continue;
+			b.append(" | render thread at ").append(stackMs[k]).append(" ms: ");
 			int shown = 0;
-			for (StackTraceElement e : stack) {
+			for (int i = 0; i < stack.length && shown < 6; i++) {
+				StackTraceElement e = stack[i];
 				String c = e.getClassName();
-				// (the JDK's and the backend's frames say little: the first game or mod frames do)
-				if (c.startsWith("java.") || c.startsWith("jdk.") || c.startsWith("sun.")) {
-					if (shown == 0 && stack.length > 0 && e == stack[0]) b.append(shortName(e)).append(" < ");
-					continue;
-				}
+				// (the JDK's frames say little: the first game or mod frames do; the top frame is kept whatever it is)
+				if (i > 0 && (c.startsWith("java.") || c.startsWith("jdk.") || c.startsWith("sun."))) continue;
+				if (shown++ > 0) b.append(" < ");
 				b.append(shortName(e));
-				if (++shown == 6) break;
-				b.append(" < ");
 			}
 		}
 		System.out.println(b);

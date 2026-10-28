@@ -279,13 +279,18 @@ public final class MetalPipeline implements BackendRenderPipeline {
 	 */
 	private static long library(long ctx, String msl, int mode, long err) {
 		java.nio.ByteBuffer source = MemoryUtil.memUTF8(msl);
+		long t0 = System.nanoTime();
 		try {
 			long address = MemoryUtil.memAddress(source);
 			return mode < 0 ? Native.libraryNew(ctx, address, err, 4096) : Native.libraryNewMode(ctx, address, mode, err, 4096);
 		} finally {
+			LIBRARY_NS.addAndGet(System.nanoTime() - t0);
 			MemoryUtil.memFree(source);
 		}
 	}
+
+	/** Time spent making shader libraries (from source) and pipeline states, summed over every thread, for the stall recorder. */
+	static final java.util.concurrent.atomic.AtomicLong LIBRARY_NS = new java.util.concurrent.atomic.AtomicLong(), STATE_NS = new java.util.concurrent.atomic.AtomicLong();
 
 	/** Cadence: the shader loader's pipelines (shaders/) are named in its namespace (RenderPipeline location = CreateInfo name). */
 	private static final String PACK_NAMESPACE = "cadence_shaders:";
@@ -651,6 +656,11 @@ public final class MetalPipeline implements BackendRenderPipeline {
 	/** Native.pipelineNew, counted per frame by the frame log (-Dcadence.own.int.frameLog). */
 	private static long pipelineNewCounted(long ctx, long vlib, long vname, long flib, long fname, long desc, long err, int errLength) {
 		if (FrameLog.COUNT) FrameLog.op(FrameLog.PIPELINES, 1);
-		return Native.pipelineNew(ctx, vlib, vname, flib, fname, desc, err, errLength);
+		long t0 = System.nanoTime();
+		try {
+			return Native.pipelineNew(ctx, vlib, vname, flib, fname, desc, err, errLength);
+		} finally {
+			STATE_NS.addAndGet(System.nanoTime() - t0);
+		}
 	}
 }

@@ -334,7 +334,11 @@ public record PackPipeline(
   }
 
   private static java.util.Set<String> readSet(TranslatedProgram translated, java.util.List<SamplerBinding> samplerBindings) {
-    var out = samplerBindings.stream().map(SamplerBinding::name).filter(n -> reads(translated, shaderName(samplerBindings, n)))
+    // (each source counted once for every sampler: a regex search per sampler and source was 93% of compiling a pack's
+    // pipelines, the game paused 0.3-4 s when a pack was switched on)
+    SourceCounts vertex = SourceCounts.of(translated.vertexSource()), fragment = SourceCounts.of(translated.fragmentSource());
+    var out = samplerBindings.stream().map(SamplerBinding::name)
+        .filter(n -> { String shader = shaderName(samplerBindings, n); return vertex.reads(shader) || fragment.reads(shader); })
         .collect(java.util.stream.Collectors.toUnmodifiableSet());
     if (Boolean.getBoolean("cadence.shaders.logReads"))
       org.slf4j.LoggerFactory.getLogger("cadence_shaders").info("reads {}: {} of {}", translated.label(), new java.util.TreeSet<>(out),
@@ -358,14 +362,76 @@ public record PackPipeline(
    * cost a full-size copy of each per phase (ShaderRuntime.prepareFeedback) though most never read them.
    */
   static boolean reads(TranslatedProgram translated, String name) {
-    java.util.regex.Pattern token = java.util.regex.Pattern.compile("\\b" + java.util.regex.Pattern.quote(name) + "\\b");
-    java.util.regex.Pattern declaration =
-        java.util.regex.Pattern.compile("\\buniform\\s+\\w+\\s+" + java.util.regex.Pattern.quote(name) + "\\s*;");
-    for (String source : new String[] {translated.vertexSource(), translated.fragmentSource()}) {
-      if (source == null) continue;
-      if (token.matcher(source).results().count() > declaration.matcher(source).results().count()) return true;
+    return SourceCounts.of(translated.vertexSource()).reads(name) || SourceCounts.of(translated.fragmentSource()).reads(name);
+  }
+
+  /**
+   * One source's identifiers, each with how often it appears as a whole word (as the regex \bNAME\b counts it: a word is a
+   * run of letters, digits and underscores) and how often it is declared as {@code uniform <type> NAME;} (as
+   * \buniform\s+\w+\s+NAME\s*; counts it). A name is read when it appears more often than it is declared.
+   */
+  record SourceCounts(java.util.Map<String, Integer> tokens, java.util.Map<String, Integer> declared) {
+    private static final SourceCounts NONE = new SourceCounts(java.util.Map.of(), java.util.Map.of());
+
+    boolean reads(String name) {
+      return tokens.getOrDefault(name, 0) > declared.getOrDefault(name, 0);
     }
-    return false;
+
+    static SourceCounts of(String source) {
+      if (source == null) return NONE;
+      java.util.HashMap<String, Integer> tokens = new java.util.HashMap<>(), declared = new java.util.HashMap<>();
+      int n = source.length(), i = 0;
+      while (i < n) {
+        if (!word(source.charAt(i))) {
+          i++;
+          continue;
+        }
+        int start = i;
+        while (i < n && word(source.charAt(i))) i++;
+        String token = source.substring(start, i);
+        tokens.merge(token, 1, Integer::sum);
+        if (token.equals("uniform")) {
+          String name = declaredName(source, i);
+          if (name != null) declared.merge(name, 1, Integer::sum);
+        }
+      }
+      return new SourceCounts(tokens, declared);
+    }
+
+    /** After "uniform" at i: whitespace, a type (\w+), whitespace, the name, optional whitespace, ";" -> the name, else null. */
+    private static String declaredName(String s, int i) {
+      int n = s.length(), j = i;
+      while (j < n && space(s.charAt(j))) j++;
+      if (j == i) return null;
+      int t = j;
+      while (j < n && ascii(s.charAt(j))) j++;
+      if (j == t) return null;
+      int afterType = j;
+      while (j < n && space(s.charAt(j))) j++;
+      if (j == afterType) return null;
+      int nameStart = j;
+      while (j < n && word(s.charAt(j))) j++;
+      if (j == nameStart) return null;
+      String name = s.substring(nameStart, j);
+      while (j < n && space(s.charAt(j))) j++;
+      return j < n && s.charAt(j) == ';' ? name : null;
+    }
+
+    /** \b's word characters (java.util.regex: letters and digits, any script, and the underscore). */
+    private static boolean word(char c) {
+      if (c < 128) return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9';
+      return Character.isLetterOrDigit(c);
+    }
+
+    /** \w: [a-zA-Z_0-9]. */
+    private static boolean ascii(char c) {
+      return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9';
+    }
+
+    /** \s: [ \t\n\x0B\f\r]. */
+    private static boolean space(char c) {
+      return c == ' ' || c == '\t' || c == '\n' || c == 0x0B || c == '\f' || c == '\r';
+    }
   }
 
   @Override
