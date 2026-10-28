@@ -30,6 +30,7 @@ final class LodNative {
 	private static final MethodHandle MESH_CULL = fn("mcl_mesh_cull", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT);
 	private static final MethodHandle MESH_PACK_MODE = fn("mcl_mesh_pack_mode", false, null, JAVA_LONG, JAVA_LONG);
+	private static final MethodHandle MESH_SHADERS = fn("mcl_mesh_shaders", false, null, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle MESH_DRAW = fn("mcl_mesh_draw", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT,
 		JAVA_LONG, JAVA_INT);
@@ -146,6 +147,14 @@ final class LodNative {
 	static void meshPackMode(long lod, long color) {
 		try {
 			MESH_PACK_MODE.invokeExact(lod, color);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	static void meshShaders(long lod, boolean on) {
+		try {
+			MESH_SHADERS.invokeExact(lod, on ? 1 : 0);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}

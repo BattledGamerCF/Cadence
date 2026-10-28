@@ -156,6 +156,7 @@ public final class Profile {
 			default -> { }  // balanced: the cores the game and the GPU driver leave
 		}
 		if ("false".equalsIgnoreCase(ui.getProperty("farTerrain.generate", "true").strip())) set.put("cadence.lod.generate", "false");
+		if ("on".equalsIgnoreCase(ui.getProperty("farTerrain.meshShaders", "off").strip())) set.put("cadence.lod.meshShader", "true");
 		if ("false".equalsIgnoreCase(ui.getProperty("farTerrain.trees", "true").strip())) {
 			set.put("cadence.lod.trees", "false");
 			set.put("cadence.lod.plants", "false");

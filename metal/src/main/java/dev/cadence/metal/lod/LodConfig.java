@@ -28,6 +28,21 @@ public final class LodConfig {
 		saturation = lookProperty("cadence.lod.saturation", 1, 0, 4),
 		curvature = lookProperty("cadence.lod.curvature", 0, 0, 5000);
 
+	/**
+	 * Far Terrain > Renderer: Mesh Shaders (-Dcadence.lod.meshShader, farTerrain.meshShaders): the far terrain's faces culled in
+	 * the object stage and emitted by the mesh stage of the draw itself (columns.metal lod_mesh_obj / lod_mesh_msh), instead of
+	 * a compute quad cull writing survivors for an indexed draw. Applies live.
+	 */
+	private static volatile boolean meshShaders = Boolean.getBoolean("cadence.lod.meshShader");
+
+	public static boolean meshShaders() {
+		return meshShaders;
+	}
+
+	public static void meshShaders(boolean on) {
+		meshShaders = on;
+	}
+
 	public static void look(float brightnessValue, float saturationValue, float curvatureRatio) {
 		brightness = lookValue(brightnessValue, 1, 0.1F, 4);
 		saturation = lookValue(saturationValue, 1, 0, 4);

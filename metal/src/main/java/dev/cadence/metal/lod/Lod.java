@@ -770,6 +770,7 @@ public final class Lod {
 						}
 						LodNative.cullTimeSlot(this.lod, cs);
 					}
+					LodNative.meshShaders(this.lod, LodConfig.meshShaders());
 					LodNative.meshCull(this.lod, enc, mesh.frame, LodMesh.FRAME_BYTES, this.compFrame, COMP_FRAME_BYTES, table, mesh.arena(), maskBuf, mesh.argsBuf,
 						mesh.instBuf, mesh.plantBuf, mesh.survBuf, mesh.horizonBuf, mesh.listBuf, clip.geomBuf, clip.crownBuf, mesh.blocks(), LodMesh.FENCES);
 				}

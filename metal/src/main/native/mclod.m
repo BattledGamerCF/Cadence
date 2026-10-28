@@ -43,6 +43,7 @@ void mcl_release(id obj) {
 #define LOD_PSO_COMP 0
 #define LOD_PSO_MESH 1
 #define LOD_PSO_PLANT 2
+#define LOD_PSO_MESH_SHADER 3  // the mesh's opaque faces through the object and mesh stages (lod_mesh_obj, lod_mesh_msh)
 
 typedef struct {
 	MTLPixelFormat colors[MAX_COLORS];
@@ -59,6 +60,11 @@ typedef struct {
 	id<MTLComputePipelineState> march, segMax, segFill, rows;
 	id<MTLComputePipelineState> meshReset, meshCull, meshFinish, meshQuads, meshFinish2, hzClear, hzPrefix, meshEmit, meshFinishList;
 	id<MTLFunction> meshVs, meshFsVanilla, meshFsGbuffer, plantVs, plantFsVanilla, plantFsGbuffer;
+	// Far Terrain > Mesh Shaders: the quad cull in the object stage and the survivors' corners from the mesh stage, in the draw
+	// itself (no quad-cull pass, no survivor buffer); horizon: the cull's buffer the object stage tests against
+	id<MTLFunction> meshObj, meshMsh;
+	int meshShader;
+	id<MTLBuffer> horizon;
 	id<MTLBuffer> meshIdx, plantIdx;   // {0, 1, 2, 2, 3, 0} + 4q for the survivors' 64-quad and the plants' 32-quad instances
 	id<MTLDepthStencilState> depthTest;
 	// -Dcadence.lod.meshFences: the cull's outputs untracked, ordered by two fences instead: the draw's vertex stage waits for
@@ -160,6 +166,8 @@ LodCols *mcl_cols_new(Ctx *ctx, const char *source, char *err, int errCap) {
 		l->plantVs = [lib newFunctionWithName:@"lod_mesh_plant_vs"];
 		l->plantFsVanilla = [lib newFunctionWithName:@"lod_mesh_plant_vanilla"];
 		l->plantFsGbuffer = [lib newFunctionWithName:@"lod_mesh_plant_gbuffer"];
+		l->meshObj = [lib newFunctionWithName:@"lod_mesh_obj"];  // (optional: without them, the compute quad cull)
+		l->meshMsh = [lib newFunctionWithName:@"lod_mesh_msh"];
 		if (!l->meshVs || !l->meshFsVanilla || !l->meshFsGbuffer || !l->plantVs || !l->plantFsVanilla || !l->plantFsGbuffer) {
 			snprintf(err, errCap, "columns.metal: missing mesh entry points");
 			return NULL;
@@ -189,6 +197,42 @@ static id<MTLRenderPipelineState> colPipeline(LodCols *l, Enc *enc, int gbuffer,
 		if (same) return k->pso;
 	}
 	@autoreleasepool {
+		if (kind == LOD_PSO_MESH_SHADER) {
+			MTLMeshRenderPipelineDescriptor *md = [[MTLMeshRenderPipelineDescriptor new] autorelease];
+			md.label = @"lod mesh shaders";
+			md.objectFunction = l->meshObj;
+			md.meshFunction = l->meshMsh;
+			md.fragmentFunction = gbuffer ? l->meshFsGbuffer : l->meshFsVanilla;
+			md.maxTotalThreadsPerObjectThreadgroup = 32;  // (MESH_Q: a thread per candidate quad)
+			md.maxTotalThreadsPerMeshThreadgroup = 32;
+			for (int c = 0; c < enc->colorCount; c++) {
+				if (!enc->colors[c]) continue;
+				md.colorAttachments[c].pixelFormat = enc->colors[c].pixelFormat;
+				int written = gbuffer ? (c >= 1 && c <= 4) : c == 0;
+				md.colorAttachments[c].writeMask = written ? MTLColorWriteMaskAll : MTLColorWriteMaskNone;
+			}
+			md.depthAttachmentPixelFormat = enc->depth ? enc->depth.pixelFormat : MTLPixelFormatInvalid;
+			NSError *e = nil;
+			id<MTLRenderPipelineState> pso = [l->ctx->device newRenderPipelineStateWithMeshDescriptor:md options:MTLPipelineOptionNone reflection:nil error:&e];
+			if (!pso) {
+				lodErr(e, "lod mesh shader pipeline", err, errCap);
+				return nil;
+			}
+			if (l->layoutCount == LOD_MAX_LAYOUTS) {
+				[l->layouts[0].pso release];
+				memmove(&l->layouts[0], &l->layouts[1], sizeof(ColLayout) * (LOD_MAX_LAYOUTS - 1));
+				l->layoutCount--;
+			}
+			ColLayout *k = &l->layouts[l->layoutCount++];
+			memset(k, 0, sizeof *k);
+			k->colorCount = enc->colorCount;
+			for (int c = 0; c < enc->colorCount; c++) k->colors[c] = enc->colors[c] ? enc->colors[c].pixelFormat : MTLPixelFormatInvalid;
+			k->depth = md.depthAttachmentPixelFormat;
+			k->gbuffer = gbuffer;
+			k->kind = kind;
+			k->pso = pso;
+			return pso;
+		}
 		MTLRenderPipelineDescriptor *pd = [[MTLRenderPipelineDescriptor new] autorelease];
 		pd.label = gbuffer ? @"lod columns gbuffer" : @"lod columns vanilla";
 		pd.vertexFunction = kind == LOD_PSO_MESH ? l->meshVs : kind == LOD_PSO_PLANT ? l->plantVs : l->vs;
@@ -403,6 +447,9 @@ void mcl_mesh_cull(LodCols *l, Enc *enc, const void *frame, int frameLength, con
 	id<MTLBuffer> mask, id<MTLBuffer> args, id<MTLBuffer> inst, id<MTLBuffer> plantInst, id<MTLBuffer> survivors, id<MTLBuffer> horizon, id<MTLBuffer> list,
 	id<MTLBuffer> geom, id<MTLBuffer> crowns, int blocks, int fences) {
 	mc_pre_end_encoders(enc);
+	l->horizon = horizon;
+	// (the mesh-shader draw does the quad cull itself; a shader pack's records still need the survivors)
+	int quadPass = !(l->meshShader && l->meshObj && l->meshMsh && !l->packColor && !mc4On);
 	@autoreleasepool {
 		id<MTLComputeCommandEncoder> c = cullEncoder(l, enc);
 		c.label = @"lod mesh cull";
@@ -448,11 +495,13 @@ void mcl_mesh_cull(LodCols *l, Enc *enc, const void *frame, int frameLength, con
 		[c setComputePipelineState:l->meshFinish];
 		[c dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
 		[c memoryBarrierWithScope:MTLBarrierScopeBuffers];
-		[c setComputePipelineState:l->meshQuads];
-		[c dispatchThreadgroupsWithIndirectBuffer:args indirectBufferOffset:16 * 4 threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
-		[c memoryBarrierWithScope:MTLBarrierScopeBuffers];
-		[c setComputePipelineState:l->meshFinish2];
-		[c dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+		if (quadPass) {
+			[c setComputePipelineState:l->meshQuads];
+			[c dispatchThreadgroupsWithIndirectBuffer:args indirectBufferOffset:16 * 4 threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+			[c memoryBarrierWithScope:MTLBarrierScopeBuffers];
+			[c setComputePipelineState:l->meshFinish2];
+			[c dispatchThreads:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+		}
 		id<MTLComputePipelineState> packArgs = l->packColor ? pkPso(l, "lod_mesh_pack_args") : nil, pack = packArgs ? pkPso(l, "lod_mesh_pack") : nil;
 		if (pack) {
 			// (a shader pack draws the survivors: rewritten in place as the records its program reads, columns.metal)
@@ -469,6 +518,11 @@ void mcl_mesh_cull(LodCols *l, Enc *enc, const void *frame, int frameLength, con
 	}
 }
 
+// Far Terrain > Mesh Shaders on or off (the draw falls back to the compute quad cull where it can't).
+void mcl_mesh_shaders(LodCols *l, int on) {
+	l->meshShader = on;
+}
+
 // (Cadence) Whether a shader pack draws the far terrain (color: the clipmap's colour words) or the far terrain draws itself
 // (nil). With a pack, every cull ends by turning its survivors into the pack program's records (lod_mesh_pack).
 void mcl_mesh_pack_mode(LodCols *l, id<MTLBuffer> color) {
@@ -483,11 +537,18 @@ int mcl_mesh_draw(LodCols *l, Enc *enc, int gbuffer, const void *comp, int compL
 	id<MTLBuffer> palette, id<MTLTexture> atlas, id<MTLBuffer> table, const void *meshFrame, int meshFrameLength, int fences, char *err, int errCap) {
 	id<MTLRenderCommandEncoder> r = enc->render;
 	if (!r) return 0;
-	id<MTLRenderPipelineState> pso = colPipeline(l, enc, gbuffer, LOD_PSO_MESH, err, errCap);
+	int meshShaders = l->meshShader && l->meshObj && l->meshMsh && !l->packColor && !mc4On && l->horizon;
+	id<MTLRenderPipelineState> pso = colPipeline(l, enc, gbuffer, meshShaders ? LOD_PSO_MESH_SHADER : LOD_PSO_MESH, err, errCap);
+	if (!pso && meshShaders) {
+		// (no mesh-shader pipeline here: the compute path from now on)
+		NSLog(@"cadence-lod: mesh shaders off: %s", err);
+		l->meshShader = 0;
+		return 0;
+	}
 	id<MTLRenderPipelineState> ppso = pso ? colPipeline(l, enc, gbuffer, LOD_PSO_PLANT, err, errCap) : nil;
 	if (!pso || !ppso) return -1;
 	[r pushDebugGroup:@"lod mesh"];
-	if (fences) [r waitForFence:l->cullDone beforeStages:MTLRenderStageVertex];
+	if (fences) [r waitForFence:l->cullDone beforeStages:MTLRenderStageVertex | (meshShaders ? MTLRenderStageObject | MTLRenderStageMesh : 0)];
 	[r setDepthStencilState:l->depth];
 	[r setTriangleFillMode:MTLTriangleFillModeFill];
 	[r setDepthBias:0 slopeScale:0 clamp:0];
@@ -516,9 +577,31 @@ int mcl_mesh_draw(LodCols *l, Enc *enc, int gbuffer, const void *comp, int compL
 	[r setVertexBytes:meshFrame length:meshFrameLength atIndex:30];
 	[r setRenderPipelineState:pso];
 	[r setCullMode:MTLCullModeBack];
-	[r setVertexBuffer:inst offset:0 atIndex:23];
-	[r drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexType:MTLIndexTypeUInt16 indexBuffer:l->meshIdx indexBufferOffset:0 indirectBuffer:args
-		indirectBufferOffset:0];
+	if (meshShaders) {
+		// an object threadgroup per candidate instance (args 25..27, lod_mesh_finish): its quads culled there, the rest emitted
+		[r setObjectBytes:comp length:compLength atIndex:22];
+		[r setObjectBuffer:inst offset:0 atIndex:23];
+		[r setObjectBuffer:arena offset:0 atIndex:24];
+		[r setObjectBuffer:args offset:0 atIndex:25];
+		[r setObjectBuffer:l->horizon offset:0 atIndex:26];
+		[r setObjectBuffer:table offset:0 atIndex:27];
+		[r setObjectBuffer:geom offset:0 atIndex:28];
+		[r setObjectBuffer:crowns offset:0 atIndex:29];
+		[r setObjectBytes:meshFrame length:meshFrameLength atIndex:30];
+		[r setMeshBytes:comp length:compLength atIndex:22];
+		[r setMeshBuffer:inst offset:0 atIndex:23];
+		[r setMeshBuffer:arena offset:0 atIndex:24];
+		[r setMeshBuffer:table offset:0 atIndex:27];
+		[r setMeshBuffer:geom offset:0 atIndex:28];
+		[r setMeshBuffer:crowns offset:0 atIndex:29];
+		[r setMeshBytes:meshFrame length:meshFrameLength atIndex:30];
+		[r drawMeshThreadgroupsWithIndirectBuffer:args indirectBufferOffset:25 * 4 threadsPerObjectThreadgroup:MTLSizeMake(32, 1, 1)
+			threadsPerMeshThreadgroup:MTLSizeMake(32, 1, 1)];
+	} else {
+		[r setVertexBuffer:inst offset:0 atIndex:23];
+		[r drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexType:MTLIndexTypeUInt16 indexBuffer:l->meshIdx indexBufferOffset:0 indirectBuffer:args
+			indirectBufferOffset:0];
+	}
 	[r setRenderPipelineState:ppso];
 	[r setCullMode:MTLCullModeNone];
 	[r setVertexBuffer:texWords offset:0 atIndex:20];  // (the plants' quads only as tall as their sprites: lod_mesh_plant_vs)
@@ -526,7 +609,7 @@ int mcl_mesh_draw(LodCols *l, Enc *enc, int gbuffer, const void *comp, int compL
 	[r setVertexBuffer:plantInst offset:0 atIndex:23];
 	[r drawIndexedPrimitives:MTLPrimitiveTypeTriangle indexType:MTLIndexTypeUInt16 indexBuffer:l->plantIdx indexBufferOffset:0 indirectBuffer:args
 		indirectBufferOffset:5 * 4];
-	if (fences) [r updateFence:l->drawDone afterStages:MTLRenderStageVertex];
+	if (fences) [r updateFence:l->drawDone afterStages:MTLRenderStageVertex | (meshShaders ? MTLRenderStageObject | MTLRenderStageMesh : 0)];
 	[r popDebugGroup];
 	return 0;
 }
