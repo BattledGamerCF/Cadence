@@ -265,9 +265,13 @@ public final class CadenceSelfTest {
 					// "framegen=smooth|responsive|off": Frame Generation's mode (not saved)
 					dev.cadence.metal.framegen.FrameGen.setMode(switch (lower.substring(9)) {
 						case "responsive" -> dev.cadence.metal.framegen.FrameGen.Mode.RESPONSIVE;
+						case "neural" -> dev.cadence.metal.framegen.FrameGen.Mode.NEURAL;
 						case "off" -> dev.cadence.metal.framegen.FrameGen.Mode.OFF;
 						default -> dev.cadence.metal.framegen.FrameGen.Mode.SMOOTH;
 					});
+				} else if (lower.equals("fgstate")) {
+					LOGGER.info("[selftest] fgstate: mode {} running {} rendered {} neural {}", dev.cadence.metal.framegen.FrameGen.mode(),
+						dev.cadence.metal.framegen.FrameGen.running(), dev.cadence.metal.framegen.FrameGen.renderedRate(), dev.cadence.metal.framegen.FrameGen.neuralState());
 				} else if (lower.startsWith("fgbase=")) {
 					// "fgbase=N": Frame Generation renders N frames a second whatever the preset (0: as the preset says)
 					dev.cadence.metal.framegen.FrameGen.forceBase = Integer.parseInt(lower.substring(7));

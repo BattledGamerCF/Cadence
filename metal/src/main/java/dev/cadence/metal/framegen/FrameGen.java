@@ -24,6 +24,9 @@ import org.lwjgl.system.MemoryUtil;
  * MetalSurface.blitFromTexture); one frame of added latency.
  * <li>{@link Mode#RESPONSIVE}: the newest frame seen from the camera the mouse has turned to since, presented halfway to the
  * next frame (from the frame limiter's wait); no added latency, the mouse feels as fast as the frames shown.
+ * <li>{@link Mode#NEURAL}: as Smooth, the frame halfway made by Apple's own frame interpolation (VideoToolbox's low-latency
+ * interpolator, a neural network on the Neural Engine, beside the GPU) from the last two snapshots at up to 1280 x 720; until its
+ * model has loaded (about a second), and where it can't run (before macOS 26), Smooth's reprojection.
  * </ul>
  *
  * It runs only under a frame cap below the display's rate (the shaders module's FramerateCapMixin decides: {@link #target}):
@@ -32,7 +35,7 @@ import org.lwjgl.system.MemoryUtil;
  */
 public final class FrameGen {
 	public enum Mode {
-		OFF("Off"), SMOOTH("Smooth"), RESPONSIVE("Responsive");
+		OFF("Off"), SMOOTH("Smooth"), RESPONSIVE("Responsive"), NEURAL("Neural");
 
 		public final String label;
 
@@ -117,6 +120,13 @@ public final class FrameGen {
 	/** -Dcadence.fg=false: the hooks aren't applied (FrameGenMixinPlugin), so nothing is ever generated: never halve the cap. */
 	private static final boolean HOOKS = !"false".equals(System.getProperty("cadence.fg"));
 	private static long lastRunning;
+
+	/** Neural's interpolator: 2 ready, 1 starting, 0 off, -1 can't run here (then Smooth's reprojection). */
+	private static volatile int neuralState;
+
+	public static int neuralState() {
+		return neuralState;
+	}
 
 	/** Whether frames are being generated now. */
 	public static boolean running() {
@@ -241,7 +251,8 @@ public final class FrameGen {
 		if (!running() || fg == 0 || slot < 0 || !fresh || slotFrame[slot] != frames) return;
 		presented = frames;
 		int a = slot, b = slot ^ 1;
-		if (mode != Mode.SMOOTH) {
+		neuralState = FrameGenNative.neural(fg, ctx, mode == Mode.NEURAL);
+		if (mode == Mode.RESPONSIVE) {
 			responsiveFor = frames;  // the limiter's wait makes this frame's in-between one
 			return;
 		}

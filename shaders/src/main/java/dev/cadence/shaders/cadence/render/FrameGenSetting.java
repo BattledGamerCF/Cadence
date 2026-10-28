@@ -22,6 +22,7 @@ public final class FrameGenSetting {
 		return switch (s.strip().toLowerCase(Locale.ROOT)) {
 			case "off", "false" -> FrameGen.Mode.OFF;
 			case "responsive" -> FrameGen.Mode.RESPONSIVE;
+			case "neural" -> FrameGen.Mode.NEURAL;
 			default -> FrameGen.Mode.SMOOTH;
 		};
 	}
@@ -31,11 +32,12 @@ public final class FrameGenSetting {
 		ShaderToggle.saveKey("frameGeneration", mode.name().toLowerCase(Locale.ROOT));
 	}
 
-	/** The button's click: Smooth -> Responsive -> Off -> Smooth. */
+	/** The button's click: Smooth -> Responsive -> Neural -> Off -> Smooth. */
 	public static void cycle() {
 		set(switch (FrameGen.mode()) {
 			case SMOOTH -> FrameGen.Mode.RESPONSIVE;
-			case RESPONSIVE -> FrameGen.Mode.OFF;
+			case RESPONSIVE -> FrameGen.Mode.NEURAL;
+			case NEURAL -> FrameGen.Mode.OFF;
 			case OFF -> FrameGen.Mode.SMOOTH;
 		});
 	}

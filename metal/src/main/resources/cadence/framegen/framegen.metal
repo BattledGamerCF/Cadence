@@ -184,3 +184,49 @@ fragment half4 fg_fs_hdr(VOut in [[stage_in]], constant Frame &f [[buffer(0)]], 
 	texture2d<float> latest [[texture(4)]]) {
 	return half4(half3(toneMap(srgbDecode(fgColor(in, f, colorA, distA, colorB, distB, latest)), tn)), 1.0h);
 }
+
+// ---- Neural (Apple's frame interpolation, VideoToolbox's low-latency interpolator on the Neural Engine; mcfg.m) ----
+
+// The snapshot into the interpolator's frame (4:2:0 video range, BT.709, at most 1280 x 720): a thread per 2 x 2 block.
+kernel void fg_to_yuv(texture2d<float> color [[texture(0)]], texture2d<float, access::write> lum [[texture(1)]],
+	texture2d<float, access::write> chroma [[texture(2)]], uint2 gid [[thread_position_in_grid]]) {
+	uint cw = chroma.get_width(), ch = chroma.get_height();
+	if (gid.x >= cw || gid.y >= ch) return;
+	constexpr sampler lin(coord::normalized, filter::linear, address::clamp_to_edge);
+	float2 size = float2(lum.get_width(), lum.get_height());
+	float2 cb = 0.0f;
+	for (uint k = 0; k < 4; k++) {
+		uint2 p = gid * 2u + uint2(k & 1u, k >> 1u);
+		float3 c = clamp(color.sample(lin, (float2(p) + 0.5f) / size).rgb, 0.0f, 1.0f);
+		float y = dot(c, float3(0.2126f, 0.7152f, 0.0722f));
+		lum.write(float4((16.0f + 219.0f * y) / 255.0f), p);
+		cb += float2((c.b - y) / 1.8556f, (c.r - y) / 1.5748f);
+	}
+	cb *= 0.25f;
+	chroma.write(float4((128.0f + 224.0f * cb) / 255.0f, 0.0f, 0.0f), gid);
+}
+
+static float3 neuralColor(VOut in, constant Frame &f, texture2d<float> lum, texture2d<float> chroma, texture2d<float> colorA,
+	texture2d<float> distA, texture2d<float> latest) {
+	constexpr sampler near(coord::normalized, filter::nearest, address::clamp_to_edge);
+	constexpr sampler lin(coord::normalized, filter::linear, address::clamp_to_edge);
+	float2 uv = in.uv;
+	float4 fin = latest.sample(near, uv), snap = colorA.sample(near, uv);
+	if (any(abs(fin.rgb - snap.rgb) > 1.5f / 255.0f)) return fin.rgb;  // (the hand and the GUI: as the newest frame has them)
+	if (distA.sample(near, uv).r < f.params.z) return snap.rgb;
+	float y = (lum.sample(lin, uv).r * 255.0f - 16.0f) / 219.0f;
+	float2 c = (chroma.sample(lin, uv).rg * 255.0f - 128.0f) / 224.0f;
+	return clamp(float3(y + 1.5748f * c.y, y - 0.1873f * c.x - 0.4681f * c.y, y + 1.8556f * c.x), 0.0f, 1.0f);
+}
+
+fragment float4 fg_fs_neural(VOut in [[stage_in]], constant Frame &f [[buffer(0)]], texture2d<float> lum [[texture(0)]],
+	texture2d<float> chroma [[texture(1)]], texture2d<float> colorA [[texture(2)]], texture2d<float> distA [[texture(3)]],
+	texture2d<float> latest [[texture(4)]]) {
+	return float4(neuralColor(in, f, lum, chroma, colorA, distA, latest), 1.0f);
+}
+
+fragment half4 fg_fs_neural_hdr(VOut in [[stage_in]], constant Frame &f [[buffer(0)]], constant Tone &tn [[buffer(1)]],
+	texture2d<float> lum [[texture(0)]], texture2d<float> chroma [[texture(1)]], texture2d<float> colorA [[texture(2)]],
+	texture2d<float> distA [[texture(3)]], texture2d<float> latest [[texture(4)]]) {
+	return half4(half3(toneMap(srgbDecode(neuralColor(in, f, lum, chroma, colorA, distA, latest)), tn)), 1.0h);
+}

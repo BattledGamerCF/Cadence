@@ -19,6 +19,7 @@ final class FrameGenNative {
 	private static final MethodHandle IN_FRAME = fn("mcfg_present_in_frame", null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle ALONE = fn("mcfg_present_alone", null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle GPU_US = fn("mcfg_gpu_us", JAVA_DOUBLE, JAVA_LONG);
+	private static final MethodHandle NEURAL = fn("mcfg_neural", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle DEBUG = fn("mcfg_debug", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_LONG);
 
 	private FrameGenNative() {
@@ -62,5 +63,16 @@ final class FrameGenNative {
 
 	static double gpuMicros(long fg) {
 		try { return (double) GPU_US.invokeExact(fg); } catch (Throwable t) { throw rethrow(t); }
+	}
+
+	/** Neural wanted or not (mcfg_neural): 2 ready, 1 starting, 0 off, -1 can't run here. */
+	static int neural(long fg, long ctx, boolean on) {
+		try {
+			return (int) NEURAL.invokeExact(fg, ctx, on ? 1 : 0);
+		} catch (Throwable t) {
+			if (t instanceof RuntimeException r) throw r;
+			if (t instanceof Error e) throw e;
+			throw new RuntimeException(t);
+		}
 	}
 }

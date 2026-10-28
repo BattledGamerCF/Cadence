@@ -406,6 +406,7 @@ public final class CadenceSettings {
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES, "Twice the frames on screen for the frames your Mac renders: a frame made between each two.",
 			"Smooth|the frame halfway between the last two, shown before the newest (one frame later on screen)",
 			"Responsive|the newest frame turned to where your mouse looks now: no added delay, a little blur at moving edges",
+			"Neural|as Smooth, the frame in between made by Apple's own frame interpolation, a neural network on the Neural Engine (beside the graphics chip; macOS 26)",
 			"Off|every frame rendered",
 			"#Only where it adds frames your screen can show: Battery Saver renders 30 and shows 60; Recommended and Max Quality render "
 				+ "60 and show 120 on a 120 Hz screen. Not with Max FPS. The fps counter shows both (\"120 fps (60 rendered)\").")).build();
@@ -415,6 +416,12 @@ public final class CadenceSettings {
 
 	private static Component frameGenLabel() {
 		var mode = dev.cadence.metal.framegen.FrameGen.mode();
+		String neural = mode != dev.cadence.metal.framegen.FrameGen.Mode.NEURAL ? "" : switch (dev.cadence.metal.framegen.FrameGen.neuralState()) {
+			case 1 -> " (loading)";
+			case -1 -> " (Smooth: needs macOS 26)";
+			default -> "";
+		};
+		if (!neural.isEmpty()) return Component.literal("Frame Generation: " + mode.label + neural);
 		return Component.literal("Frame Generation: " + mode.label + (mode != dev.cadence.metal.framegen.FrameGen.Mode.OFF && dev.cadence.metal.framegen.FrameGen.running()
 			? " (" + dev.cadence.metal.framegen.FrameGen.renderedRate() + " -> " + 2 * dev.cadence.metal.framegen.FrameGen.renderedRate() + ")" : ""));
 	}
