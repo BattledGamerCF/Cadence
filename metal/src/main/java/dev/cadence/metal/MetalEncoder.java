@@ -414,7 +414,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public RenderPassBackend createRenderPass(RenderPassDescriptor descriptor) {
-		if (FrameLog.ON) FrameLog.op(FrameLog.PASSES, 1);
+		if (FrameLog.COUNT) FrameLog.op(FrameLog.PASSES, 1);
 		// Shaderpack runtime (-Dcadence.pack): the pass may draw into the pack's targets instead of its color attachments.
 		MetalHooks.PassRedirector redirector = MetalHooks.redirector;
 		MetalHooks.Redirect redirect = redirector == null ? null : redirector.redirect(descriptor);
@@ -739,7 +739,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public void writeToBuffer(GpuBufferSlice destination, ByteBuffer data) {
-		if (FrameLog.ON) {
+		if (FrameLog.COUNT) {
 			FrameLog.op(FrameLog.BUF_WRITES, 1);
 			FrameLog.op(FrameLog.BUF_KB, data.remaining() >> 10);
 		}
@@ -779,7 +779,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public void copyToBuffer(GpuBufferSlice source, GpuBufferSlice target) {
-		if (FrameLog.ON) {
+		if (FrameLog.COUNT) {
 			FrameLog.op(FrameLog.BUF_COPIES, 1);
 			FrameLog.op(FrameLog.COPY_KB, source.length() >> 10);
 		}
@@ -803,7 +803,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public void writeToTexture(GpuTexture destination, ByteBuffer source, int mip, int layer, int x, int y, int width, int height) {
-		if (FrameLog.ON) {
+		if (FrameLog.COUNT) {
 			FrameLog.op(FrameLog.TEX_WRITES, 1);
 			FrameLog.op(FrameLog.TEX_PX, (long) width * height);
 		}
@@ -851,7 +851,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public void copyTextureToTexture(GpuTexture source, GpuTexture destination, int mip, int destX, int destY, int sourceX, int sourceY, int width, int height) {
-		if (FrameLog.ON) FrameLog.op(FrameLog.TEX_COPIES, 1);
+		if (FrameLog.COUNT) FrameLog.op(FrameLog.TEX_COPIES, 1);
 		this.trace("copyTextureToTexture", source, destination, width + "x" + height);
 		this.flushClear(source);
 		this.flushClear(destination);

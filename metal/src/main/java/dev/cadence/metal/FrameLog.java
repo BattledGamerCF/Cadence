@@ -21,6 +21,8 @@ import java.util.List;
  */
 public final class FrameLog {
 	public static final boolean ON = Boolean.getBoolean("cadence.own.int.frameLog");
+	/** The per-frame counters run: for the CSV (ON) or for the stall recorder (Stalls). */
+	public static final boolean COUNT = ON || Stalls.ON;
 	public static final int TICK = 0, EXTRACT = 1, RENDER = 2, COMPILE = 3, RESORT_SCHED = 4, OWN_BEGIN = 5, TEXTURES = 6;
 	private static final String[] REGIONS = {"tickUs", "extractUs", "renderUs", "compileUs", "resortSchedUs", "ownBeginUs", "texTickUs"};
 	public static final int PUBLISH = 0, RESORT = 1, RELEASE = 2, CLEAR = 3;
@@ -106,7 +108,11 @@ public final class FrameLog {
 			gcc += Math.max(0, g.getCollectionCount());
 			gct += Math.max(0, g.getCollectionTime());
 		}
-		if (lastNs != 0 && n < CAP) {
+		if (lastNs != 0 && Stalls.ON) {
+			Stalls.frame(now, now - lastNs, lastCpu < 0 ? 0 : cpu - lastCpu, lastAlloc < 0 ? 0 : alloc - lastAlloc, lastGcCount < 0 ? 0 : gcc - lastGcCount,
+				lastGcCount < 0 ? 0 : gct - lastGcMs, curWait, curRegion, curOps);
+		}
+		if (ON && lastNs != 0 && n < CAP) {
 			int i = n++;
 			endMs[i] = System.currentTimeMillis();
 			wallUs[i] = (int) Math.min(Integer.MAX_VALUE, (now - lastNs) / 1000);

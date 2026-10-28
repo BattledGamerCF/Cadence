@@ -1191,9 +1191,9 @@ public final class OwnTerrain {
 	// ---- render thread: the frame ----
 
 	private void beginFrame() {
-		if (dev.cadence.metal.FrameLog.ON) dev.cadence.metal.FrameLog.begin(dev.cadence.metal.FrameLog.OWN_BEGIN);
+		if (dev.cadence.metal.FrameLog.COUNT) dev.cadence.metal.FrameLog.begin(dev.cadence.metal.FrameLog.OWN_BEGIN);
 		this.beginFrame0();
-		if (dev.cadence.metal.FrameLog.ON) dev.cadence.metal.FrameLog.end(dev.cadence.metal.FrameLog.OWN_BEGIN);
+		if (dev.cadence.metal.FrameLog.COUNT) dev.cadence.metal.FrameLog.end(dev.cadence.metal.FrameLog.OWN_BEGIN);
 	}
 
 	private void beginFrame0() {

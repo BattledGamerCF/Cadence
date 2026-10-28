@@ -36,7 +36,7 @@ public final class OwnMixinPlugin implements IMixinConfigPlugin {
 		if (mixinClassName.endsWith(".OwnAtlasWriteMixin")) return ENABLED && Boolean.getBoolean("cadence.own.int.atlasWrite");
 		if (mixinClassName.endsWith(".OwnAnimCopyMixin")) return ENABLED && (Boolean.getBoolean("cadence.own.int.animCopy") || Integer.getInteger("cadence.own.int.animHash", 0) > 0 || Integer.getInteger("cadence.own.int.animVerify", 0) > 0 || Integer.getInteger("cadence.own.int.animVerifyCopy", 0) > 0 || Boolean.getBoolean("cadence.own.int.animOnePass"));
 		if (mixinClassName.endsWith(".FrameLogNoAnimMixin")) return ENABLED && Boolean.getBoolean("cadence.own.int.noAnim");  // (measurement only, not exact)
-		if (mixinClassName.contains(".FrameLog")) return ENABLED && Boolean.getBoolean("cadence.own.int.frameLog");  // (measurement only)
+		if (mixinClassName.contains(".FrameLog")) return ENABLED && (Boolean.getBoolean("cadence.own.int.frameLog") || !"false".equals(System.getProperty("cadence.stalls")));  // (measurement, and the stall recorder's regions)
 		return ENABLED;
 	}
 

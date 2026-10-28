@@ -650,7 +650,7 @@ public final class MetalPipeline implements BackendRenderPipeline {
 
 	/** Native.pipelineNew, counted per frame by the frame log (-Dcadence.own.int.frameLog). */
 	private static long pipelineNewCounted(long ctx, long vlib, long vname, long flib, long fname, long desc, long err, int errLength) {
-		if (FrameLog.ON) FrameLog.op(FrameLog.PIPELINES, 1);
+		if (FrameLog.COUNT) FrameLog.op(FrameLog.PIPELINES, 1);
 		return Native.pipelineNew(ctx, vlib, vname, flib, fname, desc, err, errLength);
 	}
 }
