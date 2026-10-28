@@ -7,8 +7,9 @@ import java.util.Locale;
 /**
  * Cadence: "On Battery" (Video Settings). Unplugged, a Mac drawing 500 frames a second shows the display's 60 or 120 of them and
  * turns the rest of its battery into heat. While the Mac runs on its battery: Match Display (the default) caps the frame rate
- * at the display's refresh rate (60, or 120 on ProMotion; nothing visible is lost), Saver at 30 for long sessions, Off leaves
- * it as when plugged in. Plugged in again, the cap goes at once. Only the frame-rate limit changes (FramerateCapMixin), as with
+ * at the display's refresh rate (60, or 120 on ProMotion; nothing visible is lost), Saver does what the Battery Saver preset
+ * does (BatterySaver: a true 60 without a shader pack, 30 shown as 60 with one; the cap here is its 30), Off leaves it as when
+ * plugged in. Plugged in again, the cap goes at once. Only the frame-rate limit changes (FramerateCapMixin), as with
  * In Background; the game itself runs as before. The power source is read from macOS at most every two seconds.
  * -Dcadence.batteryMode=off|display|saver, or the button.
  */

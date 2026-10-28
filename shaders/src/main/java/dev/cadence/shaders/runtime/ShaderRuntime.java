@@ -636,9 +636,13 @@ public final class ShaderRuntime implements AutoCloseable {
         raw = true;
         try {
           var mainView = Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTextureView();
-          // Cadence: Apple's MetalFX spatial upscaler when chosen (upscaler=metalfx), else (or if it can't) the shader upscale.
-          if (!dev.cadence.shaders.cadence.render.RenderScale.metalFx()
-              || !dev.cadence.metal.MetalFxUpscaler.encode(scaledOutputView, mainView))
+          // Cadence: the Neural Engine upscaler when chosen (upscaler=neural; MetalFX until it's ready, or if it can't), Apple's
+          // MetalFX spatial upscaler when chosen (upscaler=metalfx), else (or if it can't) the shader upscale.
+          if (!dev.cadence.shaders.cadence.render.RenderScale.neural()) dev.cadence.metal.NeuralUpscaler.release();
+          boolean neural = dev.cadence.shaders.cadence.render.RenderScale.neural()
+              && dev.cadence.metal.NeuralUpscaler.encode(scaledOutputView, mainView);
+          if (!neural && (!dev.cadence.shaders.cadence.render.RenderScale.metalFx()
+              || !dev.cadence.metal.MetalFxUpscaler.encode(scaledOutputView, mainView)))
           {
             if (upscale.fast() != dev.cadence.shaders.cadence.render.RenderScale.fastUpscale()) {
               float sharpen = dev.cadence.shaders.cadence.render.RenderScale.sharpenFor(dev.cadence.shaders.cadence.render.RenderScale.get());

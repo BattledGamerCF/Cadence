@@ -195,7 +195,6 @@ public final class AppleHardwareSettings {
 		return Tips.of(Tips.Impact.LOW, "Light sources brighter than white, on your screen's extended range: glowstone, lava, torch flames, lanterns and the sun.",
 			"#Everything else, the menus and the HUD look as before (on a screen with little room above white, white itself is a touch "
 				+ "dimmer, to leave the highlights some). " + screen
-				+ " Needs Cadence's terrain renderer for the glowing blocks; with a shader pack, the pack's own picture is shown unchanged."
-				+ " With Sharpening: Neural Engine the world's highlights stop at white.");
+				+ " Needs Cadence's terrain renderer for the glowing blocks; with a shader pack, the pack's own picture is shown unchanged.");
 	}
 }

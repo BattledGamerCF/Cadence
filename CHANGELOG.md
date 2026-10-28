@@ -14,6 +14,19 @@ Measured on an M2 MacBook Air (8 GPU cores), unless noted.
   inside the picture, cut off again when the result is drawn. A picture now takes 8.5 ms (10 ms in the game), at most 60 a
   second: the styled world keeps up with the game instead of trailing it, and the game runs at 995 fps instead of 870 with
   a style on (1080p, render distance 6, no shader pack). The fitted network is kept beside the trained one.
+- **Far terrain costs less while you move.** Standing still already reused the last frame's selection of what far terrain
+  to draw; moving made a new one every frame (1.4-1.5 ms of GPU on an M2). Now a moving view's selection is made for a view
+  12% wider than the screen and reused for up to 3 frames, as long as the view stays inside that wider one, in the same block
+  and within half a block. Fullscreen Retina, render distance 16, turning: 395 -> 494 fps (1% lows 255 -> 281), the far
+  terrain's cost 0.86 -> 0.36 ms a frame; with BSL at 50% resolution 64 -> 67 fps. `-Dcadence.lod.moveReuse=false` for the
+  old way.
+- **The Neural Engine upscaler works with shader packs, and at any window size.** It was used only without a shader pack (a
+  pack's frame went to MetalFX even with Neural Engine chosen) and only for pictures up to 1280 wide, so fullscreen on a
+  Retina screen never used it. Pictures the scaler won't take whole are now upscaled in 2 or 4 overlapping tiles (a
+  fullscreen Retina world at 50% is two tiles of 768 x 924, 2.2 ms each on the Neural Engine). Starting the scaler for a
+  size takes a second or more the first time (Apple's model is compiled); that used to stop the game whenever Auto resolution
+  changed the size, and now happens on another thread while MetalFX upscales; the last two sizes' scalers are kept. HDR frames
+  and enlargements under 1.3x stay with MetalFX.
 
 ## 0.4.0-beta.24 / shaders 0.3.23 (2026-10-27)
 

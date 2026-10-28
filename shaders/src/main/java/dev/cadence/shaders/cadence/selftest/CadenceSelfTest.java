@@ -504,11 +504,15 @@ public final class CadenceSelfTest {
 					String[] wh = lower.substring(7).split("x");
 					int w = Integer.parseInt(wh[0]), h = Integer.parseInt(wh[1]);
 					mc.execute(() -> mc.getWindow().setWindowed(w, h));
-				} else if (lower.equals("fullscreen")) {
-					// "fullscreen": toggles fullscreen as F11 does
+				} else if (lower.equals("fullscreen") || lower.startsWith("fullscreen=")) {
+					// "fullscreen" (or "=on"): fullscreen, as F11 does; "fullscreen=off": a window. Set, not toggled: a run that
+					// started fullscreen (the option saved by an earlier run) went windowed and benchmarked the wrong size
+					boolean on = !lower.endsWith("=off");
 					mc.execute(() -> {
-						mc.options.fullscreen().set(!mc.options.fullscreen().get());  // (the option applies it to the window, as Video Settings does)
+						mc.options.fullscreen().set(on);  // (the option applies it to the window, as Video Settings does)
 					});
+					sleep(1500);
+					LOGGER.info("[selftest] fullscreen: {} ({} x {} pixels)", mc.options.fullscreen().get(), mc.getWindow().getWidth(), mc.getWindow().getHeight());
 				} else if (lower.startsWith("hover=")) {
 					// "hover=TEXT": the mouse put on the open screen's first widget whose label starts with TEXT (its tooltip shows)
 					String want = step.substring(6).strip();
@@ -949,6 +953,26 @@ public final class CadenceSelfTest {
 						spin.setDaemon(true);
 						spin.start();
 					}
+				} else if (lower.startsWith("pan=")) {
+					// "pan=S:DEGPS": the view turns DEGPS degrees a second for S seconds, a little every frame as a mouse turns it (spin
+					// turns it on the server, a step a tick); in the background, so the next steps' screenshots catch it turning
+					String[] g = lower.substring(4).split(":");
+					int seconds = Integer.parseInt(g[0]);
+					float degps = g.length > 1 ? Float.parseFloat(g[1]) : 30f;
+					Thread pan = new Thread(() -> {
+						long start = System.nanoTime(), last = start, end = start + seconds * 1_000_000_000L;
+						while (System.nanoTime() < end) {
+							long now = System.nanoTime();
+							float deg = degps * (now - last) / 1e9f;
+							last = now;
+							mc.execute(() -> {
+								if (mc.player != null) mc.player.turn(deg / 0.15, 0);
+							});
+							sleep(2);
+						}
+					}, "cadence-selftest-pan");
+					pan.setDaemon(true);
+					pan.start();
 				} else if (lower.startsWith("mobs=")) {
 					// "mobs=S[:N]": for S seconds, twice a second, the N (3) nearest water mobs as the server has them (position, speed,
 					// ticks without a player near, in water / under water) and as this client shows them (position, speed, body turn)

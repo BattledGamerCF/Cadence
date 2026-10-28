@@ -63,20 +63,29 @@ static NSString *neuralSource = @
 	"}\n"
 	// Neural Engine upscaler: the scaled world (RGBA, sRGB values) into a 4:2:0 picture (BT.709 video range: luma, then Cb Cr at
 	// half size), rows kept as they are; and the upscaled picture back into the frame
+	// (at: the tile's corner in the scaled world, the picture being upscaled in tiles when it's larger than the scaler takes)
 	"kernel void nn_to420(texture2d<float, access::read> src [[texture(0)]], texture2d<float, access::write> yt [[texture(1)]],\n"
-	"    texture2d<float, access::write> ct [[texture(2)]], uint2 g [[thread_position_in_grid]]) {\n"
+	"    texture2d<float, access::write> ct [[texture(2)]], constant uint2 &at [[buffer(0)]], uint2 g [[thread_position_in_grid]]) {\n"
 	"  uint w = ct.get_width(), h = ct.get_height(); if (g.x >= w || g.y >= h) return;\n"
 	"  const float3 kY = float3(0.2126, 0.7152, 0.0722); float3 m = 0;\n"
-	"  for (uint k = 0; k < 4; k++) { uint2 p = min(g * 2 + uint2(k & 1, k >> 1), uint2(src.get_width() - 1, src.get_height() - 1));\n"
+	"  for (uint k = 0; k < 4; k++) { uint2 p = min(at + g * 2 + uint2(k & 1, k >> 1), uint2(src.get_width() - 1, src.get_height() - 1));\n"
 	"    float3 c = saturate(src.read(p).rgb); m += c; yt.write(float4((16.0 + 219.0 * dot(c, kY)) / 255.0), g * 2 + uint2(k & 1, k >> 1)); }\n"
 	"  m *= 0.25; float y = dot(m, kY);\n"
 	"  ct.write(float4((128.0 + 224.0 * (m.b - y) / 1.8556) / 255.0, (128.0 + 224.0 * (m.r - y) / 1.5748) / 255.0, 0, 0), g);\n"
 	"}\n"
 	"struct VU { float4 pos [[position]]; float2 uv; };\n"
 	"vertex VU nn_up_vs(uint id [[vertex_id]]) { float2 p = float2((id << 1) & 2, id & 2); VU v; v.pos = float4(p * 2.0 - 1.0, 0.0, 1.0); v.uv = float2(p.x, 1.0 - p.y); return v; }\n"
-	"fragment float4 nn_from420(VU v [[stage_in]], texture2d<float> yt [[texture(0)]], texture2d<float> ct [[texture(1)]]) {\n"
+	// (t: the scaled world's size, a tile's size, the second column's and row's corner; each pixel from the tile whose half of
+	// the picture it's in, so the seams fall in the tiles' overlap, away from their edges)
+	"struct NnTiles { float2 world, tile, second; };\n"
+	"fragment float4 nn_from420(VU v [[stage_in]], texture2d<float> y0 [[texture(0)]], texture2d<float> c0 [[texture(1)]],\n"
+	"    texture2d<float> y1 [[texture(2)]], texture2d<float> c1 [[texture(3)]], texture2d<float> y2 [[texture(4)]], texture2d<float> c2 [[texture(5)]],\n"
+	"    texture2d<float> y3 [[texture(6)]], texture2d<float> c3 [[texture(7)]], constant NnTiles &t [[buffer(0)]]) {\n"
 	"  constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::linear);\n"
-	"  float Y = (yt.sample(s, v.uv).r * 255.0 - 16.0) / 219.0; float2 c = (ct.sample(s, v.uv).rg * 255.0 - 128.0) / 224.0;\n"
+	"  float2 w = v.uv * t.world; bool2 far = t.second > 0.0 && w >= t.world * 0.5;\n"
+	"  float2 uv = (w - select(float2(0.0), t.second, far)) / t.tile; int k = (far.x ? 1 : 0) + (far.y ? 2 : 0);\n"
+	"  texture2d<float> yt = k == 0 ? y0 : k == 1 ? y1 : k == 2 ? y2 : y3, ct = k == 0 ? c0 : k == 1 ? c1 : k == 2 ? c2 : c3;\n"
+	"  float Y = (yt.sample(s, uv).r * 255.0 - 16.0) / 219.0; float2 c = (ct.sample(s, uv).rg * 255.0 - 128.0) / 224.0;\n"
 	"  float r = Y + 1.5748 * c.y, b = Y + 1.8556 * c.x, gg = (Y - 0.2126 * r - 0.0722 * b) / 0.7152;\n"
 	"  return float4(saturate(float3(r, gg, b)), 1.0);\n"
 	"}\n"
@@ -565,10 +574,14 @@ void mcsm_copy_levels(Enc *enc, id<MTLTexture> src, id<MTLTexture> dst) {
 // scaled world into a 4:2:0 picture (nn_to420), and the upscaled one back into the frame (nn_from420). The model runs between,
 // on a serial queue once the GPU is done with the frame, so the world on screen is the one from the frame before (the hand
 // and the HUD are the frame's own); one frame is in the model at a time.
+#define NU_TILES 4
 typedef struct {
 	Ctx *ctx;
 	VTFrameProcessor *proc;
 	int inW, inH, outW, outH;
+	// the picture in tiles when the scaler won't take it whole (it takes at most 1280 x 1280, and 2x only up to about 960 wide):
+	// tilesX x tilesY of tileW x tileH, the second column and row starting at secondX, secondY (overlapping the first)
+	int tilesX, tilesY, tileW, tileH, secondX, secondY;
 	CVPixelBufferPoolRef inPool, outPool;
 	CVMetalTextureCacheRef cache;
 	id<MTLComputePipelineState> to420;
@@ -576,23 +589,38 @@ typedef struct {
 	id<MTLFunction> vs, fs;
 	dispatch_queue_t q;
 	os_unfair_lock lock;
-	CVPixelBufferRef latest;
+	CVPixelBufferRef latest[NU_TILES];
 	_Atomic int busy;
 	_Atomic long runs;
 	_Atomic double lastMs;
 	long frame;
 } NnUp;
 
-// in: the scaled world's size; scale: the factor (2 or 1.5, as the scaler offers for that size). NULL (err) if unsupported.
+// Tiles by slot: 0 the first, 1 the second column, 2 the second row, 3 both (the slots a tiling doesn't use stay empty).
+static int nuSlot(NnUp *u, int slot) {
+	return (!(slot & 1) || u->tilesX == 2) && (!(slot & 2) || u->tilesY == 2);
+}
+
+static int nuOffers(int w, int h, float scale) {
+	for (NSNumber *f in [cVTLLSRConfig supportedScaleFactorsForFrameWidth:w frameHeight:h]) if (fabsf(f.floatValue - scale) < 0.01f) return 1;
+	return 0;
+}
+
+// in: the scaled world's size; scale: the factor (2 or 1.5). The picture whole if the scaler takes it, else in 2 or 4
+// overlapping tiles (each half plus 32 pixels, even sizes). NULL (err) if no tiling works. Takes about a second the first time
+// (Apple's model is compiled): not on the render thread.
 void *mcnu_new(Ctx *ctx, int inW, int inH, float scale, char *err, int errCap) {
 	@autoreleasepool {
 		if (vtfpLoad(err, errCap) != 0) return NULL;
-		NSArray<NSNumber *> *factors = [cVTLLSRConfig supportedScaleFactorsForFrameWidth:inW frameHeight:inH];
-		BOOL ok = NO;
-		for (NSNumber *f in factors) if (fabsf(f.floatValue - scale) < 0.01f) ok = YES;
-		if (!ok) { snprintf(err, errCap, "%dx%d can't be upscaled %.1fx (offered: %s)", inW, inH, scale, factors.description.UTF8String); return NULL; }
+		int tx = 0, ty = 0, tw = 0, th = 0;
+		for (int k = 0; k < 4 && !tx; k++) {
+			int cx = k & 1 ? 2 : 1, cy = k & 2 ? 2 : 1;
+			int w = cx == 1 ? inW : ((inW / 2 + 32) + 1) & ~1, h = cy == 1 ? inH : ((inH / 2 + 32) + 1) & ~1;
+			if (w <= inW && h <= inH && nuOffers(w, h, scale)) { tx = cx; ty = cy; tw = w; th = h; }
+		}
+		if (!tx) { snprintf(err, errCap, "%dx%d can't be upscaled %.1fx, whole or in tiles", inW, inH, scale); return NULL; }
 		VTLowLatencySuperResolutionScalerConfiguration *cfg = [[(VTLowLatencySuperResolutionScalerConfiguration *) [cVTLLSRConfig alloc]
-			initWithFrameWidth:inW frameHeight:inH scaleFactor:scale] autorelease];
+			initWithFrameWidth:tw frameHeight:th scaleFactor:scale] autorelease];
 		VTFrameProcessor *proc = [(VTFrameProcessor *) [cVTFrameProcessor alloc] init];
 		NSError *e = nil;
 		if (!cfg || ![proc startSessionWithConfiguration:cfg error:&e]) {
@@ -612,6 +640,12 @@ void *mcnu_new(Ctx *ctx, int inW, int inH, float scale, char *err, int errCap) {
 		u->inH = inH;
 		u->outW = (int) lroundf(inW * scale);
 		u->outH = (int) lroundf(inH * scale);
+		u->tilesX = tx;
+		u->tilesY = ty;
+		u->tileW = tw;
+		u->tileH = th;
+		u->secondX = tx == 2 ? inW - tw : 0;
+		u->secondY = ty == 2 ? inH - th : 0;
 		u->to420 = to420;
 		u->vs = [lib newFunctionWithName:@"nn_up_vs"];
 		u->fs = [lib newFunctionWithName:@"nn_from420"];
@@ -619,13 +653,21 @@ void *mcnu_new(Ctx *ctx, int inW, int inH, float scale, char *err, int errCap) {
 		NSMutableDictionary *ia = [[cfg.sourcePixelBufferAttributes mutableCopy] autorelease], *oa = [[cfg.destinationPixelBufferAttributes mutableCopy] autorelease];
 		ia[(id) kCVPixelBufferMetalCompatibilityKey] = @YES;
 		oa[(id) kCVPixelBufferMetalCompatibilityKey] = @YES;
-		CVPixelBufferPoolCreate(NULL, (CFDictionaryRef) @{(id) kCVPixelBufferPoolMinimumBufferCountKey: @2}, (CFDictionaryRef) ia, &u->inPool);
-		CVPixelBufferPoolCreate(NULL, (CFDictionaryRef) @{(id) kCVPixelBufferPoolMinimumBufferCountKey: @3}, (CFDictionaryRef) oa, &u->outPool);
+		int n = tx * ty;
+		CVPixelBufferPoolCreate(NULL, (CFDictionaryRef) @{(id) kCVPixelBufferPoolMinimumBufferCountKey: @(2 * n)}, (CFDictionaryRef) ia, &u->inPool);
+		CVPixelBufferPoolCreate(NULL, (CFDictionaryRef) @{(id) kCVPixelBufferPoolMinimumBufferCountKey: @(3 * n)}, (CFDictionaryRef) oa, &u->outPool);
 		CVMetalTextureCacheCreate(NULL, NULL, ctx->device, NULL, &u->cache);
 		u->q = dispatch_queue_create("cadence.neural-upscale", DISPATCH_QUEUE_SERIAL);
 		dispatch_set_target_queue(u->q, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0));
 		return u;
 	}
+}
+
+// The tiling chosen: tiles across, down (0 0 if nu is NULL).
+void mcnu_tiles(void *nu, int *out) {
+	NnUp *u = nu;
+	out[0] = u ? u->tilesX : 0;
+	out[1] = u ? u->tilesY : 0;
 }
 
 static id<MTLTexture> planeTexture(CVMetalTextureCacheRef cache, CVPixelBufferRef pb, int plane, MTLPixelFormat f, int write, CVMetalTextureRef *ref) {
@@ -636,72 +678,100 @@ static id<MTLTexture> planeTexture(CVMetalTextureCacheRef cache, CVPixelBufferRe
 }
 
 // Render thread, at the upscale: src (the scaled world) sent to the model unless it's busy; the newest upscaled picture drawn
-// into dst. 1 if a picture was drawn (0: none yet, the caller upscales this frame another way).
+// into dst. 1 if a picture was drawn (0: none yet, or a float frame (HDR) whose highlights the 8-bit model would clip: the
+// caller upscales this frame another way).
 int mcnu_frame(void *nu, Enc *enc, id<MTLTexture> src, id<MTLTexture> dst) {
 	NnUp *u = nu;
-	if (!src || !dst) return 0;
+	if (!src || !dst || src.pixelFormat == MTLPixelFormatRGBA16Float) return 0;
 	int drew = 0;
 	@autoreleasepool {
 		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
 		if ((int) src.width == u->inW && (int) src.height == u->inH && atomic_exchange(&u->busy, 1) == 0) {
-			CVPixelBufferRef in = NULL;
-			CVMetalTextureRef ty = NULL, tc = NULL;
-			id<MTLTexture> yt = nil, ct = nil;
-			if (CVPixelBufferPoolCreatePixelBuffer(NULL, u->inPool, &in) == kCVReturnSuccess) {
-				yt = planeTexture(u->cache, in, 0, MTLPixelFormatR8Unorm, 1, &ty);
-				ct = planeTexture(u->cache, in, 1, MTLPixelFormatRG8Unorm, 1, &tc);
-			}
-			if (yt && ct) {
-				id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
-				c.label = @"Cadence neural upscale (to 4:2:0)";
-				[c setComputePipelineState:u->to420];
-				[c setTexture:src atIndex:0];
+			CVPixelBufferRef ins[NU_TILES] = {NULL};
+			CVMetalTextureRef refs[2 * NU_TILES] = {NULL};
+			int ok = 1;
+			id<MTLComputeCommandEncoder> c = nil;
+			for (int k = 0; k < NU_TILES && ok; k++) {
+				if (!nuSlot(u, k)) continue;
+				id<MTLTexture> yt = nil, ct = nil;
+				if (CVPixelBufferPoolCreatePixelBuffer(NULL, u->inPool, &ins[k]) == kCVReturnSuccess) {
+					yt = planeTexture(u->cache, ins[k], 0, MTLPixelFormatR8Unorm, 1, &refs[2 * k]);
+					ct = planeTexture(u->cache, ins[k], 1, MTLPixelFormatRG8Unorm, 1, &refs[2 * k + 1]);
+				}
+				if (!yt || !ct) {
+					ok = 0;
+					break;
+				}
+				if (!c) {
+					c = [cb computeCommandEncoder];
+					c.label = @"Cadence neural upscale (to 4:2:0)";
+					[c setComputePipelineState:u->to420];
+					[c setTexture:src atIndex:0];
+				}
+				uint32_t at[2] = {(uint32_t) ((k & 1) ? u->secondX : 0), (uint32_t) ((k & 2) ? u->secondY : 0)};
 				[c setTexture:yt atIndex:1];
 				[c setTexture:ct atIndex:2];
-				[c dispatchThreads:MTLSizeMake((NSUInteger) u->inW / 2, (NSUInteger) u->inH / 2, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
-				[c endEncoding];
+				[c setBytes:at length:8 atIndex:0];
+				[c dispatchThreads:MTLSizeMake((NSUInteger) u->tileW / 2, (NSUInteger) u->tileH / 2, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+			}
+			if (c) [c endEncoding];
+			if (ok) {
 				NnUp *uu = u;
 				long frame = ++u->frame;
+				CVPixelBufferRef in0 = ins[0], in1 = ins[1], in2 = ins[2], in3 = ins[3];
+				CVMetalTextureRef r[2 * NU_TILES];
+				memcpy(r, refs, sizeof r);
+				CVMetalTextureRef r0 = r[0], r1 = r[1], r2 = r[2], r3 = r[3], r4 = r[4], r5 = r[5], r6 = r[6], r7 = r[7];
 				[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
-					CFRelease(ty);
-					CFRelease(tc);
+					CVMetalTextureRef rr[8] = {r0, r1, r2, r3, r4, r5, r6, r7};
+					for (int k = 0; k < 8; k++) if (rr[k]) CFRelease(rr[k]);
 					dispatch_async(uu->q, ^{
 						@autoreleasepool {
 							double t0 = CACurrentMediaTime();
-							CVPixelBufferRef out = NULL;
-							CVPixelBufferPoolCreatePixelBuffer(NULL, uu->outPool, &out);
+							CVPixelBufferRef inb[NU_TILES] = {in0, in1, in2, in3}, outb[NU_TILES] = {NULL};
+							int all = 1;
 							CMTime t = {frame, 60, kCMTimeFlags_Valid, 0};
-							VTFrameProcessorFrame *sf = [[(VTFrameProcessorFrame *) [cVTFrameProcessorFrame alloc] initWithBuffer:in presentationTimeStamp:t] autorelease];
-							VTFrameProcessorFrame *df = out ? [[(VTFrameProcessorFrame *) [cVTFrameProcessorFrame alloc] initWithBuffer:out presentationTimeStamp:t] autorelease] : nil;
-							NSError *e = nil;
-							if (df && [uu->proc processWithParameters:[[(VTLowLatencySuperResolutionScalerParameters *) [cVTLLSRParams alloc]
-								initWithSourceFrame:sf destinationFrame:df] autorelease] error:&e]) {
+							for (int k = 0; k < NU_TILES && all; k++) {
+								if (!inb[k]) continue;
+								CVPixelBufferPoolCreatePixelBuffer(NULL, uu->outPool, &outb[k]);
+								VTFrameProcessorFrame *sf = [[(VTFrameProcessorFrame *) [cVTFrameProcessorFrame alloc] initWithBuffer:inb[k] presentationTimeStamp:t] autorelease];
+								VTFrameProcessorFrame *df = outb[k] ? [[(VTFrameProcessorFrame *) [cVTFrameProcessorFrame alloc] initWithBuffer:outb[k] presentationTimeStamp:t] autorelease] : nil;
+								NSError *e = nil;
+								all = df && [uu->proc processWithParameters:[[(VTLowLatencySuperResolutionScalerParameters *) [cVTLLSRParams alloc]
+									initWithSourceFrame:sf destinationFrame:df] autorelease] error:&e];
+							}
+							if (all) {
+								CVPixelBufferRef old[NU_TILES];
 								os_unfair_lock_lock(&uu->lock);
-								CVPixelBufferRef old = uu->latest;
-								uu->latest = out;
+								for (int k = 0; k < NU_TILES; k++) {
+									old[k] = uu->latest[k];
+									uu->latest[k] = outb[k];
+									outb[k] = NULL;
+								}
 								os_unfair_lock_unlock(&uu->lock);
-								if (old) CVPixelBufferRelease(old);
-								out = NULL;
+								for (int k = 0; k < NU_TILES; k++) if (old[k]) CVPixelBufferRelease(old[k]);
 								atomic_fetch_add(&uu->runs, 1);
 								uu->lastMs = (CACurrentMediaTime() - t0) * 1000;
 							}
-							if (out) CVPixelBufferRelease(out);
-							CVPixelBufferRelease(in);
+							for (int k = 0; k < NU_TILES; k++) {
+								if (outb[k]) CVPixelBufferRelease(outb[k]);
+								if (inb[k]) CVPixelBufferRelease(inb[k]);
+							}
 							atomic_store(&uu->busy, 0);
 						}
 					});
 				}];
 			} else {
-				if (ty) CFRelease(ty);
-				if (tc) CFRelease(tc);
-				if (in) CVPixelBufferRelease(in);
+				for (int k = 0; k < 2 * NU_TILES; k++) if (refs[k]) CFRelease(refs[k]);
+				for (int k = 0; k < NU_TILES; k++) if (ins[k]) CVPixelBufferRelease(ins[k]);
 				atomic_store(&u->busy, 0);
 			}
 		}
+		CVPixelBufferRef latest[NU_TILES];
 		os_unfair_lock_lock(&u->lock);
-		CVPixelBufferRef latest = u->latest ? CVPixelBufferRetain(u->latest) : NULL;
+		for (int k = 0; k < NU_TILES; k++) latest[k] = u->latest[k] ? CVPixelBufferRetain(u->latest[k]) : NULL;
 		os_unfair_lock_unlock(&u->lock);
-		if (latest) {
+		if (latest[0]) {
 			int k = dst.pixelFormat == MTLPixelFormatRGBA16Float ? 1 : 0;
 			if (!u->from420[k]) {
 				MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor new] autorelease];
@@ -711,9 +781,16 @@ int mcnu_frame(void *nu, Enc *enc, id<MTLTexture> src, id<MTLTexture> dst) {
 				NSError *e = nil;
 				u->from420[k] = [u->ctx->device newRenderPipelineStateWithDescriptor:d error:&e];
 			}
-			CVMetalTextureRef ty = NULL, tc = NULL;
-			id<MTLTexture> yt = planeTexture(u->cache, latest, 0, MTLPixelFormatR8Unorm, 0, &ty), ct = planeTexture(u->cache, latest, 1, MTLPixelFormatRG8Unorm, 0, &tc);
-			if (u->from420[k] && yt && ct) {
+			CVMetalTextureRef refs[2 * NU_TILES] = {NULL};
+			id<MTLTexture> planes[2 * NU_TILES] = {nil};
+			int have = 1;
+			for (int t = 0; t < NU_TILES; t++) {
+				if (!nuSlot(u, t)) continue;
+				planes[2 * t] = latest[t] ? planeTexture(u->cache, latest[t], 0, MTLPixelFormatR8Unorm, 0, &refs[2 * t]) : nil;
+				planes[2 * t + 1] = latest[t] ? planeTexture(u->cache, latest[t], 1, MTLPixelFormatRG8Unorm, 0, &refs[2 * t + 1]) : nil;
+				if (!planes[2 * t] || !planes[2 * t + 1]) have = 0;
+			}
+			if (u->from420[k] && have) {
 				MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
 				rp.colorAttachments[0].texture = dst;
 				rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
@@ -721,17 +798,28 @@ int mcnu_frame(void *nu, Enc *enc, id<MTLTexture> src, id<MTLTexture> dst) {
 				id<MTLRenderCommandEncoder> re = [cb renderCommandEncoderWithDescriptor:rp];
 				re.label = @"Cadence neural upscale (into the frame)";
 				[re setRenderPipelineState:u->from420[k]];
-				[re setFragmentTexture:yt atIndex:0];
-				[re setFragmentTexture:ct atIndex:1];
+				// (a tile's planes stand in for the missing ones: the shader picks only tiles that exist)
+				for (int t = 0; t < NU_TILES; t++) {
+					int from = nuSlot(u, t) ? t : 0;
+					[re setFragmentTexture:planes[2 * from] atIndex:(NSUInteger) (2 * t)];
+					[re setFragmentTexture:planes[2 * from + 1] atIndex:(NSUInteger) (2 * t + 1)];
+				}
+				float params[6] = {(float) u->inW, (float) u->inH, (float) u->tileW, (float) u->tileH, (float) u->secondX, (float) u->secondY};
+				[re setFragmentBytes:params length:sizeof params atIndex:0];
 				[re drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 				[re endEncoding];
 				drew = 1;
 			}
+			CVMetalTextureRef rr0 = refs[0], rr1 = refs[1], rr2 = refs[2], rr3 = refs[3], rr4 = refs[4], rr5 = refs[5], rr6 = refs[6], rr7 = refs[7];
+			CVPixelBufferRef l0 = latest[0], l1 = latest[1], l2 = latest[2], l3 = latest[3];
 			[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
-				if (ty) CFRelease(ty);
-				if (tc) CFRelease(tc);
-				CVPixelBufferRelease(latest);
+				CVMetalTextureRef rr[8] = {rr0, rr1, rr2, rr3, rr4, rr5, rr6, rr7};
+				for (int q = 0; q < 8; q++) if (rr[q]) CFRelease(rr[q]);
+				CVPixelBufferRef ll[4] = {l0, l1, l2, l3};
+				for (int q = 0; q < 4; q++) if (ll[q]) CVPixelBufferRelease(ll[q]);
 			}];
+		} else {
+			for (int t = 0; t < NU_TILES; t++) if (latest[t]) CVPixelBufferRelease(latest[t]);
 		}
 		CVMetalTextureCacheFlush(u->cache, 0);
 	}
@@ -751,7 +839,7 @@ void mcnu_free(void *nu) {
 	});
 	[u->proc endSession];
 	[u->proc release];
-	if (u->latest) CVPixelBufferRelease(u->latest);
+	for (int k = 0; k < NU_TILES; k++) if (u->latest[k]) CVPixelBufferRelease(u->latest[k]);
 	if (u->inPool) CVPixelBufferPoolRelease(u->inPool);
 	if (u->outPool) CVPixelBufferPoolRelease(u->outPool);
 	if (u->cache) CFRelease(u->cache);

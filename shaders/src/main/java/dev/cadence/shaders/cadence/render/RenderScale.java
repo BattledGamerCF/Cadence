@@ -111,7 +111,7 @@ public final class RenderScale {
 		return (upscaler == UPSCALE_APPLE || upscaler == UPSCALE_NEURAL) && !fastModes();
 	}
 
-	/** The world's upscale on the Neural Engine (MetalFX where it can't: a shader pack's frame, too large a picture). */
+	/** The world's upscale on the Neural Engine, with or without a shader pack (MetalFX where it can't: an HDR frame, under 1.3x, while it starts). */
 	public static boolean neural() {
 		return upscaler == UPSCALE_NEURAL && !fastModes();
 	}
@@ -338,7 +338,9 @@ public final class RenderScale {
 			next = Math.max(autoMin, clamp(Math.round((float) wanted / STEP) * STEP));
 		}
 		// the heat/memory ceiling only with a pack: without one a lower scale costs more than it saves (measured)
-		if (dev.cadence.shaders.runtime.ShaderRuntime.get() != null) next = Math.min(next, ceiling);
+		// (and Battery Saver's: with a pack the world at 50% at most, BatterySaver)
+		if (dev.cadence.shaders.runtime.ShaderRuntime.get() != null)
+			next = Math.min(next, Math.min(ceiling, dev.cadence.shaders.cadence.system.BatterySaver.scaleCeiling()));
 		// Cadence: without a pack Auto stays at full size. That frame is limited by terrain geometry, not pixels (M2 Air, render
 		// distance 12, idle Mac, in-run A/B: 100% 1.89 ms, 50% 1.83, 67% with MetalFX 3.25, 67% Fast 2.09): a lower scale only
 		// added the upscale's cost and blur, and Auto, seeing no gain, kept lowering it. A fixed scale is still the player's.

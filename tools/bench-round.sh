@@ -30,7 +30,7 @@ while IFS='|' read -r name plan extra; do
   d=$(ls -t "$ROOT/metal/run/results" | head -1)
   echo "results $d" >> "$SUM"
   grep -E "GUARD (STOP|KILL)|NOT STARTED|GAVE UP" "$SUM.last" >> "$SUM"
-  grep -E "\[selftest\] (benchmark|watts|[0-9]+ [^:]+: fps last)" "$ROOT/metal/run/results/$d/latest.log" \
+  grep -E "\[selftest\] (benchmark|watts|fullscreen|ahead|[0-9]+ [^:]+: fps last)" "$ROOT/metal/run/results/$d/latest.log" \
     | sed -E 's/.*\[selftest\] //; s/; worst.*//' >> "$SUM"
   grep -E "cadence-lod stats: (cull|[0-9]+ fps)" "$ROOT/metal/run/results/$d/stdout.log" | tail -2 >> "$SUM"
 done < "$LIST"

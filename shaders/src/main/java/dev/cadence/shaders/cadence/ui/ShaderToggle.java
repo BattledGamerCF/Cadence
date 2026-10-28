@@ -308,8 +308,8 @@ public final class ShaderToggle {
 			"Apple|sharpest edges, Apple's MetalFX (recommended with shaders)",
 			"Smooth|a little softer, very even",
 			"Fast|cheapest, the most fps; crisp pixel edges (at 50% exactly sharp)",
-			"Neural Engine|an ML upscaler on your Mac's Neural Engine, beside the graphics chip (the world one frame behind; up to 1280-wide "
-				+ "pictures, Apple's otherwise, and with shaders)",
+			"Neural Engine|an ML upscaler on your Mac's Neural Engine, beside the graphics chip, with or without shaders (the world one frame "
+				+ "behind; Apple's at Resolution above 77% and with HDR)",
 			"#Greyed out at 100% without shaders: nothing to sharpen.")).build();
 		Runnable state = () -> {
 			self[0].setMessage(upscalerLabel());

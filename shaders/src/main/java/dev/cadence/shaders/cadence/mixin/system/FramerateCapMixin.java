@@ -30,8 +30,27 @@ public abstract class FramerateCapMixin {
 			dev.cadence.shaders.cadence.system.FramePacing.cap(background);
 			return background;
 		}
-		int cap = Math.min(limit, Math.min(HeatControl.fpsCap(), Math.min(dev.cadence.shaders.cadence.system.BackgroundFps.fpsCap(),
-			dev.cadence.shaders.cadence.system.BatteryMode.fpsCap())));
+		int unsaved = Math.min(limit, Math.min(HeatControl.fpsCap(), dev.cadence.shaders.cadence.system.BackgroundFps.fpsCap()));
+		int cap = Math.min(unsaved, dev.cadence.shaders.cadence.system.BatteryMode.fpsCap());
+		long now = System.nanoTime();
+		if (now - cadence$presetChecked > 2_000_000_000L) {  // (reads the config file: every 2 s, BH4-13)
+			cadence$presetChecked = now;
+			var preset = dev.cadence.shaders.cadence.ui.CadenceSettings.current();
+			cadence$fgAllowed = preset != dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.MAX_FPS;
+			cadence$saver = preset == dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.BATTERY
+				|| dev.cadence.shaders.cadence.system.BatteryMode.saving();
+			dev.cadence.shaders.cadence.system.BatterySaver.active = cadence$saver;
+		}
+		boolean playing = !dev.cadence.shaders.cadence.render.PhotoMode.active() && net.minecraft.client.Minecraft.getInstance().level != null
+			&& ((FramerateLimitTracker) (Object) this).getThrottleReason() == FramerateLimitTracker.FramerateThrottleReason.NONE;
+		// Battery Saver without a shader pack: a true 60 (the display's rate if lower), every frame rendered, none generated:
+		// such a frame costs no more to render than to generate (BatterySaver: 5.0-5.2 W against 5.1 W), and is the sharper
+		if (cadence$saver && playing && !dev.cadence.shaders.cadence.system.BatterySaver.heavy()) {
+			int smooth = Math.min(unsaved, Math.min(60, HeatControl.refreshHz()));
+			dev.cadence.metal.framegen.FrameGen.target(0, 0);
+			dev.cadence.shaders.cadence.system.FramePacing.cap(smooth);
+			return smooth;
+		}
 		// Cadence: a shader pack on a display of 60 Hz or less runs at the display's rate by default: frames past it are never
 		// shown, and a pack's frame is expensive (heat, battery). -Dcadence.shaders.displayCap=false: as the options say.
 		// (a pack is installed: "a pack frame is being drawn" was never true here, the limit is read after the frame)
@@ -41,17 +60,7 @@ public abstract class FramerateCapMixin {
 		// to the display's rate; only where that is more than the base (on a 60 Hz screen: Battery Saver 30 -> 60, the others a
 		// true 60). Not with Max FPS (as many real frames as the Mac makes) or outside a world.
 		// (and not while vanilla holds the rate down itself: idle (its Inactivity FPS Limit), minimized, menus)
-		if (dev.cadence.metal.framegen.FrameGen.mode() != dev.cadence.metal.framegen.FrameGen.Mode.OFF && !dev.cadence.shaders.cadence.render.PhotoMode.active()
-			&& net.minecraft.client.Minecraft.getInstance().level != null
-			&& ((FramerateLimitTracker) (Object) this).getThrottleReason() == FramerateLimitTracker.FramerateThrottleReason.NONE) {
-			long now = System.nanoTime();
-			if (now - cadence$presetChecked > 2_000_000_000L) {  // (reads the config file: every 2 s, BH4-13)
-				cadence$presetChecked = now;
-				var preset = dev.cadence.shaders.cadence.ui.CadenceSettings.current();
-				cadence$fgAllowed = preset != dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.MAX_FPS;
-				cadence$saver = preset == dev.cadence.shaders.cadence.ui.CadenceSettings.Preset.BATTERY
-					|| dev.cadence.shaders.cadence.system.BatteryMode.saving();
-			}
+		if (dev.cadence.metal.framegen.FrameGen.mode() != dev.cadence.metal.framegen.FrameGen.Mode.OFF && playing) {
 			int forced = dev.cadence.metal.framegen.FrameGen.forceBase;
 			int hz = HeatControl.refreshHz(), base = Math.min(forced > 0 ? forced : cadence$saver ? 30 : 60, cap), shown = 2 * base;
 			// (Ray Traced Lighting, when the Mac can't render the screen's rate: half of it rendered, the rest generated, e.g. 30 -> 60)
@@ -72,6 +81,8 @@ public abstract class FramerateCapMixin {
 		} else {
 			dev.cadence.metal.framegen.FrameGen.target(0, 0);
 		}
+		// (Battery Saver with a pack and Frame Generation off: 30, as with it on, just without the frames between)
+		if (cadence$saver && playing) cap = Math.min(cap, dev.cadence.shaders.cadence.system.BatteryMode.SAVER_FPS);
 		dev.cadence.shaders.cadence.system.FramePacing.cap(cap);
 		return cap;
 	}

@@ -229,7 +229,7 @@ public final class CadenceSettings {
 			apply(next);
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES, "One click sets the options below.",
-			"Battery Saver|coolest and quietest, aims for 40 fps",
+			"Battery Saver|the least power that stays smooth: a true 60 fps without shaders (about 5 W for the whole Mac on an M2 Air); with them 30 rendered and 60 shown, the world at half resolution (10 W with BSL, half of Recommended's)",
 			"Recommended|smooth 60 fps, sharp whenever it can be",
 			"Max Quality|always full sharpness; the Mac may run hot",
 			"Max FPS|Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air",
@@ -385,7 +385,7 @@ public final class CadenceSettings {
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES.because("lowers fps on battery to save power"), "How fast Minecraft draws while your Mac runs on its battery.",
 			"Match Display|at most your display's refresh rate (60, or 120 on ProMotion): nothing you can see is lost",
-			"Saver|at most 30 frames a second, for long sessions away from a charger",
+			"Saver|as the Battery Saver preset: a steady 60 without shaders, 30 shown as 60 with them, for long sessions away from a charger",
 			"Off|as when plugged in",
 			"#Plugged in, nothing is capped.")).build();
 		onRefresh(() -> self[0].setMessage(batteryLabel()));
@@ -407,7 +407,7 @@ public final class CadenceSettings {
 			"Responsive|the newest frame turned to where your mouse looks now: no added delay, a little blur at moving edges",
 			"Neural|as Smooth, the frame in between made by Apple's own frame interpolation, a neural network on the Neural Engine (beside the graphics chip; macOS 26)",
 			"Off|every frame rendered",
-			"#Only where it adds frames your screen can show: Battery Saver renders 30 and shows 60; Recommended and Max Quality render "
+			"#Only where it adds frames your screen can show: Battery Saver renders 30 and shows 60 with a shader pack; Recommended and Max Quality render "
 				+ "60 and show 120 on a 120 Hz screen. Not with Max FPS. The fps counter shows both (\"120 fps (60 rendered)\").")).build();
 		onRefresh(() -> self[0].setMessage(frameGenLabel()));
 		return self[0];
