@@ -11,6 +11,12 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
   game, so launchers see one process from start to end, get its exit code, and stop it as before; if that process is killed
   outright, the game saves and quits within a second. Checked in macOS's own log: the game is granted Game Mode once full
   screen. `cadence.gameMode=false` turns it off.
+- **Settings screens tidied:** Sharpness & Speed and Far Terrain use the same headings as Video Settings (a bold title,
+  a grey note), Far Terrain says up front which shader packs draw it, and "Sound Engine: Apple" fits its button.
+- **The Benchmark card shows how steady the game was** (the slowest 1% of frames) next to the average, without opening
+  More Details.
+- `docs/BENCHMARKS.md`: where a frame's time goes, without shaders and with BSL, and why 3,000 fps at render distance 16
+  isn't reachable on an M2 by tuning.
 
 ## 0.4.0-beta.26 / shaders 0.3.25 (2026-10-28)
 

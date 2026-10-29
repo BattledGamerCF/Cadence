@@ -55,6 +55,37 @@ for a slightly wider view and reused for up to three frames while the view stays
 step (5%) of resolution. Flying over new land, the far terrain generated in the background kept up with no missing tiles.
 On GPUs of 6 cores or fewer, Auto quality picks Low.
 
+## Where a frame's time goes
+
+**Without shaders, Max FPS preset, render distance 16** (1470 x 923, about 1,365 fps, a 0.73 ms frame, limited by the GPU):
+
+| | Frame time |
+|---|---|
+| Everything but the terrain (the processor's frame: game tick, entities, HUD, the frame's setup) | 0.29 ms |
+| ... plus choosing what terrain to draw (the per-frame visibility test, on the GPU) | 0.41 ms |
+| ... plus drawing it | 0.73 ms |
+
+Per frame Cadence tests 19,000-36,000 blocks of terrain against the depth of the frame before and draws 60,000-110,000
+faces of the ~290,000 in view; without that occlusion test the same frame takes 1.44 ms (687 fps). A frame of 3,000 fps
+(0.33 ms) would need the terrain at less than a tenth of its GPU time and the processor's frame cut by a third: not
+reachable on this Mac by tuning (merging faces with Smooth Lighting off removes only 25% of them, since light levels differ
+block to block and stone, dirt and grass use randomly rotated textures). A fanless MacBook Air also slows to about half
+speed after two minutes at full load, so sustained frame rates are lower than these 30-second runs.
+
+**BSL at 50% world resolution** (a ~13 ms GPU frame), by pass:
+
+| Pass | Vertex | Pixels |
+|---|---|---|
+| Terrain (2,725 chunk-section draws) | 5.3 ms | 0.75 ms |
+| Shadow map | 2.4 ms | 1.95 ms |
+| Water | 1.8 ms | 3.0 ms |
+| Deferred lighting (2 passes) | | 1.8 ms |
+| Composite passes (6) | | 2.9 ms |
+
+Cadence's part of a pack's frame is mostly the vertex work: the chunk sections hidden behind others are skipped
+(-1.4 ms), the faces turned away from the camera are skipped (-2.0 ms), far shadows are drawn as simple shapes (-1.4 ms);
+the pixel passes are the pack's own shaders.
+
 ## Stalls
 
 A frame over 50 ms in a world is logged with its cause (the stall recorder, `[cadence] stall:` lines). Switching a shader
@@ -77,6 +108,9 @@ compiler time over 4 threads: macOS's shader cache makes them quick after the fi
 | Mesh shaders for near terrain | 326 fps, GPU 3.07 ms, against 1,390 fps and 0.72 ms for Cadence's renderer (Max FPS preset, render distance 16) | Slower |
 | Skipping the in-place depth clears before the hand and the HUD | 1,336 vs 1,333 and 1,363 vs 1,360 fps | No difference |
 | Apple's MetalFX frame interpolation | 28 ms a frame at the screen's resolution on an M2 | Much slower than Cadence's Frame Generation |
+| Occlusion test off at the Max FPS resolution | 687 vs 1,303 fps | The test is what makes render distance 16 fast |
+| Fast math for shader packs' shaders | BSL 74 vs 70 fps (within noise) | Packs may rely on exact infinities and NaN; kept exact |
+| Two Neural Engine upscaler sessions in parallel | 4.48-4.50 ms vs 4.50-4.62 ms for two tiles | The Neural Engine is already fully busy |
 
 ## Power: Battery Saver
 
