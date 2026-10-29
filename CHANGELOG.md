@@ -2,6 +2,16 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased
+
+- **macOS Game Mode.** macOS gives a full-screen game priority on the CPU and GPU, holds back background work and doubles the
+  Bluetooth polling rate (lower latency for AirPods and controllers), but only to an app whose Info.plist says it is a game,
+  and a launcher's Java never is. Cadence now starts the game, at the restart it already does at launch, from a small app
+  bundle that says it is a game (`~/Library/Application Support/Cadence/Game`, same Java). The first process waits for the
+  game, so launchers see one process from start to end, get its exit code, and stop it as before; if that process is killed
+  outright, the game saves and quits within a second. Checked in macOS's own log: the game is granted Game Mode once full
+  screen. `cadence.gameMode=false` turns it off.
+
 ## 0.4.0-beta.26 / shaders 0.3.25 (2026-10-28)
 
 Measured on an M2 MacBook Air (8 GPU cores), render distance 16, unless noted.

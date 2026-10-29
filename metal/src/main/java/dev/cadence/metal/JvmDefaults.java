@@ -102,6 +102,7 @@ public final class JvmDefaults {
 			: ManagementFactory.getGarbageCollectorMXBeans().get(0).getName().split(" ")[0];
 		String given = System.getenv(ENV);
 		if (given != null) {
+			GameMode.watchParent();
 			summary = gc + (given.contains("UseG1GC") ? " (Cadence default)" : given.isEmpty() ? "" : " (Cadence default; the collector is yours)");
 			Vivace.reached(gameDir);
 			System.out.println("[cadence] Java started" + (Vivace.running() ? " on Vivace" : "") + " with Cadence's defaults: " + given
@@ -149,7 +150,9 @@ public final class JvmDefaults {
 			if (defaults && g1 && feature >= 26 && conflict(YOUNG_CAP, input) == null) add.add(YOUNG_CAP);
 			add.removeIf(a -> a.startsWith("-XX:") && Vivace.removedOptions().contains(flagName(a)));
 		}
-		if (vivace == null && add.stream().noneMatch(a -> a.startsWith("-XX:"))) return;
+		// (Game Mode: the game is started again from a bundle macOS treats as a game; that alone is reason enough to restart)
+		boolean gameMode = GameMode.enabled(config(gameDir));
+		if (vivace == null && !gameMode && add.stream().noneMatch(a -> a.startsWith("-XX:"))) return;
 		List<String> argv = new ArrayList<>();
 		argv.add(vivace != null ? vivace.toString() : info.command().get());
 		argv.addAll(add);
@@ -162,6 +165,17 @@ public final class JvmDefaults {
 			+ (add.isEmpty() ? "" : " with Cadence's defaults: " + String.join(" ", add))
 			+ (kept.isEmpty() ? "" : "; kept your own: " + String.join(" ", kept)));
 		System.out.flush();
+		List<String> waiter = gameMode ? GameMode.spawn(Path.of(argv.get(0)), argv, env) : null;
+		if (waiter != null) {
+			System.out.println("[cadence] Started as a game (macOS Game Mode); this process waits for it");
+			System.out.flush();
+			closeOnExec();
+			int w = exec(waiter, new TreeMap<>(System.getenv()));
+			// (the exec failed: the game is already running, so this one must not start a second; it waits for it instead)
+			System.out.println("[cadence] Game Mode: the wait failed (" + w + "); waiting in Java");
+			ProcessHandle.of(Long.parseLong(waiter.get(2))).ifPresent(h -> h.onExit().join());
+			Runtime.getRuntime().halt(0);
+		}
 		closeOnExec();
 		int r = exec(argv, env);
 		if (vivace != null) Vivace.execFailed(gameDir);
@@ -214,15 +228,20 @@ public final class JvmDefaults {
 		Legacy.migrateProperties();
 		String p = System.getProperty("cadence.jvmDefaults");
 		if (p != null) return !"false".equalsIgnoreCase(p.strip());
-		Path cfg = Legacy.readable(gameDir.resolve("config"), Legacy.CONFIG, Legacy.CONFIG_OLD);
-		if (!Files.isRegularFile(cfg)) return true;
+		return !"false".equalsIgnoreCase(config(gameDir).getProperty("cadence.jvmDefaults", "true").strip());
+	}
+
+	/** config/cadence.properties (empty when there is none or it can't be read). */
+	private static Properties config(Path gameDir) {
 		Properties props = new Properties();
+		Path cfg = Legacy.readable(gameDir.resolve("config"), Legacy.CONFIG, Legacy.CONFIG_OLD);
+		if (!Files.isRegularFile(cfg)) return props;
 		try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
 			dev.cadence.metal.ConfigFiles.load(props, r);
 		} catch (IOException e) {
-			return true;
+			// (as if there were none)
 		}
-		return !"false".equalsIgnoreCase(props.getProperty("cadence.jvmDefaults", "true").strip());
+		return props;
 	}
 
 	/** Every open file but stdin/out/err closes at the exec (the other threads keep using theirs until then). */

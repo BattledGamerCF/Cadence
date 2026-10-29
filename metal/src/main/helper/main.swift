@@ -3,6 +3,10 @@
 //   cadence-helper train-style STYLE_IMAGE CONTENT_DIR ITERATIONS OUT.mlmodel
 //       A style transfer model trained with Create ML on this Mac (no download: Create ML's own feature extractor), for Style
 //       Filters, which run it on the Neural Engine. Create ML's table (a row per iteration) while training, "done" at the end.
+//   cadence-helper wait PID
+//       Game Mode: what the game's first process becomes once it has started the game again as a new process (one macOS
+//       treats as a game): it waits for that process, hands it the signals the launcher sends (quit, interrupt, hang up), and
+//       exits with its exit code, so the launcher still sees one process from start to end.
 //   cadence-helper listen OUT_FILE [--locale ID] [--parent PID] [--file AUDIO]
 //       Voice Control: speech recognised on this Mac (Speech, on-device only: nothing is sent anywhere), each finished phrase
 //       appended to OUT_FILE as a line. Runs as its own app (Cadence Helper.app), so macOS asks for the microphone and speech
@@ -187,8 +191,31 @@ func listen() {
 	if let f = file { l.listenFile(URL(fileURLWithPath: f)) } else { l.listenMicrophone() }
 }
 
+var signalSources: [DispatchSourceSignal] = []
+
+func waitForGame() {
+	guard args.count >= 3, let child = pid_t(args[2]) else { fail("usage: wait PID") }
+	for s in [SIGTERM, SIGINT, SIGHUP, SIGQUIT] {
+		signal(s, SIG_IGN)
+		let source = DispatchSource.makeSignalSource(signal: s, queue: .main)
+		source.setEventHandler { kill(child, s) }
+		source.resume()
+		signalSources.append(source)
+	}
+	DispatchQueue.global().async {
+		var status: Int32 = 0
+		var r: pid_t
+		repeat { r = waitpid(child, &status, 0) } while r == -1 && errno == EINTR
+		if r == -1 { exit(1) }
+		let sig = status & 0x7f
+		exit(sig == 0 ? (status >> 8) & 0xff : 128 + sig)
+	}
+	dispatchMain()
+}
+
 switch args.count > 1 ? args[1] : "" {
 case "train-style": trainStyle()
 case "listen": listen()
-default: fail("usage: cadence-helper train-style ... | listen ...")
+case "wait": waitForGame()
+default: fail("usage: cadence-helper train-style ... | listen ... | wait PID")
 }

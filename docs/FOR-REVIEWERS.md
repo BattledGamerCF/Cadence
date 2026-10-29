@@ -28,11 +28,18 @@ it; docs/ARCHITECTURE.md). The release zip also holds an optional jar with no co
   structures) is used only with Ray Tracing on.
 - **Cadence Helper** (`metal/src/main/helper`: one Swift file and an Info.plist) is built by the Gradle build with `swiftc`,
   signed ad hoc, shipped inside the jar and unpacked into `~/Library/Application Support/Cadence/Cadence Helper.app` the first
-  time a feature needs it. It does two things, each only when the player turns that feature on: trains a Style Filter's
-  network with Apple's Create ML (on the Mac, nothing downloaded); for Voice Control, recognises speech with Apple's Speech
-  framework set to on-device recognition only (`requiresOnDeviceRecognition`). It runs as
-  its own app so that macOS asks the player for the microphone and speech recognition for "Cadence Helper";
-  Java never touches the microphone or the motion sensors.
+  time a feature needs it. It does three things: trains a Style Filter's network with Apple's Create ML (on the Mac, nothing
+  downloaded) and, for Voice Control, recognises speech with Apple's Speech framework set to on-device recognition only
+  (`requiresOnDeviceRecognition`), each only when the player turns that feature on; and for Game Mode (on by default) it is
+  what the game's first process becomes: it waits for the game, passes it the launcher's quit signals and exits with its
+  exit code. It runs as its own app so that macOS asks the player for the microphone and speech recognition for
+  "Cadence Helper"; Java never touches the microphone.
+- **Game Mode** (`GameMode`): macOS gives Game Mode only to an app whose Info.plist says it is a game, decided when the
+  process starts. At the restart Cadence already does at launch (to add its Java options), it starts the game as a new
+  process from `~/Library/Application Support/Cadence/Game/<id>/Minecraft.app`: an Info.plist that says "game", a copy of the
+  same Java's `java` launcher (signature unchanged) and links to that Java's own folders. Nothing is installed system-wide;
+  `-Dcadence.gameMode=false` or `cadence.gameMode=false` in `config/cadence.properties` turns it off. If the waiting first
+  process is killed outright, the game notices within a second and quits normally (saving the world).
 - GPU shaders (`*.metal` under `metal/src/main/resources/cadence`) are compiled by Metal at runtime from source.
 
 ## Network
@@ -55,7 +62,7 @@ All inside the Minecraft game directory unless noted:
 | `screenshots/cadence-photo-*.png` | Photo Mode's screenshots (F9), where the game's own screenshots go. |
 | `screenshots/` | Benchmark result cards when the player saves them. |
 | system temp directory | The extracted native library (`mcmetal*/libmcmetal.dylib`). |
-| `~/Library/Application Support/Cadence/` | Cadence Helper.app (unpacked from the jar, with `helper-stamp.txt`); `styles/`: Style Filters' trained networks, the paintings they were trained on (from the game's resources) and `content/`, the pictures of the player's world used for training (copies of their screenshots or frames taken while they play); `voice-PID-N.txt`, the phrases Voice Control heard, deleted by the helper when Voice Control stops or the game exits (the helper exits when the game's process is gone). All safe to delete. |
+| `~/Library/Application Support/Cadence/` | Cadence Helper.app (unpacked from the jar, with `helper-stamp.txt`); `styles/`: Style Filters' trained networks, the paintings they were trained on (from the game's resources) and `content/`, the pictures of the player's world used for training (copies of their screenshots or frames taken while they play); `voice-PID-N.txt`, the phrases Voice Control heard, deleted by the helper when Voice Control stops or the game exits (the helper exits when the game's process is gone). `Game/`: the Game Mode bundle (remade when needed). All safe to delete. |
 | files named by `-D` flags | Measurement logs and recordings, only when a developer flag asks for them. |
 
 ## Code that changes Minecraft

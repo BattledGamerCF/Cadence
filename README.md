@@ -72,7 +72,8 @@ world repainted like one of the game's paintings, trained on your Mac), **Smooth
 Apple's ML super resolution), a Neural Engine **upscaler** for World Resolution (with shader packs too: BSL 80 fps instead of 74
 at 50%), **Frame Generation: Neural** (Apple's own
 frame interpolation) and **Voice Control** (spoken commands, recognised on your Mac only). **Biome Colours** grades the picture
-for where you are. Sound: **World Reverb** (caves echo, walls
+for where you are. **Game Mode**: macOS's Game Mode (priority for the full-screen game, lower Bluetooth latency) turns on
+for Minecraft, which a launcher's Java never gets. Sound: **World Reverb** (caves echo, walls
 muffle) and **Sound Around Corners** (sounds come through the doorway they really come by).
 
 On top of that: a garbage-collection policy for games, faster startup (about 15% sooner in a world: block data built in
