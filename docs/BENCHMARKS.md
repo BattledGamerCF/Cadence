@@ -76,19 +76,21 @@ reachable on this Mac by tuning (merging faces with Smooth Lighting off removes 
 block to block and stone, dirt and grass use randomly rotated textures). A fanless MacBook Air also slows to about half
 speed after two minutes at full load, so sustained frame rates are lower than these 30-second runs.
 
-**BSL at 50% world resolution** (a ~13 ms GPU frame), by pass:
+**BSL at 50% world resolution**, fullscreen Retina (a 14-16 ms GPU frame): what each part costs, measured by switching it
+off and on every 2 seconds in one launch (so the Mac's heat affects both states alike):
 
-| Pass | Vertex | Pixels |
-|---|---|---|
-| Terrain (2,725 chunk-section draws) | 5.3 ms | 0.75 ms |
-| Shadow map | 2.4 ms | 1.95 ms |
-| Water | 1.8 ms | 3.0 ms |
-| Deferred lighting (2 passes) | | 1.8 ms |
-| Composite passes (6) | | 2.9 ms |
+| Part of the frame | GPU time |
+|---|---|
+| Water | 3.1 ms |
+| Terrain | 1.9 ms |
+| Shadow map (drawn every 2nd frame) | 1.0 ms |
+| Entities | under 0.1 ms |
+| The pack's full-screen lighting and effect passes (the rest) | about 9 ms |
 
-Cadence's part of a pack's frame is mostly the vertex work: the chunk sections hidden behind others are skipped
-(-1.4 ms), the faces turned away from the camera are skipped (-2.0 ms), far shadows are drawn as simple shapes (-1.4 ms);
-the pixel passes are the pack's own shaders.
+A shader pack's frame is limited by its pixels, not its geometry: the same view at full resolution takes 39.7 ms against
+16.1 ms at 50%, which is why Auto resolution and the upscalers are the big levers with a pack. Cadence's part of the geometry
+work is already cut down: chunk sections hidden behind others are skipped, faces turned away from the camera (and from the
+sun, in the shadow map) are skipped, and far shadows are drawn as simple shapes.
 
 ## Stalls
 
@@ -113,8 +115,10 @@ compiler time over 4 threads: macOS's shader cache makes them quick after the fi
 | Skipping the in-place depth clears before the hand and the HUD | 1,336 vs 1,333 and 1,363 vs 1,360 fps | No difference |
 | Apple's MetalFX frame interpolation | 28 ms a frame at the screen's resolution on an M2 | Much slower than Cadence's Frame Generation |
 | Occlusion test off at the Max FPS resolution | 687 vs 1,303 fps | The test is what makes render distance 16 fast |
-| Fast math for shader packs' shaders | BSL 74 vs 70 fps (within noise) | Packs may rely on exact infinities and NaN; kept exact |
+| Fast math for shader packs' shaders (vertex and pixel) | BSL 74 vs 70 fps (within noise) | Packs may rely on exact infinities and NaN; kept exact |
 | Two Neural Engine upscaler sessions in parallel | 4.48-4.50 ms vs 4.50-4.62 ms for two tiles | The Neural Engine is already fully busy |
+| Computing a pack's per-frame values (BSL's sun, up and east directions) once per pixel instead of passing them from every vertex | 81 vs 79, 73 vs 76 and 68 vs 72 fps (BSL, 50%) | No difference: the vertex stage isn't what limits a pack |
+| Drawing a pack's shadow map every 3rd frame instead of every 2nd | Every frame costs 1.15 ms more than every 2nd, so every 3rd would save about 0.4 ms (3%) | Not worth moving shadows lagging behind |
 
 ## Power: Battery Saver
 
