@@ -105,6 +105,19 @@ Essential didn't load. Now, when any other mod has a pre-launch step, Cadence's 
 - **Frame Generation: Neural** follows Frame Generation (Smooth's rules: not with the Minimal Renderer or the Metal 4 path).
 - **Far Terrain > Renderer: Mesh Shaders** falls back to Compute with a shader pack (the pack draws the far terrain's records).
 
+## Game Mode and launchers
+
+With Game Mode on (the default), the process your launcher started becomes a small waiter ("Cadence Helper") a second or
+two after launch, and the game itself runs as its child, from `~/Library/Application Support/Cadence/Game/<id>/Minecraft.app`
+with the same Java and options. For the launcher nothing changes: the same process runs from start to end, the game's
+output reaches its console, the stop button quits the game, and the exit code is the game's. Two things differ:
+
+- Tools that attach to a Java process by its pid (`jstack`, `jcmd`, VisualVM) need the game's pid, not the launcher's:
+  `pgrep -f net.minecraft` shows it.
+- If the waiter is killed outright, the game saves and quits within a second.
+
+`cadence.gameMode=false` in `config/cadence.properties` (or `-Dcadence.gameMode=false`) keeps the old single process.
+
 ## Options
 
 - `cadence.compat=false` (in `config/cadence.properties`, or `-Dcadence.compat=false`): nothing steps aside; the

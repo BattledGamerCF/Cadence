@@ -15,6 +15,10 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
   a grey note), Far Terrain says up front which shader packs draw it, and "Sound Engine: Apple" fits its button.
 - **The Benchmark card shows how steady the game was** (the slowest 1% of frames) next to the average, without opening
   More Details.
+- **Fixes from a bug hunt** (no crash found): a Neural Engine feature turned off during a long GPU stall could free what a
+  late GPU callback still used; the stall recorder logged every frame under a low frame cap; the Style Filter could start
+  a loader every frame after a load failed; Cadence Helper wasn't unpacked again when its app was deleted; Quick Setup's Max
+  FPS goal could raise Far Distance; half-written shader-cache files were left behind.
 - `docs/BENCHMARKS.md`: where a frame's time goes, without shaders and with BSL, and why 3,000 fps at render distance 16
   isn't reachable on an M2 by tuning.
 
