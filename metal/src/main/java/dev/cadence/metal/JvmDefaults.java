@@ -151,7 +151,8 @@ public final class JvmDefaults {
 			add.removeIf(a -> a.startsWith("-XX:") && Vivace.removedOptions().contains(flagName(a)));
 		}
 		// (Game Mode: the game is started again from a bundle macOS treats as a game; that alone is reason enough to restart)
-		boolean gameMode = GameMode.enabled(config(gameDir));
+		// (cadence.jvmDefaults=false turns the restart off altogether, Game Mode's too)
+		boolean gameMode = defaults && GameMode.enabled(config(gameDir));
 		if (vivace == null && !gameMode && add.stream().noneMatch(a -> a.startsWith("-XX:"))) return;
 		List<String> argv = new ArrayList<>();
 		argv.add(vivace != null ? vivace.toString() : info.command().get());
@@ -165,16 +166,29 @@ public final class JvmDefaults {
 			+ (add.isEmpty() ? "" : " with Cadence's defaults: " + String.join(" ", add))
 			+ (kept.isEmpty() ? "" : "; kept your own: " + String.join(" ", kept)));
 		System.out.flush();
-		List<String> waiter = gameMode ? GameMode.spawn(Path.of(argv.get(0)), argv, env) : null;
-		if (waiter != null) {
-			System.out.println("[cadence] Started as a game (macOS Game Mode); this process waits for it");
-			System.out.flush();
-			closeOnExec();
-			int w = exec(waiter, new TreeMap<>(System.getenv()));
-			// (the exec failed: the game is already running, so this one must not start a second; it waits for it instead)
-			System.out.println("[cadence] Game Mode: the wait failed (" + w + "); waiting in Java");
-			ProcessHandle.of(Long.parseLong(waiter.get(2))).ifPresent(h -> h.onExit().join());
-			Runtime.getRuntime().halt(0);
+		GameMode.Started started = gameMode ? GameMode.spawn(Path.of(argv.get(0)), argv, env) : null;
+		if (started != null) {
+			Process game = started.game();
+			// (from here on the game runs: this process never goes on to load a second one, whatever fails)
+			try {
+				if (!game.isAlive()) Runtime.getRuntime().halt(game.exitValue());  // (it ended already: its exit code)
+				System.out.println("[cadence] Started as a game (macOS Game Mode); this process waits for it");
+				System.out.flush();
+				closeOnExec();
+				int w = exec(started.waiter(), new TreeMap<>(System.getenv()));
+				System.out.println("[cadence] Game Mode: the wait failed (" + w + "); waiting in Java");
+			} catch (Throwable t) {
+				System.out.println("[cadence] Game Mode: the wait failed (" + t + "); waiting in Java");
+			}
+			// (waiting here instead: a quit sent to this process quits the game too)
+			Runtime.getRuntime().addShutdownHook(new Thread(game::destroy));
+			int code;
+			try {
+				code = game.waitFor();
+			} catch (InterruptedException e) {
+				code = 1;
+			}
+			Runtime.getRuntime().halt(code);
 		}
 		closeOnExec();
 		int r = exec(argv, env);

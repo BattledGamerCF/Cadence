@@ -306,6 +306,9 @@ public final class StyleFilter {
 					System.out.println("[cadence] style filter: " + s.label + " on the Neural Engine (" + key + ")");
 					forgetOtherSizes(s, key);
 				}
+			} catch (Throwable e) {
+				// (marked failed, so the next frame doesn't start another loader)
+				failed(s, String.valueOf(e));
 			} finally {
 				if (src != 0) MemoryUtil.nmemFree(src);
 				if (cmp != 0) MemoryUtil.nmemFree(cmp);

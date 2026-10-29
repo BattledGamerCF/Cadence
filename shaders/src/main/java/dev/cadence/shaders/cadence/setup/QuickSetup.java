@@ -199,6 +199,7 @@ public final class QuickSetup {
 			if (mac.memoryGB() <= 8) far = Math.min(far, 1024);
 			else if (mac.memoryGB() <= 16) far = Math.min(far, 2048);
 			int farNow = dev.cadence.shaders.cadence.ui.FarTerrainScreen.distance();
+			if (goal == Goal.MAX_FPS) far = Math.min(far, farNow);  // (as Render Distance: Max FPS never asks for a longer view)
 			final int farTo = far;
 			if (farNow != far)
 				out.add(new Change("Far Distance", farNow + " chunks", far + " chunks", far > farNow ? "your Mac can show more" : "smoother",

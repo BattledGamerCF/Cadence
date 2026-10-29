@@ -28,7 +28,9 @@ public final class Helper {
 			// (a hash of what is in the jar: any new build of the app or its Info.plist unpacks again, BH7-17)
 			String stamp = digest();
 			Path stampFile = dir.resolve("helper-stamp.txt");  // (outside the bundle: its signature seals what is inside)
-			if (!Files.exists(stampFile) || !Files.readString(stampFile).equals(stamp)) {
+			// (and when the app itself is gone: everything in that folder is documented as safe to delete)
+			if (!Files.exists(stampFile) || !Files.readString(stampFile).equals(stamp)
+				|| !Files.isExecutable(target.resolve("Contents/MacOS/cadence-helper"))) {
 				Files.createDirectories(dir);
 				for (String f : FILES) {
 					try (InputStream in = Helper.class.getResourceAsStream("/natives/CadenceHelper.app/" + f)) {

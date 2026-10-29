@@ -168,6 +168,13 @@ public final class TranslationCache {
 
   /** Keeps the directory under its budget: oldest-used entries go first. */
   private static void prune(Path d) {
+    // (temporary files of writes the game was killed during: gone after an hour)
+    try (var files = Files.list(d)) {
+      long hourAgo = System.currentTimeMillis() - 3_600_000L;
+      for (Path p : (Iterable<Path>) files::iterator)
+        if (p.getFileName().toString().endsWith(".tmp") && Files.getLastModifiedTime(p).toMillis() < hourAgo) Files.deleteIfExists(p);
+    } catch (IOException ignored) {
+    }
     try (var files = Files.list(d)) {
       List<Path> all = new ArrayList<>(files.filter(p -> p.toString().endsWith(".gz")).toList());
       long total = 0;
@@ -296,8 +303,12 @@ public final class TranslationCache {
         }
       }
       Path tmp = Files.createTempFile(d, key, ".tmp");
-      Files.write(tmp, bytes.toByteArray());
-      Files.move(tmp, d.resolve(key + ".gz"), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      try {
+        Files.write(tmp, bytes.toByteArray());
+        Files.move(tmp, d.resolve(key + ".gz"), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      } finally {
+        Files.deleteIfExists(tmp);  // (a write that failed half way: not left behind)
+      }
     } catch (IOException e) {
       // a cache that can't be written is just a slower next time
     }

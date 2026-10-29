@@ -5,6 +5,7 @@
 // Neural Engine. Each frame the world (before the hand and the HUD) is scaled into the model's 512 x 512 input on the GPU; once
 // the GPU is done, a serial queue runs the model; the newest result is drawn over the next frames' world, blended by strength.
 // One frame is in the model at a time (about 28 ms on an M2): when it's busy the frame isn't sent, the last result stays.
+#include <unistd.h>
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import <CoreML/CoreML.h>
@@ -317,10 +318,22 @@ void mcst_stats(void *st, long *out) {
 	out[2] = (long) (s->lastMs * 100);
 }
 
+// Waits (up to 5 s) until no run is in flight: `busy` is set when a run is encoded and cleared at the end of the block its GPU
+// completion handler queues, so once it's clear no handler can still reach the object. 0: still busy (a GPU hang): the caller
+// leaks the object instead of freeing what a late handler would use.
+static int nnIdle(_Atomic int *busy) {
+	for (int i = 0; i < 5000; i++) {
+		if (atomic_load(busy) == 0) return 1;
+		usleep(1000);
+	}
+	return 0;
+}
+
 // Not the render thread with frames in flight: waits for the model's last run, then lets everything go.
 void mcst_free(void *st) {
 	NnStyle *s = st;
 	if (!s) return;
+	if (!nnIdle(&s->busy)) return;
 	dispatch_sync(s->q, ^{
 	});
 	if (s->latest) CVPixelBufferRelease(s->latest);
@@ -835,6 +848,7 @@ void mcnu_stats(void *nu, long *out) {
 void mcnu_free(void *nu) {
 	NnUp *u = nu;
 	if (!u) return;
+	if (!nnIdle(&u->busy)) return;
 	dispatch_sync(u->q, ^{
 	});
 	[u->proc endSession];

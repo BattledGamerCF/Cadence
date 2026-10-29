@@ -89,6 +89,7 @@ public final class Stalls {
 
 	/** The usual frame's length (an average of the frames that weren't stalls), without the pacer's waits. */
 	private static volatile long usualNs = 16_000_000L;
+	private static int slowRun;
 
 	private static boolean inWorld() {
 		var mc = net.minecraft.client.Minecraft.getInstance();
@@ -116,8 +117,11 @@ public final class Stalls {
 		long threshold = thresholdNs();
 		if (busyNs < threshold) {
 			usualNs += (busyNs - usualNs) / 16;
+			slowRun = 0;
 			return;
 		}
+		// (frames this slow for a while, a heavy pack on a small Mac: the new usual, learnt quickly, not a stall each)
+		if (++slowRun > 3) usualNs += (busyNs - usualNs) / 4;
 		if (started == 0 || now - inWorldSince < SETTLE_NS) return;
 		StackTraceElement[][] stacks;
 		long[] stackMs;

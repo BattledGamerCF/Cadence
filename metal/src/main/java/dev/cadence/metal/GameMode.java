@@ -42,13 +42,20 @@ final class GameMode {
 		return !"false".equalsIgnoreCase(p.strip());
 	}
 
+	/** The game started from the bundle, and the command the first process becomes to wait for it. */
+	record Started(Process game, List<String> waiter) {
+	}
+
 	/**
-	 * Starts the game from the bundle as a new process (argv[0] replaced by the bundle's launcher) and returns the waiter's command
-	 * for the exec that follows, or null when it can't (nothing was started then).
+	 * Starts the game from the bundle as a new process (argv[0] replaced by the bundle's launcher), or returns null when it can't
+	 * (nothing was started then).
 	 */
-	static List<String> spawn(Path javaLauncher, List<String> argv, Map<String, String> env) {
+	static Started spawn(Path javaLauncher, List<String> argv, Map<String, String> env) {
 		Path helper = dev.cadence.metal.neural.Helper.binary();
-		if (helper == null || !Files.isExecutable(helper)) return null;
+		if (helper == null || !Files.isExecutable(helper)) {
+			System.out.println("[cadence] Game Mode: Cadence Helper is unavailable; restarting as before");
+			return null;
+		}
 		Path launcher = wrap(javaLauncher);
 		if (launcher == null) return null;
 		try {
@@ -59,7 +66,7 @@ final class GameMode {
 			pb.environment().putAll(env);
 			pb.environment().put(PARENT_ENV, Long.toString(ProcessHandle.current().pid()));
 			Process game = pb.start();
-			return List.of(helper.toString(), "wait", Long.toString(game.pid()));
+			return new Started(game, List.of(helper.toString(), "wait", Long.toString(game.pid())));
 		} catch (IOException | RuntimeException e) {
 			System.out.println("[cadence] Game Mode: the game couldn't be started as a game (" + e + "); restarting as before");
 			return null;
@@ -112,12 +119,17 @@ final class GameMode {
 			Path contents = Path.of(System.getProperty("user.home"), "Library/Application Support/Cadence/Game", id, BUNDLE, "Contents");
 			Path launcher = contents.resolve("MacOS/java");
 			Files.createDirectories(launcher.getParent());
-			// (a Java updated in place gets a new launcher: compare size and time)
+			// (a Java updated or rolled back in place gets a new launcher: size and time compared; a temporary file of its own, so
+			// two games starting at once don't trip over each other's copy)
 			if (!Files.isRegularFile(launcher) || Files.size(launcher) != Files.size(real)
-				|| Files.getLastModifiedTime(launcher).compareTo(Files.getLastModifiedTime(real)) < 0) {
-				Path tmp = launcher.resolveSibling("java.tmp");
-				Files.copy(real, tmp, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
-				Files.move(tmp, launcher, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+				|| !Files.getLastModifiedTime(launcher).equals(Files.getLastModifiedTime(real))) {
+				Path tmp = Files.createTempFile(launcher.getParent(), "java", ".tmp");
+				try {
+					Files.copy(real, tmp, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+					Files.move(tmp, launcher, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+				} finally {
+					Files.deleteIfExists(tmp);
+				}
 			}
 			// every other entry of the Java home, linked (the launcher finds its home as the folder above MacOS)
 			try (Stream<Path> s = Files.list(home)) {
@@ -128,26 +140,38 @@ final class GameMode {
 					if (Files.isSymbolicLink(link) && Files.readSymbolicLink(link).equals(p)) continue;
 					if (Files.exists(link, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(link)) continue;  // (not ours to replace)
 					Files.deleteIfExists(link);
-					Files.createSymbolicLink(link, p);
+					try {
+						Files.createSymbolicLink(link, p);
+					} catch (java.nio.file.FileAlreadyExistsException made) {
+						// (another game starting at the same moment made it)
+					}
 				}
 			}
 			Path plist = contents.resolve("Info.plist");
-			if (!Files.isRegularFile(plist) || !Files.readString(plist, StandardCharsets.UTF_8).equals(PLIST))
-				Files.writeString(plist, PLIST, StandardCharsets.UTF_8);
+			if (!Files.isRegularFile(plist) || !Files.readString(plist, StandardCharsets.UTF_8).equals(PLIST)) {
+				Path tmp = Files.createTempFile(contents, "Info", ".tmp");
+				Files.writeString(tmp, PLIST, StandardCharsets.UTF_8);
+				Files.move(tmp, plist, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+			}
 			// (once per launcher: it must start, or the game would never get going; a failure leaves the bundle unused)
 			Path ok = contents.resolve("started-" + Files.size(launcher) + "-" + Files.getLastModifiedTime(launcher).toMillis());
 			if (!Files.exists(ok)) {
-				Process p = new ProcessBuilder(launcher.toString(), "-version").redirectErrorStream(true).start();
-				p.getInputStream().readAllBytes();
+				// (its output discarded, not read: a read would wait past the timeout for a launcher that hangs)
+				Process p = new ProcessBuilder(launcher.toString(), "-version").redirectErrorStream(true)
+					.redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
 				if (!p.waitFor(20, java.util.concurrent.TimeUnit.SECONDS) || p.exitValue() != 0) {
 					p.destroyForcibly();
 					System.out.println("[cadence] Game Mode: the bundled Java didn't start; restarting as before");
 					return null;
 				}
 				try (Stream<Path> old = Files.list(contents)) {
-					for (Path o : (Iterable<Path>) old::iterator) if (o.getFileName().toString().startsWith("started-")) Files.deleteIfExists(o);
+					for (Path o : (Iterable<Path>) old::iterator) if (o.getFileName().toString().startsWith("started-") && !o.equals(ok)) Files.deleteIfExists(o);
 				}
-				Files.createFile(ok);
+				try {
+					Files.createFile(ok);
+				} catch (java.nio.file.FileAlreadyExistsException made) {
+					// (checked by another game starting at the same moment)
+				}
 			}
 			return launcher;
 		} catch (IOException | RuntimeException | InterruptedException e) {
