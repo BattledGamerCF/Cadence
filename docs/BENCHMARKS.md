@@ -2,7 +2,7 @@
 
 Measured on the smallest Apple Silicon GPU Cadence is tested on: a **MacBook Air (M2, 2022), 8-core GPU, 8 GB**, macOS 27,
 fanless. Unless noted: fullscreen on the Air's own screen with Retina on (2940 x 1846 pixels), **render distance 16 and
-simulation distance 16**, Cadence 0.4.0 (after beta.24), no frame cap, Heat Control off so every run starts equal. Each row is
+simulation distance 16**, Cadence 0.4.0-beta.24 to beta.27 (2026-10-28; ranges are runs on different nights), no frame cap, Heat Control off so every run starts equal. Each row is
 its own launch of the game, with 150 seconds for the Mac to cool down between launches (a hot Air loses up to half its speed).
 The same world is restored before every launch.
 
@@ -16,9 +16,13 @@ Numbers from a laptop move by a few percent from run to run; differences under ~
 
 | Setup | Average fps | 1% low |
 |---|---|---|
-| Fullscreen, Retina on (2940 x 1846) | 506-603 | 291-327 |
-| Fullscreen, Max FPS preset (Retina off, 1470 x 923, fast leaves, no clouds) | 1,345 | 614 |
-| Retina on, with Far Terrain (Medium, 1,024 chunks) | 494-504 | 281-294 |
+| Fullscreen, Retina on (2940 x 1846) | 506-618 | 291-327 |
+| Fullscreen, Max FPS preset (Retina off, 1470 x 923, fast leaves, no clouds) | 1,303-1,365 | 592-619 |
+| Retina on, with Far Terrain (Medium, 1,024 chunks) | 494-510 | 281-294 |
+| Retina on, macOS Game Mode off (`cadence.gameMode=false`) | 607 | 324 |
+
+Game Mode makes no difference to these numbers on a Mac with nothing else running: it gives the game priority over
+background work (and lower Bluetooth latency), which matters when something else is busy.
 
 ## Shader packs
 
@@ -27,12 +31,12 @@ resolution they settle at more than in fps. Fullscreen Retina, uncapped (packs a
 
 | Pack | Average fps | 1% low | Auto settled at |
 |---|---|---|---|
-| BSL 10.1.8 | 64 | 54 | 60% |
+| BSL 10.1.8 | 63-68 | 52-55 | 55-60% |
 | BSL, with Far Terrain | 61 | 52 | 55% |
-| Complementary Reimagined 5.9.3 | 62 | 47 | 50% |
+| Complementary Reimagined 5.9.3 | 60-62 | 45-47 | 50% |
 | MakeUp UltraFast 9.5g | 60 (held at 60) | 56 | 100% |
 | BSL at a fixed 100% (no Auto) | 33 | 28 | |
-| BSL at a fixed 50%, MetalFX upscaler | 74 | 55 | |
+| BSL at a fixed 50%, MetalFX upscaler | 74-77 | 55-63 | |
 | BSL at a fixed 50%, Neural Engine upscaler | 80 | 54 | |
 
 The Neural Engine upscaler does the upscale beside the GPU (two tiles of 768 x 924, 2.2 ms each on the M2's Neural Engine),

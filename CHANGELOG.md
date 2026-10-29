@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased
+## 0.4.0-beta.27 / shaders 0.3.26 (2026-10-28)
 
 - **macOS Game Mode.** macOS gives a full-screen game priority on the CPU and GPU, holds back background work and doubles the
   Bluetooth polling rate (lower latency for AirPods and controllers), but only to an app whose Info.plist says it is a game,
