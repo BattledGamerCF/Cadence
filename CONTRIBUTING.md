@@ -35,6 +35,16 @@ fields and call sites against Minecraft 26.3 and catches the mistakes that would
 
 `tools/pack-census.sh [pack.zip ...]` checks shader packs for unsupported features without starting the game.
 
+### Measuring
+
+- `benchmark` (the 30-second turning benchmark) and `ab=FEATURE:SECONDS` (a feature switched every 2 s, both states
+  compared in the same run) in a plan; `tools/bench-round.sh` runs a list of plans, each its own launch with a cool-down
+  between (a fanless MacBook Air loses up to half its speed when hot).
+- `gputrace` with `-Dcadence.metal.trace=later` (in `CADENCE_EXTRA_JVM`): the GPU time of every pass of one frame, in
+  `stdout.log`.
+- The stall recorder (on by default) logs every frame over 50 ms with its cause: `grep "\[cadence\] stall" stdout.log`.
+- `tools/compat-run.sh`: the release jar with the tested mods, PASS or FAIL. Run it before a release.
+
 ## Code layout
 
 - `metal/`: the Metal backend. `dev.cadence.metal` is the renderer; sub-packages hold terrain (`own`, `chunk`), far
