@@ -18,7 +18,8 @@ public final class SharpnessScreen extends OptionsSubScreen {
 
 	@Override
 	protected void addOptions() {
-		this.list.addHeader(Component.literal("Fewer pixels: more frames, a softer picture"));
+		this.list.addHeader(Component.literal("World Resolution").withStyle(net.minecraft.ChatFormatting.BOLD, net.minecraft.ChatFormatting.UNDERLINE));
+		this.list.addHeader(Component.literal("Fewer pixels: more frames, a softer picture").withStyle(net.minecraft.ChatFormatting.GRAY));
 		this.list.addSmall(ShaderToggle.scaleButton(), ShaderToggle.upscalerButton());
 		this.list.addSmall(ShaderToggle.retinaButton(), null);
 		this.list.addHeader(Component.literal("With a Shader Pack").withStyle(net.minecraft.ChatFormatting.BOLD, net.minecraft.ChatFormatting.UNDERLINE));

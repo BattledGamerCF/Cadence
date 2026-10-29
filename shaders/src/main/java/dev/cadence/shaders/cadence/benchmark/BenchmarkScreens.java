@@ -120,9 +120,10 @@ public final class BenchmarkScreens {
 		private List<String[]> rows() {
 			List<String[]> rows = new ArrayList<>();
 			rows.add(new String[] {"Average speed", fps(r.avgFps()), "g"});
+			// (how steady, beside how fast: the slowest 1% of frames, in the simple view too)
+			rows.add(new String[] {"Slowest frames (1% low)", fps(r.lowFps()), ""});
 			boolean detailed = dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed();
 			if (detailed) {  // (Benchmark Details: Detailed; Simple, the default, keeps the card to what anyone can read)
-				rows.add(new String[] {"1% low (slowest frames)", fps(r.lowFps()), ""});
 				rows.add(new String[] {"Worst single frame", String.format(Locale.ROOT, "%.1f ms", r.worstMs()), ""});
 				rows.add(new String[] {"Graphics time per frame", r.gpuMs() < 0 ? "not available" : String.format(Locale.ROOT, "%.1f ms", r.gpuMs()), ""});
 				rows.add(new String[] {"Processor time per frame", r.cpuMs() < 0 ? "not available" : String.format(Locale.ROOT, "%.1f ms", r.cpuMs()), ""});

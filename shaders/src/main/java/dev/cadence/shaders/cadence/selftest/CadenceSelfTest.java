@@ -352,6 +352,16 @@ public final class CadenceSelfTest {
 					mc.execute(() -> ShadowReuse.setRate(n));
 				} else if (lower.equals("occlusion")) {
 					mc.execute(() -> OcclusionEstimate.run(mc));
+				} else if (lower.startsWith("scroll=")) {
+					// "scroll=N": the open screen scrolled down N wheel steps (negative: up), at its centre (screenshots of long lists)
+					double n = Double.parseDouble(lower.substring(7));
+					mc.execute(() -> {
+						var sc = mc.gui.screen();
+						if (sc != null) sc.mouseScrolled(sc.width / 2.0, sc.height / 2.0, 0, -n);
+					});
+				} else if (lower.equals("gputrace")) {
+					// "gputrace" (with -Dcadence.metal.trace=later): the GPU trace of a frame a moment from now, in stdout
+					dev.cadence.metal.FrameHints.traceSoon();
 				} else if (lower.startsWith("ab=")) {
 					// "ab=FEATURE:SECONDS": flips FEATURE every 2 s for SECONDS and compares GPU/interval ms of the 1-s windows that
 					// fall wholly in each state (thermal drift is slow next to 2 s, so both states see the same Mac)
@@ -448,6 +458,8 @@ public final class CadenceSelfTest {
 					} else if (lower.endsWith("packclose")) mc.execute(() -> mc.gui.screen().onClose());
 					else if (lower.endsWith("pause")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.PauseScreen(true)));
 					else if (lower.endsWith("farterrain")) mc.execute(() -> mc.gui.setScreen(new dev.cadence.shaders.cadence.ui.FarTerrainScreen(null)));
+					else if (lower.endsWith("sharpness")) mc.execute(() -> mc.gui.setScreen(new dev.cadence.shaders.cadence.ui.SharpnessScreen(null)));
+					else if (lower.endsWith("sounds")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.options.SoundOptionsScreen(null, mc.options)));
 					else if (lower.endsWith("inventory")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player)));
 					else if (lower.endsWith("=chat")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.ChatScreen("hello", false)));
 					else if (lower.endsWith("benchmarkoffer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.offer(null)));

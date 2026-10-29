@@ -95,7 +95,7 @@ public final class SoundEngineSetting {
 
 	private static Component label() {
 		boolean apple = AppleAudio.wanted();
-		return Component.literal("Sound Engine: " + (apple ? "Apple Spatial Audio" : "OpenAL"));
+		return Component.literal("Sound Engine: " + (apple ? "Apple" : "OpenAL"));  // (the full name is wider than the button)
 	}
 
 	private static java.util.List<String> compatMods() {

@@ -42,6 +42,10 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		boolean on = chosen();
 		this.list.addHeader(Component.literal(on == running() ? (on ? "Far Distance and Look apply now, the rest at the next launch" : "Changes take effect at the next launch")
 			: "Restart Minecraft to turn Far Terrain " + (on ? "on" : "off")).withStyle(on == running() ? ChatFormatting.GRAY : ChatFormatting.YELLOW));
+		// (with a pack: whether it draws the far terrain, said up front)
+		Component note = packNote();
+		this.list.addHeader(note != null ? note
+			: Component.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
 		this.list.addSmall(cycle("Far Terrain", "farTerrain", "off", new String[] {"off", "on"}, new String[] {"Off", "On"},
 				Tips.of(Tips.Impact.MEDIUM, "The world drawn far past your render distance, like the Distant Horizons mod (experimental).",
 					"#Generated from the world's own terrain and trees, replaced by the real chunks as you explore. Uses some memory "
@@ -80,7 +84,8 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 				Tips.of(Tips.Impact.LOW, "Clouds reach out with the far terrain (to 256 chunks at most) instead of stopping at Cloud Distance.",
 					"#Costs some frame time and memory for the bigger cloud layer.")),
 			null);
-		this.list.addHeader(Component.literal("Look and Renderer (apply now)").withStyle(ChatFormatting.GRAY));
+		this.list.addHeader(Component.empty().append(Component.literal("Look and Renderer").withStyle(ChatFormatting.BOLD, ChatFormatting.UNDERLINE))
+			.append(Component.literal("  applies now").withStyle(ChatFormatting.GRAY)));
 		this.list.addSmall(cycle("Brightness", "farTerrain.brightness", "1.0", new String[] {"0.6", "0.8", "1.0", "1.2", "1.4"},
 				new String[] {"60%", "80%", "100%", "120%", "140%"}, Tips.of(Tips.Impact.NONE, "How bright the far terrain is drawn (100%: as generated).")),
 			cycle("Saturation", "farTerrain.saturation", "1.0", new String[] {"0.5", "0.75", "1.0", "1.25", "1.5"},
@@ -96,12 +101,10 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 					"Mesh Shaders|the draw culls and builds the faces itself, in Metal's object and mesh stages: no list in between",
 					"#Applies the next time the view moves. Not with a shader pack (it draws the far terrain's records itself).")));
 		if (running()) {
-			this.list.addHeader(Component.literal("Pre-generate the far terrain around you, to disk").withStyle(ChatFormatting.GRAY));
+			this.list.addHeader(Component.empty().append(Component.literal("Pre-generate").withStyle(ChatFormatting.BOLD, ChatFormatting.UNDERLINE))
+				.append(Component.literal("  the far terrain around you, to disk").withStyle(ChatFormatting.GRAY)));
 			this.list.addSmall(pregen("Pre-generate 1 km", 64), pregen("Pre-generate 4 km", 256));
 		}
-		Component note = packNote();
-		this.list.addHeader(note != null ? note
-			: Component.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
 	}
 
 	/**

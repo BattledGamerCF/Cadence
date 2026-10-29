@@ -58,7 +58,15 @@ final class MetalEncoder implements CommandEncoderBackend {
 	 * -Dcadence.metal.trace=N prints every encoder operation of submit N, the tool for finding pass boundaries worth removing,
 	 * and the average per-encoder GPU time of submits N to N + PROFILE_FRAMES - 1. Traced runs are a few % slower; don't bench them.
 	 */
-	private static final long TRACE_SUBMIT = Long.getLong("cadence.metal.trace", -1);
+	private static volatile long TRACE_SUBMIT = "later".equals(System.getProperty("cadence.metal.trace")) ? Long.MAX_VALUE - 1000
+		: Long.getLong("cadence.metal.trace", -1);
+	/** The submit being recorded (for traceSoon). */
+	private static volatile long lastSubmit;
+
+	/** -Dcadence.metal.trace=later: the trace is taken of the submit a moment from now (the self-test's "gputrace" step). */
+	static void traceSoon() {
+		if (TRACE_SUBMIT >= 0) TRACE_SUBMIT = lastSubmit + 30;
+	}
 	/** -Dcadence.own.int.encLog (measurement only, with frameLog): GPU timestamps on every submit, each encoder logged (FrameLog's enclog.csv). */
 	private static final boolean ENC_LOG = Boolean.getBoolean("cadence.own.int.encLog");
 	/** -Dcadence.metal.passTest=N,MODE (measurement only, with encLog): N empty passes at the head of every 20th frame (mcmetal.m mc_pass_test). */
@@ -271,6 +279,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 			}
 		}
 		this.inFlight.add(new Frame(this.submitIndex++, cmd, this.afterThisFrame));
+		lastSubmit = this.submitIndex;
 		if (TRACE_SUBMIT >= 0) Native.rpLog(this.submitIndex == TRACE_SUBMIT);  // (measurement: the traced submit's render encoders, mcmetal.m rpLog)
 		if (dev.cadence.metal.cpu.Cpu.FENCE_STATS) dev.cadence.metal.cpu.Cpu.fenceTick(this.submitIndex); // opt-in
 		this.afterThisFrame = new ArrayList<>();
