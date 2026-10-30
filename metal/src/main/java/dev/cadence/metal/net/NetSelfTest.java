@@ -29,8 +29,8 @@ public final class NetSelfTest {
 	private NetSelfTest() {
 	}
 
-	/** One line of results (or what differed); call off the render thread with the client's level loaded. */
-	public static String run(List<LevelChunk> chunks) throws Exception {
+	/** The chunks' sections in the chunk packet's format (render thread: the client's chunks are written as they stand). */
+	public static List<byte[]> payloads(List<LevelChunk> chunks) {
 		List<byte[]> payloads = new ArrayList<>();
 		for (LevelChunk chunk : chunks) {
 			FriendlyByteBuf b = new FriendlyByteBuf(Unpooled.buffer());
@@ -40,6 +40,11 @@ public final class NetSelfTest {
 			b.release();
 			payloads.add(bytes);
 		}
+		return payloads;
+	}
+
+	/** One line of results (or what differed); call off the render thread. */
+	public static String run(List<byte[]> payloads) throws Exception {
 		Random r = new Random(42);
 		for (int i = 0; i < 400; i++) {  // small packets: movement, entity data (some below the threshold, sent as they are)
 			byte[] p = new byte[1 + r.nextInt(i % 4 == 0 ? 4000 : 300)];

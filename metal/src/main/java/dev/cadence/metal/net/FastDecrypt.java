@@ -11,16 +11,17 @@ import net.minecraft.network.CipherDecoder;
 /** Minecraft's decrypting stage (CipherDecoder) on mcnet.c's parallel AES-CFB8 (FastNet); the cipher it was given goes unused. */
 final class FastDecrypt extends CipherDecoder {
 	private final NetBuffers buffers = new NetBuffers();
-	private long handle;
+	private final NativeHandle handle;
 
 	FastDecrypt(Cipher cipher, byte[] key) {
 		super(cipher);
 		try (Arena a = Arena.ofConfined()) {
 			MemorySegment k = a.allocate(16);
 			k.copyFrom(MemorySegment.ofArray(key));
-			handle = NetNative.cfb8New(k.address());
+			long h = NetNative.cfb8New(k.address());
+			if (h == 0) throw new IllegalStateException("no native cipher");
+			handle = NativeHandle.of(this, h, NetNative::cfb8Free);
 		}
-		if (handle == 0) throw new IllegalStateException("no native cipher");
 	}
 
 	@Override
@@ -28,9 +29,10 @@ final class FastDecrypt extends CipherDecoder {
 		int n = in.readableBytes();
 		ByteBuf plain = ctx.alloc().directBuffer(n);
 		try {
-			if (n > 0) NetNative.cfb8Decrypt(handle, buffers.readable(in, n), NetBuffers.writable(plain, n), n);
-			plain.writerIndex(plain.writerIndex() + n);
+			long src = n > 0 ? buffers.readable(in, n) : 0;
 			in.skipBytes(n);
+			if (n > 0) NetNative.cfb8Decrypt(handle.get(), src, NetBuffers.writable(plain, n), n);
+			plain.writerIndex(plain.writerIndex() + n);
 		} catch (RuntimeException | Error e) {
 			plain.release();
 			throw e;
@@ -42,7 +44,6 @@ final class FastDecrypt extends CipherDecoder {
 	@Override
 	public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
 		super.handlerRemoved(ctx);
-		if (handle != 0) NetNative.cfb8Free(handle);
-		handle = 0;
+		handle.free();
 	}
 }

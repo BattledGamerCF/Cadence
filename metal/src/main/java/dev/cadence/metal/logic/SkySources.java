@@ -35,9 +35,28 @@ public final class SkySources {
 	private SkySources() {
 	}
 
-	/** fillFrom's replacement; false leaves the call to vanilla. */
+	/** Set when this path can't run here at all (its palette access failed to start): vanilla's from then on. */
+	private static volatile boolean broken;
+
+	/**
+	 * fillFrom's replacement; false leaves the call to vanilla. Anything unexpected (a palette id past its palette, from a
+	 * damaged chunk) falls back to vanilla's walk, which then fails or answers as it always would: the map is written only at
+	 * the end, so nothing is half done.
+	 */
 	public static boolean fill(SkySourcesAccess target, ChunkAccess chunk) {
-		if (VANILLA.get()) return false;
+		if (broken || VANILLA.get()) return false;
+		try {
+			return fill0(target, chunk);
+		} catch (LinkageError | IllegalStateException e) {
+			broken = true;  // (OwnPalette's handles: not on this game version)
+			System.out.println("[cadence] Cadence Logic skySources off: " + e);
+			return false;
+		} catch (RuntimeException e) {
+			return false;
+		}
+	}
+
+	private static boolean fill0(SkySourcesAccess target, ChunkAccess chunk) {
 		int top = chunk.getHighestFilledSectionIndex();
 		int minY = target.cadence$minY();
 		if (top == -1) {
@@ -83,6 +102,7 @@ public final class SkySources {
 					int id = s.ids[row | c];
 					BlockState below;
 					boolean occluded, belowDownEmpty;
+					if (id >= n) throw new IndexOutOfBoundsException("palette id " + id + " of " + n);
 					if (classified) {
 						below = s.states[id];
 						belowDownEmpty = s.downEmpty[id];

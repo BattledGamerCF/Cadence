@@ -388,11 +388,15 @@ public final class CadenceSelfTest {
 							for (var chunk : chunks) {
 								var vanilla = new net.minecraft.world.level.lighting.ChunkSkyLightSources(mc.level);
 								var fast = new net.minecraft.world.level.lighting.ChunkSkyLightSources(mc.level);
+								long t0, t1;
 								dev.cadence.metal.logic.SkySources.VANILLA.set(true);
-								long t0 = System.nanoTime();
-								vanilla.fillFrom(chunk);
-								long t1 = System.nanoTime();
-								dev.cadence.metal.logic.SkySources.VANILLA.set(false);
+								try {
+									t0 = System.nanoTime();
+									vanilla.fillFrom(chunk);
+									t1 = System.nanoTime();
+								} finally {
+									dev.cadence.metal.logic.SkySources.VANILLA.set(false);
+								}
 								fast.fillFrom(chunk);
 								long t2 = System.nanoTime();
 								if (pass > 0) { tv += t1 - t0; tf += t2 - t1; }  // (the first pass warms both up)
@@ -432,8 +436,9 @@ public final class CadenceSelfTest {
 							}
 						return list;
 					}).join();
+					var payloads = mc.submit(() -> dev.cadence.metal.net.NetSelfTest.payloads(chunks)).join();  // (sections read on the render thread)
 					try {
-						LOGGER.info("[selftest] net: {} chunks: {}", chunks.size(), dev.cadence.metal.net.NetSelfTest.run(chunks));
+						LOGGER.info("[selftest] net: {} chunks: {}", chunks.size(), dev.cadence.metal.net.NetSelfTest.run(payloads));
 					} catch (Exception e) {
 						LOGGER.info("[selftest] net failed: {}", e.toString());
 					}

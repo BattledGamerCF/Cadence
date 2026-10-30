@@ -13,7 +13,7 @@ import net.minecraft.network.VarInt;
  */
 final class FastInflate extends CompressionDecoder {
 	private final NetBuffers buffers = new NetBuffers();
-	private long handle;
+	private final NativeHandle handle;
 	private int threshold;
 	private boolean validate;
 
@@ -21,8 +21,9 @@ final class FastInflate extends CompressionDecoder {
 		super(threshold, validate);
 		this.threshold = threshold;
 		this.validate = validate;
-		handle = NetNative.inflaterNew();
-		if (handle == 0) throw new IllegalStateException("no native inflater");
+		long h = NetNative.inflaterNew();
+		if (h == 0) throw new IllegalStateException("no native inflater");
+		handle = NativeHandle.of(this, h, NetNative::inflaterFree);
 	}
 
 	@Override
@@ -47,12 +48,13 @@ final class FastInflate extends CompressionDecoder {
 		int n = in.readableBytes();
 		ByteBuf inflated = ctx.alloc().directBuffer(size);
 		try {
-			long made = NetNative.inflate(handle, buffers.readable(in, n), n, NetBuffers.writable(inflated, size), size);
+			long src = buffers.readable(in, n);
+			in.skipBytes(n);  // (consumed whatever happens, as vanilla's setupInflaterInput does: a bad frame isn't decoded twice, BH9-03)
+			long made = NetNative.inflate(handle.get(), src, n, NetBuffers.writable(inflated, size), size);
 			if (made < 0) throw new DecoderException("Badly compressed packet - invalid compressed data");
 			if (made != size)
 				throw new DecoderException("Badly compressed packet - actual length of uncompressed payload " + made + " is does not match declared size " + size);
 			inflated.writerIndex(inflated.writerIndex() + size);
-			in.skipBytes(n);
 		} catch (RuntimeException | Error e) {
 			inflated.release();
 			throw e;
@@ -65,7 +67,6 @@ final class FastInflate extends CompressionDecoder {
 	@Override
 	protected void handlerRemoved0(ChannelHandlerContext ctx) throws Exception {
 		super.handlerRemoved0(ctx);
-		if (handle != 0) NetNative.inflaterFree(handle);
-		handle = 0;
+		handle.free();
 	}
 }

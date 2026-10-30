@@ -106,6 +106,24 @@ pack on, the longest frame (fullscreen Retina, render distance 16, each pack loa
 What remains of it is the game rebuilding its chunk meshes for the pack and Metal making ~130 pipelines (about 150 ms of
 compiler time over 4 threads: macOS's shader cache makes them quick after the first time).
 
+## On a server
+
+Measured as a second client joining a LAN world over a real connection and flying over new land (render distance 10,
+60 s; the same machine runs the host, so these are relative):
+
+| | Minecraft | Cadence |
+|---|---|---|
+| Decryption (online-mode servers), through Netty | 51-82 MB/s | 570-700 MB/s (the Mac's AES instructions, 8 bytes at a time) |
+| Decompression of a packet, through Netty | 35-40 µs | 19-22 µs (the system's zlib) |
+| Network thread CPU over the flight | 898 ms | 817 ms |
+| Where sunlight stops in a new chunk (Cadence Logic `skySources`) | 43-46 µs | 26-33 µs |
+| Keep Server Chunks: a dropped chunk encoded on the render thread | 2% of its time, one 73 ms frame | off the render thread |
+
+What a server costs the render thread while flying (its Java time): handling packets 11% (new chunks 3.4%, the light
+engine 3.4%), ticking entities 10%. The network thread itself is barely busy (under 1%) on an M2, so the native network path
+lowers CPU use but doesn't change fps; the frame rate stayed at the test's 120 fps cap either way, slowest 1% of frames
+10-12 ms.
+
 ## Measured and not adopted
 
 | Idea | Measured | |

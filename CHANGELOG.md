@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased (0.4.0-beta.28)
+## 0.4.0-beta.28 / shaders 0.3.27 (2026-10-29)
 
 - **Native network path for servers.** On a connection to a server, the two byte-stream stages Minecraft runs in Java are
   native: decryption (online-mode servers) runs 8 bytes at once on the Mac's AES instructions, 8-11x faster than Minecraft's
@@ -19,6 +19,11 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
   block, for every chunk generated and every chunk a server sends: 1.4-1.6x faster, the same answers (all 149,760 columns of
   585 chunks checked).
 - The stall recorder names the last pipeline compiled when a long frame made one.
+- **Fixes from a bug hunt** (no crash or wrong result found: the native stages were fuzzed against Minecraft's and Apple's
+  code with 200,000 compressed and 4,802 encrypted cases, every Netty buffer kind, and the sky-source scan with 6,000 random
+  chunks): a teleport could hold thousands of dropped chunks in memory while they waited to be stored (now counted against
+  the store's limit); a damaged compressed packet was decoded twice; a network stage made for a connection that closed at
+  that moment kept its native memory; a damaged chunk's palette fell over in the sky-source scan instead of in Minecraft's.
 
 ## 0.4.0-beta.27 / shaders 0.3.26 (2026-10-28)
 

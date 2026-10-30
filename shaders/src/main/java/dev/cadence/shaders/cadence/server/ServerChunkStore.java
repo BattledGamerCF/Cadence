@@ -206,6 +206,8 @@ public final class ServerChunkStore {
 		try {
 			var light = new ClientboundLightUpdatePacketData(chunk.getPos(), level.getChunkSource().getLightEngine(), null, null);
 			DROPPED.add(new Dropped(level, chunk, new java.util.HashMap<>(chunk.getBlockEntities()), light, connection.registryAccess()));
+			// (counted from now: until encoded it holds the whole chunk and its light; a teleport drops thousands at once, BH9-01)
+			QUEUED.addAndGet(ESTIMATE);
 		} catch (RuntimeException e) {
 			// (not stored: it is a cache)
 		}
@@ -221,10 +223,14 @@ public final class ServerChunkStore {
 	static void encodeDropped(Minecraft mc) {
 		Dropped d;
 		while ((d = DROPPED.poll()) != null) {
-			if (openFor != d.level || dir == null) continue;
+			if (openFor != d.level || dir == null) {
+				QUEUED.addAndGet(-ESTIMATE);
+				continue;
+			}
 			LevelChunk chunk = d.chunk;
 			ChunkPos pos = chunk.getPos();
 			if (d.level.getChunkSource().getChunk(pos.x(), pos.z(), net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false) == chunk) {
+				QUEUED.addAndGet(-ESTIMATE);
 				save(mc, d.level, chunk);  // (kept after all: the game's chunk, read only here)
 				continue;
 			}
@@ -233,7 +239,6 @@ public final class ServerChunkStore {
 			int sections = d.level.getSectionsCount();
 			Dropped job = d;
 			saved++;
-			QUEUED.addAndGet(ESTIMATE);
 			IO.execute(() -> {
 				try {
 					var map = chunk.getBlockEntities();
@@ -262,8 +267,11 @@ public final class ServerChunkStore {
 		}
 	}
 
-	/** What a dropped chunk counts against the write queue until it is encoded (a typical stored chunk). */
-	private static final int ESTIMATE = 48 * 1024;
+	/**
+	 * What a dropped chunk counts against the write queue until it is encoded: the chunk and the copy of its light it holds
+	 * (21-120 KB measured), so at most ~380 wait (WRITE_QUEUE_MAX); past that a dropped chunk isn't stored (a cache).
+	 */
+	private static final int ESTIMATE = 128 * 1024;
 	/** Dropped chunks that couldn't be encoded (reported when the world closes). */
 	private static final AtomicInteger NOT_STORED = new AtomicInteger();
 
