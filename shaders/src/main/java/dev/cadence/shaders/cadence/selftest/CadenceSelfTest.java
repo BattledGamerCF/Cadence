@@ -370,6 +370,37 @@ public final class CadenceSelfTest {
 					// ("ab=FEATURE:SECONDS:PERIOD": each state PERIOD seconds, its first half not counted: features that rebuild chunks)
 					abTest(mc, a[0], Integer.parseInt(a[1]), a.length > 2 ? Integer.parseInt(a[2]) : 2);
 					LOGGER.info("[selftest] ab {} draw lists: {}", a[0], dev.cadence.shaders.cadence.mesh.MeshStateCache.drawListModes());
+				} else if (lower.equals("netstats")) {
+					// "netstats": what Cadence's native network path handled so far, and the CPU time of Netty's threads
+					long[] t = dev.cadence.metal.net.FastNet.totals();
+					var mx = java.lang.management.ManagementFactory.getThreadMXBean();
+					long nettyNs = 0;
+					int threads = 0;
+					for (var info : mx.getThreadInfo(mx.getAllThreadIds())) {
+						if (info == null || !info.getThreadName().contains("Netty")) continue;
+						long ns = mx.getThreadCpuTime(info.getThreadId());
+						if (ns > 0) { nettyNs += ns; threads++; }
+					}
+					LOGGER.info("[selftest] netstats: native path decrypted {} MB, inflated {} packets ({} MB); Netty threads ({}) CPU {} ms",
+						String.format(Locale.ROOT, "%.1f", t[0] / 1e6), t[2], String.format(Locale.ROOT, "%.1f", t[1] / 1e6), threads, nettyNs / 1_000_000);
+				} else if (lower.equals("net")) {
+					// "net": Minecraft's network decryption and decompression against Cadence's native ones on this world's chunks
+					var chunks = mc.submit(() -> {
+						java.util.List<net.minecraft.world.level.chunk.LevelChunk> list = new java.util.ArrayList<>();
+						if (mc.player == null || mc.level == null) return list;
+						int cx = mc.player.chunkPosition().x(), cz = mc.player.chunkPosition().z();
+						for (int dx = -10; dx <= 10; dx++)
+							for (int dz = -10; dz <= 10; dz++) {
+								var c = mc.level.getChunkSource().getChunk(cx + dx, cz + dz, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false);
+								if (c != null) list.add(c);
+							}
+						return list;
+					}).join();
+					try {
+						LOGGER.info("[selftest] net: {} chunks: {}", chunks.size(), dev.cadence.metal.net.NetSelfTest.run(chunks));
+					} catch (Exception e) {
+						LOGGER.info("[selftest] net failed: {}", e.toString());
+					}
 				} else if (lower.startsWith("join=")) {
 					// "join=WORLD": open a singleplayer world from the title screen (after "leave")
 					String world = step.substring(5);

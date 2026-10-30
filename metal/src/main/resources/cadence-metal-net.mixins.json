@@ -1,0 +1,8 @@
+{
+	"required": false,
+	"package": "dev.cadence.metal.mixin.net",
+	"plugin": "dev.cadence.metal.mixin.net.NetMixinPlugin",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["ConnectionNetMixin", "CryptKeyMixin"],
+	"injectors": { "defaultRequire": 1 }
+}

@@ -19,7 +19,7 @@ it; docs/ARCHITECTURE.md). The release zip also holds an optional jar with no co
   Java Foreign Function & Memory API (`dev.cadence.metal.Native`; if the temp directory can't be used, a
   `.cadence-natives` folder in the game directory). It links Apple's Metal, MetalFX, QuartzCore, CoreVideo, CoreGraphics,
   IOKit, AppKit, AVFAudio (the game's sound, on AVAudioEngine: output only, the microphone is never opened) and Foundation
-  frameworks only. VideoToolbox, CoreMedia and AVFoundation are opened at run time (dlopen) only
+  frameworks, and the system's zlib (`libz`, for the network path's decompression), only. VideoToolbox, CoreMedia and AVFoundation are opened at run time (dlopen) only
   when the player turns on Instant Replay (and AVFoundation only to save one) or Frame Generation: Neural (VideoToolbox's
   low-latency frame interpolation). MetalFX's denoiser is used only for path-traced Photo Mode shots. IOKit is read for the battery's charge, the
   power source, the fans and the whole Mac's power draw (the System Management Controller's `PSTR` key; reads only, nothing

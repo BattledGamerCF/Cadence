@@ -118,6 +118,13 @@ output reaches its console, the stop button quits the game, and the exit code is
 
 `cadence.gameMode=false` in `config/cadence.properties` (or `-Dcadence.gameMode=false`) keeps the old single process.
 
+## Networking mods
+
+Cadence's native network path for servers (decryption and decompression, `dev.cadence.metal.net`) replaces the same two
+stages as Krypton and its ports (Krypton FNP, Pluto), Ceres, Raknetify, ZstdMC and BandwidthOptimizer. With any of those
+installed, Cadence leaves the stages to that mod and logs `Network: <mod> is installed`. Mods that only read packets
+(proxies, packet loggers, ViaFabric) work with it: the bytes and packets are Minecraft's own.
+
 ## Options
 
 - `cadence.compat=false` (in `config/cadence.properties`, or `-Dcadence.compat=false`): nothing steps aside; the

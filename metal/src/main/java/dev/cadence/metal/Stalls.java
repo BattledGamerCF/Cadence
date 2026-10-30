@@ -145,7 +145,7 @@ public final class Stalls {
 		appendTop(b, " | in: ", REGIONS, regionNs, wallNs);
 		b.append(gcCount > 0 ? " | GC: " + gcCount + " (" + gcMs + " ms)" : " | GC: none");
 		StringBuilder work = new StringBuilder();
-		if (made > 0) work.append(", ").append(made).append(String.format(Locale.ROOT, " pipelines made (shader libraries %.0f ms, pipeline states %.0f ms, over all threads)", libraryNs / 1e6, stateNs / 1e6));
+		if (made > 0) work.append(", ").append(made).append(String.format(Locale.ROOT, " pipelines made (shader libraries %.0f ms, pipeline states %.0f ms, over all threads; the last %s)", libraryNs / 1e6, stateNs / 1e6, MetalPipeline.LAST_MADE));
 		if (ops[FrameLog.TEX_WRITES] > 0) work.append(String.format(Locale.ROOT, ", %d texture uploads (%.1f MP)", ops[FrameLog.TEX_WRITES], ops[FrameLog.TEX_PX] / 1e6));
 		if (ops[FrameLog.BUF_KB] + ops[FrameLog.COPY_KB] > 1024) work.append(String.format(Locale.ROOT, ", %.1f MB to buffers", (ops[FrameLog.BUF_KB] + ops[FrameLog.COPY_KB]) / 1024.0));
 		if (work.length() > 0) b.append(" | GPU work:").append(work.substring(1));

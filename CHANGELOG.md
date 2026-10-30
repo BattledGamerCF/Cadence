@@ -2,6 +2,21 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased (0.4.0-beta.28)
+
+- **Native network path for servers.** On a connection to a server, the two byte-stream stages Minecraft runs in Java are
+  native: decryption (online-mode servers) runs 8 bytes at once on the Mac's AES instructions, 8-11x faster than Minecraft's
+  (570-700 against 51-82 MB/s through Netty), and decompression uses the system's zlib, 1.8-1.9x faster (19-22 against
+  35-40 us per packet). Both give the same bytes, checked in game on 441 chunks and a 9 MB stream cut into 361 pieces, and
+  over a real LAN connection. Singleplayer has neither stage. It stays off when Krypton or another networking mod is
+  installed; `cadence.net=false` turns it off. Measured honestly: on an M2 the network thread was barely busy to start with
+  (its CPU flying over new land went from 898 to 817 ms a minute); it doesn't change fps.
+- **Keep Server Chunks no longer encodes chunks on the render thread.** A chunk the server drops was turned back into a
+  packet on the render thread before it was saved: 2% of that thread's time flying on a server, and a 73 ms frame for a
+  chunk with a mob spawner. Now only its light is copied there; the rest is encoded on the store's thread once the game has
+  let the chunk go (1,856 chunks saved in a test flight, none lost).
+- The stall recorder names the last pipeline compiled when a long frame made one.
+
 ## 0.4.0-beta.27 / shaders 0.3.26 (2026-10-28)
 
 - **macOS Game Mode.** macOS gives a full-screen game priority on the CPU and GPU, holds back background work and doubles the

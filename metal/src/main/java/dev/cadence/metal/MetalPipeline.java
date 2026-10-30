@@ -196,6 +196,7 @@ public final class MetalPipeline implements BackendRenderPipeline {
 			}
 			t1 = System.nanoTime();
 			int[] modes = mathModes(info, fragment);
+			LAST_MADE = info.name();
 			if (storage != null) { // Cadence: images and buffer objects: MSL 3.1 (texture atomics)
 				if (modes == null) modes = new int[] {MATH_SAFE | INVARIANT, MATH_SAFE | INVARIANT};
 				modes = new int[] {modes[0] | MSL_31, modes[1] | MSL_31};
@@ -292,6 +293,8 @@ public final class MetalPipeline implements BackendRenderPipeline {
 	/** Time spent making shader libraries (from source) and pipeline states, summed over every thread, for the stall recorder. */
 	static final java.util.concurrent.atomic.AtomicLong LIBRARY_NS = new java.util.concurrent.atomic.AtomicLong(), STATE_NS = new java.util.concurrent.atomic.AtomicLong(),
 		MADE = new java.util.concurrent.atomic.AtomicLong();
+	/** The last pipeline compiled (the stall recorder names it). */
+	static volatile String LAST_MADE = "";
 
 	/** Cadence: the shader loader's pipelines (shaders/) are named in its namespace (RenderPipeline location = CreateInfo name). */
 	private static final String PACK_NAMESPACE = "cadence_shaders:";

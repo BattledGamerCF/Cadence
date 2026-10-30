@@ -160,7 +160,7 @@ public final class ServerChunks {
 
 	private static void store(Minecraft mc, ClientLevel level, ChunkPos pos) {
 		var chunk = level.getChunkSource().getChunk(pos.x(), pos.z(), net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false);
-		if (chunk != null) ServerChunkStore.save(mc, level, chunk);
+		if (chunk != null) ServerChunkStore.saveDropped(mc, level, chunk);
 	}
 
 	/**
@@ -170,6 +170,7 @@ public final class ServerChunks {
 	public static void frame() {
 		if (!ServerChunkStore.ENABLED) return;
 		Minecraft mc = Minecraft.getInstance();
+		ServerChunkStore.encodeDropped(mc);
 		ClientLevel level = mc.level;
 		if (level == null || !active(mc) || appliedIn.get() != level) return;
 		ServerChunkStore.apply(mc, level, packed -> {

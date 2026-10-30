@@ -53,6 +53,7 @@ apart); about 30,000 with the land in view. See [docs/MINIMAL-RENDERER.md](docs/
 | **Entity Culling** | Entities, block entities and particles behind walls aren't drawn |
 | **Bobby** | Keep Server Chunks: on a server whose view distance is shorter than yours, the chunks it stops sending stay within your render distance, so you see your full distance as you travel; saved on disk, so a world or dimension you come back to is there at once |
 | **Distant Horizons** | Far Terrain (experimental): land past the render distance, out to a **Far Distance** of up to 4,096 chunks (65 km; a slider in Video Settings, applied while you play), full detail to 440 blocks (Far Terrain > Full Detail: 190, 440 or 960), generated from the world's own generator or from explored land on servers, drawn by shader packs that support Distant Horizons |
+| **Krypton** (on the client) | Native network path on servers: online-mode decryption with the Mac's AES instructions (8-11x faster) and decompression with the system's zlib (1.8-1.9x), the same bytes as Minecraft's; singleplayer doesn't use either |
 | **LambDynamicLights** | Dynamic Lights: held torches and glowing entities light the world around them, on the GPU |
 | **More Culling / Cull Leaves** | Smart Leaves (opt-in): leaf faces hidden inside a canopy skipped |
 | **Sodium's options, Reese's Sodium Options** | Everything in Options > Video Settings, with tooltips and a Performance preset |

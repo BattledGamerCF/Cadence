@@ -21,6 +21,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -170,7 +171,8 @@ public final class ServerChunkStore {
 		long time = level.getLevelData().getGameTime();
 		String spawn = spawnOf(level);
 		reset();
-		if (saved > 0 || loaded > 0) System.out.println("[cadence] Keep Server Chunks: " + saved + " chunks saved, " + loaded + " used from disk");
+		if (saved > 0 || loaded > 0)
+			System.out.println("[cadence] Keep Server Chunks: " + saved + " chunks saved (" + NOT_STORED.getAndSet(0) + " couldn't be), " + loaded + " used from disk");
 		if (d != null) IO.execute(() -> writeWorld(d, time, spawn));
 	}
 
@@ -188,6 +190,82 @@ public final class ServerChunkStore {
 		READY.clear();
 		READY_COUNT.set(0);
 	}
+
+	/**
+	 * A chunk the server is dropping (render thread, just before the game drops it): its light (which the game drops with it)
+	 * copied now, the rest encoded on the store's thread once the game no longer holds the chunk (encodeDropped, next frame).
+	 * Encoding a chunk's sections and block entities on the render thread took 2% of its time flying on a server, and a 73 ms
+	 * frame for a chunk with a mob spawner. The block entities the game clears on unload are put back into the dropped chunk's
+	 * own map there, which nothing else reads any more.
+	 */
+	static void saveDropped(Minecraft mc, ClientLevel level, LevelChunk chunk) {
+		if (openFor != level || dir == null) return;
+		var connection = mc.getConnection();
+		if (connection == null) return;
+		if (FROM_DISK.remove(ChunkPos.pack(chunk.getPos().x(), chunk.getPos().z())) || QUEUED.get() > WRITE_QUEUE_MAX) return;
+		try {
+			var light = new ClientboundLightUpdatePacketData(chunk.getPos(), level.getChunkSource().getLightEngine(), null, null);
+			DROPPED.add(new Dropped(level, chunk, new java.util.HashMap<>(chunk.getBlockEntities()), light, connection.registryAccess()));
+		} catch (RuntimeException e) {
+			// (not stored: it is a cache)
+		}
+	}
+
+	private record Dropped(ClientLevel level, LevelChunk chunk, Map<net.minecraft.core.BlockPos, net.minecraft.world.level.block.entity.BlockEntity> blockEntities,
+		ClientboundLightUpdatePacketData light, net.minecraft.core.RegistryAccess registries) {
+	}
+
+	private static final ConcurrentLinkedQueue<Dropped> DROPPED = new ConcurrentLinkedQueue<>();
+
+	/** Every frame (render thread): last frame's dropped chunks to the store's thread; one the game still holds is encoded here. */
+	static void encodeDropped(Minecraft mc) {
+		Dropped d;
+		while ((d = DROPPED.poll()) != null) {
+			if (openFor != d.level || dir == null) continue;
+			LevelChunk chunk = d.chunk;
+			ChunkPos pos = chunk.getPos();
+			if (d.level.getChunkSource().getChunk(pos.x(), pos.z(), net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false) == chunk) {
+				save(mc, d.level, chunk);  // (kept after all: the game's chunk, read only here)
+				continue;
+			}
+			Path dirNow = dir;
+			long fp = fingerprint;
+			int sections = d.level.getSectionsCount();
+			Dropped job = d;
+			saved++;
+			QUEUED.addAndGet(ESTIMATE);
+			IO.execute(() -> {
+				try {
+					var map = chunk.getBlockEntities();
+					map.clear();
+					map.putAll(job.blockEntities);
+					var data = new net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData(chunk);
+					map.clear();
+					var packet = new ClientboundLevelChunkWithLightPacket(pos.x(), pos.z(), data, job.light);
+					RegistryFriendlyByteBuf buf = new RegistryFriendlyByteBuf(Unpooled.buffer(16384), job.registries);
+					byte[] bytes;
+					try {
+						ClientboundLevelChunkWithLightPacket.STREAM_CODEC.encode(buf, packet);
+						bytes = new byte[buf.readableBytes()];
+						buf.readBytes(bytes);
+					} finally {
+						buf.release();
+					}
+					writeQueued(dirNow, pos, fp, sections, bytes);
+				} catch (RuntimeException e) {
+					// (a block entity that can't write its update tag on the client, and the like: not stored)
+					NOT_STORED.incrementAndGet();
+				} finally {
+					QUEUED.addAndGet(-ESTIMATE);
+				}
+			});
+		}
+	}
+
+	/** What a dropped chunk counts against the write queue until it is encoded (a typical stored chunk). */
+	private static final int ESTIMATE = 48 * 1024;
+	/** Dropped chunks that couldn't be encoded (reported when the world closes). */
+	private static final AtomicInteger NOT_STORED = new AtomicInteger();
 
 	/** A chunk the client is letting go (render thread): stored as the packet that would bring it back. */
 	static void save(Minecraft mc, ClientLevel level, LevelChunk chunk) {
@@ -217,15 +295,20 @@ public final class ServerChunkStore {
 		ChunkPos pos = chunk.getPos();
 		QUEUED.addAndGet(bytes.length);
 		IO.execute(() -> {
-			write(d, pos, fp, sections, bytes);
+			writeQueued(d, pos, fp, sections, bytes);
 			QUEUED.addAndGet(-bytes.length);
-			// (trimmed again every quarter of the budget written, BH6-04: a long session wrote without limit)
-			if (WRITTEN.addAndGet(bytes.length / 3) > BUDGET / 4) {
-				WRITTEN.set(0);
-				closeRegions();
-				prune(root(d));
-			}
 		});
+	}
+
+	/** On the store's thread: one chunk written, the store trimmed every quarter of its budget written. */
+	private static void writeQueued(Path d, ChunkPos pos, long fp, int sections, byte[] bytes) {
+		write(d, pos, fp, sections, bytes);
+		// (trimmed again every quarter of the budget written, BH6-04: a long session wrote without limit)
+		if (WRITTEN.addAndGet(bytes.length / 3) > BUDGET / 4) {
+			WRITTEN.set(0);
+			closeRegions();
+			prune(root(d));
+		}
 	}
 
 	/** ServerChunks.sent: the server's own copy arrived; the chunk is the server's again. */
