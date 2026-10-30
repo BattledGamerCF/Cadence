@@ -12,7 +12,7 @@ import net.minecraft.world.level.chunk.PalettedContainer;
  * A PalettedContainer's raw contents in one go (-Dcadence.own.mesh.prefill): its storage unpacked into palette ids (index order,
  * y << 8 | z << 4 | x) and its palette, through handles on the private data record (looked up once).
  */
-final class OwnPalette {
+public final class OwnPalette {
 	private static final MethodHandle DATA, STORAGE, PALETTE;
 
 	static {
@@ -33,7 +33,7 @@ final class OwnPalette {
 
 	/** Unpacks c's 4096 ids into ids; returns the palette they index (read from the same data snapshot). */
 	@SuppressWarnings("unchecked")
-	static <T> Palette<T> unpack(PalettedContainer<T> c, int[] ids) {
+	public static <T> Palette<T> unpack(PalettedContainer<T> c, int[] ids) {
 		try {
 			Object data = (Object) DATA.invokeExact(c);
 			((BitStorage) STORAGE.invokeExact(data)).unpack(ids);

@@ -370,6 +370,42 @@ public final class CadenceSelfTest {
 					// ("ab=FEATURE:SECONDS:PERIOD": each state PERIOD seconds, its first half not counted: features that rebuild chunks)
 					abTest(mc, a[0], Integer.parseInt(a[1]), a.length > 2 ? Integer.parseInt(a[2]) : 2);
 					LOGGER.info("[selftest] ab {} draw lists: {}", a[0], dev.cadence.shaders.cadence.mesh.MeshStateCache.drawListModes());
+				} else if (lower.equals("skysources")) {
+					// "skysources": every loaded chunk's sky-light sources by vanilla's walk and by Cadence Logic's (SkySources),
+					// compared column by column, then each timed over 20 passes
+					String result = mc.submit(() -> {
+						if (mc.player == null || mc.level == null) return "no world";
+						java.util.List<net.minecraft.world.level.chunk.LevelChunk> chunks = new java.util.ArrayList<>();
+						int cx = mc.player.chunkPosition().x(), cz = mc.player.chunkPosition().z();
+						for (int dx = -12; dx <= 12; dx++)
+							for (int dz = -12; dz <= 12; dz++) {
+								var c = mc.level.getChunkSource().getChunk(cx + dx, cz + dz, net.minecraft.world.level.chunk.status.ChunkStatus.FULL, false);
+								if (c != null) chunks.add(c);
+							}
+						int differ = 0;
+						long tv = 0, tf = 0;
+						for (int pass = 0; pass < 21; pass++) {
+							for (var chunk : chunks) {
+								var vanilla = new net.minecraft.world.level.lighting.ChunkSkyLightSources(mc.level);
+								var fast = new net.minecraft.world.level.lighting.ChunkSkyLightSources(mc.level);
+								dev.cadence.metal.logic.SkySources.VANILLA.set(true);
+								long t0 = System.nanoTime();
+								vanilla.fillFrom(chunk);
+								long t1 = System.nanoTime();
+								dev.cadence.metal.logic.SkySources.VANILLA.set(false);
+								fast.fillFrom(chunk);
+								long t2 = System.nanoTime();
+								if (pass > 0) { tv += t1 - t0; tf += t2 - t1; }  // (the first pass warms both up)
+								if (pass == 0)
+									for (int x = 0; x < 16; x++)
+										for (int z = 0; z < 16; z++)
+											if (vanilla.getLowestSourceY(x, z) != fast.getLowestSourceY(x, z)) differ++;
+							}
+						}
+						return String.format(Locale.ROOT, "%d chunks, %d columns differ; vanilla %.1f us vs Cadence %.1f us per chunk (%.1fx)",
+							chunks.size(), differ, tv / 1e3 / 20 / Math.max(1, chunks.size()), tf / 1e3 / 20 / Math.max(1, chunks.size()), (double) tv / Math.max(1, tf));
+					}).join();
+					LOGGER.info("[selftest] skysources: {}", result);
 				} else if (lower.equals("netstats")) {
 					// "netstats": what Cadence's native network path handled so far, and the CPU time of Netty's threads
 					long[] t = dev.cadence.metal.net.FastNet.totals();

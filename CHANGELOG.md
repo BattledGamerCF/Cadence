@@ -15,6 +15,9 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
   packet on the render thread before it was saved: 2% of that thread's time flying on a server, and a 73 ms frame for a
   chunk with a mob spawner. Now only its light is copied there; the rest is encoded on the store's thread once the game has
   let the chunk go (1,856 chunks saved in a test flight, none lost).
+- **Cadence Logic `skySources`:** where sunlight stops in each column of a chunk, found section by section instead of block by
+  block, for every chunk generated and every chunk a server sends: 1.4-1.6x faster, the same answers (all 149,760 columns of
+  585 chunks checked).
 - The stall recorder names the last pipeline compiled when a long frame made one.
 
 ## 0.4.0-beta.27 / shaders 0.3.26 (2026-10-28)
