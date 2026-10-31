@@ -23,7 +23,7 @@ The release jar (`tools/release`) nests four Fabric mods built by Gradle from fo
 | `dev.cadence.metal` (root) | The Metal backend: Minecraft's `renderpearl` device/encoder/buffer/texture API implemented on Metal (`MetalDevice`, `MetalEncoder`, `MetalRenderPass`, `MetalBuffer`, `MetalTexture`, `MetalSurface`), `Native` (every native call, through Java's foreign-function API), `MacSystem` (thermal state, battery, fans, display, sysctl), `Profile` and `JvmDefaults` (startup settings), `Vivace` (restarting on the Vivace Java build when the player chose it), `GameMode` (the game started from a bundle macOS treats as a game), `PlatformCheck` (Apple Silicon, macOS, Rosetta), `Stalls` (the stall recorder: a frame over 50 ms logged with its cause, from `FrameLog`'s per-frame counters and a watchdog thread's samples of the render thread). `MetalBackend` falls back to Minecraft's own renderer if Metal can't start. Kept as one package: the backend's classes share package-private state, as in mcopt. |
 | `own/` | Cadence's own terrain renderer: chunk meshes in one arena, GPU culling (`OwnFrag`, Hi-Z; the opt-in Far Plants, `OwnTerrain.farPlantBlocks`, is a test in the cull), the opaque/cutout draw path, dynamic lights. |
 | `lod/` | Far terrain (experimental, off by default). GPU code: `src/main/resources/cadence/lod/columns.metal`. |
-| `record/` | The Minimal Renderer: the compute-only renderer for the FPS record (`Record`, `RecordWorld`, `RecordHud`); GPU code `src/main/resources/cadence/record/record.metal`, native `mcrecord.m`, offline bench `tools/record_bench.m` (docs/RENDER-MAX-FPS.md). |
+| `record/` | The Minimal Renderer: the compute-only renderer for the FPS record (`Record`, `RecordWorld`, `RecordHud`); GPU code `src/main/resources/cadence/record/record.metal`, native `mcrecord.m`, offline bench `tools/record_bench.m` (docs/MINIMAL-RENDERER.md). |
 | `chunk/`, `chunkio/` | Opt-in chunk pipeline and save-file changes (each behind a `-Dcadence.chunk.*` switch). |
 | `logic/` | Cadence Logic: the game-logic optimizations that replace Lithium (see docs/GAME-LOGIC.md). |
 | `cpu/` | Render-thread CPU work: model and item vertex writers, text, A/B timers. |
@@ -79,7 +79,7 @@ The release jar (`tools/release`) nests four Fabric mods built by Gradle from fo
 
 ## Where to look next
 
-- [FOR-REVIEWERS.md](FOR-REVIEWERS.md): for mod-platform reviewers: native code, network (none), files written, licences.
+- [FOR-REVIEWERS.md](FOR-REVIEWERS.md): for mod-platform reviewers: native code, network (no connections of its own), files written, licences.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): building, the test harness, the rules for changes (exact or switch-gated, measured).
 - [tools/README.md](../tools/README.md): the scripts.
 - [MINIMAL-RENDERER.md](MINIMAL-RENDERER.md): the Minimal Renderer, its results and the record attempt.

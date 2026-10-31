@@ -48,7 +48,9 @@ it; docs/ARCHITECTURE.md). The release zip also holds an optional jar with no co
 
 ## Network
 
-None. Cadence makes no network connections (no update checks, telemetry or downloads). The optional Vivace Java runtime
+Cadence makes no network connections of its own (no update checks, telemetry or downloads). On a multiplayer server it
+decrypts and decompresses the game's own connection natively (`dev.cadence.metal.net`, the same bytes as Minecraft's
+stages; nothing is sent, added or read beyond what Minecraft receives). The optional Vivace Java runtime
 (Video Settings > Java) is a separate download the player installs themselves; Cadence only points the launcher's Java
 setting at it when the player chooses it.
 

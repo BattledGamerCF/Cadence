@@ -49,7 +49,7 @@ apart); about 30,000 with the land in view. See [docs/MINIMAL-RENDERER.md](docs/
 |---|---|
 | **Sodium** | The Metal renderer and its own terrain path: chunk meshes in one GPU arena, culled on the GPU (frustum, occlusion with a depth pyramid, faces turned away), meshing caches, faster entity and item vertex writing |
 | **Iris** | Shader packs (Iris/OptiFine format: compute passes, custom images, buffer objects, Distant Horizons programs), per-pack options in the same files Iris uses, live switching, and the **Iris API** for other mods: calls to Iris's public API (is a pack on, the shadow pass, the sun angle, the shader screen) get Cadence's answers |
-| **Lithium** | Cadence Logic: entity searches up to 22x faster, mob brains and villager sensors without per-tick garbage, block entities ticked only when they need it. Exact: the game plays the same ([docs/GAME-LOGIC.md](docs/GAME-LOGIC.md)) |
+| **Lithium** | Cadence Logic: entity searches up to 22x faster, mob brains and villager sensors without per-tick garbage, block entities ticked only when they need it, biome particle lookups skipped where no particle biome is near. Exact: the game plays the same ([docs/GAME-LOGIC.md](docs/GAME-LOGIC.md)) |
 | **Entity Culling** | Entities, block entities and particles behind walls aren't drawn |
 | **Bobby** | Keep Server Chunks: on a server whose view distance is shorter than yours, the chunks it stops sending stay within your render distance, so you see your full distance as you travel; saved on disk, so a world or dimension you come back to is there at once |
 | **Distant Horizons** | Far Terrain (experimental): land past the render distance, out to a **Far Distance** of up to 4,096 chunks (65 km; a slider in Video Settings, applied while you play), full detail to 440 blocks (Far Terrain > Full Detail: 190, 440 or 960), generated from the world's own generator or from explored land on servers, drawn by shader packs that support Distant Horizons |
@@ -192,7 +192,7 @@ For the development and test tools, see [CONTRIBUTING.md](CONTRIBUTING.md).
 | [`packaging/`](packaging) | Release README, Modrinth page text, project icon |
 
 New to the code? [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) maps every package: what it does and where to start.
-Reviewing it for a mod platform? [docs/FOR-REVIEWERS.md](docs/FOR-REVIEWERS.md): native code, network (none), files written.
+Reviewing it for a mod platform? [docs/FOR-REVIEWERS.md](docs/FOR-REVIEWERS.md): native code, network (no connections of its own), files written.
 
 ## Credits and license
 
