@@ -8,6 +8,14 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
   each of its 1,334 spots when no biome with particles is in reach: about 25% cheaper (330-420 to 260-290 µs a tick), the same
   particles (917,504 lookups checked against vanilla's).
 - Self-test step `tpbiome=` takes a dimension (`tpbiome=the_nether:crimson_forest`).
+- **Fixes from a bug hunt:**
+  - Leaving a world no longer keeps it in memory through the new particle shortcut. After a quit to the title screen, the heap holds no client world.
+  - A failed biome scan no longer turns particles off for the session.
+  - A shader-pack fix in a Cadence update now reaches packs already translated on disk. Every class of the translator, and the version, are part of the cache key; only some were before.
+  - Sky sources no longer turn themselves off for the session over one odd chunk.
+  - Keep Server Chunks stores the chunks dropped in the last frame when you leave (the far ones after a teleport were lost). It counts each chunk at 256 KB against its memory cap, not 128 KB, and starts each world's "couldn't be stored" count from zero.
+  - Packets over 256 KB are decrypted and decompressed with ordinary native calls, so a garbage collection doesn't wait for a big one.
+  - The network hooks step aside for any mod hooking the same code, not only the known networking mods.
 
 ## 0.4.0-beta.28 / shaders 0.3.27 (2026-10-29)
 

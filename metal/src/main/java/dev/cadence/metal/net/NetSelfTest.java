@@ -66,18 +66,21 @@ public final class NetSelfTest {
 			frames.add(f);
 			raw += p.length;
 		}
-		// correctness: every frame through both
-		List<byte[]> vanilla = decodeAll(new CompressionDecoder(256, true), frames, 1);
-		CompressionDecoder fast = FastNet.decompressor(256, true);
-		if (!(fast instanceof FastInflate)) return "decompression: native stage unavailable";
-		List<byte[]> ours = decodeAll(fast, frames, 1);
-		for (int i = 0; i < vanilla.size(); i++)
-			if (!java.util.Arrays.equals(vanilla.get(i), ours.get(i))) return "decompression DIFFERS at packet " + i;
-		if (vanilla.size() != payloads.size()) return "decompression: " + vanilla.size() + " of " + payloads.size() + " packets";
-		long tv = time(new CompressionDecoder(256, true), frames, 20), tn = time(FastNet.decompressor(256, true), frames, 20);
-		for (ByteBuf f : frames) f.release();
-		return String.format(Locale.ROOT, "decompression identical (%d packets, %.1f MB), Minecraft %.1f us vs native %.1f us per packet (%.2fx)",
-			payloads.size(), raw / 1e6, tv / 1e3 / payloads.size() / 20, tn / 1e3 / payloads.size() / 20, (double) tv / tn);
+		try {  // (the frames released on every way out, BH10-11)
+			// correctness: every frame through both
+			List<byte[]> vanilla = decodeAll(new CompressionDecoder(256, true), frames, 1);
+			CompressionDecoder fast = FastNet.decompressor(256, true);
+			if (!(fast instanceof FastInflate)) return "decompression: native stage unavailable";
+			List<byte[]> ours = decodeAll(fast, frames, 1);
+			for (int i = 0; i < vanilla.size(); i++)
+				if (!java.util.Arrays.equals(vanilla.get(i), ours.get(i))) return "decompression DIFFERS at packet " + i;
+			if (vanilla.size() != payloads.size()) return "decompression: " + vanilla.size() + " of " + payloads.size() + " packets";
+			long tv = time(new CompressionDecoder(256, true), frames, 20), tn = time(FastNet.decompressor(256, true), frames, 20);
+			return String.format(Locale.ROOT, "decompression identical (%d packets, %.1f MB), Minecraft %.1f us vs native %.1f us per packet (%.2fx)",
+				payloads.size(), raw / 1e6, tv / 1e3 / payloads.size() / 20, tn / 1e3 / payloads.size() / 20, (double) tv / tn);
+		} finally {
+			for (ByteBuf f : frames) f.release();
+		}
 	}
 
 	private static String decryption(List<byte[]> payloads, Random r) throws Exception {

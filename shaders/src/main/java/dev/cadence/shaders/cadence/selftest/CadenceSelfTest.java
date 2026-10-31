@@ -673,7 +673,8 @@ public final class CadenceSelfTest {
 								y = 100;
 								for (int yy = 32; yy < 100; yy++) {
 									var at = new net.minecraft.core.BlockPos(p.getX(), yy, p.getZ());
-									if (level.getBlockState(at).isAir() && level.getBlockState(at.above()).isAir() && !level.getBlockState(at.below()).isAir()) {
+									if (level.getBlockState(at).isAir() && level.getBlockState(at.above()).isAir() && !level.getBlockState(at.below()).isAir()
+										&& level.getFluidState(at.below()).isEmpty()) {  // (not on the lava sea)
 										y = yy;
 										break;
 									}

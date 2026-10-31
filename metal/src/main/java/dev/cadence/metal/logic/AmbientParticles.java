@@ -82,19 +82,34 @@ public final class AmbientParticles {
 		try {
 			if (!layersAreVanilla(level.environmentAttributes())) return;
 			if (level.registryAccess() != registries) {
-				registries = level.registryAccess();
+				// (all three set together, once the scan has worked: a failed scan is tried again next tick, BH10-03)
 				ReferenceOpenHashSet<Holder<Biome>> s = new ReferenceOpenHashSet<>();
 				level.registryAccess().lookupOrThrow(Registries.BIOME).listElements().forEach(b -> {
 					if (b.value().getAttributes().contains(EnvironmentAttributes.AMBIENT_PARTICLES)) s.add(b);
 				});
+				boolean plains = s.contains(level.registryAccess().lookupOrThrow(Registries.BIOME).getOrThrow(Biomes.PLAINS));
 				setters = s;
-				plainsSets = s.contains(level.registryAccess().lookupOrThrow(Registries.BIOME).getOrThrow(Biomes.PLAINS));
+				plainsSets = plains;
+				registries = level.registryAccess();
 			}
 			if (plainsSets) return;
 			active = SHORTCUT && (setters.isEmpty() || !nearby(level, x, y, z));
 		} catch (RuntimeException e) {
 			active = false;  // (anything unexpected: vanilla's lookups)
 		}
+	}
+
+	/**
+	 * The world was left (WorldClosed): nothing of it kept. The judged system's layers capture the ClientLevel (its sky
+	 * colour layers, the biome layer's BiomeManager), so holding it kept the whole left world in memory at the title screen (BH10-01).
+	 */
+	public static void release() {
+		judged = null;
+		vanillaLayers = false;
+		registries = null;
+		setters = Set.of();
+		plainsSets = false;
+		inTick = active = false;
 	}
 
 	/** ClientLevel.animateTick's end. */
@@ -112,7 +127,12 @@ public final class AmbientParticles {
 	/** In place of environmentAttributes().getValue(AMBIENT_PARTICLES, pos) in doAnimateTick. */
 	public static Object value(EnvironmentAttributeSystem system, net.minecraft.world.attribute.EnvironmentAttribute<?> attribute, BlockPos pos, boolean shortcut) {
 		if (!shortcut || attribute != EnvironmentAttributes.AMBIENT_PARTICLES) return system.getValue(attribute, pos);
-		Object fast = system.getDimensionValue(attribute);
+		Object fast;
+		try {
+			fast = system.getDimensionValue(attribute);
+		} catch (IllegalStateException e) {
+			return system.getValue(attribute, pos);  // (a development launch refuses a positional attribute's dimension value, BH10-04)
+		}
 		if (VERIFY) {
 			Object slow = system.getValue(attribute, pos);
 			verified++;

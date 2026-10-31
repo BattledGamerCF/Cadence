@@ -37,7 +37,7 @@ import org.objectweb.asm.tree.MethodNode;
  * aside for that mod: a "compatibility layer" is that area running on the vanilla code path, which the other mod was written
  * for, while every other Cadence optimization stays on.
  * <ul>
- * <li>Independent hooks (the CPU and game-logic mixins): only the conflicting mixin is left out ({@link #yields}).</li>
+ * <li>Independent hooks (the CPU, game-logic and network mixins): only the conflicting mixin is left out ({@link #yields}).</li>
  * <li>Cadence's own terrain renderer (its mixins work together): turned off as a whole (cadence.own=false); terrain then goes
  * through the game's section pipeline, still drawn by the Metal backend with Cadence's culling.</li>
  * <li>Everything else: reported (log and the settings screen), not changed yet.</li>
@@ -145,7 +145,7 @@ public final class CompatLayers {
 				if (mods.isEmpty()) continue;
 				String area = area(o.mixin);
 				boolean applied = act && (area.equals("own terrain renderer") || o.mixin.startsWith("dev.cadence.metal.mixin.cpu.")
-					|| o.mixin.startsWith("dev.cadence.metal.mixin.logic."));
+					|| o.mixin.startsWith("dev.cadence.metal.mixin.logic.") || o.mixin.startsWith("dev.cadence.metal.mixin.net."));
 				Layer prev = LAYERS.get(o.mixin);
 				if (prev != null) mods.addAll(prev.mods);
 				LAYERS.put(o.mixin, new Layer(o.mixin, area, mods, applied));

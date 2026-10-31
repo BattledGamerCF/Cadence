@@ -152,6 +152,7 @@ public final class ServerChunkStore {
 	/** The level going (render thread): every chunk the client has saved, then its region files closed. */
 	static void close(Minecraft mc, ClientLevel level, int cx, int cz, int radius) {
 		if (openFor != level) return;
+		encodeDropped(mc);  // (chunks dropped since the last frame, a teleport's far ones among them: stored, not lost to reset(), BH10-09)
 		// farthest first (the chunks past the server's view distance, which it won't send again: the ones worth storing; the
 		// near ones come back from the server within seconds), for at most CLOSE_NANOS (inside the disconnect or the
 		// dimension change, BH6-01)
@@ -170,14 +171,16 @@ public final class ServerChunkStore {
 		Path d = dir;
 		long time = level.getLevelData().getGameTime();
 		String spawn = spawnOf(level);
+		int notStored = NOT_STORED.getAndSet(0);
 		reset();
 		if (saved > 0 || loaded > 0)
-			System.out.println("[cadence] Keep Server Chunks: " + saved + " chunks saved (" + NOT_STORED.getAndSet(0) + " couldn't be), " + loaded + " used from disk");
+			System.out.println("[cadence] Keep Server Chunks: " + saved + " chunks saved (" + notStored + " couldn't be), " + loaded + " used from disk");
 		if (d != null) IO.execute(() -> writeWorld(d, time, spawn));
 	}
 
 	/** The store let go of without saving (Keep Server Chunks turned off, the world gone without a hook seeing it, BH6-05/07). */
 	public static void reset() {
+		NOT_STORED.set(0);  // (each world's report counts its own, BH10-09)
 		openFor = null;
 		dir = null;
 		clearReady();
@@ -271,7 +274,7 @@ public final class ServerChunkStore {
 	 * What a dropped chunk counts against the write queue until it is encoded: the chunk and the copy of its light it holds
 	 * (21-120 KB measured), so at most ~380 wait (WRITE_QUEUE_MAX); past that a dropped chunk isn't stored (a cache).
 	 */
-	private static final int ESTIMATE = 128 * 1024;
+	private static final int ESTIMATE = 256 * 1024;  // (a tall or busy chunk with its light: ~250 KB; 128 let the cap hold twice its size, BH10-09)
 	/** Dropped chunks that couldn't be encoded (reported when the world closes). */
 	private static final AtomicInteger NOT_STORED = new AtomicInteger();
 

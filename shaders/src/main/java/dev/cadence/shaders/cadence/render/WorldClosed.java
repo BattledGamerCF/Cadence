@@ -18,6 +18,7 @@ public final class WorldClosed {
 		try {
 			dev.cadence.shaders.cadence.shadow.ShadowProxies.release();
 			dev.cadence.metal.record.Record.worldClosed();
+			dev.cadence.metal.logic.AmbientParticles.release();  // (its judged attribute system held the level, BH10-01)
 			dev.cadence.metal.framegen.FrameGen.reset();
 			PhotoMode.cancel(net.minecraft.client.Minecraft.getInstance());
 			dev.cadence.metal.lod.LodPackFrame.worldClosed();

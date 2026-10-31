@@ -136,12 +136,16 @@ public final class TranslationCache {
     if (s != null) return s;
     try {
       MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      for (Class<?> c : List.of(ShaderCompatibilityCompiler.class, UniformLayout.class, UniformDefaults.class,
-          EarlyAlphaDemotion.class, UniformInitializerLifting.class, TranslatedProgram.class, TranslationCache.class)) {
-        try (InputStream in = c.getResourceAsStream(c.getSimpleName() + ".class")) {
+      // every class of the translator's package, nested ones too (only some outer classes were hashed, so a fix in
+      // Conditionals or ShaderCompatibilityCompiler$StorageScan kept serving the old translation from disk, BH10-02),
+      // and the mod's version in case the package can't be listed
+      for (String name : packageClasses()) {
+        try (InputStream in = TranslationCache.class.getResourceAsStream(name)) {
           if (in != null) digest.update(in.readAllBytes());
         }
       }
+      digest.update(net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer("cadence_shaders")
+          .map(m -> m.getMetadata().getVersion().getFriendlyString()).orElse("?").getBytes(StandardCharsets.UTF_8));
       digest.update(("format " + FORMAT + "|lift " + Boolean.getBoolean("cadence.shaders.liftUniformInitializers")
           + "|cdepth " + System.getProperty("cadence.shaders.conservativeDepth", "")
           + "|lwjgl " + org.lwjgl.Version.getVersion()).getBytes(StandardCharsets.UTF_8));
@@ -149,6 +153,36 @@ public final class TranslationCache {
     } catch (Exception e) {
       throw new IllegalStateException("translation cache salt", e);
     }
+  }
+
+  /** The .class files of this package (names relative to it), sorted; the listed outer classes if it can't be listed. */
+  private static List<String> packageClasses() {
+    java.util.TreeSet<String> names = new java.util.TreeSet<>();
+    try {
+      java.net.URL here = TranslationCache.class.getResource("TranslationCache.class");
+      if (here != null && here.getProtocol().equals("file")) {
+        try (var files = java.nio.file.Files.list(Path.of(here.toURI()).getParent())) {
+          files.map(f -> f.getFileName().toString()).filter(n -> n.endsWith(".class")).forEach(names::add);
+        }
+      } else if (here != null && here.getProtocol().equals("jar")) {
+        String prefix = TranslationCache.class.getPackageName().replace('.', '/') + "/";
+        java.net.JarURLConnection jar = (java.net.JarURLConnection) here.openConnection();
+        jar.setUseCaches(false);
+        try (java.util.jar.JarFile file = jar.getJarFile()) {
+          file.stream().map(java.util.jar.JarEntry::getName)
+              .filter(n -> n.startsWith(prefix) && n.endsWith(".class") && n.indexOf('/', prefix.length()) < 0)
+              .forEach(n -> names.add(n.substring(prefix.length())));
+        }
+      }
+    } catch (Exception e) {
+      names.clear();
+    }
+    if (names.isEmpty()) {
+      for (Class<?> c : List.of(ShaderCompatibilityCompiler.class, UniformLayout.class, UniformDefaults.class, EarlyAlphaDemotion.class,
+          UniformInitializerLifting.class, TranslatedProgram.class, TranslationCache.class, Conditionals.class, SharedVec3Split.class))
+        names.add(c.getSimpleName() + ".class");
+    }
+    return List.copyOf(names);
   }
 
   private static @Nullable Path directory() {

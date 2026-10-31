@@ -27,7 +27,11 @@ public final class NetMixinPlugin implements IMixinConfigPlugin {
 	}
 
 	@Override public String getRefMapperConfig() { return null; }
-	@Override public boolean shouldApplyMixin(String targetClassName, String mixinClassName) { return apply; }
+	@Override
+	public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+		// (a mod not in the list above hooking the same network stages: this hook steps aside, BH10-07)
+		return apply && !dev.cadence.metal.compat.CompatLayers.yields(mixinClassName);
+	}
 	@Override public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) { }
 	@Override public List<String> getMixins() { return null; }
 	@Override public void preApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) { }

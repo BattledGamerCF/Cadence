@@ -47,7 +47,14 @@ public final class SkySources {
 		if (broken || VANILLA.get()) return false;
 		try {
 			return fill0(target, chunk);
-		} catch (LinkageError | IllegalStateException e) {
+		} catch (IllegalStateException e) {
+			// (only OwnPalette's handles not fitting this game version turn it off for good; one odd section's own
+			// failure, wrapped the same way, leaves just that chunk to vanilla, BH10-06)
+			if (e.getCause() instanceof RuntimeException) return false;
+			broken = true;
+			System.out.println("[cadence] Cadence Logic skySources off: " + e);
+			return false;
+		} catch (LinkageError e) {
 			broken = true;  // (OwnPalette's handles: not on this game version)
 			System.out.println("[cadence] Cadence Logic skySources off: " + e);
 			return false;
