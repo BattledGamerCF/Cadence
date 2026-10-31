@@ -96,6 +96,14 @@ final class LodChunks {
 
 	@SuppressWarnings("unchecked")
 	static Snapshot snapshot(LevelChunk chunk) {
+		return snapshot(chunk, false);
+	}
+
+	/**
+	 * floating: a dimension without a floor (the End): a column with nothing in it is void (height LodTile.VOID) and every
+	 * column's solid run is measured (Summary.depth: an island's underside), whether or not -Dcadence.lod.realOcc is on.
+	 */
+	static Snapshot snapshot(LevelChunk chunk, boolean floating) {
 		int minY = chunk.getMinY();
 		BlockState[] top = new BlockState[256], under = new BlockState[256], crown = new BlockState[256], crownLeaf = new BlockState[256];
 		short[] height = new short[256], water = new short[256], crownLo = new short[256], crownHi = new short[256];
@@ -104,7 +112,7 @@ final class LodChunks {
 		// up to 3 blocks over the ground where a decoration stands on it (a plant, for the worker to tell)
 		BlockState[] above = new BlockState[256 * 3];
 		Holder<Biome>[] biome = new Holder[256];
-		short[] runFrom = RUNS ? new short[256] : null;
+		short[] runFrom = RUNS || floating ? new short[256] : null;
 		int runLo = Integer.MAX_VALUE, runHi = Integer.MIN_VALUE;
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 		int bx0 = chunk.getPos().getMinBlockX(), bz0 = chunk.getPos().getMinBlockZ();
@@ -166,6 +174,15 @@ final class LodChunks {
 				// a snow layer is a covering (an eighth of a block), not a block: the column's top stays the block under it
 				height[i] = (short) (s.is(Blocks.SNOW) ? y : y + 1);
 				water[i] = wet;
+				if (floating && s.isAir()) {
+					// nothing in this column: the void (no faces), as the generator makes it
+					height[i] = LodTile.VOID;
+					water[i] = LodTile.DRY;
+					if (runFrom != null) runFrom[i] = Short.MIN_VALUE;
+					biome[i] = chunk.getNoiseBiome(QuartPos.fromBlock(px), QuartPos.fromBlock(minY), QuartPos.fromBlock(pz));
+					under[i] = s;
+					continue;
+				}
 				under[i] = chunk.getBlockState(pos.set(px, y - 1, pz));
 				// (a snow layer: the run starts at the block under it)
 				if (runFrom != null) {

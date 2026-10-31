@@ -24,7 +24,15 @@ public final class ShaderLoaderMod implements ClientModInitializer {
 
   @Override
   public void onInitializeClient() {
-    dev.cadence.shaders.cadence.HeapTrim.apply();
+		// (the HUD's FPS Counter reads cadence.fpsCounter from the first frame: set from the saved setting now)
+		dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed();
+    dev.cadence.shaders.cadence.memory.HeapTrim.apply();
+    dev.cadence.shaders.cadence.render.FrameGenSetting.load();
+    dev.cadence.shaders.cadence.ui.SoundEngineSetting.load();
+    dev.cadence.shaders.cadence.ui.AppleHardwareSettings.load();
+    dev.cadence.shaders.cadence.ui.LookSettings.load();
+    dev.cadence.metal.rec.Replay.setEnabled("true".equalsIgnoreCase(dev.cadence.shaders.cadence.ui.ShaderToggle.configValue("instantReplay", "false").strip()));
+    dev.cadence.shaders.cadence.memory.GcPolicy.start();
     // Cadence: the render thread's scheduling role, and the heat/memory monitor (Heat Control, memory guard)
     dev.cadence.shaders.cadence.system.ThreadRoles.renderThread();
     dev.cadence.shaders.cadence.system.SystemMonitor.start();
@@ -36,8 +44,8 @@ public final class ShaderLoaderMod implements ClientModInitializer {
         CadencePackGate.hooksApplied() ? "on" : "off",
         System.getProperty("cadence.own"),
         System.getProperty("cadence.startup.mslCache"));
-    dev.cadence.shaders.cadence.SwitchProbe.onFirstWorld();
-    dev.cadence.shaders.cadence.CadenceSelfTest.maybeStart();
+    dev.cadence.shaders.cadence.shaderpack.SwitchProbe.onFirstWorld();
+    dev.cadence.shaders.cadence.selftest.CadenceSelfTest.maybeStart();
     Path selected = null;
     try {
       FabricLoader loader = FabricLoader.getInstance();
@@ -48,6 +56,13 @@ public final class ShaderLoaderMod implements ClientModInitializer {
         LOGGER.info("Cadence Shaders ready; no shader pack selected.");
         return;
       }
+      if (!CadencePackGate.metalBackend()) {
+        LOGGER.warn("Shader pack {} not loaded: {}.", selected.getFileName(), CadencePackGate.NO_METAL);
+        dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.launchFailed(selected.getFileName().toString(),
+            new IllegalStateException(CadencePackGate.NO_METAL));
+        dev.cadence.shaders.cadence.system.CadenceMessages.launchFailure(CadencePackGate.NO_METAL + ", so shaders are off.");
+        return;
+      }
       activate(config);
     } catch (IOException | RuntimeException failure) {
       String context =
@@ -56,11 +71,12 @@ public final class ShaderLoaderMod implements ClientModInitializer {
           "Cannot initialize {}; shader-pack rendering was not enabled.", context, failure);
       // Cadence: a pack that can't load must never stop the game (this threw out of Fabric's client entrypoint, which
       // fails the launch): the game starts without shaders and the player is told why when they join a world
+      if (selected != null)
+        dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.launchFailed(selected.getFileName().toString(), failure);
       dev.cadence.shaders.cadence.system.CadenceMessages.launchFailure(
           (selected == null ? "Cadence Shaders' settings" : "Shader pack "
-              + dev.cadence.shaders.cadence.ShaderToggle.display(selected.getFileName().toString()))
-              + " couldn't load (" + (failure instanceof java.nio.file.NoSuchFileException ? "its file is missing from the shaderpacks folder"
-                  : failure.getMessage()) + "), so shaders are off. Pick another pack or Off in Video Settings.");
+              + dev.cadence.shaders.cadence.ui.ShaderToggle.display(selected.getFileName().toString()))
+              + " couldn't load (" + dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.playerReason(failure) + "), so shaders are off. Pick another pack or Off in Video Settings > Shader Packs.");
     }
   }
 

@@ -7,7 +7,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 
-/** Allocation-sweep mixins (-Dcadence.alloc.*): each applies only with its flag; with none set the game is unchanged. */
+/** Allocation-sweep mixins (-Dcadence.alloc.*): each applies with its flag (entity states on unless =false). */
 public final class AllocMixinPlugin implements IMixinConfigPlugin {
 	static {
 		dev.cadence.metal.Profile.apply(); // before any flag is read
@@ -17,6 +17,7 @@ public final class AllocMixinPlugin implements IMixinConfigPlugin {
 	@Override public String getRefMapperConfig() { return null; }
 	@Override public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
 		if (mixinClassName.endsWith("LightMapMixin")) return Boolean.getBoolean("cadence.alloc.lightMap");
+		if (mixinClassName.contains(".EntityState")) return !"false".equals(System.getProperty("cadence.alloc.entityStates"));
 		return false;
 	}
 	@Override public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) { }

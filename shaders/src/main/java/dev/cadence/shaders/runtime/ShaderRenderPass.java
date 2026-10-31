@@ -114,7 +114,7 @@ public final class ShaderRenderPass implements RenderPass {
    * game's frame half done (the next one then fails in the game's own code).
    */
   private void failed(RuntimeException failure) {
-    dev.cadence.shaders.cadence.ShaderSwitcher.failedInFrame(failure);
+    dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.failedInFrame(failure);
     skipDraw = true;
   }
 

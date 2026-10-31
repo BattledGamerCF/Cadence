@@ -270,7 +270,9 @@ public final class FrameUniforms {
     float skyAngle =
         (float) Math.toRadians(probe.getValue(EnvironmentAttributes.SUN_ANGLE, partialTicks));
     put("moonPhase", probe.getValue(EnvironmentAttributes.MOON_PHASE, partialTicks).index());
-    float pathRotation = (float) Math.toRadians(globals.floatConstant("sunPathRotation", 0));
+    float pathDegrees = (float) globals.floatConstant("sunPathRotation", 0);
+    dev.cadence.metal.ApiHooks.sunPathRotation = pathDegrees; // (Cadence API, the Iris API's getSunPathRotation)
+    float pathRotation = (float) Math.toRadians(pathDegrees);
     float moonAngle =
         (float) Math.toRadians(probe.getValue(EnvironmentAttributes.MOON_ANGLE, partialTicks));
     updateCelestial(
@@ -630,6 +632,38 @@ public final class FrameUniforms {
     }
     float denominator = 1 + nativeProjection.m22();
     put("near", Math.abs(denominator) > 1.0e-8f ? nativeProjection.m32() / denominator : 0.05);
+    setDistantProjection();
+  }
+
+  /**
+   * Cadence's far terrain for packs with dh_* programs (Iris's Distant Horizons uniforms): the camera's projection with a
+   * finite near and far for the far terrain's own depth (dhDepthTex0/1): near 16 blocks, far 1.5 x its reach; the far
+   * terrain's model-view is the camera's.
+   */
+  private final Matrix4f dhProjection = new Matrix4f(), dhPrevious = new Matrix4f();
+  private boolean dhPreviousSet;
+
+  private void setDistantProjection() {
+    double reach = dev.cadence.shaders.cadence.render.DistantTerrain.reachBlocks();
+    // (no far terrain in this frame, the Nether or before it exists: the render distance stands in. Zeros made packs that
+    // divide by them draw black (Photon's combined depth) or nothing but fog (superDuperVanilla))
+    if (reach <= 0) reach = Math.max(32, net.minecraft.client.Minecraft.getInstance().options.getEffectiveRenderDistance() * 16);
+    float n = 16f, f = (float) (reach * 1.5);
+    if (dhPreviousSet) dhPrevious.set(dhProjection);
+    dhProjection.set(projection).m22(-(f + n) / (f - n)).m32(-2f * f * n / (f - n));
+    if (!dhPreviousSet) {
+      dhPrevious.set(dhProjection);
+      dhPreviousSet = true;
+    }
+    matrix("dhProjection", dhProjection);
+    matrix("dhProjectionInverse", new Matrix4f(dhProjection).invert());
+    matrix("dhPreviousProjection", dhPrevious);
+    matrix("dhModelView", modelView);
+    matrix("dhModelViewInverse", new Matrix4f(modelView).invert());
+    matrix("dhPreviousModelView", historyReset ? modelView : previousModelView);
+    put("dhNearPlane", n);
+    put("dhFarPlane", f);
+    put("dhRenderDistance", reach);
   }
 
   /** The supplied projection is conventional OpenGL -1..1 depth; both matrices are copied. */

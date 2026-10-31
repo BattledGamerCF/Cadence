@@ -68,6 +68,16 @@ public final class MetalBridge {
 		return Native.bufferContents(buffer);
 	}
 
+	/** Runs r on the render thread once the GPU has finished the frame being recorded now. */
+	public static void afterGpu(Object encoder, Runnable r) {
+		((MetalEncoder) encoder).afterGpuFinishes(r);
+	}
+
+	/** Lets go of a native object (a buffer from newBuffer). */
+	public static void releaseObject(long handle) {
+		Native.release(handle);
+	}
+
 	public static void readTexture(long enc, long texture, int width, int height, int bytesPerPixel, long buffer) {
 		Native.blitTextureToBuffer(enc, texture, 0, 0, 0, width, height, buffer, 0, width * bytesPerPixel);
 	}
@@ -111,6 +121,11 @@ public final class MetalBridge {
 		return ((MetalTexture) texture).handle;
 	}
 
+	/** Whether the texture is an HDR float frame (RGBA16Float in Metal while the game sees RGBA8). */
+	public static boolean isFloatFrame(GpuTexture texture) {
+		return texture instanceof MetalTexture t && t.floatFrame;
+	}
+
 	/** Whether the texture was created with ShaderWrite usage (a compute kernel may write it). */
 	public static boolean shaderWritable(GpuTexture texture) {
 		return texture instanceof MetalTexture t && t.shaderWrite;
@@ -148,6 +163,72 @@ public final class MetalBridge {
 	 * Native handle of buffer, marked as used by the frame being recorded (so the backend won't rewrite it in place while
 	 * the GPU may still read it): for drawing with the game's own uniform buffers (dev.cadence.metal.own).
 	 */
+	/**
+	 * Cadence: a game buffer standing for a native MTLBuffer another part of Cadence owns (the far terrain's draw arguments,
+	 * drawn by a shader pack's program), for the game's draw calls (an indirect draw's arguments). GPU-only: never mapped;
+	 * closing it leaves the memory to its owner.
+	 */
+	public static GpuBuffer foreignBuffer(Object encoder, long handle, @GpuBuffer.Usage int usage, long size) {
+		MetalBuffer b = new MetalBuffer((MetalEncoder) encoder, handle, usage, size, 0L);
+		b.foreign = true;
+		return b;
+	}
+
+	/** Render Max FPS: presents without vsync while on (frames past one a refresh are skipped, not shown); off: the option's again. */
+	/** Presents latched to the display's refreshes (display sync) whatever the VSync option (FramePacing: a cap at the refresh rate). */
+	public static void syncPresents(boolean on) {
+		MetalSurface.sync(on);
+	}
+
+	public static void uncappedPresent(boolean on) {
+		MetalSurface.immediate(on);
+		MetalEncoder.maxFps = on;
+	}
+
+	/** Record Mode (dev.cadence.metal.record): uncapped presentation and a deep queue of frames in flight while it's chosen. */
+	public static void recordPresent(boolean on) {
+		MetalEncoder.record = on;
+		uncappedPresent(on);
+	}
+
+	/** (testing) Main command buffers, pre command buffers and blit encoders opened since the last call. */
+	public static int[] encoderCounts() {
+		try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+			long c = stack.ncalloc(4, 3, 4);
+			Native.encCounters(c);
+			return new int[] {org.lwjgl.system.MemoryUtil.memGetInt(c), org.lwjgl.system.MemoryUtil.memGetInt(c + 4), org.lwjgl.system.MemoryUtil.memGetInt(c + 8)};
+		}
+	}
+
+	/** (testing) Record Mode's frames per command buffer (MetalEncoder.recordBatch). */
+	public static void recordBatch(int n) {
+		MetalEncoder.recordBatch = Math.max(1, n);
+	}
+
+	/** Record Mode: this frame was a record frame (its command buffer may take the next ones too: MetalEncoder.recordBatch). */
+	public static void recordFrame() {
+		MetalEncoder.recordFrame = true;
+	}
+
+	/**
+	 * Frame Generation: the window's next drawable (a +1 reference: the native present releases it), 0 when there is none (no
+	 * window yet, or it's hidden).
+	 */
+	public static long nextDrawable() {
+		long layer = MetalSurface.currentLayer();
+		return layer == 0 ? 0 : Native.layerNext(layer);
+	}
+
+	/** {library compile seconds, libraries, pipeline creation seconds, pipelines} since the start. */
+	public static double[] compileStats() {
+		return Native.compileStats();
+	}
+
+	/** Whether the backend runs on Metal 4 (-Dcadence.metal4=true and the device has it). */
+	public static boolean metal4() {
+		return Native.metal4();
+	}
+
 	public static long useBuffer(Object encoder, GpuBuffer buffer) {
 		return ((MetalEncoder) encoder).use(buffer).handle;
 	}
@@ -269,5 +350,10 @@ public final class MetalBridge {
 
 	public static void release(long handle) {
 		Native.release(handle);
+	}
+
+	/** Measurement only (the self-test's ab=finaldepth / ab=present2): see mcmetal.m bwFlags. Render thread. */
+	public static void bandwidthTest(int flags) {
+		Native.bwFlags(flags);
 	}
 }

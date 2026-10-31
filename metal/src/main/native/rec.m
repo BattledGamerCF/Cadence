@@ -178,6 +178,7 @@ static __typeof__(CMBlockBufferCopyDataBytes) *pCMCopy;
 static __typeof__(CMSampleBufferGetFormatDescription) *pCMFormat;
 static __typeof__(CMVideoFormatDescriptionGetH264ParameterSetAtIndex) *pCMParams;
 static __typeof__(CMSampleBufferGetSampleAttachmentsArray) *pCMAttachments;
+static CFStringRef kHevcMain, kHevcMain10;
 static CFStringRef kNotSync, kRealTime, kProfile, kHigh, kBitRate, kFrameRate, kKeyInterval, kReorder, kPrimaries, kTransfer, kMatrix, kRequireHw, kSpeed;
 
 static int vtLoad(char *err, int errCap) {
@@ -216,6 +217,8 @@ static int vtLoad(char *err, int errCap) {
 	KEY(kMatrix, vt, "kVTCompressionPropertyKey_YCbCrMatrix")
 	KEY(kRequireHw, vt, "kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder")
 	KEY(kSpeed, vt, "kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality")
+	KEY(kHevcMain, vt, "kVTProfileLevel_HEVC_Main_AutoLevel")
+	KEY(kHevcMain10, vt, "kVTProfileLevel_HEVC_Main10_AutoLevel")
 #undef FN
 #undef KEY
 	loaded = 1;
@@ -481,6 +484,12 @@ int mcr_vt_capture(RecVT *v, Enc *enc, id<MTLTexture> src, int64_t frame, const 
 		RecVT *vv = v;
 		[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
 			int ok = done.status == MTLCommandBufferStatusCompleted;
+			// (Metal 4: the residency set lets go of the pixel buffers' textures now; it held them about a second, longer than the
+			// encoder's 16-buffer pool lasts, and most ticks were dropped)
+			if (mc4On) {
+				mc4_unpin(yt);
+				mc4_unpin(uvt);
+			}
 			CFRelease(ty);
 			CFRelease(tuv);
 			dispatch_async(vv->q, ^{
@@ -527,4 +536,301 @@ int mcr_vt_close(RecVT *v) {
 	}
 	kill(v->ffmpeg, SIGTERM);
 	return -1;
+}
+
+// ---- Instant Replay (dev.cadence.metal.rec.Replay): the last N seconds kept, encoded, in memory ----
+// The same capture as the recorder's (rec_nv12_tex into an IOSurface pixel buffer, VideoToolbox's hardware H.264), but each
+// encoded frame is kept (a CMSampleBuffer, a few tens of KB) in a ring that drops whole one-second groups of pictures from its
+// front once they're older than N seconds; saving writes the ring to an mp4 with AVFoundation (loaded only then), nothing
+// re-encoded. Timestamps are the frames' real times, so the video plays at the speed the game ran.
+#include <os/lock.h>
+#import <AVFoundation/AVFoundation.h>
+
+static __typeof__(CMSampleBufferGetPresentationTimeStamp) *pCMPts;
+
+typedef struct {
+	Ctx *ctx;
+	id<MTLComputePipelineState> pso;
+	CVMetalTextureCacheRef cache;
+	CVPixelBufferPoolRef pool;
+	CFDictionaryRef aux;
+	VTCompressionSessionRef vt;
+	int w, h;
+	int codec;  // 0 H.264, 1 HEVC, 2 HEVC Main10 HLG (HDR)
+	double seconds;
+	dispatch_queue_t q;
+	os_unfair_lock lock;
+	CFMutableArrayRef ring;   // CMSampleBufferRef, oldest first
+	CFMutableArrayRef keys;   // kCFBooleanTrue for keyframes, parallel to ring
+	_Atomic int pending;
+	_Atomic int64_t encoded, dropped, failed;
+	double lastAt, offset;  // (render thread) the last capture's time, and the pauses taken out of the timestamps so far
+} Replay;
+
+static void replayFree(Replay *r) {
+	if (r->vt) { pVTInvalidate(r->vt); CFRelease(r->vt); }
+	if (r->ring) CFRelease(r->ring);
+	if (r->keys) CFRelease(r->keys);
+	if (r->pool) CVPixelBufferPoolRelease(r->pool);
+	if (r->cache) CFRelease(r->cache);
+	if (r->aux) CFRelease(r->aux);
+	[r->pso release];
+	if (r->q) dispatch_release(r->q);
+	free(r);
+}
+
+static double ptsSeconds(CMSampleBufferRef sb) {
+	CMTime t = pCMPts(sb);
+	return t.timescale > 0 ? (double) t.value / t.timescale : 0;
+}
+
+static void replayOutput(void *ref, void *frameRef, OSStatus status, VTEncodeInfoFlags flags, CMSampleBufferRef sb) {
+	Replay *r = ref;
+	(void) frameRef;
+	if (status != noErr || !sb || (flags & kVTEncodeInfo_FrameDropped)) {
+		atomic_fetch_add(&r->failed, 1);
+		return;
+	}
+	int key = 1;
+	CFArrayRef att = pCMAttachments(sb, false);
+	if (att && CFArrayGetCount(att) > 0) {
+		const void *notSync = NULL;
+		if (CFDictionaryGetValueIfPresent(CFArrayGetValueAtIndex(att, 0), kNotSync, &notSync) && notSync == kCFBooleanTrue) key = 0;
+	}
+	os_unfair_lock_lock(&r->lock);
+	CFArrayAppendValue(r->ring, sb);
+	CFArrayAppendValue(r->keys, key ? kCFBooleanTrue : kCFBooleanFalse);
+	// whole groups off the front while the second keyframe is already older than the window
+	double newest = ptsSeconds(sb);
+	for (;;) {
+		CFIndex n = CFArrayGetCount(r->ring), second = -1;
+		for (CFIndex i = 1; i < n; i++) if (CFArrayGetValueAtIndex(r->keys, i) == kCFBooleanTrue) { second = i; break; }
+		if (second < 0 || newest - ptsSeconds((CMSampleBufferRef) CFArrayGetValueAtIndex(r->ring, second)) < r->seconds) break;
+		CFArrayReplaceValues(r->ring, CFRangeMake(0, second), NULL, 0);
+		CFArrayReplaceValues(r->keys, CFRangeMake(0, second), NULL, 0);
+	}
+	os_unfair_lock_unlock(&r->lock);
+	atomic_fetch_add(&r->encoded, 1);
+}
+
+// codec: 0 H.264, 1 HEVC (half the size for the same picture), 2 HEVC Main10 in HLG (Cadence HDR's frame, highlights kept); the
+// media engine encodes each in hardware.
+Replay *mcrp_open(Ctx *ctx, const char *source, int w, int h, int fps, int64_t bitrate, double seconds, int codec, char *err, int errCap) {
+	@autoreleasepool {
+		if (vtLoad(err, errCap) != 0) return NULL;
+		void *cm = dlopen("/System/Library/Frameworks/CoreMedia.framework/CoreMedia", RTLD_NOW | RTLD_LOCAL);
+		if (!cm || !(pCMPts = dlsym(cm, "CMSampleBufferGetPresentationTimeStamp"))) {
+			snprintf(err, errCap, "missing CMSampleBufferGetPresentationTimeStamp");
+			return NULL;
+		}
+		MTLCompileOptions *o = [[MTLCompileOptions new] autorelease];
+		o.languageVersion = MTLLanguageVersion3_1;
+		NSError *e = nil;
+		id<MTLLibrary> lib = [[ctx->device newLibraryWithSource:[NSString stringWithUTF8String:source] options:o error:&e] autorelease];
+		id<MTLFunction> fn = lib ? [[lib newFunctionWithName:codec == 2 ? @"rec_p010_tex" : @"rec_nv12_tex"] autorelease] : nil;
+		id<MTLComputePipelineState> pso = fn ? [ctx->device newComputePipelineStateWithFunction:fn error:&e] : nil;
+		if (!pso) {
+			snprintf(err, errCap, "rec kernel: %s", e ? e.description.UTF8String : "no function");
+			return NULL;
+		}
+		Replay *r = calloc(1, sizeof(Replay));
+		r->codec = codec;
+		r->ctx = ctx;
+		r->pso = pso;
+		r->w = w;
+		r->h = h;
+		r->seconds = seconds;
+		r->lock = OS_UNFAIR_LOCK_INIT;
+		r->ring = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
+		r->keys = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
+		if (CVMetalTextureCacheCreate(NULL, NULL, ctx->device, NULL, &r->cache) != kCVReturnSuccess) {
+			snprintf(err, errCap, "CVMetalTextureCacheCreate failed");
+			replayFree(r);
+			return NULL;
+		}
+		NSDictionary *pb = @{
+			(id) kCVPixelBufferPixelFormatTypeKey: @(codec == 2 ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+			(id) kCVPixelBufferWidthKey: @(w), (id) kCVPixelBufferHeightKey: @(h),
+			(id) kCVPixelBufferIOSurfacePropertiesKey: @{}, (id) kCVPixelBufferMetalCompatibilityKey: @YES,
+		};
+		if (CVPixelBufferPoolCreate(NULL, (CFDictionaryRef) @{(id) kCVPixelBufferPoolMinimumBufferCountKey: @4}, (CFDictionaryRef) pb, &r->pool) != kCVReturnSuccess) {
+			snprintf(err, errCap, "CVPixelBufferPoolCreate failed");
+			replayFree(r);
+			return NULL;
+		}
+		r->aux = (CFDictionaryRef) [@{(id) kCVPixelBufferPoolAllocationThresholdKey: @8} retain];
+		OSStatus st = pVTCreate(NULL, w, h, codec ? kCMVideoCodecType_HEVC : kCMVideoCodecType_H264, (CFDictionaryRef) @{(id) kRequireHw: @YES}, NULL, NULL,
+			replayOutput, r, &r->vt);
+		if (st != noErr) {
+			snprintf(err, errCap, "VTCompressionSessionCreate (%s): %d", codec ? "HEVC" : "H.264", (int) st);
+			r->vt = NULL;
+			replayFree(r);
+			return NULL;
+		}
+		pVTSet(r->vt, kRealTime, kCFBooleanTrue);
+		pVTSet(r->vt, kProfile, codec == 2 ? kHevcMain10 : codec == 1 ? kHevcMain : kHigh);
+		pVTSet(r->vt, kReorder, kCFBooleanFalse);
+		cfSetInt(r->vt, kBitRate, bitrate);
+		cfSetInt(r->vt, kFrameRate, fps);
+		cfSetInt(r->vt, kKeyInterval, fps);  // (a group a second: the ring drops whole seconds)
+		pVTSet(r->vt, kPrimaries, codec == 2 ? kCVImageBufferColorPrimaries_ITU_R_2020 : kCVImageBufferColorPrimaries_ITU_R_709_2);
+		pVTSet(r->vt, kTransfer, codec == 2 ? kCVImageBufferTransferFunction_ITU_R_2100_HLG : kCVImageBufferTransferFunction_ITU_R_709_2);
+		pVTSet(r->vt, kMatrix, codec == 2 ? kCVImageBufferYCbCrMatrix_ITU_R_2020 : kCVImageBufferYCbCrMatrix_ITU_R_709_2);
+		pVTSet(r->vt, kSpeed, kCFBooleanTrue);
+		pVTPrepare(r->vt);
+		r->q = dispatch_queue_create("cadence.replay", DISPATCH_QUEUE_SERIAL);
+		return r;
+	}
+}
+
+// Render thread: this frame (src: the presented texture) converted into a pixel buffer on the frame's command buffer and
+// encoded once the GPU is done. 0, -2 when the pool is at its limit (frame skipped), -1 on failure.
+int mcrp_capture(Replay *r, Enc *enc, id<MTLTexture> src, const void *params, int paramsLength, int gridW, int gridH) {
+	if (!src || !(src.usage & MTLTextureUsageShaderRead)) return -1;
+	CVMetalTextureCacheFlush(r->cache, 0);
+	CVPixelBufferRef pb = NULL;
+	CVReturn cr = CVPixelBufferPoolCreatePixelBufferWithAuxAttributes(NULL, r->pool, r->aux, &pb);
+	if (cr == kCVReturnWouldExceedAllocationThreshold || !pb) {
+		atomic_fetch_add(&r->dropped, 1);
+		return -2;
+	}
+	int hdr = r->codec == 2;
+	CVBufferSetAttachment(pb, kCVImageBufferColorPrimariesKey, hdr ? kCVImageBufferColorPrimaries_ITU_R_2020 : kCVImageBufferColorPrimaries_ITU_R_709_2,
+		kCVAttachmentMode_ShouldPropagate);
+	CVBufferSetAttachment(pb, kCVImageBufferTransferFunctionKey, hdr ? kCVImageBufferTransferFunction_ITU_R_2100_HLG : kCVImageBufferTransferFunction_ITU_R_709_2,
+		kCVAttachmentMode_ShouldPropagate);
+	CVBufferSetAttachment(pb, kCVImageBufferYCbCrMatrixKey, hdr ? kCVImageBufferYCbCrMatrix_ITU_R_2020 : kCVImageBufferYCbCrMatrix_ITU_R_709_2,
+		kCVAttachmentMode_ShouldPropagate);
+	static CFDictionaryRef writable;
+	if (!writable) writable = (CFDictionaryRef) [@{(id) kCVMetalTextureUsage: @(MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite)} retain];
+	CVMetalTextureRef ty = NULL, tuv = NULL;
+	CVMetalTextureCacheCreateTextureFromImage(NULL, r->cache, pb, writable, hdr ? MTLPixelFormatR16Unorm : MTLPixelFormatR8Unorm, r->w, r->h, 0, &ty);
+	CVMetalTextureCacheCreateTextureFromImage(NULL, r->cache, pb, writable, hdr ? MTLPixelFormatRG16Unorm : MTLPixelFormatRG8Unorm, r->w / 2, r->h / 2, 1, &tuv);
+	id<MTLTexture> yt = ty ? CVMetalTextureGetTexture(ty) : nil, uvt = tuv ? CVMetalTextureGetTexture(tuv) : nil;
+	if (!yt || !uvt) {
+		if (ty) CFRelease(ty);
+		if (tuv) CFRelease(tuv);
+		CVPixelBufferRelease(pb);
+		return -1;
+	}
+	// (a pause in the frames, the window minimised or the Mac asleep, is taken out of the timestamps: it played as one frozen
+	// picture for the whole pause, BH4-08)
+	double now = CACurrentMediaTime();
+	if (r->lastAt > 0 && now - r->lastAt > 0.25) r->offset += now - r->lastAt - 1.0 / 60;
+	r->lastAt = now;
+	double at = now - r->offset;
+	@autoreleasepool {
+		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
+		id<MTLComputeCommandEncoder> ce = [cb computeCommandEncoder];
+		ce.label = @"Cadence replay";
+		[ce setComputePipelineState:r->pso];
+		[ce setTexture:src atIndex:0];
+		[ce setTexture:yt atIndex:1];
+		[ce setTexture:uvt atIndex:2];
+		[ce setBytes:params length:paramsLength atIndex:1];
+		[ce dispatchThreads:MTLSizeMake((NSUInteger) gridW, (NSUInteger) gridH, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+		[ce endEncoding];
+		atomic_fetch_add(&r->pending, 1);
+		Replay *rr = r;
+		[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
+			int ok = done.status == MTLCommandBufferStatusCompleted;
+			// (Metal 4: the residency set lets go of the pixel buffer's textures now, as the recorder does, BH4-11)
+			if (mc4On) {
+				mc4_unpin(yt);
+				mc4_unpin(uvt);
+			}
+			CFRelease(ty);
+			CFRelease(tuv);
+			dispatch_async(rr->q, ^{
+				if (ok) {
+					VTEncodeInfoFlags flags = 0;
+					CMTime pts = {(int64_t) (at * 1000000), 1000000, kCMTimeFlags_Valid, 0};
+					if (pVTEncode(rr->vt, pb, pts, noTime, NULL, NULL, &flags) != noErr) atomic_fetch_add(&rr->failed, 1);
+				}
+				CVPixelBufferRelease(pb);
+				atomic_fetch_sub(&rr->pending, 1);
+			});
+		}];
+	}
+	return 0;
+}
+
+// Not the render thread (it waits): the ring as it is now written to path (mp4). Returns the seconds saved, or -1 (err says why).
+double mcrp_save(Replay *r, const char *path, char *err, int errCap) {
+	@autoreleasepool {
+		dispatch_sync(r->q, ^{
+		});
+		pVTComplete(r->vt, noTime);  // (the frames still in the encoder)
+		os_unfair_lock_lock(&r->lock);
+		CFArrayRef frames = CFArrayCreateCopy(NULL, r->ring);
+		os_unfair_lock_unlock(&r->lock);
+		CFIndex n = CFArrayGetCount(frames);
+		if (n == 0) {
+			CFRelease(frames);
+			snprintf(err, errCap, "nothing recorded yet");
+			return -1;
+		}
+		void *av = dlopen("/System/Library/Frameworks/AVFoundation.framework/AVFoundation", RTLD_NOW | RTLD_LOCAL);
+		NSString **fileType = av ? dlsym(av, "AVFileTypeMPEG4") : NULL, **video = av ? dlsym(av, "AVMediaTypeVideo") : NULL;
+		Class W = NSClassFromString(@"AVAssetWriter"), I = NSClassFromString(@"AVAssetWriterInput");
+		if (!fileType || !video || !W || !I) {
+			CFRelease(frames);
+			snprintf(err, errCap, "AVFoundation unavailable");
+			return -1;
+		}
+		NSError *e = nil;
+		NSURL *url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path]];
+		AVAssetWriter *writer = [[[W alloc] initWithURL:url fileType:*fileType error:&e] autorelease];
+		CMSampleBufferRef first = (CMSampleBufferRef) CFArrayGetValueAtIndex(frames, 0);
+		AVAssetWriterInput *input = [[[I alloc] initWithMediaType:*video outputSettings:nil sourceFormatHint:pCMFormat(first)] autorelease];
+		input.expectsMediaDataInRealTime = NO;
+		if (!writer || ![writer canAddInput:input]) {
+			CFRelease(frames);
+			snprintf(err, errCap, "can't write %s: %s", path, e ? e.localizedDescription.UTF8String : "?");
+			return -1;
+		}
+		[writer addInput:input];
+		[writer startWriting];
+		[writer startSessionAtSourceTime:pCMPts(first)];
+		// (a writer that failed never becomes ready again: checked, and at most 10 s waited per frame, BH4-07)
+		for (CFIndex i = 0; i < n && writer.status == AVAssetWriterStatusWriting; i++) {
+			for (int k = 0; k < 10000 && !input.readyForMoreMediaData && writer.status == AVAssetWriterStatusWriting; k++) usleep(1000);
+			if (!input.readyForMoreMediaData || ![input appendSampleBuffer:(CMSampleBufferRef) CFArrayGetValueAtIndex(frames, i)]) break;
+		}
+		[input markAsFinished];
+		dispatch_semaphore_t done = dispatch_semaphore_create(0);
+		[writer finishWritingWithCompletionHandler:^{
+			dispatch_semaphore_signal(done);
+		}];
+		dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC));
+		dispatch_release(done);
+		double span = ptsSeconds((CMSampleBufferRef) CFArrayGetValueAtIndex(frames, n - 1)) - ptsSeconds(first);
+		CFRelease(frames);
+		if (writer.status != AVAssetWriterStatusCompleted) {
+			snprintf(err, errCap, "%s", writer.error ? writer.error.localizedDescription.UTF8String : "writing failed");
+			return -1;
+		}
+		return span;
+	}
+}
+
+// Counters: encoded, dropped (pool at its limit), failed, frames held.
+void mcrp_stats(Replay *r, int64_t *out) {
+	out[0] = atomic_load(&r->encoded);
+	out[1] = atomic_load(&r->dropped);
+	out[2] = atomic_load(&r->failed);
+	os_unfair_lock_lock(&r->lock);
+	out[3] = CFArrayGetCount(r->ring);
+	os_unfair_lock_unlock(&r->lock);
+}
+
+// Not the render thread: the GPU's last captures (at most 2 s), the encoder, the ring and everything with it let go.
+void mcrp_close(Replay *r) {
+	// (a capture still on the GPU after 10 s: left allocated rather than freed under its completion handler, BH4-17)
+	for (int i = 0; i < 1000 && atomic_load(&r->pending) > 0; i++) usleep(10000);
+	if (atomic_load(&r->pending) > 0) return;
+	dispatch_sync(r->q, ^{
+	});
+	pVTComplete(r->vt, noTime);
+	replayFree(r);
 }

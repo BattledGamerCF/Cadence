@@ -43,6 +43,7 @@ public final class Profile {
 		applied = true;
 		JvmDefaults.apply(gameDir()); // Cadence: first of all (may restart Java with the default arguments)
 		shaderPackSelected(); // before the profile's flags, so its explicit-wins rule keeps our hand-off
+		farTerrainSettings(); // Video Settings > Far Terrain, before the profile's flags (an explicit flag still wins)
 		applyFlags();
 		distantHorizonsOnOpenGl();
 		dev.cadence.metal.compat.CompatLayers.apply(); // after the flags (it may turn cadence.own off), before any is read
@@ -102,6 +103,90 @@ public final class Profile {
 	}
 
 	/**
+	 * Video Settings > Far Terrain (experimental): the far-terrain switches it stands for, read at launch (far terrain is wired
+	 * in at startup or not at all: off costs nothing). Saved by the screen as farTerrain.* in config/cadence-shaders.properties.
+	 * A -D flag or a key in config/cadence.properties wins over each. On sets the recommended profile's far-terrain set (mesh
+	 * renderer, seamless hand-off, screen-priority streaming, GPU publish, NEON noise, yield to the game's own chunks).
+	 */
+	private static void farTerrainSettings() {
+		Properties ui = new Properties(), ours = new Properties();
+		try {
+			Path cfg = Legacy.readable(gameDir().resolve("config"), Legacy.SHADERS_CONFIG, Legacy.SHADERS_CONFIG_OLD);
+			if (Files.isRegularFile(cfg)) try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
+				dev.cadence.metal.ConfigFiles.load(ui, r);
+			}
+			Path own = Legacy.readable(gameDir().resolve("config"), Legacy.CONFIG, Legacy.CONFIG_OLD);
+			if (Files.isRegularFile(own)) try (Reader r = Files.newBufferedReader(own, StandardCharsets.UTF_8)) {
+				dev.cadence.metal.ConfigFiles.load(ours, r);
+			}
+		} catch (IOException | RuntimeException e) {
+			return;
+		}
+		if (!"on".equalsIgnoreCase(ui.getProperty("farTerrain", "off").strip())) return;
+		java.util.Map<String, String> set = new java.util.LinkedHashMap<>();
+		set.put("cadence.lod", "true");
+		set.put("cadence.lod.render", "mesh");
+		set.put("cadence.lod.fade", "instant");
+		set.put("cadence.lod.handoff", "drawn");
+		set.put("cadence.lod.prio", "screen");
+		set.put("cadence.lod.publish", "gpu");
+		set.put("cadence.lod.nativeNoise", "neon");
+		set.put("cadence.lod.yield", "missing:0");
+		set.put("cadence.lod.handoffPush", "0.9995");
+		String distance = ui.getProperty("farTerrain.distance", "").strip();
+		if (distance.matches("\\d{2,4}")) set.put("cadence.lod.radius", Integer.toString(Math.max(dev.cadence.metal.lod.LodConfig.MIN_RADIUS, Math.min(dev.cadence.metal.lod.LodConfig.MAX_RADIUS, Integer.parseInt(distance)))));
+		switch (ui.getProperty("farTerrain.quality", "auto").strip().toLowerCase(java.util.Locale.ROOT)) {
+			case "low" -> set.put("cadence.lod.small", "true");
+			case "medium" -> set.put("cadence.lod.n", "1024");
+			case "high" -> set.put("cadence.lod.n", "2048");
+			// auto: by the Mac's memory (LodConfig.defaultN: Medium up to 16 GB, High above). It was Low on GPUs of 8 cores or
+			// fewer (the blockier terrain from ~190 blocks; Medium cost 4.0 ms of GPU on an 8-core M2 Air 200 blocks up); with
+			// level 0's near detail drawn only where a block is 4+ pixels (LodConfig.DETAIL_PX) Medium is 2.65 ms there, and full
+			// detail reaches 440 blocks instead of 190. The smallest GPUs (6 cores or fewer: the MacBook Neo's 5) keep Low:
+			// nothing measured there says Medium fits (BH6-03)
+			default -> {
+				int gpu = gpuCores();
+				if (gpu > 0 && gpu <= 6) set.put("cadence.lod.small", "true");
+			}
+		}
+		int cores = Runtime.getRuntime().availableProcessors();
+		switch (ui.getProperty("farTerrain.cpu", "balanced").strip().toLowerCase(java.util.Locale.ROOT)) {
+			case "low" -> set.put("cadence.lod.threads", "1");
+			case "high" -> set.put("cadence.lod.threads", Integer.toString(Math.max(2, cores - 2)));
+			default -> { }  // balanced: the cores the game and the GPU driver leave
+		}
+		if ("false".equalsIgnoreCase(ui.getProperty("farTerrain.generate", "true").strip())) set.put("cadence.lod.generate", "false");
+		if ("on".equalsIgnoreCase(ui.getProperty("farTerrain.meshShaders", "off").strip())) set.put("cadence.lod.meshShader", "true");
+		if ("false".equalsIgnoreCase(ui.getProperty("farTerrain.trees", "true").strip())) {
+			set.put("cadence.lod.trees", "false");
+			set.put("cadence.lod.plants", "false");
+			set.put("cadence.lod.treeLevels", "0");
+		}
+		for (String look : new String[] {"brightness", "saturation", "curvature"}) {
+			String v = ui.getProperty("farTerrain." + look, "").strip();
+			if (v.matches("[0-9]+(\\.[0-9]+)?")) set.put("cadence.lod." + look, v);
+		}
+		switch (ui.getProperty("farTerrain.fog", "normal").strip().toLowerCase(java.util.Locale.ROOT)) {
+			case "light" -> set.put("cadence.lod.haze", "2.0");
+			case "off" -> {
+				set.put("cadence.lod.haze", "8.0");
+				set.put("cadence.lod.fogStart", "0.97");
+			}
+			default -> { }
+		}
+		StringBuilder applied = new StringBuilder();
+		for (var e : set.entrySet()) {
+			String k = e.getKey();
+			if (System.getProperty(k) != null || ours.getProperty(k) != null) continue;
+			System.setProperty(k, e.getValue());
+			if (!k.equals("cadence.lod.render") && !k.startsWith("cadence.lod.fade") && !k.startsWith("cadence.lod.handoff") && !k.startsWith("cadence.lod.prio")
+				&& !k.startsWith("cadence.lod.publish") && !k.startsWith("cadence.lod.nativeNoise") && !k.startsWith("cadence.lod.yield"))
+				applied.append(' ').append(k.substring("cadence.".length())).append('=').append(e.getValue());
+		}
+		System.out.println("[cadence] Far Terrain (experimental) on from Video Settings:" + applied);
+	}
+
+	/**
 	 * Cadence: whether this launch loads the shader loader's hooks. auto (the default) and instant: always, so packs switch in
 	 * game, and our own faster terrain still draws whenever no pack is on (it steps aside while one is: OwnTerrain.packActive;
 	 * before that, auto chose one or the other at launch and switching needed a restart); restart: only when a pack is on at
@@ -124,13 +209,18 @@ public final class Profile {
 	 * then stops at startup ("API doesn't match"). Then dev.cadence.metal defaults to false (OpenGL, exactly as -Dcadence.metal=false;
 	 * no own renderer). An explicit dev.cadence.metal wins. Without DH nothing here runs.
 	 */
+	/** Iris itself, not Cadence's optional Iris provider (mod id iris, a version ending +cadence). */
+	public static boolean realIris(net.fabricmc.loader.api.FabricLoader loader) {
+		return loader.getModContainer("iris").map(c -> !c.getMetadata().getVersion().getFriendlyString().contains("+cadence")).orElse(false);
+	}
+
 	private static void distantHorizonsOnOpenGl() {
 		if (System.getProperty("cadence.metal") != null) return;
 		String why;
 		try {
 			net.fabricmc.loader.api.FabricLoader loader = net.fabricmc.loader.api.FabricLoader.getInstance();
 			if (!loader.isModLoaded("distanthorizons")) return;
-			why = loader.isModLoaded("iris") ? "with Iris" : dhOpenGlEngine() ? "set to its OpenGL renderer" : null;
+			why = realIris(loader) ? "with Iris" : dhOpenGlEngine() ? "set to its OpenGL renderer" : null;
 		} catch (Throwable t) {
 			return;
 		}

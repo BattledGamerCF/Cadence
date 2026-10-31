@@ -29,20 +29,22 @@ import org.lwjgl.system.MemoryUtil;
  */
 final class MetalRenderPass implements RenderPassBackend {
 	/** Cadence: a shader pack's pass can have buffers (up to PUSH_CONSTANTS_INDEX) plus textures (Metal has 128 slots). */
-	private static final int MAX_UNIFORMS = MetalConst.PUSH_CONSTANTS_INDEX + 128;
+	static final int MAX_UNIFORMS = MetalConst.PUSH_CONSTANTS_INDEX + 128;
 
 	private final MetalEncoder encoder;
 	private final long enc;
 	private final int areaX, areaY, areaWidth, areaHeight;
 	private @Nullable MetalPipeline pipeline;
-	private final Object[] pending = new Object[MAX_UNIFORMS];
-	private final Object[] bound = new Object[MAX_UNIFORMS];
+	// Cadence: the encoder's (MetalEncoder.uniformArrays), cleared and handed to the next pass when this one ends: a pass is
+	// opened many times a frame, and these were most of what each one allocated
+	private final Object[] pending;
+	private final Object[] bound;
 	private int dirtyUpTo;
 	/** Metal draw calls issued, multi-draws counted per element, and indices drawn (terrain multi-draws only counted while tracing); for the trace. */
 	int draws;
 	long indices;
 	/** Texel buffers need an MTLTexture view per (buffer, range); build each once per pass. */
-	private final Map<GpuBufferSlice, Long> texelViews = new HashMap<>();
+	private @Nullable Map<GpuBufferSlice, Long> texelViews;  // (made by the first texel buffer bound; most passes have none)
 	/** Last vertex buffer in slot 0, for MetalTerrain and MetalProbe. */
 	private @Nullable GpuBufferSlice vertexBuffer0;
 	/** Set while the current pipeline is Sodium terrain with a pulled twin: its draws go to MetalTerrain, not the encoder. */
@@ -53,7 +55,8 @@ final class MetalRenderPass implements RenderPassBackend {
 	/** What the frontend set in the encoder besides uniforms, for MetalTerrain.OCC to put back after it splits the pass. */
 	private final int[] scissor = new int[4];
 	private final @Nullable GpuBufferSlice[] vertexBuffers = new GpuBufferSlice[4];
-	private final byte[] pushConstants = new byte[128];
+	/** The pass's push constants, kept for binding again after a split (MetalTerrain.OCC only: made then, 128 bytes a pass otherwise). */
+	private byte @Nullable [] pushConstants;
 	private int pushConstantsLength;
 
 	private final boolean hasDepth;
@@ -62,9 +65,14 @@ final class MetalRenderPass implements RenderPassBackend {
 	/** With a delegate: the current pipeline's uniform slots (index -> slot, -1 unbound); null drops its draws. */
 	private int @Nullable [] slots;
 
+	/** HDR: the pass's first colour attachment is the float frame (MetalTexture.floatFrame): pipelines bind their float variant. */
+	boolean floatColor;
+
 	MetalRenderPass(MetalEncoder encoder, boolean hasDepth, int x, int y, int width, int height, @Nullable PassDelegate delegate) {
 		this.encoder = encoder;
 		this.enc = encoder.enc;
+		this.pending = encoder.uniformArray();
+		this.bound = encoder.uniformArray();
 		this.hasDepth = hasDepth;
 		this.delegate = delegate;
 		this.areaX = x;
@@ -106,7 +114,8 @@ final class MetalRenderPass implements RenderPassBackend {
 		if (!p.sameSlots(this.pipeline)) Arrays.fill(this.bound, null);
 		this.pipeline = p;
 		this.recording = record ? p : null;
-		Native.pipeline(this.enc, this.hasDepth ? p.withDepth : p.withoutDepth, p.depthState, p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
+		MetalPipeline q = this.floatColor ? p.forFloat() : p;  // (HDR: the variant made for the float frame)
+		Native.pipeline(this.enc, this.hasDepth ? q.withDepth : q.withoutDepth, q.depthState, q.cull ? 1 : 0, q.wireframe ? 1 : 0, q.depthBiasConstant, q.depthBiasSlope, q.primitive);
 		if (p.storage != null) MetalStorage.bind(this.enc, p.storage);  // Cadence: a shader pack's images and buffer objects
 		Arrays.fill(this.pending, 0, p.uniforms.size(), null);
 		this.dirtyUpTo = p.uniforms.size();
@@ -124,13 +133,17 @@ final class MetalRenderPass implements RenderPassBackend {
 			this.slots = this.delegate.setPipeline(this.enc, p, p.uniforms);
 			return;
 		}
-		Native.pipeline(this.enc, this.hasDepth ? p.withDepth : p.withoutDepth, p.depthState, p.cull ? 1 : 0, p.wireframe ? 1 : 0, p.depthBiasConstant, p.depthBiasSlope, p.primitive);
+		MetalPipeline q = this.floatColor ? p.forFloat() : p;  // (HDR: the variant made for the float frame)
+		Native.pipeline(this.enc, this.hasDepth ? q.withDepth : q.withoutDepth, q.depthState, q.cull ? 1 : 0, q.wireframe ? 1 : 0, q.depthBiasConstant, q.depthBiasSlope, q.primitive);
 	}
 
 	/** Called by the encoder when the frontend ends the pass. */
 	void end() {
 		this.flushTerrain(false);
 		if (this.delegate != null) this.delegate.end(this.enc);
+		Arrays.fill(this.pending, null);
+		Arrays.fill(this.bound, null);
+		this.encoder.returnUniformArrays(this.pending, this.bound);
 	}
 
 	/** With a delegate: false when this draw must not be encoded (pipeline not taken over, or the delegate says so). */
@@ -175,7 +188,7 @@ final class MetalRenderPass implements RenderPassBackend {
 		if (this.indexHandle != 0) Native.index(this.enc, this.indexHandle, this.indexInt);
 		if (this.pushConstantsLength > 0) {
 			try (MemoryStack stack = MemoryStack.stackPush()) {
-				ByteBuffer bytes = stack.malloc(this.pushConstantsLength).put(this.pushConstants, 0, this.pushConstantsLength).flip();
+				ByteBuffer bytes = stack.malloc(this.pushConstantsLength).put(Objects.requireNonNull(this.pushConstants), 0, this.pushConstantsLength).flip();
 				Native.bytes(this.enc, MetalConst.PUSH_CONSTANTS_INDEX, MemoryUtil.memAddress(bytes), this.pushConstantsLength);
 			}
 		}
@@ -194,7 +207,7 @@ final class MetalRenderPass implements RenderPassBackend {
 		}
 		if (this.pushConstantsLength == 0) return;
 		try (MemoryStack stack = MemoryStack.stackPush()) {
-			ByteBuffer bytes = stack.malloc(this.pushConstantsLength).put(this.pushConstants, 0, this.pushConstantsLength).flip();
+			ByteBuffer bytes = stack.malloc(this.pushConstantsLength).put(Objects.requireNonNull(this.pushConstants), 0, this.pushConstantsLength).flip();
 			Native.bytes(this.enc, MetalConst.PUSH_CONSTANTS_INDEX, MemoryUtil.memAddress(bytes), this.pushConstantsLength);
 		}
 	}
@@ -229,7 +242,8 @@ final class MetalRenderPass implements RenderPassBackend {
 			return;
 		}
 		Native.bytes(this.enc, MetalConst.PUSH_CONSTANTS_INDEX, MemoryUtil.memAddress(value), value.remaining());
-		if (MetalTerrain.OCC && value.remaining() <= this.pushConstants.length) {
+		if (MetalTerrain.OCC && value.remaining() <= 128) {
+			if (this.pushConstants == null) this.pushConstants = new byte[128];
 			this.pushConstantsLength = value.remaining();
 			value.get(value.position(), this.pushConstants, 0, this.pushConstantsLength);
 		}
@@ -313,7 +327,7 @@ final class MetalRenderPass implements RenderPassBackend {
 				GpuBufferSlice slice = (GpuBufferSlice) value;
 				var format = Objects.requireNonNull(uniform.gpuFormat());
 				long view = TexelViews.ON && TexelViews.active ? TexelViews.get(this.encoder, slice, MetalConst.pixelFormat(format), format.blockSize()) // opt-in
-					: this.texelViews.computeIfAbsent(slice, s -> {
+					: (this.texelViews != null ? this.texelViews : (this.texelViews = new HashMap<>())).computeIfAbsent(slice, s -> {
 					long handle = Native.textureBuffer(this.encoder.ctx, this.encoder.use(s.buffer()).handle, MetalConst.pixelFormat(format), s.offset(),
 						s.length(), format.blockSize());
 					this.encoder.releaseLater(handle);

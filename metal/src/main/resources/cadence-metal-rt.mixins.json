@@ -1,0 +1,7 @@
+{
+	"required": false,
+	"package": "dev.cadence.metal.mixin.rt",
+	"compatibilityLevel": "JAVA_25",
+	"client": ["RtCameraMixin", "RtProjectionMixin", "RtSkyMixin", "RtSectionMixin"],
+	"injectors": { "defaultRequire": 0 }
+}

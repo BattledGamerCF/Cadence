@@ -43,6 +43,12 @@ public final class PackTexture implements AutoCloseable {
     }
   }
 
+  /** Cadence: a texture made elsewhere (a raw volume texture, MetalVolume), sampled whole; owned and closed by this. */
+  public PackTexture(GpuDevice device, GpuTexture texture) {
+    this.texture = texture;
+    this.sampled = device.createTextureView(texture);
+  }
+
   public GpuTextureView level(int level) {
     return levels.get(level);
   }

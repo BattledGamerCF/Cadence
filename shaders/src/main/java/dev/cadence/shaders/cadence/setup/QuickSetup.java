@@ -3,8 +3,8 @@ package dev.cadence.shaders.cadence.setup;
 import dev.cadence.shaders.cadence.system.HeatControl;
 
 import dev.cadence.metal.MacSystem;
-import dev.cadence.shaders.cadence.CadenceSettings;
-import dev.cadence.shaders.cadence.ShaderToggle;
+import dev.cadence.shaders.cadence.ui.CadenceSettings;
+import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import dev.cadence.shaders.cadence.mesh.SmartLeaves;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,6 +30,8 @@ public final class QuickSetup {
 	/** The reference Mac's results (MacBook Air M2, 8-core GPU, 8 GB; 2026-10-14). */
 	private static final double REF_SCENE_MS = 5.80, REF_CHAIN_MS = 13.42, REF_CPU_MS = 120.0;
 	private static final Pattern CHIP = Pattern.compile("M(\\d+)(?:\\s+(Pro|Max|Ultra))?", Pattern.CASE_INSENSITIVE);
+	/** An iPhone-class chip in a Mac ("Apple A18 Pro"): its GPU generation as the M-series one of the same design. */
+	private static final Pattern A_CHIP = Pattern.compile("\\bA(\\d{2})\\b");
 
 	/** While the test runs the game draws at most 10 fps (FramerateCapMixin), so the test has the Mac to itself. */
 	public static volatile boolean testing;
@@ -55,8 +57,18 @@ public final class QuickSetup {
 		if (m.find()) {
 			gen = Integer.parseInt(m.group(1));
 			variant = m.group(2) == null ? "" : m.group(2).substring(0, 1).toUpperCase(Locale.ROOT) + m.group(2).substring(1).toLowerCase(Locale.ROOT);
+		} else {
+			// A14 = M1's design, A15/A16 = M2's, A17 Pro = M3's, A18 = M4's, A19 = M5's (the table's per-core speed; base tier)
+			Matcher a = A_CHIP.matcher(chip);
+			if (a.find()) {
+				int n = Integer.parseInt(a.group(1));
+				gen = n <= 14 ? 1 : n <= 16 ? 2 : n - 14;
+			}
 		}
-		int p = (int) MacSystem.sysLong("hw.perflevel0.physicalcpu"), e = (int) MacSystem.sysLong("hw.perflevel1.physicalcpu");
+		// (fast = every tier but efficiency: Super + Performance on an M6; the old perflevel0/1 read took the M6's middle tier for efficiency)
+		int e = dev.cadence.shaders.cadence.system.CoreLayout.efficiency(), p = 0;
+		for (var t : dev.cadence.shaders.cadence.system.CoreLayout.tiers()) p += t.cores();
+		p -= e;
 		long mem = MacSystem.sysLong("hw.memsize");
 		int gpu = MacSystem.gpuCores();
 		if (gpu <= 0) gpu = switch (variant) {
@@ -171,7 +183,7 @@ public final class QuickSetup {
 			out.add(new Change("Performance", CadenceSettings.current().label(), preset.label(),
 				switch (preset) {
 					case BALANCED -> "sharp, eases off when needed";
-					case MAX_FPS -> "half-resolution world (crisp), the most fps";
+					case MAX_FPS -> "Retina off, about twice the fps (next launch)";
 					default -> "full quality";
 				}, () -> CadenceSettings.apply(preset)));
 		HeatControl.Cooling cooling = preset == CadenceSettings.Preset.QUALITY || preset == CadenceSettings.Preset.MAX_FPS ? HeatControl.Cooling.OFF
@@ -180,6 +192,19 @@ public final class QuickSetup {
 			out.add(new Change("Cooling", HeatControl.cooling().label, cooling.label,
 				cooling == HeatControl.Cooling.PERFORMANCE ? (mac.fanless() ? "full speed until macOS slows it" : "lets the fans work")
 					: cooling == HeatControl.Cooling.OFF ? (preset == CadenceSettings.Preset.MAX_FPS ? "no limits" : "full quality") : "steady and cool", () -> HeatControl.setCooling(cooling)));
+		// Far Distance, when the player has Far Terrain on (it stays an opt-in): by GPU tier, held to 1,024 chunks with 8 GB
+		// (M2 Air, 8 GPU cores, render distance 16, 1,024 chunks at Medium: 0.4 ms a frame while turning; docs/BENCHMARKS.md)
+		if (dev.cadence.shaders.cadence.ui.FarTerrainScreen.chosen()) {
+			int far = new int[] {512, 1024, 2048, 4096, 4096}[tier - 1];
+			if (mac.memoryGB() <= 8) far = Math.min(far, 1024);
+			else if (mac.memoryGB() <= 16) far = Math.min(far, 2048);
+			int farNow = dev.cadence.shaders.cadence.ui.FarTerrainScreen.distance();
+			if (goal == Goal.MAX_FPS) far = Math.min(far, farNow);  // (as Render Distance: Max FPS never asks for a longer view)
+			final int farTo = far;
+			if (farNow != far)
+				out.add(new Change("Far Distance", farNow + " chunks", far + " chunks", far > farNow ? "your Mac can show more" : "smoother",
+					() -> dev.cadence.shaders.cadence.ui.FarTerrainScreen.setDistance(farTo)));
+		}
 		boolean smart = mac.fanless() || tier <= 2;
 		if (smart != SmartLeaves.enabled())
 			out.add(new Change("Leaves", SmartLeaves.enabled() ? "Smart" : "Detailed", smart ? "Smart" : "Detailed",

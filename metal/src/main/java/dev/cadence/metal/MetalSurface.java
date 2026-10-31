@@ -32,6 +32,8 @@ final class MetalSurface implements GpuSurfaceBackend {
 	 * paced frame shown more than half a refresh after the refresh it was aimed at adds lead, a frame on time takes a little away.
 	 */
 	static final boolean PACE_ADAPT = Boolean.getBoolean("cadence.metal.paceAdapt");
+	/** The layer marked opaque (the compositor skips the blend; full screen can go direct to display); -Dcadence.metal.opaque=false: as before. */
+	static final boolean OPAQUE = !"false".equals(System.getProperty("cadence.metal.opaque"));
 	private boolean paced;
 	private final long ctx;
 	private final MetalEncoder encoder;
@@ -45,12 +47,50 @@ final class MetalSurface implements GpuSurfaceBackend {
 		this.layer = SDLMetal.SDL_Metal_GetLayer(this.view);
 	}
 
+	/** The window's surface (one per game) and its last configuration, for the vsync override. Render thread. */
+	private static MetalSurface current;
+
+	/** The window's CAMetalLayer (0 before the first configure). */
+	static long currentLayer() {
+		MetalSurface s = current;
+		return s == null ? 0 : s.layer;
+	}
+	private GpuSurface.Configuration lastConfig;
+	/** Render Max FPS: no vsync while it's on, whatever the option says (MetalBridge.uncappedPresent). */
+	private static boolean immediate;
+
+	/** Presents latched to the display's refreshes (FramePacing: a frame cap at the display's rate), whatever the VSync option. */
+	private static boolean sync;
+
+	static void sync(boolean on) {
+		if (sync == on) return;
+		sync = on;
+		MetalSurface s = current;
+		if (s != null && s.lastConfig != null) s.configure(s.lastConfig);
+	}
+
+	/** Vsync off (on: true) or back to the option (false); applied at once. Render thread. */
+	static void immediate(boolean on) {
+		if (immediate == on) return;
+		immediate = on;
+		MetalSurface s = current;
+		if (s != null && s.lastConfig != null) s.configure(s.lastConfig);
+	}
+
 	@Override
 	public void configure(GpuSurface.Configuration config) {
-		boolean vsync = config.presentMode() == GpuSurface.PresentMode.FIFO;
+		current = this;
+		this.lastConfig = config;
+		boolean vsync = config.presentMode() == GpuSurface.PresentMode.FIFO && !immediate;
 		this.paced = !vsync && PACE;
 		if (PACE_ADAPT) Native.paceAdapt(this.paced ? 1 : 0);
-		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || PACE_SYNC && this.paced ? 1 : 0) | DRAWABLES << 8);
+		Native.layerConfigure(this.ctx, this.layer, config.width(), config.height(), (vsync || (PACE_SYNC || sync && !immediate) && this.paced ? 1 : 0) | DRAWABLES << 8
+			| (Retina.on() ? 0 : 1 << 16) | (OPAQUE ? 0 : 1 << 17) | (Hdr.layerHdr() ? 1 << 18 : 0));
+	}
+
+	/** The last configuration again (HDR changed the layer's format). */
+	void reconfigure() {
+		if (this.lastConfig != null) this.configure(this.lastConfig);
 	}
 
 	@Override
@@ -64,10 +104,16 @@ final class MetalSurface implements GpuSurfaceBackend {
 
 	@Override
 	public void blitFromTexture(CommandEncoderBackend commandEncoder, GpuTextureView textureView) {
+		Hdr.frame(this);
 		// cadence.rec hook: the opt-in recorder (-Dcadence.rec, dev.cadence.metal.rec) takes the finished frame, GUI included. Rec.ON is a constant false without it.
 		if (dev.cadence.metal.rec.Rec.ON) dev.cadence.metal.rec.Rec.frame(this.encoder, textureView);
+		// (Instant Replay: nothing unless it's on; not while Render Max FPS presents its own frame, which this isn't, BH4-04)
+		if (!dev.cadence.metal.record.Record.active()) dev.cadence.metal.rec.Replay.frame(this.encoder, textureView);
 		long t0 = WaitStats.ON ? System.nanoTime() : 0;
-		if (this.paced && !Native.pace(PACE_MARGIN_S)) {
+		// Frame Generation: every real frame is presented (the cap times them), Smooth's generated one first
+		boolean fg = dev.cadence.metal.framegen.FrameGen.running() && !MetalEncoder.PRESENT_ACQUIRE;
+		if (fg) dev.cadence.metal.framegen.FrameGen.beforePresent(((MetalTexture.View) textureView).handle);
+		if (!fg && this.paced && !Native.pace(PACE_MARGIN_S)) {
 			if (WaitStats.ON) WaitStats.wait(WaitStats.PACE, System.nanoTime() - t0, 0);
 			return;
 		}
@@ -86,7 +132,9 @@ final class MetalSurface implements GpuSurfaceBackend {
 		}
 		if (WaitStats.ON) WaitStats.wait(WaitStats.DRAWABLE, System.nanoTime() - t1, 0);
 		if (drawable == 0) return; // no drawable (window hidden): skip the frame's present
-		this.encoder.presentTexture(drawable, textureView);
+		long record = dev.cadence.metal.record.Record.presentHandle();
+		if (record != 0) this.encoder.presentHandle(drawable, record, dev.cadence.metal.record.Record.presentFence());
+		else this.encoder.presentTexture(drawable, textureView);
 		this.encoder.afterGpuFinishes(() -> Native.release(drawable));
 	}
 

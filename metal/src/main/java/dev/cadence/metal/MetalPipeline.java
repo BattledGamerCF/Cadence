@@ -33,7 +33,7 @@ import static org.lwjgl.util.spvc.Spvc.*;
  * Resource slots are fixed: uniform i lives in buffer/texture/sampler slot i, push constants in slot 26, vertex
  * buffers from slot 27. Vertex Y is flipped so render targets keep the same row order as OpenGL and Vulkan.
  */
-final class MetalPipeline implements BackendRenderPipeline {
+public final class MetalPipeline implements BackendRenderPipeline {
 	// -Dcadence.metal.gpuCount[=PATH] (measurement only, mcmetal.m): pipelines are named for the per-pipeline counts
 	static final String GPU_COUNT_PATH = gpuCountPath();
 	static final boolean GPU_COUNT = GPU_COUNT_PATH != null;
@@ -153,6 +153,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 		this.depthState = depthState;
 		this.depthCompare = depthCompare;
 		this.name = info.name();
+		this.info = info;
 		this.uniforms = info.uniforms();
 		this.cull = info.cull();
 		this.wireframe = info.polygonMode() == PolygonMode.WIREFRAME;
@@ -165,7 +166,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 	/** Time spent creating pipelines so far, by step, for the bench's startup breakdown (read reflectively). */
 	private static long compiled, translateNs, libraryNs, stateNs;
 
-	static synchronized Map<String, Object> compileStats() {
+	public static synchronized Map<String, Object> compileStats() {
 		return Map.of("count", compiled, "translateMs", translateNs / 1e6, "libraryMs", libraryNs / 1e6, "stateMs", stateNs / 1e6, "mslCacheHits", mslHits, "mslCacheMismatches", mslMismatches);
 	}
 
@@ -179,8 +180,11 @@ final class MetalPipeline implements BackendRenderPipeline {
 			int[] slots = packSlots(info);
 			MetalSampler[] constexpr = constexprSamplers(info, slots);
 			java.util.List<MetalStorage.Slot> storage = info.name().startsWith(PACK_NAMESPACE) ? MetalStorage.current() : null;
-			Translated v = translate(vertex.module(), info.uniforms().size(), slots, constexpr, storage);
-			Translated f = translate(fragment.module(), info.uniforms().size(), slots, constexpr, storage);
+			// Cadence (NativeShaders): a vanilla pipeline with a hand-written Metal program skips the translation
+			NativeShaders.Source nat = slots == null && storage == null ? NativeShaders.source(info) : null;
+			boolean isNative = nat != null && nat.ok();
+			Translated v = isNative ? new Translated(nat.msl(), "native_vs") : translate(vertex.module(), info.uniforms().size(), slots, constexpr, storage);
+			Translated f = isNative ? new Translated(nat.msl(), "native_fs") : translate(fragment.module(), info.uniforms().size(), slots, constexpr, storage);
 			if (DUMP_DIR != null) dump(info.name(), v, f);
 			if (OVERRIDE_DIR != null) {
 				v = override(info.name() + ".vs.metal", v);
@@ -192,31 +196,68 @@ final class MetalPipeline implements BackendRenderPipeline {
 			}
 			t1 = System.nanoTime();
 			int[] modes = mathModes(info, fragment);
+			LAST_MADE = info.name();
 			if (storage != null) { // Cadence: images and buffer objects: MSL 3.1 (texture atomics)
 				if (modes == null) modes = new int[] {MATH_SAFE | INVARIANT, MATH_SAFE | INVARIANT};
 				modes = new int[] {modes[0] | MSL_31, modes[1] | MSL_31};
 			}
-			vlib = library(ctx, v.msl, modes == null ? -1 : modes[0], err);
-			if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
-			flib = library(ctx, f.msl, modes == null ? -1 : modes[1], err);
-			if (flib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
-			t2 = System.nanoTime();
-			long vname = MemoryUtil.memAddress(stack.UTF8(v.entry)), fname = MemoryUtil.memAddress(stack.UTF8(f.entry));
+			long withDepth = 0, withoutDepth = 0;
 			DepthStencilState depth = info.depthStencilState();
-			if (GPU_COUNT) Native.gpuCountLabel(info.name());  // -Dcadence.metal.gpuCount: names the per-pipeline counts
-			long withDepth = pipelineNewCounted(ctx, vlib, vname, flib, fname, describe(stack, info, true, true), err, 4096);
-			if (withDepth == 0) throw new IllegalStateException(info.name() + ": " + MemoryUtil.memUTF8(err));
-			long withoutDepth = 0;
-			if (depth == null) {
-				if (GPU_COUNT) Native.gpuCountLabel(info.name() + " (no depth)");
-				withoutDepth = pipelineNewCounted(ctx, vlib, vname, flib, fname, describe(stack, info, false, true), err, 4096);
-				if (withoutDepth == 0) throw new IllegalStateException(info.name() + ": " + MemoryUtil.memUTF8(err));
+			for (int attempt = 0; ; attempt++) {
+				// (a native program is one source with both stages: compiled once, both functions from the one library)
+				vlib = library(ctx, v.msl, modes == null ? -1 : modes[0], err);
+				if (vlib != 0 && !isNative) flib = library(ctx, f.msl, modes == null ? -1 : modes[1], err);
+				long fragmentLib = isNative ? vlib : flib;
+				String failed = vlib == 0 || fragmentLib == 0 ? "didn't compile" : null;
+				if (failed == null) {
+					t2 = System.nanoTime();
+					long vname = MemoryUtil.memAddress(stack.UTF8(v.entry)), fname = MemoryUtil.memAddress(stack.UTF8(f.entry));
+					if (GPU_COUNT) Native.gpuCountLabel(info.name());  // -Dcadence.metal.gpuCount: names the per-pipeline counts
+					withDepth = pipelineNewCounted(ctx, vlib, vname, fragmentLib, fname, describe(stack, info, true, true), err, 4096);
+					if (withDepth != 0 && depth == null) {
+						if (GPU_COUNT) Native.gpuCountLabel(info.name() + " (no depth)");
+						withoutDepth = pipelineNewCounted(ctx, vlib, vname, fragmentLib, fname, describe(stack, info, false, true), err, 4096);
+					}
+					if (withDepth == 0 || depth == null && withoutDepth == 0) failed = "made no pipeline";
+				}
+				if (failed == null) break;
+				if (!isNative || attempt > 0) {
+					if (withDepth != 0) Native.release(withDepth);
+					if (vlib == 0) throw new IllegalStateException(info.name() + " vertex: " + MemoryUtil.memUTF8(err) + "\n" + v.msl);
+					if (fragmentLib == 0) throw new IllegalStateException(info.name() + " fragment: " + MemoryUtil.memUTF8(err) + "\n" + f.msl);
+					throw new IllegalStateException(info.name() + ": " + MemoryUtil.memUTF8(err));
+				}
+				// a native program that doesn't compile, or whose pipeline Metal won't make: said once, translated as before
+				System.out.println("[cadence] native shaders: " + info.name() + " " + failed + ", translated instead: " + MemoryUtil.memUTF8(err));
+				NativeShaders.failed(nat.msl());
+				if (withDepth != 0) Native.release(withDepth);
+				withDepth = withoutDepth = 0;
+				if (vlib != 0) Native.release(vlib);
+				if (flib != 0) Native.release(flib);
+				vlib = flib = 0;
+				isNative = false;
+				v = translate(vertex.module(), info.uniforms().size(), slots, constexpr, storage);
+				f = translate(fragment.module(), info.uniforms().size(), slots, constexpr, storage);
+				// (the same debugging hooks as the first attempt)
+				if (DUMP_DIR != null) dump(info.name(), v, f);
+				if (OVERRIDE_DIR != null) {
+					v = override(info.name() + ".vs.metal", v);
+					f = override(info.name() + ".fs.metal", f);
+				}
+				if (UNCACHED) {
+					v = new Translated("// " + UNCACHED_NONCE + "\n" + v.msl, v.entry);
+					f = new Translated("// " + UNCACHED_NONCE + "\n" + f.msl, f.entry);
+				}
 			}
 			long pulled = 0;
 			int compare = depth == null ? 7 : MetalConst.compare(depth.depthTest());
 			long depthState = Native.depthStateNew(ctx, compare, depth != null && depth.writeDepth() ? 1 : 0);
 			MetalPipeline pipeline = new MetalPipeline(encoder, withDepth, withoutDepth, pulled, depthState, compare, info, slots);
 			pipeline.storage = storage;
+			// (HDR's float variant is compiled from these later: the game's SPIR-V may be gone by then)
+			pipeline.sources = new String[] {v.msl, v.entry, f.msl, f.entry};
+			pipeline.modes = modes;
+			pipeline.isNative = isNative;
 			return pipeline;
 		} finally {
 			if (vlib != 0) Native.release(vlib);
@@ -239,13 +280,21 @@ final class MetalPipeline implements BackendRenderPipeline {
 	 */
 	private static long library(long ctx, String msl, int mode, long err) {
 		java.nio.ByteBuffer source = MemoryUtil.memUTF8(msl);
+		long t0 = System.nanoTime();
 		try {
 			long address = MemoryUtil.memAddress(source);
 			return mode < 0 ? Native.libraryNew(ctx, address, err, 4096) : Native.libraryNewMode(ctx, address, mode, err, 4096);
 		} finally {
+			LIBRARY_NS.addAndGet(System.nanoTime() - t0);
 			MemoryUtil.memFree(source);
 		}
 	}
+
+	/** Time spent making shader libraries (from source) and pipeline states, summed over every thread, for the stall recorder. */
+	static final java.util.concurrent.atomic.AtomicLong LIBRARY_NS = new java.util.concurrent.atomic.AtomicLong(), STATE_NS = new java.util.concurrent.atomic.AtomicLong(),
+		MADE = new java.util.concurrent.atomic.AtomicLong();
+	/** The last pipeline compiled (the stall recorder names it). */
+	static volatile String LAST_MADE = "";
 
 	/** Cadence: the shader loader's pipelines (shaders/) are named in its namespace (RenderPipeline location = CreateInfo name). */
 	private static final String PACK_NAMESPACE = "cadence_shaders:";
@@ -357,7 +406,8 @@ final class MetalPipeline implements BackendRenderPipeline {
 			}
 			// MTLColorWriteMask is ABGR-ordered (red = 8), renderpearl's is RGBA-ordered (red = 1).
 			int mask = (c.writeRed() ? 8 : 0) | (c.writeGreen() ? 4 : 0) | (c.writeBlue() ? 2 : 0) | (c.writeAlpha() ? 1 : 0);
-			d.put(MetalConst.pixelFormat(c.format())).put(mask);
+			// (HDR: a variant for the game's float frame, forFloat)
+			d.put(COMPILING_FLOAT.get() && c.format() == com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM ? 115 : MetalConst.pixelFormat(c.format())).put(mask);
 			if (c.blendFunction().isPresent()) {
 				var b = c.blendFunction().get();
 				d.put(1).put(MetalConst.blendFactor(b.color().sourceFactor())).put(MetalConst.blendFactor(b.color().destFactor())).put(MetalConst.blendOp(b.color().op()))
@@ -389,6 +439,11 @@ final class MetalPipeline implements BackendRenderPipeline {
 	/** What the translation depends on besides its inputs: this class's code (options, bindings) and the SPIRV-Cross build. */
 	private static final String MSL_KEY_SALT = MSL_CACHE ? mslSalt() : null;
 
+	static {
+		// (at load, not at the first translation: with every pipeline found in the later caches no translation ever runs)
+		if (MSL_CACHE) DiskCacheBudget.pruneOnce(MSL_DIR, Long.getLong("cadence.startup.mslCacheDisk", 256L << 20));
+	}
+
 	private static String mslSalt() {
 		try (java.io.InputStream in = MetalPipeline.class.getResourceAsStream("MetalPipeline.class")) {
 			byte[] code = in.readAllBytes();
@@ -416,7 +471,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 			}
 			if (storage != null) // Cadence: the pack's set-1 resources (kinds and filters, not handles)
 				for (MetalStorage.Slot s : storage)
-					md.update((s.binding() + (s.buffer() ? "b" : "t") + (s.sampled() ? "s" : "") + (s.nearest() ? "n" : "") + ";").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+					md.update((s.binding() + (s.buffer() ? "b" : "t") + (s.sampled() ? "s" : "") + (s.nearest() ? "n" : "") + (s.repeat() ? "r" : "") + ";").getBytes(java.nio.charset.StandardCharsets.UTF_8));
 			if (constexpr != null) // Cadence: the sampler states compiled in (their settings, not their handles)
 				for (MetalSampler c : constexpr) md.update(String.valueOf(c == null ? "-" : constexprKey(c)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
 			md.update(module.spv().duplicate());
@@ -430,6 +485,7 @@ final class MetalPipeline implements BackendRenderPipeline {
 			int nl = text.indexOf('\n');
 			if (nl > 0) {
 				mslHits++;
+				DiskCacheBudget.used(file);
 				Translated hit = new Translated(text.substring(nl + 1), text.substring(0, nl));
 				if (MSL_MODE.equals("verify") && !hit.equals(translateNow(module, uniformCount, slots, constexpr, storage))) mslMismatches++;
 				return hit;
@@ -534,20 +590,82 @@ final class MetalPipeline implements BackendRenderPipeline {
 		return this.closed;
 	}
 
+	/** The CreateInfo it was made from, and its Metal sources (vertex msl, entry, fragment msl, entry), for HDR's float variant. */
+	private final CreateInfo info;
+	private String @Nullable [] sources;
+	private int @Nullable [] modes;
+	private boolean isNative;
+	/** HDR (dev.cadence.metal.Hdr): the same pipeline for the float frame target, made at its first use there. */
+	private @Nullable MetalPipeline floatVariant;
+	private boolean noFloatVariant, variant;
+	/** describe(): RGBA8 colour targets as RGBA16Float (render thread: pipelines compile on it). */
+	// (per thread: worker threads describe other pipelines while the render thread compiles a float variant, BH7 suspicion 1)
+	private static final ThreadLocal<Boolean> COMPILING_FLOAT = ThreadLocal.withInitial(() -> false);
+
+	/**
+	 * HDR: this pipeline for a pass into the float frame (the main target's colour is RGBA16Float there; a pipeline made for RGBA8
+	 * draws garbage into it): the same Metal sources and states, the colour targets RGBA16Float. Itself when it has no RGBA8
+	 * colour target, or when the variant can't be made.
+	 */
+	MetalPipeline forFloat() {
+		if (this.floatVariant != null) return this.floatVariant;
+		if (this.noFloatVariant) return this;
+		boolean rgba8 = false;
+		for (@Nullable ColorTargetState c : this.info.colorTargetStates()) rgba8 |= c != null && c.format() == com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM;
+		this.noFloatVariant = true;
+		if (!rgba8 || this.sources == null) return this;
+		long ctx = this.encoder.ctx, vlib = 0, flib = 0, withDepth = 0, withoutDepth = 0;
+		COMPILING_FLOAT.set(true);
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			long err = stack.nmalloc(1, 4096);
+			vlib = library(ctx, this.sources[0], this.modes == null ? -1 : this.modes[0], err);
+			if (vlib != 0 && !this.isNative) flib = library(ctx, this.sources[2], this.modes == null ? -1 : this.modes[1], err);
+			long fragmentLib = this.isNative ? vlib : flib;
+			if (vlib != 0 && fragmentLib != 0) {
+				long vname = MemoryUtil.memAddress(stack.UTF8(this.sources[1])), fname = MemoryUtil.memAddress(stack.UTF8(this.sources[3]));
+				withDepth = pipelineNewCounted(ctx, vlib, vname, fragmentLib, fname, describe(stack, this.info, true, true), err, 4096);
+				if (withDepth != 0 && this.withoutDepth != 0)
+					withoutDepth = pipelineNewCounted(ctx, vlib, vname, fragmentLib, fname, describe(stack, this.info, false, true), err, 4096);
+			}
+			if (withDepth == 0 || this.withoutDepth != 0 && withoutDepth == 0) {
+				if (withDepth != 0) Native.release(withDepth);
+				System.out.println("[cadence] HDR: no float variant of " + this.name + ": " + MemoryUtil.memUTF8(err));
+				return this;
+			}
+		} finally {
+			COMPILING_FLOAT.set(false);
+			if (vlib != 0) Native.release(vlib);
+			if (flib != 0) Native.release(flib);
+		}
+		MetalPipeline v = new MetalPipeline(this.encoder, withDepth, withoutDepth, 0, this.depthState, this.depthCompare, this.info, this.slots);
+		v.variant = true;  // (shares this one's depth state: closing it releases only its own pipelines)
+		v.storage = this.storage;
+		this.floatVariant = v;
+		this.noFloatVariant = false;
+		return v;
+	}
+
 	@Override
 	public void close() {
+		if (this.floatVariant != null) this.floatVariant.close();
 		if (!this.closed) {
 			this.closed = true;
 			this.encoder.releaseLater(this.withDepth);
 			if (this.withoutDepth != 0) this.encoder.releaseLater(this.withoutDepth);
 			if (this.pulled != 0) this.encoder.releaseLater(this.pulled);
-			this.encoder.releaseLater(this.depthState);
+			if (!this.variant) this.encoder.releaseLater(this.depthState);
 		}
 	}
 
 	/** Native.pipelineNew, counted per frame by the frame log (-Dcadence.own.int.frameLog). */
 	private static long pipelineNewCounted(long ctx, long vlib, long vname, long flib, long fname, long desc, long err, int errLength) {
 		if (FrameLog.ON) FrameLog.op(FrameLog.PIPELINES, 1);
-		return Native.pipelineNew(ctx, vlib, vname, flib, fname, desc, err, errLength);
+		MADE.incrementAndGet();
+		long t0 = System.nanoTime();
+		try {
+			return Native.pipelineNew(ctx, vlib, vname, flib, fname, desc, err, errLength);
+		} finally {
+			STATE_NS.addAndGet(System.nanoTime() - t0);
+		}
 	}
 }

@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.system;
 
-import dev.cadence.shaders.cadence.RenderScale;
+import dev.cadence.shaders.cadence.render.RenderScale;
 import org.slf4j.LoggerFactory;
 
 /**

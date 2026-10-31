@@ -3,6 +3,7 @@
 	"package": "dev.cadence.metal.mixin.logic",
 	"plugin": "dev.cadence.metal.mixin.logic.LogicMixinPlugin",
 	"compatibilityLevel": "JAVA_25",
-	"mixins": ["EntitySectionStorageMixin", "BrainMixin", "SecondaryPoiSensorMixin", "LevelBlockEntityTickMixin"],
+	"mixins": ["EntitySectionStorageMixin", "BrainMixin", "SecondaryPoiSensorMixin", "LevelBlockEntityTickMixin", "TickRangeTrackerMixin", "TickRangeChunkTicksMixin", "TickRangeLevelMixin", "TickRangeTicksMixin", "PathTypeCacheMixin", "CollisionAirMixin", "SkySourcesMixin", "SkySourcesAccess"],
+	"client": ["AmbientParticlesMixin", "AmbientSystemAccess", "AmbientSamplerAccess"],
 	"injectors": { "defaultRequire": 1 }
 }

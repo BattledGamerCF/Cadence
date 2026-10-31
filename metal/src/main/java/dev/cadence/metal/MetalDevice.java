@@ -110,6 +110,9 @@ final class MetalDevice implements GpuDeviceBackend {
 	 */
 	private static long residentBytes, residentCount;
 
+	/** Measurement: -Dcadence.metal.logTextures=MB logs every texture of at least MB megabytes as it is made, with its creator. */
+	private static final long LOG_TEXTURES = Long.getLong("cadence.metal.logTextures", -1);
+
 	@Override
 	public GpuTexture createTexture(@Nullable String label, @GpuTexture.Usage int usage, GpuFormat format, int width, int height, int layers, int mips) {
 		// MTLTextureUsage: ShaderRead 1, RenderTarget 4. Copies need no usage bit in Metal.
@@ -120,10 +123,32 @@ final class MetalDevice implements GpuDeviceBackend {
 		if (dev.cadence.metal.own.AnimCopy.creatingAnimatedAtlas) mtlUsage |= 2;  // ShaderWrite (-Dcadence.own.int.atlasWrite)
 		if (MetalStorage.creatingWritable()) mtlUsage |= 2;  // ShaderWrite: a shader pack's colorimgN target
 		boolean cube = (usage & GpuTexture.USAGE_CUBEMAP_COMPATIBLE) != 0;
-		long handle = Native.textureNew(this.ctx, MetalConst.pixelFormat(format), width, height, layers, mips, Math.max(1, mtlUsage), cube ? 1 : 0);
+		int volumeDepth = MetalVolume.creatingDepth();  // (Cadence: a shader pack's 3D texture, made through MetalVolume)
+		// (HDR: the game's frame colour is RGBA16Float, MTL 115; the game still sees an RGBA8 texture, copies convert)
+		int pixelFormat = format == GpuFormat.RGBA8_UNORM && (usage & GpuTexture.USAGE_RENDER_ATTACHMENT) != 0 && Hdr.floatTarget() ? 115
+			: MetalConst.pixelFormat(format);
+		long handle = volumeDepth > 0
+			? Native.textureNew(this.ctx, pixelFormat, width, height, volumeDepth, mips, Math.max(1, mtlUsage), 2)
+			: Native.textureNew(this.ctx, pixelFormat, width, height, layers, mips, Math.max(1, mtlUsage), cube ? 1 : 0);
 		if (handle == 0) throw new IllegalStateException("Couldn't create " + width + "x" + height + " " + format + " texture " + label);
 		MetalTexture texture = new MetalTexture(this.encoder, handle, usage, label == null ? "" : label, format, width, height, layers, mips);
+		if (LOG_TEXTURES >= 0) {
+			long bytes = 0;
+			for (int m = 0; m < mips; m++) bytes += (long) Math.max(1, width >> m) * Math.max(1, height >> m) * format.blockSize() * Math.max(1, layers);
+			if (bytes >= LOG_TEXTURES << 20) {
+				StringBuilder where = new StringBuilder();
+				StackTraceElement[] st = new Throwable().getStackTrace();
+				for (int i = 1, n = 0; i < st.length && n < 6; i++) {
+					String c = st[i].getClassName();
+					if (c.startsWith("com.mojang.renderpearl.frontend") || c.startsWith("dev.cadence.metal.MetalDevice")) continue;
+					where.append(n++ == 0 ? "" : " <- ").append(c.substring(c.lastIndexOf('.') + 1)).append('.').append(st[i].getMethodName());
+				}
+				System.out.println("[cadence] texture " + width + "x" + height + "x" + layers + " " + format + " mips " + mips + " "
+					+ String.format(java.util.Locale.ROOT, "%.1f MB", bytes / 1048576.0) + " '" + label + "': " + where);
+			}
+		}
 		texture.shaderWrite = (mtlUsage & 2) != 0;
+		texture.floatFrame = pixelFormat == 115;
 		if (ResidentAnim.creating && Native.textureResident(this.ctx, handle, 1)) {
 			texture.resident = true;
 			long bytes = 0;

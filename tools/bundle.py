@@ -2,7 +2,7 @@
 """Build the single installable jar: the cadence-metal jar (mod id cadence) (natives inside) with the fps counter and the shader-pack
 loader nested through Fabric's jar-in-jar.
 
-  tools/bundle.py --metal METAL.jar --fps FPS.jar [--shaders SHADERS.jar] --out OUT.jar
+  tools/bundle.py --metal METAL.jar --fps FPS.jar [--shaders SHADERS.jar] [--iris IRIS-API.jar] --out OUT.jar
 
 The outer jar stays mod id cadence (java -jar still explains the install). It gains META-INF/jars/<fps jar>, a
 "jars" list in fabric.mod.json, and META-INF/licenses/cadence-hud/ with the nested jar's own licence files. Sodium is
@@ -18,12 +18,16 @@ def main():
     p.add_argument('--metal', required=True)
     p.add_argument('--fps', required=True)
     p.add_argument('--shaders')
+    p.add_argument('--iris', help='Cadence Iris API (mod cadence_iris_api: Iris\'s public API answered by Cadence)')
     p.add_argument('--out', required=True)
+    p.add_argument('--native', action='store_true', help='the experimental native build: cadence/native/ENABLED (NativeShaders on by default), version +native')
     a = p.parse_args()
 
     nested = [('cadence-hud', os.path.basename(a.fps), open(a.fps, 'rb').read())]  # (slug, file name, bytes)
     if a.shaders:
         nested.append(('cadence-shaders', os.path.basename(a.shaders), open(a.shaders, 'rb').read()))
+    if a.iris:
+        nested.append(('cadence-iris-api', os.path.basename(a.iris), open(a.iris, 'rb').read()))
     licences = {}  # archive path -> bytes
     listing = []
     for slug, name, data in nested:
@@ -37,6 +41,9 @@ def main():
     with zipfile.ZipFile(a.metal) as src:
         meta = json.loads(src.read('fabric.mod.json').decode('utf-8'))
         meta['jars'] = [{'file': f'META-INF/jars/{name}'} for _, name, _ in nested]
+        if a.native:
+            meta['version'] = meta['version'] + '+native'
+            meta['description'] = meta.get('description', '') + ' (Experimental native build: vanilla\'s shaders as hand-written Metal.)'
         os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
         with zipfile.ZipFile(a.out + '.part', 'w', zipfile.ZIP_DEFLATED) as out:
             for info in src.infolist():
@@ -44,6 +51,8 @@ def main():
                     continue
                 out.writestr(info, src.read(info.filename))
             out.writestr('fabric.mod.json', json.dumps(meta, indent='\t') + '\n')
+            if a.native:
+                out.writestr(zipfile.ZipInfo('cadence/native/ENABLED', (1980, 2, 1, 0, 0, 0)), b'native shaders on by default (NativeShaders)\n')
             for _, name, data in nested:
                 # stored: Fabric opens nested jars in memory, no need to inflate them twice
                 out.writestr(zipfile.ZipInfo(f'META-INF/jars/{name}', (1980, 2, 1, 0, 0, 0)), data, compress_type=zipfile.ZIP_STORED)

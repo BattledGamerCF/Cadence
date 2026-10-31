@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.system;
 
-import dev.cadence.shaders.cadence.ShaderToggle;
+import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import java.util.Locale;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -38,15 +38,23 @@ public final class CadenceMessages {
 		launchFailure = message;
 	}
 
-	/** ClientPacketListener.handleLogin (joining a world or a server; not a dimension change), render thread. */
-	public static void joined() {
+	/** The connection the join line was last shown on: a server network logs you in again at every lobby or game switch. */
+	private static java.lang.ref.WeakReference<Object> shownOn = new java.lang.ref.WeakReference<>(null);
+
+	/**
+	 * ClientPacketListener.handleLogin (joining a world or a server; not a dimension change), render thread. connection: the
+	 * network connection it came on; the join line is shown once per connection (a server network sends a login packet at every
+	 * switch between its lobbies and games: it was repeated each time).
+	 */
+	public static void joined(Object connection) {
 		String failure = launchFailure;
 		if (failure != null) {
 			launchFailure = null;
 			// (always shown, even with Cadence messages off: it explains why shaders are missing)
-			say(Component.literal("Cadence: " + failure).withStyle(net.minecraft.ChatFormatting.RED));
+			say(dev.cadence.metal.Lang.literal("Cadence: " + failure).withStyle(net.minecraft.ChatFormatting.RED));
 		}
-		if (!enabled) return;
+		if (!enabled || connection != null && shownOn.get() == connection) return;
+		shownOn = new java.lang.ref.WeakReference<>(connection);
 		say(joinLine());
 	}
 
@@ -65,10 +73,13 @@ public final class CadenceMessages {
 	 * A command typed or clicked: true when it is Cadence's (handled here, never sent to the server). "cadence messages
 	 * off|on".
 	 */
-	public static boolean command(String command) {
+	public static boolean command(String command, net.minecraft.client.multiplayer.ClientPacketListener connection) {
 		String c = command.strip().toLowerCase(Locale.ROOT);
 		if (c.startsWith("/")) c = c.substring(1);
 		if (!c.equals("cadence") && !c.startsWith("cadence ")) return false;
+		// (a server with its own /cadence command, another mod's: everything but Cadence's two exact commands goes to it)
+		boolean serverHasIt = connection != null && connection.getCommands().getRoot().getChild("cadence") != null;
+		if (serverHasIt && !c.equals("cadence messages off") && !c.equals("cadence messages on")) return false;
 		switch (c) {
 			case "cadence messages off" -> {
 				setEnabled(false);
@@ -91,13 +102,13 @@ public final class CadenceMessages {
 	}
 
 	private static MutableComponent grey(String text) {
-		return Component.literal(text).withStyle(ChatFormatting.GRAY);
+		return dev.cadence.metal.Lang.literal(text).withStyle(ChatFormatting.GRAY);
 	}
 
 	private static MutableComponent green(String text, String hover, String command) {
-		MutableComponent c = Component.literal(text).withStyle(ChatFormatting.GREEN);
+		MutableComponent c = dev.cadence.metal.Lang.literal(text).withStyle(ChatFormatting.GREEN);
 		c.withStyle(s -> {
-			var styled = s.withHoverEvent(new HoverEvent.ShowText(Component.literal(hover)));
+			var styled = s.withHoverEvent(new HoverEvent.ShowText(dev.cadence.metal.Lang.literal(hover)));
 			return command == null ? styled : styled.withClickEvent(new ClickEvent.RunCommand(command));
 		});
 		return c;

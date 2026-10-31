@@ -47,6 +47,10 @@ public final class PackFormats {
       case "RG32UI" -> GpuFormat.RG32_UINT;
       case "RGB32UI", "RGBA32UI" -> GpuFormat.RGBA32_UINT;
       case "RGB10_A2UI" -> GpuFormat.RGB10A2_UINT;
+      // Cadence: OpenGL's small packed formats, in the nearest Metal has with at least their precision (Mellow keeps a
+      // flag buffer in R3_G3_B2)
+      case "R3_G3_B2", "RGB4", "RGB5", "RGBA2", "RGBA4", "RGB5_A1" -> GpuFormat.RGBA8_UNORM;
+      case "RGB12", "RGBA12" -> GpuFormat.RGBA16_UNORM;
       default -> throw new UnsupportedOperationException("Shader-pack color format " + format);
     };
   }

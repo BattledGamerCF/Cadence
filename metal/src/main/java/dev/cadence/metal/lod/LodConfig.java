@@ -2,7 +2,7 @@
 package dev.cadence.metal.lod;
 
 /**
- * Far terrain switches, all read once at startup. Off unless -Dcadence.lod=true (or any -Dcadence.lod.radius): then nothing of
+ * Far terrain switches, read once at startup (the reach and the look also change live, from Video Settings). Off unless -Dcadence.lod=true (or any -Dcadence.lod.radius): then nothing of
  * this package loads and the mixins that call into it are rejected by LodMixinPlugin.
  */
 public final class LodConfig {
@@ -18,15 +18,118 @@ public final class LodConfig {
 	 * on its own; an explicit flag wins.
 	 */
 	public static final boolean SMALL = Boolean.getBoolean("cadence.lod.small");
-	/** -Dcadence.lod.radius=N: how far the far terrain reaches, in chunks (to the edge of the coarsest tiles drawn). */
-	public static final int RADIUS_CHUNKS = Integer.getInteger("cadence.lod.radius", 512);
+
+	/**
+	 * (Video Settings > Far Terrain) the far terrain's look, changed live by the settings page: brightness and saturation
+	 * (1: as generated) and the earth's curvature as Distant Horizons gives it, a ratio to the Earth's size (0: flat; 50: a
+	 * planet a fiftieth the size, so far land sinks below the horizon). -Dcadence.lod.brightness / saturation / curvature.
+	 */
+	private static volatile float brightness = lookProperty("cadence.lod.brightness", 1, 0.1F, 4),
+		saturation = lookProperty("cadence.lod.saturation", 1, 0, 4),
+		curvature = lookProperty("cadence.lod.curvature", 0, 0, 5000);
+
+	/**
+	 * Far Terrain > Renderer: Mesh Shaders (-Dcadence.lod.meshShader, farTerrain.meshShaders): the far terrain's faces culled in
+	 * the object stage and emitted by the mesh stage of the draw itself (columns.metal lod_mesh_obj / lod_mesh_msh), instead of
+	 * a compute quad cull writing survivors for an indexed draw. Applies live.
+	 */
+	private static volatile boolean meshShaders = Boolean.getBoolean("cadence.lod.meshShader");
+
+	public static boolean meshShaders() {
+		return meshShaders;
+	}
+
+	public static void meshShaders(boolean on) {
+		meshShaders = on;
+	}
+
+	public static void look(float brightnessValue, float saturationValue, float curvatureRatio) {
+		brightness = lookValue(brightnessValue, 1, 0.1F, 4);
+		saturation = lookValue(saturationValue, 1, 0, 4);
+		curvature = lookValue(curvatureRatio, 0, 0, 5000);
+	}
+
+	/**
+	 * A look value from a hand-edited config or flag kept in its range (fallback when it isn't a number): the page's live path
+	 * applied NaN, 1e30 or negative values the launch path refused.
+	 */
+	static float lookValue(float v, float fallback, float min, float max) {
+		return Float.isFinite(v) ? Math.clamp(v, min, max) : fallback;
+	}
+
+	private static float lookProperty(String name, float fallback, float min, float max) {
+		try {
+			return lookValue(Float.parseFloat(System.getProperty(name, Float.toString(fallback))), fallback, min, max);
+		} catch (NumberFormatException e) {
+			return fallback;
+		}
+	}
+
+	static float brightness() {
+		return brightness;
+	}
+
+	static float saturation() {
+		return saturation;
+	}
+
+	/** Blocks a point drops per square block of horizontal distance: d^2 / (2 R), R the Earth's radius over the ratio. */
+	static float curvatureDrop() {
+		return curvature <= 0 ? 0 : (float) (curvature / (2 * 6_371_000.0));
+	}
+	/** The Far Distance range, in chunks. */
+	public static final int MIN_RADIUS = 64, MAX_RADIUS = 4096;
+	/**
+	 * How far the far terrain reaches, in chunks (to the edge of the coarsest tiles drawn): -Dcadence.lod.radius=N at launch
+	 * (Video Settings > Far Distance, saved), then live: the slider asks for a new one (requestRadius) and Lod.begin applies it,
+	 * at once when the clipmap's levels cover it, else by building the world's far terrain again (its tiles come back from
+	 * the disk cache).
+	 */
+	private static volatile int radiusChunks = clampRadius(Integer.getInteger("cadence.lod.radius", 512)), requestedChunks = radiusChunks;
+
+	static int clampRadius(int chunks) {
+		return Math.clamp(chunks, MIN_RADIUS, MAX_RADIUS);
+	}
+
+	/** The reach in use, in chunks. */
+	public static int radiusChunks() {
+		return radiusChunks;
+	}
+
+	/** Video Settings > Far Distance moved: the reach asked for, applied by the next far-terrain frame. */
+	public static void requestRadius(int chunks) {
+		requestedChunks = clampRadius(chunks);
+	}
+
+	static int requestedRadius() {
+		return requestedChunks;
+	}
+
+	static void applyRadius(int chunks) {
+		radiusChunks = clampRadius(chunks);
+	}
 	/**
 	 * -Dcadence.lod.n=N: cells across each clipmap level's window (a power of two). Level L's cells are 2^L blocks and it is drawn
 	 * out to (N / 2 - 64) x 2^L blocks, so on screen a cell is never more than about twice what a real block at that distance
 	 * would be, and N sets how big that is: at 5K, 2048 gives cells of 2.5-5 px (level 0 to ~960 blocks), 4096 1.2-2.5 px.
 	 * Memory: 8 N^2 bytes a level.
 	 */
-	public static final int N = Integer.getInteger("cadence.lod.n", SMALL ? 512 : 2048);
+	public static final int N = Integer.getInteger("cadence.lod.n", SMALL ? 512 : defaultN());
+
+	/**
+	 * Without -Dcadence.lod.n: 1024 on Macs with up to 16 GB, 2048 above. Measured on an M2 Air (8 GB, 2560-point-wide Retina
+	 * screen), the same flight at 512 chunks: 1024 drew the same picture as 2048 (the cells are smaller than a pixel apart at
+	 * a laptop's width) with 452 MB of Metal memory instead of 753 (clipmap 68 MB instead of 240, half the mesh arena) and more
+	 * fps (255 vs 197): at 2048 the 8 GB Mac swapped (the memory guard stopped the game). 2048 is for 5K-class screens.
+	 */
+	private static int defaultN() {
+		long ram = 0;
+		try {
+			ram = ((com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean()).getTotalMemorySize();
+		} catch (RuntimeException | LinkageError ignored) {
+		}
+		return ram > 0 && ram <= 17L << 30 ? 1024 : 2048;
+	}
 	/** -Dcadence.lod.threads=N: generation workers (default: the cores the game and the GPU driver leave). */
 	public static final int THREADS = Integer.getInteger("cadence.lod.threads", Math.max(2, Runtime.getRuntime().availableProcessors() - 4));
 	/**
@@ -59,6 +162,19 @@ public final class LodConfig {
 	 */
 	public static final boolean PLANTS = TEXTURES && Boolean.parseBoolean(System.getProperty("cadence.lod.plants", "true"));
 	/**
+	 * -Dcadence.lod.plantDistance=BLOCKS: far terrain's plants drawn only this near (0: wherever level 0 reaches). Default 192, as
+	 * far as Low's level 0 reaches: at Medium and High level 0 reaches 444 and 956 blocks, and its plants there (a few pixels
+	 * each, their quads mostly discarded fragments) were about 0.5 ms of the far terrain's GPU time on an M2 Air.
+	 */
+	public static final int PLANT_DISTANCE = Integer.getInteger("cadence.lod.plantDistance", 192);
+	/**
+	 * -Dcadence.lod.detailPx=P: level 0's near detail (block textures, smooth-lighting occlusion) only where a block is at least
+	 * P pixels on screen; past that the cell's own color, as the coarser levels draw it (its 1-block shape stays). 0: everywhere
+	 * level 0 reaches. Default 4: at Medium (level 0 to 444 blocks) the far terrain's GPU time 4.0 -> 2.65 ms on an M2 Air,
+	 * 200 blocks up (most of it was that detail's lookups over level 0's outer band, where a texture is 2-4 pixels a block).
+	 */
+	public static final int DETAIL_PX = Integer.getInteger("cadence.lod.detailPx", 4);
+	/**
 	 * -Dcadence.lod.treeLevels=N: the N finest levels (at most 2) get the game's own trees (its tree features run on the far
 	 * terrain); coarser levels the biome's impostor canopy. Level 1 needs every chunk's block-exact ground: ~5x the work of
 	 * its tiles. Default 1.
@@ -82,6 +198,12 @@ public final class LodConfig {
 	public static final boolean DISK_CACHE = Boolean.parseBoolean(System.getProperty("cadence.lod.cache", "true"));
 	/** -Dcadence.lod.cacheDir=PATH: where the per-world cache lives (default: the game dir's cadence-lod). */
 	public static final String CACHE_DIR = System.getProperty("cadence.lod.cacheDir");
+	/**
+	 * -Dcadence.lod.generate=false: explored terrain only (Distant Horizons' "pre-existing chunks only"): nothing is generated
+	 * from the world's noise; tiles fill from the disk cache and from the chunks the client has received (so on a server, what
+	 * the player has seen). Video Settings > Far Terrain > Unexplored Terrain.
+	 */
+	public static final boolean GENERATE = Boolean.parseBoolean(System.getProperty("cadence.lod.generate", "true"));
 	/** -Dcadence.lod.trees=false: no tree canopy on generated (never visited) terrain. */
 	public static final boolean TREES = Boolean.parseBoolean(System.getProperty("cadence.lod.trees", "true"));
 	/**
@@ -118,8 +240,8 @@ public final class LodConfig {
 	private LodConfig() {
 	}
 
-	/** The reach in blocks. */
+	/** The reach in use, in blocks. */
 	public static double reachBlocks() {
-		return RADIUS_CHUNKS * 16.0;
+		return radiusChunks * 16.0;
 	}
 }

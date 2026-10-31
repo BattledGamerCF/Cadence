@@ -80,7 +80,19 @@ final class LodMesh implements LodClip.Listener {
 	private final long tableBytes;
 	private final long tableHost;
 	private final long[] tableBufs = new long[RING];
-	final long argsBuf, instBuf, plantBuf, survBuf, horizonBuf, listBuf;
+	final long argsBuf, plantBuf, horizonBuf, listBuf;
+	/**
+	 * The cull's candidate instances and surviving quads, sized to what this world needs (adapt): they start at an eighth
+	 * of their caps and double when a frame fills three quarters (measured 10-22: under 400k survivors at 512 chunks, so
+	 * the 2M-quad buffer held 26 MB nobody used). The position-keyed lists (-Dcadence.lod.pk) keep the full size.
+	 */
+	long instBuf, survBuf;
+	private int instCap = LodPk.ENABLED ? MAX_INSTANCES : MAX_INSTANCES / 8, survCap = LodPk.ENABLED ? MAX_SURVIVORS : MAX_SURVIVORS / 8;
+	/** adapt: the most candidates and survivors since peakSince (nanos; 0: not started). */
+	private int peakCand, peakSurv;
+	private long peakSince;
+	private final long argsAddr;
+	private final java.util.function.LongUnaryOperator gpuBuffer;
 	private static final int MAX_LISTED = 1 << 16;
 	final long frame = MemoryUtil.nmemCalloc(1, FRAME_BYTES);
 	// meshing
@@ -109,6 +121,63 @@ final class LodMesh implements LodClip.Listener {
 	int installed;
 	/** The position-keyed lists (-Dcadence.lod.pk), told when a tile's mesh changes; else null. */
 	@Nullable LodPk pk;
+	/**
+	 * Cadence: shader-pack mode (a pack's dh_terrain program draws the far terrain): faces merge only within one colour, as the
+	 * pack colours each quad by its vertices (lodmesh.c). Read by the workers.
+	 */
+	private volatile boolean colorMerge;
+	/** A dimension without a floor (the End): columns float (lodmesh.c LmIn.floating). Set once, before any meshing. */
+	volatile boolean floating;
+
+	/** Per level and slot: the installed mesh merged faces within one colour (shader-pack mode). */
+	private final boolean[][] builtByColor;
+	/** (diagnostics) Per level and slot: why the last result for it wasn't installed (DROP_*), 0 none. */
+	private final byte[][] lastDrop;
+	private static final byte DROP_PUBLISHED = 2, DROP_PUBLISH = 3, DROP_WORDS = 4, DROP_SEQ = 5;
+
+	/**
+	 * Whether every installed mesh is merged as the current mode asks (render thread). Just after a shader pack turned on, the
+	 * meshes merged geometrically are still installed while their one-colour remeshes run: drawn through the pack, each of
+	 * their big merged faces took one cell's colour (giant slabs in wrong colours, S2-01); the pack draws none until this is
+	 * true (a second or two).
+	 */
+	boolean modeSettled() {
+		return this.unsettled() == 0;
+	}
+
+	/** Installed meshes not merged as the current mode asks (render thread). */
+	int unsettled() {
+		int n = 0;
+		for (int level = 0; level < this.key.length; level++)
+			for (int slot = 0; slot < this.key[level].length; slot++)
+				if (this.key[level][slot] >= 0 && this.builtByColor[level][slot] != this.colorMerge) n++;
+		return n;
+	}
+
+	/** (diagnostics) Up to eight installed meshes not merged for the current mode: level, tile, queued, resident, seq. */
+	String unsettledReport() {
+		StringBuilder b = new StringBuilder();
+		int shown = 0;
+		for (int level = 0; level < this.key.length && shown < 8; level++)
+			for (int slot = 0; slot < this.key[level].length && shown < 8; slot++) {
+				long k = this.key[level][slot];
+				if (k < 0 || this.builtByColor[level][slot] == this.colorMerge) continue;
+				shown++;
+				b.append(String.format(" [L%d %d,%d queued %s resident %s seq %d drop %d snap %s ver %d/%d pub %d]", level, LodTile.txOf(k), LodTile.tzOf(k),
+					this.queued.containsKey(k), this.clip.resident(level, LodTile.txOf(k), LodTile.tzOf(k)), this.seq[level][slot], this.lastDrop[level][slot],
+					this.snaps.containsKey(k), this.builtVer[level][slot], this.clip.writing[level].get(slot), this.publishedVer[level][slot]));
+			}
+		return b.toString();
+	}
+
+	/** Render thread: switches the merging mode; every resident tile is meshed again in the new one. */
+	void colorMerge(boolean on) {
+		if (on == this.colorMerge) return;
+		this.colorMerge = on;
+		for (int level = 0; level < this.key.length; level++)
+			for (long k : this.key[level])
+				if (k >= 0) this.request(level, LodTile.txOf(k), LodTile.tzOf(k));
+	}
 
 	LodMesh(long ctx, LodClip clip) {
 		this.ctx = ctx;
@@ -120,6 +189,8 @@ final class LodMesh implements LodClip.Listener {
 		this.key = new long[clip.levels][slots];
 		this.seq = new long[clip.levels][slots];
 		this.builtNeighbors = new int[clip.levels][slots];
+		this.builtByColor = new boolean[clip.levels][slots];
+		this.lastDrop = new byte[clip.levels][slots];
 		this.builtVer = new long[clip.levels][slots];
 		this.publishedVer = new long[clip.levels][slots];
 		for (long[] o : this.off) java.util.Arrays.fill(o, -1L);
@@ -134,10 +205,13 @@ final class LodMesh implements LodClip.Listener {
 		// the cull's outputs: hazard-tracked (the whole level pass waits for the cull), or with -Dcadence.lod.meshFences untracked and
 		// ordered by fences (only the far terrain's draw waits: the real terrain's draws before it overlap the cull)
 		java.util.function.LongUnaryOperator gpu = FENCES ? n -> LodNative.privateUntrackedBuffer(ctx, n) : n -> LodNative.privateBuffer(ctx, n);
-		this.argsBuf = gpu.applyAsLong(512);
-		this.instBuf = gpu.applyAsLong((long) MAX_INSTANCES * 32);
+		this.gpuBuffer = gpu;
+		// (the draws' arguments where the CPU can read the counts the GPU left: adapt sizes the buffers by them)
+		this.argsBuf = FENCES ? LodNative.buffer(ctx, 512) : LodNative.sharedTrackedBuffer(ctx, 512);
+		this.argsAddr = LodNative.contents(this.argsBuf);
+		this.instBuf = gpu.applyAsLong((long) this.instCap * 32);
 		this.plantBuf = gpu.applyAsLong((long) MAX_PLANT_INSTANCES * 32);
-		this.survBuf = gpu.applyAsLong((long) MAX_SURVIVORS * 16);
+		this.survBuf = gpu.applyAsLong((long) this.survCap * 16);
 		// (bins x bands, then per bin the far terrain's lowest tangent: columns.metal HZ_FARMIN)
 		this.horizonBuf = gpu.applyAsLong(4096L * 129 * 4);
 		this.listBuf = gpu.applyAsLong((long) MAX_LISTED * 16);
@@ -196,7 +270,19 @@ final class LodMesh implements LodClip.Listener {
 		long header = MemoryUtil.nmemAlloc((long) HDR_WORDS * 4);
 		long quads = MemoryUtil.nmemAlloc((long) SCRATCH_QUADS * 8);
 		// PAIRS: the tile and its 1-cell border copied here (geometry, crowns, runs, plants A and B), meshed from the copy
-		long scratch = LodClip.PAIRS ? MemoryUtil.nmemCalloc(5L * SCRATCH * SCRATCH, 4) : 0;
+		// (+ colours, a 6th plane: shader-pack mode's colour-aware merging)
+		long scratch = LodClip.PAIRS ? MemoryUtil.nmemCalloc(6L * SCRATCH * SCRATCH, 4) : 0;
+		try {
+			this.workLoop(header, quads, scratch);
+		} finally {
+			// (an idle worker leaves through the interrupt: its ~1.4 MB were never freed, at every world and dimension)
+			MemoryUtil.nmemFree(header);
+			MemoryUtil.nmemFree(quads);
+			if (scratch != 0) MemoryUtil.nmemFree(scratch);
+		}
+	}
+
+	private void workLoop(long header, long quads, long scratch) {
 		while (!this.closed) {
 			long[] job;
 			try {
@@ -221,6 +307,7 @@ final class LodMesh implements LodClip.Listener {
 				long t0 = System.nanoTime();
 				LodClip.Snapshot snap = null;
 				int n;
+				boolean byColor = this.colorMerge;
 				if (LodClip.PAIRS) {
 					snap = this.snaps.get(k);
 					long v = this.copyRegion(scratch, level, tx, tz, snap, crowns, plants);
@@ -232,10 +319,22 @@ final class LodMesh implements LodClip.Listener {
 					ver = v;
 					long sp = (long) SCRATCH * SCRATCH * 4;
 					n = LodNative.meshTile(scratch, crowns ? scratch + sp : 0, crowns ? scratch + 2 * sp : 0, plants ? scratch + 3 * sp : 0, plants ? scratch + 4 * sp : 0,
-						SCRATCH_LOG, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS);
+						SCRATCH_LOG, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS, byColor ? scratch + 5 * sp : 0, SCRATCH_LOG, this.floating);
 				} else {
-					n = LodNative.meshTile(this.clip.geom + lw, crown, runs, pa, pb, this.clip.logN, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS);
+					n = LodNative.meshTile(this.clip.geom + lw, crown, runs, pa, pb, this.clip.logN, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS,
+						byColor ? this.clip.color + lw : 0, this.clip.logN, this.floating);
 				}
+				if (n < 0 && byColor && !LodClip.PAIRS) {
+					// (one colour per face overflowed the scratch: the tile merged geometrically, counted as done for the mode so
+					// the pack's far terrain isn't held back by it)
+					n = LodNative.meshTile(this.clip.geom + lw, crown, runs, pa, pb, this.clip.logN, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS,
+						0, this.clip.logN, this.floating);
+				} else if (n < 0 && byColor) {
+					long sp = (long) SCRATCH * SCRATCH * 4;
+					n = LodNative.meshTile(scratch, crowns ? scratch + sp : 0, crowns ? scratch + 2 * sp : 0, plants ? scratch + 3 * sp : 0, plants ? scratch + 4 * sp : 0,
+						SCRATCH_LOG, level, tx, tz, neighbors, BLOCK, header, quads, SCRATCH_QUADS, 0, SCRATCH_LOG, this.floating);
+				}
+				if (byColor != this.colorMerge) this.request(level, tx, tz);  // (the mode changed meanwhile: again, in the new one)
 				this.meshNanos.addAndGet(System.nanoTime() - t0);
 				if (n < 0) {
 					System.out.println("cadence-lod: mesh of tile L" + level + " " + tx + "," + tz + " overflows " + SCRATCH_QUADS + " quads; not drawn");
@@ -248,14 +347,11 @@ final class LodMesh implements LodClip.Listener {
 				this.meshed.incrementAndGet();
 				this.meshQuads.addAndGet(n);
 				if (snap != null) this.resultSnaps.put(block, snap);
-				this.results.add(new long[] {k, s, block, words, neighbors, ver != null ? ver : -1});
+				this.results.add(new long[] {k, s, block, words, neighbors, ver != null ? ver : -1, byColor ? 1 : 0});
 			} catch (RuntimeException e) {
 				System.out.println("cadence-lod: mesh job failed: " + e);
 			}
 		}
-		MemoryUtil.nmemFree(header);
-		MemoryUtil.nmemFree(quads);
-		if (scratch != 0) MemoryUtil.nmemFree(scratch);
 	}
 
 	/**
@@ -292,6 +388,7 @@ final class LodMesh implements LodClip.Listener {
 					if (snap != null && !outX && !outZ) {
 						int i = z * LodClip.TILE + x;
 						MemoryUtil.memPutInt(scratch + dst, snap.g[i]);
+						MemoryUtil.memPutInt(scratch + 5 * sp + dst, snap.c[i]);
 						if (crowns) {
 							MemoryUtil.memPutInt(scratch + sp + dst, snap.cr[i]);
 							MemoryUtil.memPutInt(scratch + 2 * sp + dst, snap.runs[i]);
@@ -304,6 +401,7 @@ final class LodMesh implements LodClip.Listener {
 					}
 					long src = (((long) (az & m) << this.clip.logN) | (ax & m)) * 4;
 					MemoryUtil.memPutInt(scratch + dst, MemoryUtil.memGetInt(this.clip.geom + lw + src));
+					MemoryUtil.memPutInt(scratch + 5 * sp + dst, MemoryUtil.memGetInt(this.clip.color + lw + src));
 					if (crowns) {
 						MemoryUtil.memPutInt(scratch + sp + dst, MemoryUtil.memGetInt(crownBase + src));
 						MemoryUtil.memPutInt(scratch + 2 * sp + dst, MemoryUtil.memGetInt(runsBase + src));
@@ -380,8 +478,16 @@ final class LodMesh implements LodClip.Listener {
 		if (!this.clip.resident(level, tx, tz)) return;
 		int slot = this.clip.slot(tx, tz);
 		if (snap != null) {
-			if (snap.version <= this.publishedVer[level][slot]) return;
-			if (!this.clip.publish(snap)) return;
+			if (snap.version <= this.publishedVer[level][slot]) {
+				// (a newer copy was published already: this one, if still waiting, never will be)
+				this.snaps.remove(k, snap);
+				this.dropped(level, slot, tx, tz, r, DROP_PUBLISHED);
+				return;
+			}
+			if (!this.clip.publish(snap)) {
+				this.dropped(level, slot, tx, tz, r, DROP_PUBLISH);
+				return;
+			}
 			this.snaps.remove(k, snap);
 			this.publishedVer[level][slot] = snap.version;
 			this.publishes++;
@@ -396,8 +502,22 @@ final class LodMesh implements LodClip.Listener {
 			}
 			return;
 		}
-		if (r[5] != this.clip.writing[level].get(slot)) return;
+		if (r[5] != this.clip.writing[level].get(slot)) {
+			this.dropped(level, slot, tx, tz, r, DROP_WORDS);
+			return;
+		}
 		this.install(frame, r, true);
+	}
+
+	/**
+	 * A result not installed (its words or snapshot superseded). Whatever superseded it asks for its own mesh, except for the
+	 * merge mode: when the dropped mesh was merged for the current mode and the installed one isn't, the tile is asked for
+	 * again (it stayed in the old mode for good, and a pack never got the far terrain).
+	 */
+	private void dropped(int level, int slot, int tx, int tz, long[] r, byte why) {
+		this.lastDrop[level][slot] = why;
+		boolean byColor = r.length > 6 && r[6] != 0;
+		if (this.key[level][slot] == r[0] && byColor == this.colorMerge && this.builtByColor[level][slot] != this.colorMerge) this.request(level, tx, tz);
 	}
 
 	private void install(long frame, long[] r) {
@@ -410,7 +530,10 @@ final class LodMesh implements LodClip.Listener {
 		if (!this.clip.resident(level, tx, tz)) return;
 		int slot = this.clip.slot(tx, tz);
 		// an older job finishing after a newer one keeps the newer mesh (PAIRS: the word versions decide, checked by the caller)
-		if (!checked && this.key[level][slot] == k && this.seq[level][slot] > r[1]) return;
+		if (!checked && this.key[level][slot] == k && this.seq[level][slot] > r[1]) {
+			this.lastDrop[level][slot] = DROP_SEQ;
+			return;
+		}
 		long words = r[3];
 		long at = this.allocate(frame, words);
 		if (at < 0) {
@@ -435,6 +558,11 @@ final class LodMesh implements LodClip.Listener {
 		this.seq[level][slot] = r[1];
 		this.builtNeighbors[level][slot] = (int) r[4];
 		this.builtVer[level][slot] = r[5];
+		this.builtByColor[level][slot] = r.length > 6 && r[6] != 0;
+		this.lastDrop[level][slot] = 0;
+		// (a mesh begun before the mode changed, installed after: meshed again in the new mode. The worker's own check can run
+		// before the change; this tile then stayed in the old mode for good, and the pack never got the far terrain)
+		if (this.builtByColor[level][slot] != this.colorMerge) this.request(level, tx, tz);
 		this.installed++;
 		long e = this.tableHost + ((long) level * this.tps * this.tps + slot) * 16;
 		MemoryUtil.memPutInt(e, (int) (at + 1));
@@ -528,7 +656,7 @@ final class LodMesh implements LodClip.Listener {
 				this.usedWords += words;
 				return at;
 			}
-			if (this.arenaWords * 2 > MAX_ARENA_WORDS) return -1;
+			if (this.arenaWords >= MAX_ARENA_WORDS) return -1;
 			this.grow(frame);
 		}
 	}
@@ -551,15 +679,85 @@ final class LodMesh implements LodClip.Listener {
 		this.free.put(at, words);
 	}
 
+	/**
+	 * Once a frame after the cull is encoded: the counts the GPU left in the arguments (a frame or two old) against the buffers'
+	 * sizes; a buffer three quarters full doubles (up to its cap; the old one is released once the GPU is done with it).
+	 */
+	void adapt(long frame) {
+		if (LodPk.ENABLED) return;
+		int candidates = MemoryUtil.memGetInt(this.argsAddr + 13 * 4L), survivors = MemoryUtil.memGetInt(this.argsAddr + 14 * 4L);
+		// and back down: a buffer whose counts stayed under an eighth of it for 30 s goes to four times the most it held then
+		// (it only grew: survivors stayed at 16 MB for 25-45k quads once a view at the ground had needed 600k+)
+		this.peakCand = Math.max(this.peakCand, candidates);
+		this.peakSurv = Math.max(this.peakSurv, survivors);
+		long now = System.nanoTime();
+		if (this.peakSince == 0) this.peakSince = now;
+		if (now - this.peakSince > 30_000_000_000L) {
+			int initInst = MAX_INSTANCES / 8, initSurv = MAX_SURVIVORS / 8;
+			if (this.instCap > initInst && this.peakCand < this.instCap / 8) {
+				this.buffersLater.add(new long[] {frame, this.instBuf});
+				this.instCap = Math.max(initInst, Integer.highestOneBit(Math.max(1, this.peakCand * 4 - 1)) << 1);
+				this.instBuf = this.gpuBuffer.applyAsLong((long) this.instCap * 32);
+				System.out.println("cadence-lod: mesh instances back to " + this.instCap + " (" + ((long) this.instCap * 32 >> 20) + " MB)");
+			}
+			if (this.survCap > initSurv && this.peakSurv < this.survCap / 8) {
+				this.buffersLater.add(new long[] {frame, this.survBuf});
+				this.survCap = Math.max(initSurv, Integer.highestOneBit(Math.max(1, this.peakSurv * 4 - 1)) << 1);
+				this.survBuf = this.gpuBuffer.applyAsLong((long) this.survCap * 16);
+				System.out.println("cadence-lod: mesh survivors back to " + this.survCap + " (" + ((long) this.survCap * 16 >> 20) + " MB)");
+			}
+			this.peakCand = this.peakSurv = 0;
+			this.peakSince = now;
+		}
+		if (candidates > this.instCap * 3L / 4 && this.instCap < MAX_INSTANCES) {
+			this.buffersLater.add(new long[] {frame, this.instBuf});
+			this.instCap = Math.min(MAX_INSTANCES, this.instCap * 2);
+			this.instBuf = this.gpuBuffer.applyAsLong((long) this.instCap * 32);
+			System.out.println("cadence-lod: mesh instances grown to " + this.instCap + " (" + ((long) this.instCap * 32 >> 20) + " MB)");
+		}
+		if (survivors > this.survCap * 3L / 4 && this.survCap < MAX_SURVIVORS) {
+			this.buffersLater.add(new long[] {frame, this.survBuf});
+			this.survCap = Math.min(MAX_SURVIVORS, this.survCap * 2);
+			this.survBuf = this.gpuBuffer.applyAsLong((long) this.survCap * 16);
+			System.out.println("cadence-lod: mesh survivors grown to " + this.survCap + " (" + ((long) this.survCap * 16 >> 20) + " MB)");
+		}
+	}
+
+	/** Lod's still-camera reuse: no cull this frame, so the counts adapt reads are stale; the shrink window starts over (BH6-08). */
+	void noteStill() {
+		this.peakSince = 0;
+		this.peakCand = this.peakSurv = 0;
+	}
+
+	/** A hash of the tile table as it is now (what the cull reads of the installed meshes): Lod's still-camera reuse. ~3 us. */
+	long tableHash() {
+		long h = 0;
+		for (long i = 0; i < this.tableBytes; i += 8) {
+			h ^= MemoryUtil.memGetLong(this.tableHost + i);
+			h *= 0x100000001B3L;
+		}
+		return h;
+	}
+
+	/** (stats) the last counts the GPU left: candidate instances, surviving quads, and the buffers' sizes */
+	String counts() {
+		return "candidates " + MemoryUtil.memGetInt(this.argsAddr + 13 * 4L) + "/" + this.instCap + ", survivors " + MemoryUtil.memGetInt(this.argsAddr + 14 * 4L)
+			+ "/" + this.survCap;
+	}
+
 	private void grow(long frame) {
-		long words = this.arenaWords * 2;
+		// (by a quarter, rounded up to 8 MB: doubling left up to half the arena unused, 53 MB at 512 chunks; by half, 39 MB at
+		// Medium's 4,096 chunks, 105 MB used of 144)
+		long words = Math.min(MAX_ARENA_WORDS, (this.arenaWords * 5 / 4 + (2L << 20) - 1) & ~((2L << 20) - 1));
 		long buf = LodNative.buffer(this.ctx, words * 4);
 		long addr = LodNative.contents(buf);
 		MemoryUtil.memCopy(this.arenaAddr, addr, this.arenaWords * 4);
 		this.buffersLater.add(new long[] {frame, this.arenaBuf});
-		// the new half is free
-		this.release(this.arenaWords, this.arenaWords);
-		this.usedWords += this.arenaWords;
+		// the added part is free: exactly what the new buffer adds (it said the old size was, the doubling's arithmetic, and
+		// after growing by half that offered memory past the buffer's end: a native write there crashed the game)
+		long added = words - this.arenaWords;
+		this.release(this.arenaWords, added);
+		this.usedWords += added;
 		this.arenaBuf = buf;
 		this.arenaAddr = addr;
 		this.arenaWords = words;
@@ -615,13 +813,13 @@ final class LodMesh implements LodClip.Listener {
 		MemoryUtil.memPutInt(f + 128, this.tps);
 		MemoryUtil.memPutInt(f + 132, BLOCK);
 		// (with the lists, the culls' own instances stay under their sectors' stand-ins, whichever path draws)
-		MemoryUtil.memPutInt(f + 136, LodPk.ENABLED ? LodPk.STAND_BASE : MAX_INSTANCES);
+		MemoryUtil.memPutInt(f + 136, LodPk.ENABLED ? LodPk.STAND_BASE : this.instCap);
 		MemoryUtil.memPutInt(f + 140, MAX_PLANT_INSTANCES);
 		// the horizon cull: bands from 48 blocks, 128 of them out to twice the reach
 		MemoryUtil.memPutInt(f + 392, HORIZON ? (REAL_OCC ? (REAL_OCC_HEIGHT ? 49 : 17) : 1) | (HZ_MARK ? 8 : 0) : 0);
 		MemoryUtil.memPutFloat(f + 400, 48.0F);
 		MemoryUtil.memPutFloat(f + 404, (float) (128.0 / Math.log(Math.max(2.0, reach * 2.0 / 48.0))));
-		MemoryUtil.memPutInt(f + 416, MAX_SURVIVORS);
+		MemoryUtil.memPutInt(f + 416, this.survCap);
 		MemoryUtil.memPutInt(f + 420, MAX_LISTED);
 		for (int l = 0; l < this.clip.levels; l++) {
 			MemoryUtil.memPutInt(f + 144 + l * 16L, this.clip.winTx[l]);
@@ -642,10 +840,35 @@ final class LodMesh implements LodClip.Listener {
 		return this.jobs.size() + this.results.size();
 	}
 
+	/**
+	 * Stops the workers and waits for them (one still inside copyRegion read the clipmap's buffers after
+	 * the owner released them), then frees this mesh's host memory: the frame and table copies and the results not yet
+	 * installed. Render thread; the GPU buffers are the owner's to release (buffers()).
+	 */
 	void close() {
 		this.closed = true;
 		for (Thread t : this.workers) t.interrupt();
 		this.clip.listener = null;
+		boolean joined = true;
+		for (Thread t : this.workers) {
+			try {
+				t.join(1000);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+			joined &= !t.isAlive();
+		}
+		long[] r;
+		while ((r = this.results.poll()) != null) MemoryUtil.nmemFree(r[2]);
+		while ((r = this.publishLater.poll()) != null) MemoryUtil.nmemFree(r[2]);
+		this.resultSnaps.clear();
+		// (a worker that didn't stop in a second may still use them: left, a small leak, rather than freed under it)
+		if (!joined) {
+			System.out.println("cadence-lod: a mesh worker didn't stop; its memory is left");
+			return;
+		}
+		MemoryUtil.nmemFree(this.frame);
+		MemoryUtil.nmemFree(this.tableHost);
 	}
 
 	/** GPU buffers, for release by the owner once frames in flight are done (the arena's current and old ones included). */

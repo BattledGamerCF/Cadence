@@ -213,6 +213,13 @@ public final class OwnQuads {
 		/** Stats (verify): per quad its facing class: the bucket for 0-5; for bucket 6 the dominant axis of its normal, 0..5. */
 		final byte[][] cls = new byte[BUCKETS][];
 		/**
+		 * order()'s targets, swapped with the bucket's arrays after each sort (the old ones become the next spares): a sort used to
+		 * allocate five new arrays per bucket per compile, ~9% of the large float arrays young collections copied while flying.
+		 */
+		private final float[][] sparePlane = new float[BUCKETS][];
+		private final int[][] spareLo = new int[BUCKETS][], spareHi = new int[BUCKETS][], spareMat = new int[BUCKETS][];
+		private final byte[][] spareCls = new byte[BUCKETS][];
+		/**
 		 * -Dcadence.own.mesh.mergestat: per quad its merge key (mk0: uv of the (min,min) and (max,min) corners, unorm16; mk1: uv of the
 		 * (max,max) corner | colour << 32; mk2: light | cell a << 32 | cell b << 40 | reason << 48; reason 0 = eligible).
 		 */
@@ -298,6 +305,22 @@ public final class OwnQuads {
 			}
 		}
 
+		/** A spare of exactly length n (the bucket's own capacity), reused when it has that length. */
+		private static float[] spare(float[][] spares, int b, int n) {
+			float[] a = spares[b];
+			return a != null && a.length == n ? a : new float[n];
+		}
+
+		private static int[] spare(int[][] spares, int b, int n) {
+			int[] a = spares[b];
+			return a != null && a.length == n ? a : new int[n];
+		}
+
+		private static byte[] spare(byte[][] spares, int b, int n) {
+			byte[] a = spares[b];
+			return a != null && a.length == n ? a : new byte[n];
+		}
+
 		/** ORDER: sorts every bucket by key() (once, before copyTo and runs). */
 		void order() {
 			if (!ORDER || this.ordered) return;
@@ -314,9 +337,10 @@ public final class OwnQuads {
 					this.scratchCap = n;
 				}
 				long src = this.addr[b], dst = this.scratch;
-				float[] pl = this.plane[b], npl = new float[pl.length];
-				int[] lo = this.lo[b], hi = this.hi[b], nlo = new int[lo.length], nhi = new int[hi.length], mt = this.mat[b], nmt = new int[mt.length];
-				byte[] cl = this.cls[b], ncl = new byte[cl.length];
+				float[] pl = this.plane[b], npl = spare(this.sparePlane, b, pl.length);
+				int[] lo = this.lo[b], hi = this.hi[b], nlo = spare(this.spareLo, b, lo.length), nhi = spare(this.spareHi, b, hi.length), mt = this.mat[b],
+					nmt = spare(this.spareMat, b, mt.length);
+				byte[] cl = this.cls[b], ncl = spare(this.spareCls, b, cl.length);
 				long qsrc = this.qaddr[b], qdst = 0;
 				if (qsrc != 0) {
 					qdst = MemoryUtil.nmemAlloc((long) n * OwnQrec.BYTES);
@@ -339,6 +363,11 @@ public final class OwnQuads {
 				this.hi[b] = nhi;
 				this.mat[b] = nmt;
 				this.cls[b] = ncl;
+				this.sparePlane[b] = pl;
+				this.spareLo[b] = lo;
+				this.spareHi[b] = hi;
+				this.spareMat[b] = mt;
+				this.spareCls[b] = cl;
 			}
 		}
 
@@ -513,8 +542,12 @@ public final class OwnQuads {
 				}
 				if (amax - amin != 1f || bmax - bmin != 1f || amin != (float) Math.floor(amin) || bmin != (float) Math.floor(bmin) || amin < 0 || bmin < 0 || amin > 15 || bmin > 15) {
 					reason = 2;
-				} else if (abgr[0] != abgr[1] || abgr[0] != abgr[2] || abgr[0] != abgr[3] || light[0] != light[1] || light[0] != light[2] || light[0] != light[3]) {
+				} else if (light[0] != light[1] || light[0] != light[2] || light[0] != light[3]) {
 					reason = 3;
+				} else if (abgr[0] != abgr[1] || abgr[0] != abgr[2] || abgr[0] != abgr[3]) {
+					int d = 0;
+					for (int v = 1; v < 4; v++) for (int s = 0; s < 32; s += 8) d = Math.max(d, Math.abs((abgr[v] >>> s & 255) - (abgr[0] >>> s & 255)));
+					reason = d <= 4 ? 5 : 6;
 				} else if (!this.spriteOk) {
 					reason = 4;
 				} else {
@@ -748,7 +781,7 @@ public final class OwnQuads {
 			abgr[v] = toABGR(instance.getColor(v));
 			light[v] = LightCoordsUtil.lightCoordsWithEmission(instance.getLightCoords(v), emission);
 		}
-		if (OwnMergeStat.ON) this.layers[layer].spriteOk = !quad.materialInfo().sprite().contents().isAnimated();
+		if (OwnMergeStat.ON) this.layers[layer].spriteOk = !quad.materialInfo().sprite().isAnimated();
 		if (OwnQrec.ON) {
 			Layer l = this.layers[layer];
 			l.hinted = this.hinted;

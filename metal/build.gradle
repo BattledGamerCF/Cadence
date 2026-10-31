@@ -3,7 +3,7 @@ plugins {
 }
 
 base.archivesName = 'cadence-metal'
-version = '0.4.0-beta.3'
+version = '0.4.0-beta.30'
 
 dependencies {
 	minecraft "com.mojang:minecraft:${minecraft_version}"
@@ -16,17 +16,38 @@ dependencies {
 def nativeOut = layout.buildDirectory.dir('natives/natives')
 
 tasks.register('compileNative', Exec) {
-	def sources = ['mcmetal.m', 'mclod.m', 'lodseam.m', 'lodmesh.c', 'lodnoise.c', 'rec.m', 'mcown.m', 'mccap.m', 'mcfx.m', 'mccull.m', 'mcsys.m', 'mcbench.m', 'mcpack.m'].collect { file("src/main/native/$it") }
+	def sources = ['mcmetal.m', 'mclod.m', 'lodseam.m', 'lodmesh.c', 'lodnoise.c', 'rec.m', 'mcown.m', 'mccap.m', 'mcfx.m', 'mccull.m', 'mcsys.m', 'mcbench.m', 'mcpack.m', 'mcm4.m', 'mcrecord.m', 'mcfg.m', 'mcaudio.m', 'mcrt.m', 'mcneural.m', 'mcgrade.m', 'mcnet.c'].collect { file("src/main/native/$it") }
 	def output = nativeOut.get().file('libmcmetal.dylib').asFile
 	inputs.files sources, file('src/main/native/mcmetal.h'), file('src/main/native/lodmesh.h')
 	outputs.file output
 	doFirst { output.parentFile.mkdirs() }
 	commandLine(['clang', '-fno-objc-arc', '-O2', '-Wall', '-arch', 'arm64', '-mmacosx-version-min=15.0', '-dynamiclib', '-install_name', '@rpath/libmcmetal.dylib',
-		'-framework', 'AppKit', '-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'IOKit', '-framework', 'Metal', '-framework', 'MetalFX', '-framework', 'QuartzCore', '-o', output] + sources)
+		'-framework', 'AppKit', '-framework', 'AVFAudio', '-framework', 'CoreGraphics', '-framework', 'CoreVideo', '-framework', 'Foundation', '-framework', 'IOKit', '-framework', 'Metal', '-framework', 'MetalFX', '-framework', 'QuartzCore', '-lz', '-o', output] + sources)
+}
+
+// Cadence Helper (src/main/helper): a small app for the jobs that need their own process: Create ML training (Style Filters) and
+// on-device speech recognition (Voice Control, which needs its own microphone and speech permissions). Built with swiftc, signed
+// ad hoc, shipped in the jar and unpacked next to the native library at first use.
+def helperApp = layout.buildDirectory.dir('natives/natives/CadenceHelper.app')
+tasks.register('compileHelper', Exec) {
+	def src = file('src/main/helper/main.swift'), plist = file('src/main/helper/Info.plist')
+	def bin = helperApp.get().file('Contents/MacOS/cadence-helper').asFile
+	inputs.files src, plist
+	outputs.dir helperApp
+	doFirst {
+		bin.parentFile.mkdirs()
+		java.nio.file.Files.copy(plist.toPath(), helperApp.get().file('Contents/Info.plist').asFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+	}
+	commandLine 'swiftc', '-O', '-target', 'arm64-apple-macos15.0', '-o', bin, src
+	finalizedBy 'signHelper'
+}
+tasks.register('signHelper', Exec) {
+	commandLine 'codesign', '--force', '--sign', '-', '--identifier', 'dev.cadence.helper', helperApp.get().asFile
 }
 
 processResources {
 	dependsOn 'compileNative'
+	dependsOn 'compileHelper', 'signHelper'
 	from(layout.buildDirectory.dir('natives'))
 	inputs.property 'version', version
 	filesMatching('fabric.mod.json') { expand 'version': version }

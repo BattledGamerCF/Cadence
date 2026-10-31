@@ -26,7 +26,7 @@ public abstract class BlockEntityFeatureTagMixin {
       boolean globallyRendered,
       CallbackInfoReturnable<BlockEntityRenderState> callback) {
     boolean[] passes =
-        dev.cadence.shaders.cadence.EntityCull.blockEntityPasses(block.getBlockPos(), globallyRendered);
+        dev.cadence.shaders.cadence.render.EntityCull.blockEntityPasses(block.getBlockPos(), globallyRendered);
     if (passes == null)
       FeatureDrawContext.extractedBlockEntity(callback.getReturnValue(), block.getBlockState());
     else

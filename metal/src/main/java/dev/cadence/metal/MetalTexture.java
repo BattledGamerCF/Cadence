@@ -18,6 +18,8 @@ class MetalTexture extends BaseGpuTexture {
 	long residentBytes;
 	/** Created with ShaderWrite usage (a compute kernel may write it). */
 	boolean shaderWrite;
+	/** HDR: the game's frame colour made as RGBA16Float (the game still sees RGBA8). */
+	boolean floatFrame;
 	private final MetalEncoder encoder;
 	private boolean closed;
 
@@ -48,6 +50,10 @@ class MetalTexture extends BaseGpuTexture {
 	@Override
 	public int getHeight(int mip) {
 		return Math.max(1, super.getHeight(mip));
+	}
+
+	MetalEncoder encoder() {
+		return this.encoder;
 	}
 
 	boolean hasPendingClear() {

@@ -3,8 +3,8 @@ package dev.cadence.shaders.cadence.packcheck;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import com.mojang.renderpearl.api.textures.GpuTexture;
-import dev.cadence.shaders.cadence.RenderScale;
-import dev.cadence.shaders.cadence.ShadowReuse;
+import dev.cadence.shaders.cadence.render.RenderScale;
+import dev.cadence.shaders.cadence.shadow.ShadowReuse;
 import dev.cadence.shaders.runtime.ShaderRuntime;
 import java.io.IOException;
 import java.io.Reader;
@@ -56,6 +56,16 @@ public final class PackCheck {
 	private static long diffOn, diffOff;
 	private static int worstOn = -1;
 	private static GpuBuffer readback;
+	/** A copy into readback not yet read (its callback will read it): the buffer is closed after, not under it. */
+	private static boolean copyPending;
+
+	/** The check's frame-sized buffer and picture, released when it ends (8-22 MB kept for the session before). */
+	private static void releaseReadback() {
+		off1 = null;
+		if (copyPending || readback == null) return;
+		readback.close();
+		readback = null;
+	}
 	private static volatile boolean captureDone;
 	private static String runningKey, status = "";
 	private static Result outcome;
@@ -95,8 +105,8 @@ public final class PackCheck {
 	private static synchronized void save() {
 		Properties p = new Properties();
 		p.putAll(results);
-		try (Writer w = Files.newBufferedWriter(file(), StandardCharsets.UTF_8)) {
-			p.store(w, "Cadence pack checks: safe = shadow receiver culling verified for that pack, options and dimension");
+		try {
+			dev.cadence.metal.ConfigFiles.store(p, file(), "Cadence pack checks: safe = shadow receiver culling verified for that pack, options and dimension", true);
 		} catch (IOException e) {
 			LoggerFactory.getLogger("cadence").info("Pack check: can't save {}: {}", file(), e.toString());
 		}
@@ -199,6 +209,7 @@ public final class PackCheck {
 		if (camera != null) look(camera, yaw0, pitch0);
 		outcome = result;
 		status = message;
+		releaseReadback();
 		if (result != null && runningKey != null) {
 			load();
 			results.put(runningKey, result.name() + " " + java.time.LocalDate.now());
@@ -238,7 +249,7 @@ public final class PackCheck {
 		}
 		look(camera, yaw0 + VIEWS[view][0], Math.max(-89, Math.min(89, VIEWS[view][1])));
 		frame++;
-		if (frame % 10 == 0) dev.cadence.shaders.cadence.CadenceSettings.refreshLater();
+		if (frame % 10 == 0) dev.cadence.shaders.cadence.ui.CadenceSettings.refreshLater();
 		if (phase == 0) {
 			var chunks = Minecraft.getInstance().levelRenderer.sectionRenderDispatcher();
 			boolean building = chunks != null && chunks.getCompileQueueSize() > 0;
@@ -288,6 +299,7 @@ public final class PackCheck {
 			readback = device.createBuffer(() -> "Cadence pack check", GpuBuffer.USAGE_MAP_READ | GpuBuffer.USAGE_COPY_DST, bytes);
 		}
 		int capturedPhase = phase;
+		copyPending = true;
 		device.createCommandEncoder().copyTextureToBuffer(picture, readback, 0, () -> compare(capturedPhase), 0);
 	}
 
@@ -297,6 +309,12 @@ public final class PackCheck {
 			ByteBuffer data = view.data();
 			now = new byte[data.remaining()];
 			data.get(now);
+		} finally {
+			copyPending = false;
+		}
+		if (!running) {
+			releaseReadback();  // (the check ended while this copy was on its way)
+			return;
 		}
 		if (Boolean.getBoolean("cadence.packCheckDump")) {
 			try {

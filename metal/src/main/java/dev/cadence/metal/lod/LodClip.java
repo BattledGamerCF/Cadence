@@ -53,6 +53,9 @@ final class LodClip {
 	/** Staged copies of resident tiles that real chunks changed (PAIRS), by tile key. Render thread only. */
 	private final java.util.HashMap<Long, Snapshot> staged = new java.util.HashMap<>();
 
+	/** The staged copies' versions (refresh): one clock for all, so a slot's versions never go back. */
+	private long stageClock;
+
 	/** A tile's words (crown, runs, tex, plants where the level has them), and the staged version they are. */
 	static final class Snapshot {
 		final int level, tx, tz;
@@ -99,6 +102,15 @@ final class LodClip {
 	}
 
 	@org.jspecify.annotations.Nullable Listener listener;
+	/** Told of a resident tile just before its slot is cleared (the window moved off it): LodField saves it if real chunks changed it. */
+	java.util.function.@org.jspecify.annotations.Nullable LongConsumer evicting;
+
+	/** The levels a clipmap of n cells a side needs to reach `reach` blocks. */
+	static int levelsFor(int n, double reach) {
+		int lv = 1;
+		while ((n / 2.0 - TILE - MARGIN) * (1L << (lv - 1)) < reach && lv < 12) lv++;
+		return lv;
+	}
 
 	LodClip(long ctx, int n, double reach) {
 		if (Integer.bitCount(n) != 1 || n < 256) throw new IllegalArgumentException("cadence.lod.n must be a power of two >= 256: " + n);
@@ -107,8 +119,7 @@ final class LodClip {
 		this.tilesPerSide = n / TILE;
 		// a ray stays inside level L's window up to (N / 2 - TILE) cells from the camera, wherever it is in its tile; the walk
 		// leaves a level at the first boundary aligned to the next past its switch distance (up to 2 cells on): 4 cells to spare
-		int lv = 1;
-		while ((n / 2.0 - TILE - MARGIN) * (1L << (lv - 1)) < reach && lv < 12) lv++;
+		int lv = levelsFor(n, reach);
 		this.levels = lv;
 		this.switchDist = new float[lv];
 		for (int l = 0; l < lv; l++) this.switchDist[l] = (float) ((n / 2.0 - TILE - MARGIN) * (1L << l));
@@ -239,6 +250,8 @@ final class LodClip {
 
 	private void clear(int level, int slot) {
 		int tx = slot % this.tilesPerSide, tz = slot / this.tilesPerSide;
+		java.util.function.LongConsumer e = this.evicting;
+		if (e != null && this.slotKey[level][slot] != -1L) e.accept(this.slotKey[level][slot]);
 		if (this.slotKey[level][slot] != -1L) this.staged.remove(this.slotKey[level][slot]);
 		this.epoch[level][slot]++;
 		this.beginWrite(level, slot);
@@ -398,6 +411,25 @@ final class LodClip {
 		}
 	}
 
+	/**
+	 * A resident tile's words as they will be once published: its staged copy (real chunks changed it; PAIRS) where there is
+	 * one, else the clipmap's. What saving it must write.
+	 */
+	void readLatest(int level, int tx, int tz, int[] g, int[] c, int @org.jspecify.annotations.Nullable [] cr, int @org.jspecify.annotations.Nullable [] tw,
+		int @org.jspecify.annotations.Nullable [] runs, int @org.jspecify.annotations.Nullable [] pl) {
+		Snapshot s = this.staged.get(LodTile.key(level, tx, tz));
+		if (s == null) {
+			this.read(level, tx, tz, g, c, cr, tw, runs, pl);
+			return;
+		}
+		System.arraycopy(s.g, 0, g, 0, g.length);
+		System.arraycopy(s.c, 0, c, 0, c.length);
+		if (cr != null && s.cr != null) System.arraycopy(s.cr, 0, cr, 0, cr.length);
+		if (runs != null && s.runs != null) System.arraycopy(s.runs, 0, runs, 0, runs.length);
+		if (tw != null && s.tw != null) System.arraycopy(s.tw, 0, tw, 0, tw.length);
+		if (pl != null && s.pl != null) System.arraycopy(s.pl, 0, pl, 0, pl.length);
+	}
+
 	/** One level-0 cell's words: geometry, color, crown, runs, texture, plant A, plant B (for the exactness check). */
 	int[] cellWords(int cx, int cz) {
 		long at = this.cellOffset(0, cx, cz) * 4;
@@ -475,7 +507,10 @@ final class LodClip {
 			Snapshot s = this.staged.get(LodTile.key(level, tx, tz));
 			Listener l = this.listener;
 			if (s == null || l == null) return;
-			s.version++;
+			// (one clock for every staged copy: a slot's versions only grow. Each new staged copy counted from 1 again, and
+			// LodMesh, which remembers the slot's last published version, dropped its meshes as already published: a tile
+			// published once ignored the real chunks' later changes, and in shader-pack mode never took its one-colour mesh)
+			s.version = ++this.stageClock;
 			l.tileStaged(s.copy());
 			return;
 		}

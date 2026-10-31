@@ -64,6 +64,9 @@ typedef struct {
 	id<MTLDepthStencilState> depthGreater;
 	id<MTLComputePipelineState> fragReset, fragCull, fragFinish;
 	id<MTLComputePipelineState> fragCullR, fragSig;
+	// 4 KB of zeros bound to every optional slot the cull kernels declare before the real buffers (the unused ones stayed unbound:
+	// harmless, the reads are flag-guarded, but Metal's validation layer stopped the game on the first frame)
+	id<MTLBuffer> zeroSlots;
 	id<MTLComputePipelineState> animCopy;  // -Dcadence.own.int.animCopy + atlasWrite: the compute copy  // -Dcadence.own.int.cullR: frag_cull_s, and =verify's list signatures
 	id<MTLRenderPipelineState> lastPso;  // the last draw's pipeline (follow-up draws, kind bit 24)
 	// the frag path's two-phase occlusion in the mesh stage (kind bits 27 phase A, 28 phase B): per-record masks (not retained: OwnFrag
@@ -267,6 +270,7 @@ void *mco_contents(id<MTLBuffer> b) {
 }
 
 void mco_release(id obj) {
+	if (mc4On) mc4_unpin(obj);  // (Metal 4: out of the residency set once the GPU is done with it)
 	[obj release];
 }
 
@@ -688,6 +692,16 @@ static uint32_t ownVgClass(Own *w, int v, int id) {
 // Cadence: own_fs's flags (buffer 29), from mco_set_hiz_tiled bits 20-21: 1 = RGSS's samples skipped where vanilla's blend is 0 (exact),
 // 2 = verification (magenta where the shortcuts would change the sample)
 static uint32_t mco_cad_frag = 1;
+// Cadence HDR (OwnEmission, Hdr.emissiveGain): the gain of emissive texels in own_fs (1: off) and the atlas's emission mask
+static float mcoHdrGain = 1.0f;
+static id<MTLTexture> mcoEmission;
+void mco_hdr(float gain, id<MTLTexture> emission) {
+	mcoHdrGain = emission ? gain : 1.0f;
+	if (emission != mcoEmission) {
+		[mcoEmission release];
+		mcoEmission = [emission retain];
+	}
+}
 
 int mco_draw(Own *w, Enc *enc, int cutout, const void *frame, int frameLength, id<MTLBuffer> arena, id<MTLBuffer> sections, id<MTLBuffer> recs,
 	id<MTLBuffer> lists, id<MTLBuffer> args, int64_t argsOffset, const int64_t *u, id<MTLTexture> atlas, id<MTLSamplerState> atlasSampler, id<MTLTexture> light,
@@ -746,7 +760,7 @@ int mco_draw(Own *w, Enc *enc, int cutout, const void *frame, int frameLength, i
 		pso = ownPipeline(w, enc, cutout, err, errCap);
 	}
 	if (vgElig) w->vgStat[!vgArgs ? 5 : vgArgs == w->a1sGBuf && w->a1sGOut == (void *) args ? 4 : (id) args == w->uoccBArgs ? 3 : 2]++;
-	uint8_t fbuf[256];
+	uint8_t fbuf[512];  // (DrawFrame: 368 bytes with its dynamic lights)
 	if (!pso && (cutout & (1 << 12))) {
 		// (a table draw without its F_QFLAT pipeline: the list's class draw instead, never the table under a plain vertex stage)
 		cutout &= ~(1 << 12);
@@ -813,6 +827,8 @@ int mco_draw(Own *w, Enc *enc, int cutout, const void *frame, int frameLength, i
 	[r setFragmentSamplerState:atlasSampler atIndex:14];
 drawCall:
 	[r setFragmentBytes:&mco_cad_frag length:4 atIndex:29];
+	[r setFragmentBytes:&mcoHdrGain length:4 atIndex:30];
+	if (mcoHdrGain > 1.0f && mcoEmission) [r setFragmentTexture:mcoEmission atIndex:18];
 	if (w->vcount && !mesh) [r setVertexBuffer:w->vcount offset:0 atIndex:28];
 	if (cutout & (1 << 30)) {
 		// the visibility oracle: the drawn units (vertex stage) and the units with a visible pixel (fragment stage), this sample's number
@@ -1189,6 +1205,14 @@ void mco_frag_cull(Own *w, Enc *enc, const void *frame, int frameLength, const v
 		}
 		id<MTLComputeCommandEncoder> c = [mc_profiled_compute(enc, mc_pre(enc), MTLDispatchTypeSerial) autorelease];  // (profiled while tracing)
 		c.label = @"own frag cull";
+		if (!w->zeroSlots) {
+			w->zeroSlots = [w->ctx->device newBufferWithLength:4096 options:MTLResourceStorageModeShared];
+			memset(w->zeroSlots.contents, 0, 4096);
+		}
+		{
+			static const NSUInteger optional[] = {12, 13, 14, 15, 16, 17, 22, 24, 26, 27, 28, 30};
+			for (size_t k = 0; k < sizeof optional / sizeof optional[0]; k++) [c setBuffer:w->zeroSlots offset:0 atIndex:optional[k]];
+		}
 		[c setBytes:frame length:frameLength atIndex:0];
 		[c setBytes:fragFrame length:fragLength atIndex:11];
 		[c setBuffer:sections offset:0 atIndex:1];
@@ -2005,8 +2029,12 @@ int mco_anim_copy(Own *w, Enc *enc, id<MTLTexture> src, id<MTLTexture> dst, int 
 		[c setComputePipelineState:w->animCopy];
 		[c setTexture:s atIndex:0];
 		[c setTexture:d atIndex:1];
-		[c setBytes:rects length:(NSUInteger) count * 24 atIndex:0];
-		[c dispatchThreads:MTLSizeMake((NSUInteger) maxW, (NSUInteger) maxH, (NSUInteger) count) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+		// (setBytes takes at most 4 KB: 170 rectangles of 24 bytes a dispatch)
+		for (int at = 0; at < count; at += 170) {
+			int n = count - at < 170 ? count - at : 170;
+			[c setBytes:rects + at * 6 length:(NSUInteger) n * 24 atIndex:0];
+			[c dispatchThreads:MTLSizeMake((NSUInteger) maxW, (NSUInteger) maxH, (NSUInteger) n) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+		}
 		[c endEncoding];
 	}
 	return 1;
@@ -2045,11 +2073,12 @@ int mco_anim_copy_mips(Own *w, Enc *enc, id<MTLTexture> src, id<MTLTexture> dst,
 		c.label = @"Cadence animation copy (one encoder)";
 		[c setComputePipelineState:w->animCopy];
 		[c setTexture:src atIndex:0];
-		uint32_t group[6 * 512];
+		// (groups of at most 170 rectangles: setBytes takes at most 4 KB, and 170 x 24 bytes is under it)
+		uint32_t group[6 * 170];
 		int i = 0;
 		while (i < count) {
 			int mip = (int) rects[i * 7 + 6], n = 0, maxW = 0, maxH = 0;
-			while (i < count && (int) rects[i * 7 + 6] == mip && n < 512) {
+			while (i < count && (int) rects[i * 7 + 6] == mip && n < 170) {
 				for (int k = 0; k < 6; k++) group[n * 6 + k] = rects[i * 7 + k];
 				if ((int) rects[i * 7 + 4] > maxW) maxW = (int) rects[i * 7 + 4];
 				if ((int) rects[i * 7 + 5] > maxH) maxH = (int) rects[i * 7 + 5];

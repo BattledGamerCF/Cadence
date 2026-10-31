@@ -34,6 +34,33 @@ static NSString *presentSource = @
 	"fragment float4 present_fs(V v [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]]) {\n"
 	"  return t.sample(s, v.uv);\n"
 	"}\n"
+	// Cadence HDR (dev.cadence.metal.Hdr): the frame is a float target holding the game's sRGB-encoded values, with light sources
+	// above 1.0; the drawable is extended linear sRGB, where 1.0 is the display's SDR white and its headroom the brightest it shows
+	// now. Values up to the knee pass unchanged; above it, by the brightest channel (hue kept), they roll off into the headroom.
+	// mode 0: no headroom (SDR or the screen at full brightness): above 1.0 scaled back to 1.0, hue kept. (fg_fs_hdr in
+	// framegen.metal does the same.)
+	"struct Tone { float headroom; float knee; uint mode; float pad; };\n"
+	"static float3 srgbDecode(float3 c) { c = max(c, 0.0); return select(pow((c + 0.055) / 1.055, 2.4), c / 12.92, c <= 0.04045); }\n"
+	"static float3 srgbEncode(float3 l) { l = max(l, 0.0); return select(1.055 * pow(l, 1.0 / 2.4) - 0.055, l * 12.92, l <= 0.0031308); }\n"
+	"static float3 toneMap(float3 lin, constant Tone &tn) {\n"
+	"  float m = max(max(lin.r, lin.g), lin.b);\n"
+	"  if (tn.mode == 0) return m > 1.0 ? lin / m : lin;\n"
+	"  if (m <= tn.knee) return lin;\n"
+	"  float span = max(tn.headroom - tn.knee, 1e-4), t = (m - tn.knee) / span;\n"
+	"  return lin * ((tn.knee + span * (t / (1.0 + t))) / m);\n"
+	"}\n"
+	"fragment half4 present_hdr_fs(V v [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]], constant Tone &tn [[buffer(0)]]) {\n"
+	"  return half4(half3(toneMap(srgbDecode(t.sample(s, v.uv).rgb), tn)), 1.0h);\n"
+	"}\n"
+	// a copy between textures of different formats (a float frame read back as 8-bit: screenshots; or into a float one): r = source
+	// x, y, width, height. Into 8 bits, values above 1.0 are scaled back (hue kept), as an SDR screen shows them.
+	"kernel void tex_convert(texture2d<float, access::read> s [[texture(0)]], texture2d<float, access::write> d [[texture(1)]],\n"
+	"    constant int4 &r [[buffer(0)]], constant uint &toSdr [[buffer(1)]], uint2 g [[thread_position_in_grid]]) {\n"
+	"  if (g.x >= uint(r.z) || g.y >= uint(r.w)) return;\n"
+	"  float4 c = s.read(uint2(r.xy) + g);\n"
+	"  if (toSdr != 0) { c = max(c, 0.0); float m = max(max(c.r, c.g), c.b); if (m > 1.0) c.rgb /= m; c.a = min(c.a, 1.0); }\n"
+	"  d.write(c, g);\n"
+	"}\n"
 	"struct Clear { float4 color; float depth; };\n"
 	"vertex float4 clear_vs(uint id [[vertex_id]], constant Clear &c [[buffer(0)]]) {\n"
 	"  float2 p = float2((id << 1) & 2, id & 2);\n"
@@ -54,6 +81,13 @@ Ctx *mc_create(char *name, int nameCap, char *err, int errCap) {
 		pd.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
 		id<MTLRenderPipelineState> present = [device newRenderPipelineStateWithDescriptor:pd error:&e];
 		if (!present) { copyError(e, err, errCap); return NULL; }
+		pd.fragmentFunction = [[lib newFunctionWithName:@"present_hdr_fs"] autorelease];
+		pd.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA16Float;
+		id<MTLRenderPipelineState> presentHdr = [device newRenderPipelineStateWithDescriptor:pd error:&e];
+		if (!presentHdr) { copyError(e, err, errCap); return NULL; }
+		id<MTLFunction> convertFn = [[lib newFunctionWithName:@"tex_convert"] autorelease];
+		id<MTLComputePipelineState> convert = convertFn ? [device newComputePipelineStateWithFunction:convertFn error:&e] : nil;
+		if (!convert) { copyError(e, err, errCap); return NULL; }
 		MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor new] autorelease];
 		sd.minFilter = sd.magFilter = MTLSamplerMinMagFilterNearest;
 		MTLDepthStencilDescriptor *dd = [[MTLDepthStencilDescriptor new] autorelease];
@@ -61,9 +95,17 @@ Ctx *mc_create(char *name, int nameCap, char *err, int errCap) {
 
 		Ctx *ctx = calloc(1, sizeof(Ctx));
 		ctx->device = device;
-		ctx->queue = [device newCommandQueueWithMaxCommandBufferCount:64];
+		// Metal 4 (-Dcadence.metal4=true, mcm4.m): the same interface over an MTL4CommandQueue; Metal 3 when unavailable
+		ctx->queue = mc4On ? mc4_queue_new(device) : nil;
+		if (!ctx->queue) {
+			mc4On = 0;
+			ctx->queue = [device newCommandQueueWithMaxCommandBufferCount:64];
+		}
 		ctx->builtins = lib;
 		ctx->present = present;
+		ctx->presentHdr = presentHdr;
+		ctx->convert = convert;
+		sd.supportArgumentBuffers = YES;  // (Metal 4 binds samplers by resource id)
 		ctx->presentSampler = [device newSamplerStateWithDescriptor:sd];
 		ctx->clearPipelines = [NSMutableDictionary new];
 		ctx->depthKeep = [device newDepthStencilStateWithDescriptor:dd];
@@ -84,6 +126,7 @@ Ctx *mc_create(char *name, int nameCap, char *err, int errCap) {
 uint64_t mc_max_buffer_length(Ctx *ctx) { return ctx->device.maxBufferLength; }
 static int poolRelease(id obj);
 void mc_release(id obj) {
+	if (mc4On) mc4_unpin(obj);  // (Metal 4: it leaves the residency set once the GPU can't still use it)
 	if (!poolRelease(obj)) [obj release];
 }
 
@@ -106,6 +149,16 @@ void mc_diag_enable(double thresholdMs) {
 	diagWallMinusHost = tv.tv_sec + tv.tv_usec * 1e-6 - CACurrentMediaTime();
 	diagMs = thresholdMs;
 	diagOn = 1;
+}
+
+// A frame's command buffer that failed (GPU timeout, out of memory, a page fault): said in the log, the first 5 times a session.
+// Without it a failed frame was a black or garbled picture with nothing in the log.
+static int cmdErrors;
+static void cmdErrorReport(const char *which, id<MTLCommandBuffer> cb) {
+	if (cb.status != MTLCommandBufferStatusError) return;
+	int k = __atomic_fetch_add(&cmdErrors, 1, __ATOMIC_RELAXED);
+	if (k < 5) fprintf(stderr, "cadence-metal: the frame's %s command buffer failed: %s%s\n", which,
+		cb.error ? cb.error.localizedDescription.UTF8String : "(no error given)", k == 4 ? " (not reported again this session)" : "");
 }
 
 static void diagReport(const char *which, long submit, double commit, uint64_t big, uint64_t copied, id<MTLCommandBuffer> cb) {
@@ -303,19 +356,23 @@ id<MTLBuffer> mc_buffer_private(Ctx *ctx, id<MTLBuffer> src, uint64_t size) {
 	}
 }
 void *mc_buffer_contents(id<MTLBuffer> buffer) { return buffer.contents; }
-uint64_t mc_buffer_gpu_address(id<MTLBuffer> buffer) { return buffer.gpuAddress; }
+uint64_t mc_buffer_gpu_address(id<MTLBuffer> buffer) {
+	mc4_pin(buffer);  // (Metal 4: reached by address only, it must stay resident)
+	return buffer.gpuAddress;
+}
 
-id<MTLTexture> mc_texture_new(Ctx *ctx, int format, int width, int height, int layers, int mips, int usage, int cube) {
+// kind: 0 2D, 1 cube, 2 3D (Cadence: a shader pack's volume texture; layers is its depth)
+id<MTLTexture> mc_texture_new(Ctx *ctx, int format, int width, int height, int layers, int mips, int usage, int kind) {
 	@autoreleasepool {
 		MTLTextureDescriptor *d = [[MTLTextureDescriptor new] autorelease];
-		d.textureType = cube ? MTLTextureTypeCube : MTLTextureType2D;
+		d.textureType = kind == 2 ? MTLTextureType3D : kind == 1 ? MTLTextureTypeCube : MTLTextureType2D;
 		d.pixelFormat = (MTLPixelFormat) format;
 		d.width = width;
 		d.height = height;
+		if (kind == 2) d.depth = layers;  // (cubes carry their 6 faces implicitly; arrays aren't used by the game yet)
 		d.mipmapLevelCount = mips;
 		d.usage = (MTLTextureUsage) usage;
 		d.storageMode = MTLStorageModePrivate;
-		(void) layers;  // cubes carry their 6 faces implicitly; arrays aren't used by the game yet
 		return [ctx->device newTextureWithDescriptor:d];
 	}
 }
@@ -344,11 +401,13 @@ id<MTLSamplerState> mc_sampler_new(Ctx *ctx, int addressU, int addressV, int min
 		MTLSamplerDescriptor *d = [[MTLSamplerDescriptor new] autorelease];
 		d.sAddressMode = (MTLSamplerAddressMode) addressU;
 		d.tAddressMode = (MTLSamplerAddressMode) addressV;
+		d.rAddressMode = (MTLSamplerAddressMode) addressU;  // (3D textures' depth axis, as U; 2D textures ignore it)
 		d.minFilter = (MTLSamplerMinMagFilter) minFilter;
 		d.magFilter = (MTLSamplerMinMagFilter) magFilter;
 		d.mipFilter = (MTLSamplerMipFilter) mipFilter;
 		d.maxAnisotropy = anisotropy;
 		d.lodMaxClamp = maxLod;
+		d.supportArgumentBuffers = YES;
 		return [ctx->device newSamplerStateWithDescriptor:d];
 	}
 }
@@ -360,17 +419,26 @@ id<MTLSamplerState> mc_sampler_new_compare(Ctx *ctx, int addressU, int addressV,
 		MTLSamplerDescriptor *d = [[MTLSamplerDescriptor new] autorelease];
 		d.sAddressMode = (MTLSamplerAddressMode) addressU;
 		d.tAddressMode = (MTLSamplerAddressMode) addressV;
+		d.rAddressMode = (MTLSamplerAddressMode) addressU;  // (3D textures' depth axis, as U; 2D textures ignore it)
 		d.minFilter = (MTLSamplerMinMagFilter) minFilter;
 		d.magFilter = (MTLSamplerMinMagFilter) magFilter;
 		d.mipFilter = (MTLSamplerMipFilter) mipFilter;
 		d.maxAnisotropy = anisotropy;
 		d.lodMaxClamp = maxLod;
 		d.compareFunction = (MTLCompareFunction) compare;
+		d.supportArgumentBuffers = YES;
 		return [ctx->device newSamplerStateWithDescriptor:d];
 	}
 }
 
 // ---- pipelines ----
+
+// Compile time (measurement: mc_compile_stats): seconds in library compiles and pipeline creation, and how many of each.
+static _Atomic double compileLibSec, compilePsoSec;
+static _Atomic long compileLibs, compilePsos;
+void mc_compile_stats(double *out) {
+	out[0] = compileLibSec; out[1] = compileLibs; out[2] = compilePsoSec; out[3] = compilePsos;
+}
 
 // Cadence: one compile with an explicit arithmetic policy. flags & 3: 0 Safe, 1 Relaxed, 2 Fast (mc_library_new's mode);
 // flags & 4: preserveInvariance (shader packs draw the same geometry in paired depth/colour passes: positions marked
@@ -384,7 +452,9 @@ id<MTLLibrary> mc_library_new_mode(Ctx *ctx, const char *source, int flags, char
 		o.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsFast;
 		if (flags & 4) o.preserveInvariance = YES;
 		NSError *e = nil;
+		double t0 = CACurrentMediaTime();
 		id<MTLLibrary> lib = [ctx->device newLibraryWithSource:[NSString stringWithUTF8String:source] options:o error:&e];
+		compileLibSec += CACurrentMediaTime() - t0; compileLibs++;
 		if (!lib) copyError(e, err, errCap);
 		return lib;
 	}
@@ -396,7 +466,9 @@ id<MTLLibrary> mc_library_new(Ctx *ctx, const char *source, char *err, int errCa
 		o.languageVersion = MTLLanguageVersion3_0;
 		o.mathMode = MTLMathModeFast;
 		NSError *e = nil;
+		double t0 = CACurrentMediaTime();
 		id<MTLLibrary> lib = [ctx->device newLibraryWithSource:[NSString stringWithUTF8String:source] options:o error:&e];
+		compileLibSec += CACurrentMediaTime() - t0; compileLibs++;
 		if (!lib) copyError(e, err, errCap);
 		return lib;
 	}
@@ -455,7 +527,9 @@ id<MTLRenderPipelineState> mc_pipeline_new(Ctx *ctx, id<MTLLibrary> vlib, const 
 		pd.depthAttachmentPixelFormat = (MTLPixelFormat) desc[i++];
 		pd.inputPrimitiveTopology = (MTLPrimitiveTopologyClass) desc[i++];
 		NSError *e = nil;
+		double t0 = CACurrentMediaTime();
 		id<MTLRenderPipelineState> pso = [ctx->device newRenderPipelineStateWithDescriptor:pd error:&e];
+		compilePsoSec += CACurrentMediaTime() - t0; compilePsos++;
 		if (!pso) copyError(e, err, errCap);
 		return pso;
 	}
@@ -997,6 +1071,7 @@ id<MTLCommandBuffer> mc_enc_commit(Enc *enc) {
 	if (enc->pre) {
 		mc_pre_end_encoders(enc);
 		if (diagOn) [enc->pre addCompletedHandler:^(id<MTLCommandBuffer> cb) { diagReport("pre", n, t, big, preBytes, cb); }];
+		[enc->pre addCompletedHandler:^(id<MTLCommandBuffer> cb) { cmdErrorReport("pre", cb); }];
 		[enc->pre commit];
 		[enc->pre release];
 		enc->pre = nil;
@@ -1005,6 +1080,7 @@ id<MTLCommandBuffer> mc_enc_commit(Enc *enc) {
 	endRender(enc);
 	id<MTLCommandBuffer> c = cmd(enc);
 	if (diagOn) [c addCompletedHandler:^(id<MTLCommandBuffer> cb) { diagReport("main", n, t, big, mainBytes, cb); }];
+	[c addCompletedHandler:^(id<MTLCommandBuffer> cb) { cmdErrorReport("main", cb); }];
 	[c commit];
 	if (gcOn) {  // -Dcadence.metal.gpuCount: the next frame's encoders get a new record and frame index
 		gcFrame++;
@@ -1154,13 +1230,69 @@ void mc_blit_buffer_to_texture(Enc *enc, id<MTLBuffer> src, uint64_t offset, int
 		sourceSize:MTLSizeMake(w, h, 1) toTexture:dst destinationSlice:slice destinationLevel:mip destinationOrigin:MTLOriginMake(x, y, 0)];
 }
 
+// Cadence: a whole 3D texture's level 0 from a buffer (a shader pack's volume texture)
+void mc_blit_buffer_to_volume(Enc *enc, id<MTLBuffer> src, uint64_t offset, int bytesPerRow, int bytesPerImage,
+	id<MTLTexture> dst, int w, int h, int d) {
+	[blit(enc) copyFromBuffer:src sourceOffset:offset sourceBytesPerRow:bytesPerRow sourceBytesPerImage:bytesPerImage
+		sourceSize:MTLSizeMake(w, h, d) toTexture:dst destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
+}
+
+// Cadence HDR: a float texture's rectangle as a texture of another format (tex_convert), on the frame's command buffer; released
+// once the GPU is done with it. toSdr: values above 1.0 scaled back (an 8-bit reader: screenshots). nil if it can't be made.
+static id<MTLTexture> convertedCopy(Enc *enc, id<MTLTexture> src, int mip, int x, int y, int w, int h, MTLPixelFormat format, int toSdr) {
+	@autoreleasepool {
+		MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:format width:(NSUInteger) w height:(NSUInteger) h mipmapped:NO];
+		d.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
+		d.storageMode = MTLStorageModePrivate;
+		id<MTLTexture> t = [enc->ctx->device newTextureWithDescriptor:d];
+		if (!t) return nil;
+		id<MTLTexture> level = mip == 0 ? src : [[src newTextureViewWithPixelFormat:src.pixelFormat textureType:MTLTextureType2D
+			levels:NSMakeRange((NSUInteger) mip, 1) slices:NSMakeRange(0, 1)] autorelease];
+		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
+		id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
+		[c setComputePipelineState:enc->ctx->convert];
+		[c setTexture:level atIndex:0];
+		[c setTexture:t atIndex:1];
+		int r[4] = {x, y, w, h};
+		uint32_t sdr = (uint32_t) toSdr;
+		[c setBytes:r length:sizeof r atIndex:0];
+		[c setBytes:&sdr length:4 atIndex:1];
+		[c dispatchThreads:MTLSizeMake((NSUInteger) w, (NSUInteger) h, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+		[c endEncoding];
+		[cb addCompletedHandler:^(id<MTLCommandBuffer> done) { [t release]; }];
+		return t;
+	}
+}
+
+static int isFloat16(id<MTLTexture> t) {
+	return t.pixelFormat == MTLPixelFormatRGBA16Float;
+}
+
 void mc_blit_texture_to_buffer(Enc *enc, id<MTLTexture> src, int mip, int x, int y, int w, int h,
 	id<MTLBuffer> dst, uint64_t offset, int bytesPerRow) {
+	// (Cadence HDR: the game asked for 4 bytes a pixel of a target that is a float one in HDR: read as 8-bit, highlights scaled back)
+	if (isFloat16(src) && bytesPerRow == w * 4) {
+		id<MTLTexture> t = convertedCopy(enc, src, mip, x, y, w, h, MTLPixelFormatRGBA8Unorm, 1);
+		if (t) {
+			[blit(enc) copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(w, h, 1)
+				toBuffer:dst destinationOffset:offset destinationBytesPerRow:bytesPerRow destinationBytesPerImage:(NSUInteger) bytesPerRow * h];
+			return;
+		}
+	}
 	[blit(enc) copyFromTexture:src sourceSlice:0 sourceLevel:mip sourceOrigin:MTLOriginMake(x, y, 0) sourceSize:MTLSizeMake(w, h, 1)
 		toBuffer:dst destinationOffset:offset destinationBytesPerRow:bytesPerRow destinationBytesPerImage:(NSUInteger) bytesPerRow * h];
 }
 
 void mc_blit_texture_to_texture(Enc *enc, id<MTLTexture> src, id<MTLTexture> dst, int mip, int dx, int dy, int sx, int sy, int w, int h) {
+	// (Cadence HDR: a copy into or out of a target that is a float one in HDR, where the other side is 8-bit: converted first)
+	if (src.pixelFormat != dst.pixelFormat && (isFloat16(src) || isFloat16(dst))) {
+		id<MTLTexture> t = convertedCopy(enc, src, mip, sx, sy, w, h, dst.pixelFormat, !isFloat16(dst));
+		if (t) {
+			[blit(enc) copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(w, h, 1)
+				toTexture:dst destinationSlice:0 destinationLevel:mip destinationOrigin:MTLOriginMake(dx, dy, 0)];
+			return;
+		}
+	}
 	[blit(enc) copyFromTexture:src sourceSlice:0 sourceLevel:mip sourceOrigin:MTLOriginMake(sx, sy, 0) sourceSize:MTLSizeMake(w, h, 1)
 		toTexture:dst destinationSlice:0 destinationLevel:mip destinationOrigin:MTLOriginMake(dx, dy, 0)];
 }
@@ -1742,15 +1874,90 @@ void mc_clear_rect(Enc *enc, id<MTLTexture> color, id<MTLTexture> depthTex, floa
 
 // ---- surface ----
 
+// Cadence HDR: the tone mapping of HDR presents (Hdr.java sets it every frame from the screen's headroom), and the present
+// pipeline for a drawable's format (an RGBA16Float drawable is the HDR layer's)
+static McTone hdrTone = {1.0f, 1.0f, 0, 0};
+void mc_hdr_tone(float headroom, float knee, int mode) {
+	hdrTone.headroom = headroom;
+	hdrTone.knee = knee;
+	hdrTone.mode = (unsigned) mode;
+}
+const McTone *mc_hdr_tone_now(void) { return &hdrTone; }
+static void bindPresent(id<MTLRenderCommandEncoder> r, Ctx *ctx, id<MTLTexture> drawable) {
+	if (drawable.pixelFormat == MTLPixelFormatRGBA16Float) {
+		[r setRenderPipelineState:ctx->presentHdr];
+		[r setFragmentBytes:&hdrTone length:sizeof hdrTone atIndex:0];
+	} else {
+		[r setRenderPipelineState:ctx->present];
+	}
+}
+
 void mc_layer_configure(Ctx *ctx, CAMetalLayer *layer, int width, int height, int vsync) {
 	layer.device = ctx->device;
-	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	// bit 18 (Cadence HDR): a float layer in extended linear sRGB that may show values above 1.0 (the display's EDR headroom)
+	int hdr = (vsync >> 18) & 1;
+	if (hdr != (layer.pixelFormat == MTLPixelFormatRGBA16Float)) {
+		layer.pixelFormat = hdr ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGRA8Unorm;
+		CGColorSpaceRef cs = hdr ? CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB) : NULL;
+		layer.colorspace = cs;
+		if (cs) CGColorSpaceRelease(cs);
+		layer.wantsExtendedDynamicRangeContent = hdr ? YES : NO;
+	}
 	layer.framebufferOnly = YES;
+	// Cadence: the game covers its window completely: an opaque layer spares macOS's compositor the blend, and in full screen
+	// lets it hand the frames to the display directly (no composition pass at all)
+	layer.opaque = (vsync & (1 << 17)) == 0;
 	layer.drawableSize = CGSizeMake(width, height);
 	// vsync: bit 0 = display sync; bits 8-15 = maximumDrawableCount (0 = the default, 3; -Dcadence.metal.drawables)
 	layer.displaySyncEnabled = (vsync & 1) != 0;
 	int drawables = (vsync >> 8) & 0xff;
 	layer.maximumDrawableCount = drawables == 2 || drawables == 3 ? drawables : 3;
+	// bit 16 (Cadence, Retina off): the layer scaled up to the display's pixels by nearest texel (each game pixel a crisp 2x2
+	// block, as on a non-Retina screen) instead of the default linear blur
+	layer.magnificationFilter = (vsync & (1 << 16)) ? kCAFilterNearest : kCAFilterLinear;
+}
+
+// ---- even presents under a frame cap (Cadence: FramePacing) ----
+// With a frame cap, frames are timed by the CPU's wait, which jitters against the display's refreshes: at 60 fps on a 60 Hz
+// display one frame can miss its refresh and the next catch two (a stutter). presentDrawable:afterMinimumDuration: has
+// the display show each frame at least the cap's interval, so a capped game advances one frame per interval; on a ProMotion
+// display it also tells the compositor the rate to refresh at. 0 (the default, and with no cap): plain presentDrawable.
+static _Atomic double presentMinimum;
+void mc_present_minimum(double seconds) { presentMinimum = seconds; }
+// Measurement (mc_present_stats): how evenly frames reach the screen, from their presentedTime: intervals counted, and those
+// longer than 1.5 refreshes (a refresh where the picture didn't advance: a hitch). Off unless asked for.
+static _Atomic int presentStatsOn;
+static _Atomic long presentIntervals, presentLong;
+static double presentLastShown;
+static _Atomic double refreshPeriod;
+static void startDisplayLink(void);
+static _Atomic int displayLinkStarted;
+void mc_present_stats_on(int on) {
+	if (on && atomic_exchange(&displayLinkStarted, 1) == 0) startDisplayLink();  // (the refresh period comes from the display link)
+	presentStatsOn = on; presentIntervals = 0; presentLong = 0; presentLastShown = 0;
+}
+long mc_present_stats_total(void) { return presentIntervals; }
+long mc_present_stats_long(void) { return presentLong; }
+static void presentAt(id<MTLCommandBuffer> b, id<CAMetalDrawable> drawable) {
+	if (presentStatsOn) [drawable addPresentedHandler:^(id<MTLDrawable> d) {
+		double shown = d.presentedTime, period = refreshPeriod;
+		if (shown <= 0) return;
+		if (presentLastShown > 0 && period > 0) {
+			presentIntervals++;
+			if (shown - presentLastShown > period * 1.5) presentLong++;
+		}
+		presentLastShown = shown;
+	}];
+	double m = presentMinimum;
+	if (m > 0) [b presentDrawable:drawable afterMinimumDuration:m];
+	else [b presentDrawable:drawable];
+}
+
+// Frame Generation (mcfg.m): a generated frame's present, through the same minimum-duration present as the real frames.
+static void paceWatch(id<CAMetalDrawable> drawable);
+void mc_present_drawable(id<MTLCommandBuffer> b, id<CAMetalDrawable> drawable) {
+	paceWatch(drawable);
+	presentAt(b, drawable);
 }
 
 // ---- present pacing ----
@@ -1759,7 +1966,7 @@ void mc_layer_configure(Ctx *ctx, CAMetalLayer *layer, int width, int height, in
 // full and are dropped before the copy, as the compositor would have dropped them. The refresh grid comes from a display
 // link on the main display (presented handlers report no presentedTime on some displays, the rig's among them). The lead
 // is the measured encode-to-GPU-done time of presented frames plus the caller's margin for the compositor's latch.
-static _Atomic double nextRefresh, refreshPeriod, gpuLatency;
+static _Atomic double nextRefresh, gpuLatency;
 static double pacedFor, lastPace, frameInterval;
 
 #pragma clang diagnostic push
@@ -1814,11 +2021,7 @@ static void paceWatch(id<CAMetalDrawable> drawable) {
 }
 
 int mc_pace(double margin) {
-	static int started;
-	if (!started) {
-		started = 1;
-		startDisplayLink();
-	}
+	if (atomic_exchange(&displayLinkStarted, 1) == 0) startDisplayLink();
 	double now = CACurrentMediaTime(), anchor = nextRefresh, period = refreshPeriod, lead = gpuLatency + margin + paceExtra;
 	if (lastPace > 0) frameInterval += (now - lastPace - frameInterval) * 0.1;
 	lastPace = now;
@@ -1852,9 +2055,15 @@ id<CAMetalDrawable> mc_layer_next(CAMetalLayer *layer) {
 	}
 }
 
+// Measurement only (-Dcadence.metal.bwAb, the self-test's ab=finaldepth / ab=present2): bit 0 the frame's last render encoder
+// stores no depth (don't care; the next frame clears it), bit 1 the present draw done twice (its cost, by difference).
+static int bwFlags;
+void mc_bw_flags(int f) { bwFlags = f; }
+
 // Draws src into the drawable (flipped back to top-down) and schedules the present on the current command buffer.
 void mc_present(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src) {
 	endBlit(enc);
+	if ((bwFlags & 1) && enc->render && enc->depth) enc->dead |= DEAD_DEPTH;
 	endRender(enc);
 	@autoreleasepool {
 		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -1862,15 +2071,56 @@ void mc_present(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src) {
 		rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
 		rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 		id<MTLRenderCommandEncoder> r = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
-		[r setRenderPipelineState:enc->ctx->present];
+		bindPresent(r, enc->ctx, drawable.texture);
 		[r setFragmentTexture:src atIndex:0];
 		[r setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
 		[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
 		[r endEncoding];
+		if (bwFlags & 2) {
+			id<MTLRenderCommandEncoder> r2 = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
+			bindPresent(r2, enc->ctx, drawable.texture);
+			[r2 setFragmentTexture:src atIndex:0];
+			[r2 setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
+			[r2 drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+			[r2 endEncoding];
+		}
 		double encodedAt = CACurrentMediaTime();
 		[cmd(enc) addCompletedHandler:^(id<MTLCommandBuffer> b) { gpuLatency += (CACurrentMediaTime() - encodedAt - gpuLatency) * 0.1; }];
 		paceWatch(drawable);
-		[cmd(enc) presentDrawable:drawable];
+		presentAt(cmd(enc), drawable);
+	}
+}
+
+// mc_present for a texture written by untracked work (Record Mode's frames): the draw waits for its fence first.
+void mc_present_fenced(Enc *enc, id<CAMetalDrawable> drawable, id<MTLTexture> src, id<MTLFence> fence) {
+	endBlit(enc);
+	if ((bwFlags & 1) && enc->render && enc->depth) enc->dead |= DEAD_DEPTH;
+	endRender(enc);
+	@autoreleasepool {
+		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+		rp.colorAttachments[0].texture = drawable.texture;
+		rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+		rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+		id<MTLRenderCommandEncoder> r = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
+		if (fence) [r waitForFence:fence beforeStages:MTLRenderStageFragment];
+		bindPresent(r, enc->ctx, drawable.texture);
+		[r setFragmentTexture:src atIndex:0];
+		[r setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
+		[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		[r endEncoding];
+		if (bwFlags & 2) {
+			id<MTLRenderCommandEncoder> r2 = [cmd(enc) renderCommandEncoderWithDescriptor:rp];
+			if (fence) [r2 waitForFence:fence beforeStages:MTLRenderStageFragment];
+			bindPresent(r2, enc->ctx, drawable.texture);
+			[r2 setFragmentTexture:src atIndex:0];
+			[r2 setFragmentSamplerState:enc->ctx->presentSampler atIndex:0];
+			[r2 drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+			[r2 endEncoding];
+		}
+		double encodedAt = CACurrentMediaTime();
+		[cmd(enc) addCompletedHandler:^(id<MTLCommandBuffer> b) { gpuLatency += (CACurrentMediaTime() - encodedAt - gpuLatency) * 0.1; }];
+		paceWatch(drawable);
+		presentAt(cmd(enc), drawable);
 	}
 }
 
@@ -1942,7 +2192,7 @@ static void pqEncodePresent(id<CAMetalDrawable> drawable, int slot, uint64_t wai
 	rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
 	rp.colorAttachments[0].storeAction = MTLStoreActionStore;
 	id<MTLRenderCommandEncoder> r = [p renderCommandEncoderWithDescriptor:rp];
-	[r setRenderPipelineState:ctx->present];
+	bindPresent(r, ctx, drawable.texture);
 	[r setFragmentTexture:pqStaging[slot] atIndex:0];
 	[r setFragmentSamplerState:ctx->presentSampler atIndex:0];
 	[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
@@ -1952,7 +2202,7 @@ static void pqEncodePresent(id<CAMetalDrawable> drawable, int slot, uint64_t wai
 		atomic_store(&pqBusy[slot], 0);
 	}];
 	paceWatch(drawable);
-	[p presentDrawable:drawable];
+	presentAt(p, drawable);
 	[p commit];
 }
 

@@ -36,8 +36,8 @@ import org.jspecify.annotations.Nullable;
  * tints it (grass, foliage, water by biome, or a constant). Learned once per block state from its baked model and the
  * texture files, on whichever thread asks first.
  */
-final class LodColors {
-	static final int TINT_NONE = 0, TINT_GRASS = 1, TINT_FOLIAGE = 2, TINT_WATER = 3, TINT_DRY_FOLIAGE = 4, TINT_CONSTANT = 5;
+public final class LodColors {
+	public static final int TINT_NONE = 0, TINT_GRASS = 1, TINT_FOLIAGE = 2, TINT_WATER = 3, TINT_DRY_FOLIAGE = 4, TINT_CONSTANT = 5;
 
 	/**
 	 * top / side: RGB of the textures (untinted); tint kind and, for constants, its RGB; the two sprites' rectangles in the
@@ -45,7 +45,7 @@ final class LodColors {
 	 * model is a plant's crossed quads (grass, ferns, flowers; side is their sprite); profile: per sixteenth of the side
 	 * sprite's width, how high (sixteenths) its opaque texels reach, a byte each, four to an int.
 	 */
-	record Look(int top, int side, int topTint, int sideTint, int constant, float[] topUv, float[] sideUv, boolean cross, int[] profile) {
+	public record Look(int top, int side, int topTint, int sideTint, int constant, float[] topUv, float[] sideUv, boolean cross, int[] profile) {
 	}
 
 	private static final ConcurrentHashMap<BlockState, Look> LOOKS = new ConcurrentHashMap<>();
@@ -56,16 +56,28 @@ final class LodColors {
 	private LodColors() {
 	}
 
-	static Look look(BlockState state) {
+	/** Counts resource reloads: what was worked out from the textures before one isn't kept (a worker can be midway). */
+	private static volatile int epoch;
+
+	public static Look look(BlockState state) {
 		Look l = LOOKS.get(state);
 		if (l != null) return l;
+		int e = epoch;
 		try {
 			l = compute(state);
-		} catch (RuntimeException e) {
+		} catch (RuntimeException ex) {
 			l = FALLBACK;
 		}
-		LOOKS.put(state, l);
+		if (e == epoch) LOOKS.put(state, l);
 		return l;
+	}
+
+	/** The resources reloaded (LodResources): every look, texture average and plant profile is worked out again. */
+	static void forget() {
+		epoch++;
+		LOOKS.clear();
+		TEXTURES.clear();
+		PROFILES.clear();
 	}
 
 	/** The color of a block's top seen at a column in biome b. */
@@ -79,7 +91,7 @@ final class LodColors {
 		return tint(l.side, l.sideTint, l.constant, b, x, z);
 	}
 
-	static int tint(int rgb, int kind, int constant, Biome b, int x, int z) {
+	public static int tint(int rgb, int kind, int constant, Biome b, int x, int z) {
 		int t = switch (kind) {
 			case TINT_GRASS -> b.getGrassColor(x, z);
 			case TINT_FOLIAGE -> b.getFoliageColor();
@@ -153,7 +165,13 @@ final class LodColors {
 
 	/** Per sixteenth of the sprite's width: how high its opaque texels reach (0-16), a byte each. */
 	static int[] profile(TextureAtlasSprite sprite) {
-		return PROFILES.computeIfAbsent(sprite.contents().name(), LodColors::loadProfile);
+		Identifier name = sprite.contents().name();
+		int[] p = PROFILES.get(name);
+		if (p != null) return p;
+		int e = epoch;
+		p = loadProfile(name);
+		if (e == epoch) PROFILES.put(name, p);
+		return p;
 	}
 
 	private static int[] loadProfile(Identifier name) {
@@ -223,7 +241,11 @@ final class LodColors {
 	/** Average of a sprite's first frame, weighted by alpha (cutout textures count only what is drawn). */
 	static int average(TextureAtlasSprite sprite) {
 		Identifier name = sprite.contents().name();
-		return TEXTURES.computeIfAbsent(name, LodColors::load);
+		Integer c = TEXTURES.get(name);
+		if (c != null) return c;
+		int e = epoch, rgb = load(name);
+		if (e == epoch) TEXTURES.put(name, rgb);
+		return rgb;
 	}
 
 	private static int load(Identifier name) {

@@ -69,6 +69,15 @@ public final class PackMipmaps implements AutoCloseable {
               GpuFormat.RG8_UNORM,
               GpuFormat.RGBA8_UNORM,
               GpuFormat.RGBA16_UNORM,
+              // Cadence: signed and 16-bit normalized buffers too (AstraLex mips an RG16_SNORM one)
+              GpuFormat.R8_SNORM,
+              GpuFormat.RG8_SNORM,
+              GpuFormat.RGBA8_SNORM,
+              GpuFormat.R16_UNORM,
+              GpuFormat.RG16_UNORM,
+              GpuFormat.R16_SNORM,
+              GpuFormat.RG16_SNORM,
+              GpuFormat.RGBA16_SNORM,
               GpuFormat.R16_FLOAT,
               GpuFormat.RG16_FLOAT,
               GpuFormat.RGBA16_FLOAT,
@@ -186,7 +195,8 @@ public final class PackMipmaps implements AutoCloseable {
 
   private static boolean blitFormat(GpuFormat format) {
     return switch (format) {
-      case R8_UNORM, RG8_UNORM, RGBA8_UNORM, RGBA16_UNORM, R16_FLOAT, RG16_FLOAT, RGBA16_FLOAT, RG11B10_FLOAT, RGB10A2_UNORM -> true;
+      case R8_UNORM, RG8_UNORM, RGBA8_UNORM, RGBA16_UNORM, R16_FLOAT, RG16_FLOAT, RGBA16_FLOAT, RG11B10_FLOAT, RGB10A2_UNORM,
+          R8_SNORM, RG8_SNORM, RGBA8_SNORM, R16_UNORM, RG16_UNORM, R16_SNORM, RG16_SNORM, RGBA16_SNORM -> true;
       default -> false;
     };
   }

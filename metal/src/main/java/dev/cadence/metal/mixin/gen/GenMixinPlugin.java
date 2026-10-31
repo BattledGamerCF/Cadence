@@ -30,10 +30,19 @@ public final class GenMixinPlugin implements IMixinConfigPlugin {
 		return null;
 	}
 
+	/**
+	 * World generation's density-buffer pools keep a buffer this many clean-ups instead of vanilla's 20 (GenBufferPoolMixin): on by
+	 * default (1,000,000: kept); -Dcadence.gen.bufferAge=20 is vanilla. Public: read from inside RandomState.
+	 */
+	public static final int BUFFER_AGE = Integer.getInteger("cadence.gen.bufferAge", 1_000_000);
+
 	@Override
 	public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
 		if (mixinClassName.endsWith(".GenWorldgenQosMixin")) return WORLDGEN_QOS;
 		if (mixinClassName.endsWith(".GenNoiseChunkMixin")) return NATIVE_NOISE;
+		if (mixinClassName.endsWith(".GenBufferPoolMixin")) return BUFFER_AGE > 0 && BUFFER_AGE != 20;
+		if (mixinClassName.endsWith(".GenSurfaceScopeMixin") || mixinClassName.endsWith(".GenSurfaceBufferMixin"))
+			return Boolean.getBoolean("cadence.gen.surfaceBuffers") && !dev.cadence.metal.compat.CompatLayers.yields(mixinClassName);
 		return false;
 	}
 

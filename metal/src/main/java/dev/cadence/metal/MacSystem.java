@@ -11,6 +11,20 @@ public final class MacSystem {
 	private MacSystem() {
 	}
 
+	private static volatile boolean appNapBusy;
+
+	/** Keeps macOS from napping the game (App Nap) while busy; only calls macOS when it changes. */
+	public static void appNapBusy(boolean busy) {
+		if (busy == appNapBusy) return;
+		appNapBusy = busy;
+		try {
+			Native.appNapBusy(busy ? 1 : 0);
+			System.out.println("[cadence] App Nap " + (busy ? "held off: the world runs in the background" : "allowed again"));
+		} catch (Throwable t) {
+			// (an older native library: nothing to do)
+		}
+	}
+
 	/** 0 nominal, 1 fair (warming), 2 serious (throttling), 3 critical. */
 	public static int thermalState() {
 		try {
@@ -70,6 +84,84 @@ public final class MacSystem {
 		}
 	}
 
+	// (the battery estimate: the Mac's draw averaged over the last ~half minute, refreshed at most every 2 s)
+	private static double drawWatts = -1;
+	private static long batteryAt;
+	private static String batteryText = "";
+
+	/**
+	 * On battery: how long the battery lasts at the Mac's current draw ("about 3 h 10 min left"), from the energy left in it
+	 * and the whole Mac's power use averaged over the last half minute; "" on AC power or when either can't be read. Cheap to
+	 * ask every frame (worked out at most every 2 seconds).
+	 */
+	public static synchronized String batteryTimeLeft() {
+		long now = System.nanoTime();
+		if (now - batteryAt < 2_000_000_000L) return batteryText;
+		batteryAt = now;
+		if (!onBattery()) {
+			drawWatts = -1;
+			return batteryText = "";
+		}
+		double w = systemWatts(), wh;
+		try {
+			wh = Native.batteryWh();
+		} catch (Throwable t) {
+			wh = -1;
+		}
+		if (w > 0) drawWatts = drawWatts < 0 ? w : drawWatts + (w - drawWatts) * 0.07;
+		if (wh <= 0 || drawWatts <= 0.5) return batteryText = "";
+		long minutes = Math.round(wh / drawWatts * 60);
+		return batteryText = minutes >= 60 ? (minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min";
+	}
+
+	/** The energy left in the battery (watt-hours), -1 without one. */
+	public static double batteryWh() {
+		try {
+			return Native.batteryWh();
+		} catch (Throwable t) {
+			return -1;
+		}
+	}
+
+	/** Whether the Mac is running on its battery now (false on AC power, without a battery, or if it can't be read). */
+	public static boolean onBattery() {
+		try {
+			return Native.onBattery() != 0;
+		} catch (Throwable t) {
+			return false;
+		}
+	}
+
+	/**
+	 * Cadence (FramePacing): each presented frame stays on screen at least this long (0: as soon as possible). Set from the
+	 * frame cap: with one, frames advance one per interval instead of jittering against the display's refreshes.
+	 */
+	public static void presentMinimum(double seconds) {
+		try {
+			Native.presentMinimum(seconds);
+		} catch (Throwable t) {
+			// (before the Metal backend is up, or without it: nothing to pace)
+		}
+	}
+
+	/** Measurement: start counting how evenly frames reach the screen (presentedTime intervals). */
+	public static void presentStatsStart() {
+		try {
+			Native.presentStatsOn(1);
+		} catch (Throwable t) {
+			// (no Metal backend)
+		}
+	}
+
+	/** {intervals counted, of which longer than 1.5 refreshes} since presentStatsStart. */
+	public static long[] presentStats() {
+		try {
+			return new long[] {Native.presentStatsTotal(), Native.presentStatsLong()};
+		} catch (Throwable t) {
+			return new long[] {0, 0};
+		}
+	}
+
 	public static boolean lowPowerMode() {
 		try {
 			return Native.lowPower() != 0;
@@ -113,12 +205,22 @@ public final class MacSystem {
 		}
 	}
 
-	/** The main screen's refresh rate in Hz (60 if unknown). */
+	/** The refresh rate in Hz of the screen the game is on (60 if unknown). */
 	public static int displayHz() {
 		try {
 			return Native.displayHz();
 		} catch (Throwable t) {
 			return 60;
+		}
+	}
+
+	/** The backing scale of the screen the game is on: 2.0 on a Retina display, 1.0 on most external monitors. */
+	public static double displayScale() {
+		try {
+			int s = Native.displayScale();
+			return s > 0 ? s / 100.0 : 2.0;
+		} catch (Throwable t) {
+			return 2.0;
 		}
 	}
 

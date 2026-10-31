@@ -1,9 +1,9 @@
 package dev.cadence.shaders.cadence.system;
 
 import dev.cadence.metal.MacSystem;
-import dev.cadence.shaders.cadence.RenderScale;
-import dev.cadence.shaders.cadence.ShaderToggle;
-import dev.cadence.shaders.cadence.ShadowReuse;
+import dev.cadence.shaders.cadence.render.RenderScale;
+import dev.cadence.shaders.cadence.ui.ShaderToggle;
+import dev.cadence.shaders.cadence.shadow.ShadowReuse;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -106,6 +106,7 @@ public final class HeatControl {
 	private static volatile int thermal, extras;
 	private static volatile boolean lowPower;
 	private static volatile int displayHz = 60;
+	private static boolean displayPolled;
 	/** The frame-rate cap in force (Double.POSITIVE_INFINITY: none), and the cap at which the Mac last warmed up again. */
 	private static volatile double cap = Double.POSITIVE_INFINITY, learned = Double.POSITIVE_INFINITY;
 	private static long warmSince, coolSince, lastLower, lastRaise, lastLoosen, notHotSince, lastNotice, releasedAt;
@@ -135,6 +136,11 @@ public final class HeatControl {
 		return holding() ? 1 : 0;
 	}
 
+	/** The refresh rate of the window's display (polled every 2 s), at least 30. */
+	public static int refreshHz() {
+		return displayHz;
+	}
+
 	private static boolean holding() {
 		return cap != Double.POSITIVE_INFINITY;
 	}
@@ -143,7 +149,12 @@ public final class HeatControl {
 	static void poll(long now) {
 		thermal = fakeThermal >= 0 ? fakeThermal : MacSystem.thermalState();
 		lowPower = MacSystem.lowPowerMode();
-		displayHz = Math.max(30, MacSystem.displayHz());
+		int hz = Math.max(30, MacSystem.displayHz());
+		// (the window moved to another display, or its refresh rate changed: the caps that follow it follow too)
+		if (hz != displayHz && displayPolled)
+			org.slf4j.LoggerFactory.getLogger("cadence").info("Display: {} Hz (was {} Hz)", hz, displayHz);
+		displayHz = hz;
+		displayPolled = true;
 		if (!enabled) return;
 		Cooling mode = cooling;
 		boolean performance = mode == Cooling.PERFORMANCE;
@@ -163,6 +174,9 @@ public final class HeatControl {
 					log("warm again after a release", now);
 				}
 				double fps = freshMode ? 0 : Minecraft.getInstance().getFps();
+				// (a rate under the screen's refresh is a moment, not what the Mac can do: a world loading, chunks arriving, a pack
+				// compiling. Starting the hold there kept whole sessions at 45, shown as 30 on a 60 Hz screen: start at the ceiling)
+				if (fps < displayHz) fps = 0;
 				cap = Math.max(floor, Math.min(ceiling, fps > 0 ? fps : Math.min(ceiling, limit())));
 				if (learned != Double.POSITIVE_INFINITY) cap = Math.min(cap, learned);
 				freshMode = false;

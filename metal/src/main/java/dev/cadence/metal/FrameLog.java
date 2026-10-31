@@ -21,6 +21,8 @@ import java.util.List;
  */
 public final class FrameLog {
 	public static final boolean ON = Boolean.getBoolean("cadence.own.int.frameLog");
+	/** The per-frame counters run: for the CSV (ON) or for the stall recorder (Stalls). */
+	public static final boolean COUNT = ON || Stalls.ON;
 	public static final int TICK = 0, EXTRACT = 1, RENDER = 2, COMPILE = 3, RESORT_SCHED = 4, OWN_BEGIN = 5, TEXTURES = 6;
 	private static final String[] REGIONS = {"tickUs", "extractUs", "renderUs", "compileUs", "resortSchedUs", "ownBeginUs", "texTickUs"};
 	public static final int PUBLISH = 0, RESORT = 1, RELEASE = 2, CLEAR = 3;
@@ -41,7 +43,9 @@ public final class FrameLog {
 	private static final long[] curWait = new long[5], curRegion = new long[7], regionStart = new long[7];
 	private static final int[] curEvents = new int[4];
 	private static final java.lang.management.ThreadMXBean THREADS = ManagementFactory.getThreadMXBean();
-	private static final List<GarbageCollectorMXBean> GCS = ManagementFactory.getGarbageCollectorMXBeans();
+	/** The collectors' pause beans (G1's "G1 Concurrent GC" and ZGC's "Cycles" count concurrent work, not pauses). */
+	private static final List<GarbageCollectorMXBean> GCS = ManagementFactory.getGarbageCollectorMXBeans().stream()
+		.filter(g -> !g.getName().contains("Concurrent") && !g.getName().contains("Cycles")).toList();
 	private static int n;
 	private static long lastNs, lastCpu = -1, lastAlloc = -1, lastGcCount = -1, lastGcMs;
 	private static Thread renderThread;
@@ -106,7 +110,11 @@ public final class FrameLog {
 			gcc += Math.max(0, g.getCollectionCount());
 			gct += Math.max(0, g.getCollectionTime());
 		}
-		if (lastNs != 0 && n < CAP) {
+		if (lastNs != 0 && Stalls.ON) {
+			Stalls.frame(now, now - lastNs, lastCpu < 0 ? 0 : cpu - lastCpu, lastAlloc < 0 ? 0 : alloc - lastAlloc, lastGcCount < 0 ? 0 : gcc - lastGcCount,
+				lastGcCount < 0 ? 0 : gct - lastGcMs, curWait, curRegion, curOps);
+		}
+		if (ON && lastNs != 0 && n < CAP) {
 			int i = n++;
 			endMs[i] = System.currentTimeMillis();
 			wallUs[i] = (int) Math.min(Integer.MAX_VALUE, (now - lastNs) / 1000);

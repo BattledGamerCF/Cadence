@@ -62,6 +62,14 @@ public final class OwnTerrain {
 	 * (phase B). Exact: whatever shows in the frame is drawn in one phase or the other.
 	 */
 	private static final boolean OCC = Boolean.getBoolean("cadence.own.occ");
+	/**
+	 * Far Plants (opt-in, -Dcadence.own.farPlants=BLOCKS): the cutout layer's any-facing units (every quad not flat on an axis:
+	 * cross-model plants such as grass, flowers and ferns, but also wall torches, chains, sloped rails, fire, cobwebs and
+	 * dripstone, BH5-06) of sections at least this far from the camera are left out by the cull; 0 (the default) draws them all.
+	 * Glass, panes and every axis-aligned cutout face are drawn as before. RD16 fullscreen, 96 blocks: GPU -0.04 ms. Read each
+	 * frame (frag_cull FragFrame.farPlants).
+	 */
+	public static volatile float farPlantBlocks = Float.parseFloat(System.getProperty("cadence.own.farPlants", "0"));
 	private static final int OCC_FRAME_BYTES = 128;
 	/**
 	 * -Dcadence.own.probe=MS: in-run A/B probe. Every MS milliseconds the next of -Dcadence.own.probeModes (default draw,skip,graph)
@@ -214,7 +222,7 @@ public final class OwnTerrain {
 	/** Bytes of one quad in the arena. */
 	static final int ARENA_QUAD = COMPACT ? 64 : QUAD_BYTES;
 	private static final int CULL_FRAME_BYTES = 144, BUCKETS = 7;
-	static final int DRAW_FRAME_BYTES = 80;
+	static final int DRAW_FRAME_BYTES = DynamicLightList.OFFSET + DynamicLightList.BYTES;  // (terrain.metal's DrawFrame)
 
 	private static @Nullable OwnTerrain instance;
 	private static boolean failed;
@@ -341,6 +349,8 @@ public final class OwnTerrain {
 	private final long[] grpLive = new long[5];
 	private int quadOwnerCap, qWords, qcap;
 	private int listCap;
+	/** The lists' first and smallest capacity (records); -Dcadence.own.listFloor (was 32768). */
+	private static final int LIST_FLOOR = Math.max(256, Integer.getInteger("cadence.own.listFloor", 1 << 12));
 	private long frame;
 	private final long baseMs = Util.getMillis();
 	/** Releases waiting for the GPU: frame stamp and action. */
@@ -478,7 +488,10 @@ public final class OwnTerrain {
 		this.slotMesh = new OwnMesh[0];
 		this.growSlots(1 << 14);
 		this.listCap = 0;
-		this.growLists(1 << 15);
+		// (small at first: beginFrame grows the lists to under twice the records in use before every cull, and the cull's lists
+		// (two sets, phases A and B, ~64 lists each) are sized from this; starting at 32,768 kept ~32 MB of private GPU memory at
+		// render distance 12 where ~8 MB does)
+		this.growLists(LIST_FLOOR);
 		for (int i = 0; i < RING_N; i++) {
 			this.rArgs[i] = OwnNative.buffer(this.ctx, 128, 2);
 			this.rArgsAddress[i] = OwnNative.contents(this.rArgs[i]);
@@ -1084,7 +1097,7 @@ public final class OwnTerrain {
 		for (Object m : new java.util.ArrayList<>(this.meshes.keySet())) this.release(m);
 		this.runDeferredNow();
 		// (the lists back to their first size: a level's high-water mark isn't kept for the next; they grow again as needed)
-		if (this.listCap > 1 << 15) this.growLists(1 << 15);
+		if (this.listCap > LIST_FLOOR) this.growLists(LIST_FLOOR);
 		this.runDeferredNow();
 		boolean renewed = this.renewArena();
 		long used, cap, recUsed, recCap;
@@ -1178,9 +1191,9 @@ public final class OwnTerrain {
 	// ---- render thread: the frame ----
 
 	private void beginFrame() {
-		if (dev.cadence.metal.FrameLog.ON) dev.cadence.metal.FrameLog.begin(dev.cadence.metal.FrameLog.OWN_BEGIN);
+		if (dev.cadence.metal.FrameLog.COUNT) dev.cadence.metal.FrameLog.begin(dev.cadence.metal.FrameLog.OWN_BEGIN);
 		this.beginFrame0();
-		if (dev.cadence.metal.FrameLog.ON) dev.cadence.metal.FrameLog.end(dev.cadence.metal.FrameLog.OWN_BEGIN);
+		if (dev.cadence.metal.FrameLog.COUNT) dev.cadence.metal.FrameLog.end(dev.cadence.metal.FrameLog.OWN_BEGIN);
 	}
 
 	private void beginFrame0() {
@@ -2077,6 +2090,7 @@ public final class OwnTerrain {
 	public boolean drawOpaque(CameraRenderState camera, int renderDistance, long fadeMs, GpuSampler sampler, GpuTextureView atlas,
 		List<SectionRenderDispatcher.RenderSection> visible) {
 		if (!MetalBridge.inRenderPass(this.encoder)) return false;
+		atlas = dev.cadence.metal.neural.SmoothTextures.substitute(atlas);  // (Smooth Textures: the 2x atlas once it's ready)
 		if (NO_FADE) fadeMs = 0;
 		this.beginFrame();
 		if (PROBE_MS <= 0) OwnAdaptive.frame();
@@ -2222,6 +2236,10 @@ public final class OwnTerrain {
 			if (CPU_CLIP) {
 				MemoryUtil.memPutInt(d + 12, 1);
 				clip.getToAddress(d + 16);
+			}
+			if (DynamicLightList.count() > 0) {
+				var cam = Minecraft.getInstance().gameRenderer.mainCamera().position();
+				DynamicLightList.write(d, cam.x, cam.y, cam.z);
 			}
 			long arena = this.arenaBuffer;
 			boolean draw = !mode.equals("skip") && !mode.equals("skipall"), fragSplit = false;
@@ -2660,6 +2678,7 @@ public final class OwnTerrain {
 
 	public boolean drawTranslucent(CameraRenderState camera, long fadeMs, GpuSampler sampler, GpuTextureView atlas, List<SectionRenderDispatcher.RenderSection> visible) {
 		if (!TRANSLUCENT || !MetalBridge.inRenderPass(this.encoder)) return false;
+		atlas = dev.cadence.metal.neural.SmoothTextures.substitute(atlas);
 		// (probe modes "notrans" / "skipall": our translucent terrain not drawn, the frame's translucent cost measured apart)
 		if (PROBE_MS > 0 && (PROBE_MODES[this.probeMode].equals("notrans") || PROBE_MODES[this.probeMode].equals("skipall"))) return true;
 		if (NO_FADE) fadeMs = 0;
@@ -2867,6 +2886,10 @@ public final class OwnTerrain {
 			if (CPU_CLIP) {
 				MemoryUtil.memPutInt(d + 12, 1);
 				clip.getToAddress(d + 16);
+			}
+			if (DynamicLightList.count() > 0) {
+				var cam = Minecraft.getInstance().gameRenderer.mainCamera().position();
+				DynamicLightList.write(d, cam.x, cam.y, cam.z);
 			}
 			// (tprobe 8: the translucent draw with the frag variants' half colour and lean varyings: K_HALF 1 << 18, K_LEAN 1 << 19; thalf:
 			// half on both parts, lean on the second)

@@ -5,6 +5,7 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
 
 import dev.cadence.shaders.pack.AlphaTestPolicy;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -67,6 +68,19 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
           "median3",
           "min3",
           "max3",
+          // Cadence: Metal math functions GLSL lacks, so a pack's own function of that name is called ambiguously in Metal
+          // (Photon: length_squared; Noble: log10)
+          "length_squared",
+          "distance_squared",
+          "log10",
+          "exp10",
+          "powr",
+          "sincos",
+          "copysign",
+          "fdim",
+          "sinpi",
+          "cospi",
+          "tanpi",
           "level",
           "gradient2d",
           "gradient3d",
@@ -135,13 +149,19 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     FULLSCREEN
   }
 
-  /** An explicit bridge from a Minecraft vertex format and vanilla draw uniforms to pack inputs. */
+  /**
+   * An explicit bridge from a Minecraft vertex format and vanilla draw uniforms to pack inputs. fragmentValues: legacy
+   * expressions the fragment stage may read too (name -> GLSL type), passed as flat varyings; functions: definitions either
+   * stage gets when it calls one of them without defining it (name -> GLSL definition).
+   */
   public record VertexAdapter(
       String declarations,
       String initialization,
       Map<String, String> legacyExpressions,
       List<TranslatedProgram.Attribute> attributes,
-      Map<String, UniformLayout.Declaration> uniforms) {
+      Map<String, UniformLayout.Declaration> uniforms,
+      Map<String, String> fragmentValues,
+      Map<String, String> functions) {
     public VertexAdapter(
         String declarations,
         String initialization,
@@ -150,10 +170,21 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       this(declarations, initialization, legacyExpressions, attributes, Map.of());
     }
 
+    public VertexAdapter(
+        String declarations,
+        String initialization,
+        Map<String, String> legacyExpressions,
+        List<TranslatedProgram.Attribute> attributes,
+        Map<String, UniformLayout.Declaration> uniforms) {
+      this(declarations, initialization, legacyExpressions, attributes, uniforms, Map.of(), Map.of());
+    }
+
     public VertexAdapter {
       legacyExpressions = Map.copyOf(legacyExpressions);
       attributes = List.copyOf(attributes);
       uniforms = Map.copyOf(uniforms);
+      fragmentValues = Map.copyOf(fragmentValues);
+      functions = Map.copyOf(functions);
     }
   }
 
@@ -231,7 +262,9 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       adapter == null ? "" : adapter.initialization(),
       adapter == null ? "" : new java.util.TreeMap<>(adapter.legacyExpressions()),
       adapter == null ? "" : adapter.attributes(),
-      adapter == null ? "" : new java.util.TreeMap<>(adapter.uniforms())
+      adapter == null ? "" : new java.util.TreeMap<>(adapter.uniforms()),
+      adapter == null ? "" : new java.util.TreeMap<>(adapter.fragmentValues()),
+      adapter == null ? "" : new java.util.TreeMap<>(adapter.functions())
     };
     return TranslationCache.get(
         key, () -> translateNow(vertex, fragment, label, mode, adapter, alphaTest, earlyAlphaDemote));
@@ -260,15 +293,18 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     List<TranslatedProgram.Attribute> attributes = new ArrayList<>();
     // Cadence: GLSL 1.30+ in/out declarations (Complementary, I Like Vanilla) become the legacy forms below
     List<String[]> modernOutputs = new ArrayList<>();
+    Map<Integer, String> integerOutputs = new HashMap<>();  // (location -> uvec4 / ivec4)
     // Cadence: images, buffer objects and set-1 samplers out first (StorageScan): one binding per name for both stages
     StorageScan storage = new StorageScan();
+    // (an adapter's own buffer objects, Cadence's far terrain for dh_* programs: set-1 resources like a pack's)
+    String adapterDeclarations = adapter == null ? "" : storage.extract(adapter.declarations());
     String vertexBody =
         declarations(
-            modernInOut(storage.extract(v.source()), true, null), true, uniforms, samplers, varyings, varyingQualifiers,
+            modernInOut(storage.extract(arraysOnNames(v.source())), true, null), true, uniforms, samplers, varyings, varyingQualifiers,
             attributes);
     String fragmentBody =
         declarations(
-            modernInOut(storage.extract(f.source()), false, modernOutputs), false, uniforms, samplers, varyings,
+            modernInOut(storage.extract(arraysOnNames(f.source())), false, modernOutputs), false, uniforms, samplers, varyings,
             varyingQualifiers, attributes);
     // Cadence: OpenGL's fixed-function fog. gl_Fog (the fog parameters) becomes uniforms the game fills from its own fog;
     // gl_FogFragCoord (the fog distance the vertex stage writes and the fragment stage reads) becomes a plain varying.
@@ -306,8 +342,50 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     vertexBody =
         vertexBody.replaceAll(
             "\\bftransform\\s*\\(\\s*\\)", "(gl_ModelViewProjectionMatrix * gl_Vertex)");
+    StringBuilder adapterCopyOut = new StringBuilder();
     if (adapter != null) {
+      // Cadence: the game's vertex inputs keep their own names (Position, Color, UV0, UV2, Normal); a pack identifier of the
+      // same name (Mellow's `Normal`) is renamed in both stages, or the two would be redefinitions of each other
+      Matcher inputs = Pattern.compile("\\bin\\s+\\w+\\s+(\\w+)\\s*;").matcher(adapter.declarations());
+      while (inputs.find()) {
+        String input = inputs.group(1);
+        if (token(vertexBody, input) || token(fragmentBody, input) || varyings.containsKey(input) || uniforms.containsKey(input)) {
+          String renamed = "sl_pack_" + input;
+          vertexBody = replaceToken(vertexBody, input, renamed);
+          fragmentBody = replaceToken(fragmentBody, input, renamed);
+          // (its declaration was already taken out of the code: a varying or uniform keeps its entry under the new name)
+          if (varyings.containsKey(input)) varyings.put(renamed, varyings.remove(input));
+          if (varyingQualifiers.containsKey(input)) varyingQualifiers.put(renamed, varyingQualifiers.remove(input));
+          for (String[] out : modernOutputs) if (out[2].equals(input)) out[2] = renamed;  // (Mellow's `out vec4 Color`)
+          if (uniforms.containsKey(input)) {
+            uniforms.put(renamed, uniforms.remove(input));
+            if (vertexUniforms.remove(input)) vertexUniforms.add(renamed);
+            if (fragmentUniforms.remove(input)) fragmentUniforms.add(renamed);
+          }
+        }
+      }
       adapter.uniforms().forEach((name, declaration) -> merge(uniforms, name, declaration));
+      // (the adapter's expressions use them in the vertex stage, whichever stage the pack declares them in: Mellow declares
+      // dhProjection in its fragment stage only, which hid it from the vertex stage)
+      vertexUniforms.addAll(adapter.uniforms().keySet());
+      // Cadence: an adapter value the fragment stage reads too (VanillaEX reads dhMaterialId there): a flat varying
+      // the vertex stage fills from the adapter's expression
+      for (var value : adapter.fragmentValues().entrySet()) {
+        String name = value.getKey(), expression = adapter.legacyExpressions().get(name);
+        if (expression == null || !token(fragmentBody, name) || varyings.containsKey(name) || uniforms.containsKey(name)) continue;
+        String varying = "sl_adapter_" + name;
+        fragmentBody = replaceToken(fragmentBody, name, varying);
+        varyings.put(varying, new UniformLayout.Declaration(value.getValue(), 0));
+        varyingQualifiers.put(varying, "flat");
+        adapterCopyOut.append(varying).append(" = ").append(expression).append(";\n");
+      }
+      // Cadence: functions of the adapter's contract a pack calls without defining them (Noble's dh_hasTexture and
+      // dh_sampleTexture)
+      for (var function : adapter.functions().entrySet()) {
+        Pattern defined = Pattern.compile("\\b\\w+\\s+" + Pattern.quote(function.getKey()) + "\\s*\\([^)]*\\)\\s*\\{");
+        if (token(vertexBody, function.getKey()) && !defined.matcher(vertexBody).find()) vertexBody = function.getValue() + "\n" + vertexBody;
+        if (token(fragmentBody, function.getKey()) && !defined.matcher(fragmentBody).find()) fragmentBody = function.getValue() + "\n" + fragmentBody;
+      }
       // A single token pass prevents replacement expressions from being recursively rewritten.
       // Cadence: a pack's own declared type for an input (I Like Vanilla declares mc_midTexCoord a vec2; the adapter
       // supplies a vec4): converted as OpenGL converts a vertex attribute to the declared size
@@ -431,15 +509,20 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       for (String[] out : modernOutputs) { // {location, type, name}
         int index = Integer.parseInt(out[0]);
         if (index >= 8) throw unsupported(label, "more than eight simultaneous color outputs");
-        if (!out[1].matches("float|vec[234]")) throw unsupported(label, "fragment output type " + out[1]);
+        if (!out[1].matches("float|vec[234]|u?int|[iu]vec[234]")) throw unsupported(label, "fragment output type " + out[1]);
         outputCount = Math.max(outputCount, index + 1);
         globals.append(out[1]).append(' ').append(out[2]).append(";\n");
+        // Cadence: an integer output (Noble's `out uvec4 dataOut` into an RGBA32UI buffer) stays integer, widened the same way
+        String four = out[1].startsWith("u") ? "uvec4" : out[1].startsWith("i") ? "ivec4" : "vec4";
+        if (!four.equals("vec4")) integerOutputs.put(index, four);
+        String zero = four.equals("uvec4") ? "0u" : four.equals("ivec4") ? "0" : "0.0";
+        String one = four.equals("uvec4") ? "1u" : four.equals("ivec4") ? "1" : "1.0";
         String value =
             switch (out[1]) {
-              case "vec4" -> out[2];
-              case "vec3" -> "vec4(" + out[2] + ", 1.0)";
-              case "vec2" -> "vec4(" + out[2] + ", 0.0, 1.0)";
-              default -> "vec4(" + out[2] + ", 0.0, 0.0, 1.0)";
+              case "vec4", "uvec4", "ivec4" -> out[2];
+              case "vec3", "uvec3", "ivec3" -> four + "(" + out[2] + ", " + one + ")";
+              case "vec2", "uvec2", "ivec2" -> four + "(" + out[2] + ", " + zero + ", " + one + ")";
+              default -> four + "(" + out[2] + ", " + zero + ", " + zero + ", " + one + ")";
             };
         copies.append("sl_FragData").append(index).append(" = ").append(value).append(";\n");
       }
@@ -459,8 +542,9 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     // with DRAWBUFFERS:0): those become plain variables nothing reads.
     int boundOutputs = Math.min(outputCount, drawBuffers.size());
     boolean alphaDemoted = false;
-    // Cadence: a program that writes no colour (VanillaEX's clouds only discard) has nothing to alpha test
-    if (alphaTest.enabled() && outputCount > 0) {
+    // Cadence: a program that writes no colour (VanillaEX's clouds only discard) has nothing to alpha test, nor one whose
+    // first output is an integer (no alpha to test)
+    if (alphaTest.enabled() && outputCount > 0 && !integerOutputs.containsKey(0)) {
       merge(uniforms, "alphaTestRef", new UniformLayout.Declaration("float", 0));
       if (earlyAlphaDemote) {
         var demotion = EarlyAlphaDemotion.apply(fragmentBody, alphaTest);
@@ -514,7 +598,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     String vertexCommon = "#version 450\n" + layout.declaration(hideInVertex) + common + storage.header();
     String fragmentCommon = "#version 450\n" + layout.declaration(hideInFragment) + common + storage.header();
     StringBuilder vin = new StringBuilder();
-    if (adapter != null) vin.append(adapter.declarations()).append('\n');
+    if (adapter != null) vin.append(adapterDeclarations).append('\n');
     for (String zero : zeroInputs) { // "type name" (zero) or "type name|value"
       int bar = zero.indexOf('|');
       String declaration = bar < 0 ? zero : zero.substring(0, bar);
@@ -547,6 +631,56 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     }
     StringBuilder vout = new StringBuilder();
     StringBuilder fin = new StringBuilder();
+    // Cadence: a varying of the pack's own struct type (Photon: `flat out OverworldFogParameters fog_params;`) is declared
+    // here, above the pack's code, so its struct definition moves up with it (out of both stages' code), and the varying
+    // takes as many locations as the struct's members do.
+    Map<String, Integer> structSlots = new HashMap<>();
+    Map<String, String> structMembers = new HashMap<>();
+    for (var varying : varyings.values()) {
+      String type = varying.type();
+      if (type.matches("[ibud]?vec[234]|mat[234](x[234])?|float|int|uint|bool|double") || structSlots.containsKey(type)) continue;
+      Pattern definition = Pattern.compile("\\bstruct\\s+" + Pattern.quote(type) + "\\s*\\{([^}]*)\\}\\s*;");
+      Matcher inVertex = definition.matcher(vertexBody), inFragment = definition.matcher(fragmentBody);
+      Matcher found = inVertex.find() ? inVertex : inFragment.find() ? inFragment : null;
+      if (found == null) continue;
+      String text = found.group();
+      structSlots.put(type, structSlots(found.group(1), structSlots));
+      structMembers.put(type, found.group(1));
+      vertexBody = vertexBody.replace(text, "");
+      fragmentBody = fragmentBody.replace(text, "");
+      vout.append(text).append('\n');
+      fin.append(text).append('\n');
+    }
+    // ...and since the game's pipeline layer takes no struct in a stage's interface, each such varying becomes one varying
+    // per member: the pack's code keeps the struct as a plain global in both stages, the vertex stage copies its members
+    // out after the pack's main, the fragment stage copies them in before it.
+    StringBuilder structCopyOut = new StringBuilder(), structCopyIn = new StringBuilder();
+    for (var varying : List.copyOf(varyings.entrySet())) {
+      String members = structMembers.get(varying.getValue().type());
+      if (members == null) continue;
+      if (varying.getValue().arrayLength() > 0) throw unsupported(label, "arrays of struct varyings");
+      String name = varying.getKey(), qualifier = varyingQualifiers.getOrDefault(name, "");
+      varyings.remove(name);
+      varyingQualifiers.remove(name);
+      vout.append(varying.getValue().type()).append(' ').append(name).append(";\n");
+      fin.append(varying.getValue().type()).append(' ').append(name).append(";\n");
+      Matcher member = Pattern.compile("(\\w+)\\s+(\\w+)\\s*(?:\\[\\s*(\\d+)\\s*\\])?\\s*;")
+          .matcher(members.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("//[^\\n]*", ""));
+      while (member.find()) {
+        if (structMembers.containsKey(member.group(1))) throw unsupported(label, "nested struct varyings");
+        String flat = "sl_struct_" + name + "_" + member.group(2);
+        varyings.put(flat, new UniformLayout.Declaration(member.group(1), member.group(3) == null ? 0 : Integer.parseInt(member.group(3))));
+        varyingQualifiers.put(flat, qualifier);
+        structCopyOut.append(flat).append(" = ").append(name).append('.').append(member.group(2)).append(";\n");
+        structCopyIn.append(name).append('.').append(member.group(2)).append(" = ").append(flat).append(";\n");
+      }
+    }
+    if (structCopyIn.length() > 0) {
+      Matcher fragmentMain = MAIN.matcher(fragmentBody);
+      if (!fragmentMain.find()) throw new IllegalArgumentException("Missing fragment main in " + label);
+      fragmentBody = fragmentMain.replaceFirst("void sl_struct_fragment_main()")
+          + "\nvoid main() {\n" + structCopyIn + "sl_struct_fragment_main();\n}\n";
+    }
     int location = 0;
     for (var varying : varyings.entrySet()) {
       String suffix =
@@ -568,17 +702,21 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
           .append(interpolation)
           .append("in ")
           .append(declaration);
-      location += varyingLocations(varying.getValue());
+      location += structSlots.containsKey(varying.getValue().type())
+          ? structSlots.get(varying.getValue().type()) * Math.max(1, varying.getValue().arrayLength())
+          : varyingLocations(varying.getValue());
     }
     StringBuilder fout = new StringBuilder();
     for (int i = 0; i < outputCount; i++)
       if (i < boundOutputs)
         fout.append("layout(location=")
             .append(i)
-            .append(") out vec4 sl_FragData")
+            .append(") out ")
+            .append(integerOutputs.getOrDefault(i, "vec4"))
+            .append(" sl_FragData")
             .append(i)
             .append(";\n");
-      else fout.append("vec4 sl_FragData").append(i).append(";\n");
+      else fout.append(integerOutputs.getOrDefault(i, "vec4")).append(" sl_FragData").append(i).append(";\n");
     vertexBody = modernize(vertexBody, samplers);
     fragmentBody = modernize(fragmentBody, samplers);
     Matcher main = MAIN.matcher(vertexBody);
@@ -610,7 +748,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
         entry += "sl_MultiTexCoord0 = vec4(sl_uv, 0.0, 1.0);\n";
     }
     // Pack matrices and sampled depth remain OpenGL-style; rasterization expects [0, 1] NDC Z.
-    entry += "sl_pack_main();\ngl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n";
+    entry += "sl_pack_main();\n" + adapterCopyOut + structCopyOut + "gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n";
     String compatibility =
         shadowComparison == ShadowComparison.HARDWARE
             ? """
@@ -742,6 +880,15 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
           "(?m)^[ \\t]*(?:layout\\s*\\(([^)]*)\\)\\s*)?((?:(?:flat|smooth|noperspective|centroid)\\s+)*)(in|out)\\s+"
               + "(?:(?:lowp|mediump|highp)\\s+)?(\\w+)\\s+([^;{}()=]+);");
   private static final Pattern LOCATION = Pattern.compile("\\blocation\\s*=\\s*(\\d+)");
+  private static final Pattern ARRAY_ON_TYPE =
+      Pattern.compile(
+          "(?m)^([ \\t]*(?:layout\\s*\\([^)]*\\)\\s*)?(?:(?:flat|smooth|noperspective|centroid|uniform|varying|in|out|attribute|highp|mediump|lowp)\\s+)+)"
+              + "(\\w+)\\s*\\[\\s*(\\w+)\\s*\\]\\s+(\\w+)\\s*;");
+
+  /** Cadence: `flat out vec3[9] sky;` (the array on the type, Noble) as `flat out vec3 sky[9];`, the form read below. */
+  static String arraysOnNames(String source) {
+    return ARRAY_ON_TYPE.matcher(source).replaceAll("$1$2 $4[$3];");
+  }
 
   /**
    * Cadence: global in/out declarations as the legacy storage the rest of the translator reads: a vertex stage's inputs are
@@ -796,6 +943,10 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
       Pattern.compile(
           "(?m)^[ \\t]*((?:(?:layout\\s*\\([^)]*\\)|readonly|writeonly|coherent|volatile|restrict|uniform|highp|mediump|lowp)\\s*)+?)"
               + "([iu]?image(?:2D|3D|2DArray))\\s+(\\w+)\\s*;");
+  private static final Pattern IMAGE_DECLARATIONS =
+      Pattern.compile(
+          "(?m)^[ \\t]*((?:(?:layout\\s*\\([^)]*\\)|readonly|writeonly|coherent|volatile|restrict|uniform|highp|mediump|lowp)\\s*)+?)"
+              + "([iu]?image(?:2D|3D|2DArray))\\s+(\\w+(?:\\s*,\\s*\\w+)+)\\s*;");
   private static final Pattern SET1_SAMPLER =
       Pattern.compile(
           "(?m)^[ \\t]*(?:layout\\s*\\([^)]*\\)\\s*)?uniform\\s+(?:(?:lowp|mediump|highp)\\s+)?([iu]?sampler(?:2D|3D|2DArray))\\s+(\\w+)\\s*;");
@@ -831,6 +982,18 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
         blocks.appendReplacement(out, "");
       }
       blocks.appendTail(out);
+      source = out.toString();
+      // Cadence: several images in one declaration (Solas: `writeonly uniform image3D floodfill_img, floodfill_img_copy;`)
+      // become one declaration each, the form the scan below reads
+      Matcher several = IMAGE_DECLARATIONS.matcher(source);
+      out = new StringBuffer();
+      while (several.find()) {
+        StringBuilder each = new StringBuilder();
+        for (String name : several.group(3).split(","))
+          each.append(several.group(1)).append(several.group(2)).append(' ').append(name.strip()).append(";\n");
+        several.appendReplacement(out, Matcher.quoteReplacement(each.toString()));
+      }
+      several.appendTail(out);
       source = out.toString();
       Matcher images = IMAGE_DECLARATION.matcher(source);
       out = new StringBuffer();
@@ -914,6 +1077,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     String body =
         declarations(storage.extract(c.source()), false, uniforms, samplers, new LinkedHashMap<>(), new LinkedHashMap<>(),
             new ArrayList<>());
+    body = SharedVec3Split.apply(body);
     for (var core : IRIS_CORE.entrySet()) {
       Pattern own = Pattern.compile("\\b(?:float|int|bool|[biu]?vec[234]|mat[234](?:x[234])?)\\s+" + core.getKey() + "\\b");
       if (!own.matcher(body).find()) body = replaceToken(body, core.getKey(), "(" + core.getValue() + ")");
@@ -1037,7 +1201,7 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
             if (type.matches("[iu]?sampler.*")) {
               if (length > 0)
                 throw new UnsupportedOperationException("Sampler arrays: " + identifier);
-              if (!type.matches("sampler2D|sampler2DShadow|samplerCube|[iu]sampler2D"))
+              if (!type.matches("sampler2D|sampler2DShadow|samplerCube|[iu]sampler2D|sampler3D"))
                 throw new UnsupportedOperationException(
                     "Unsupported sampler type " + type + " for " + identifier);
               String previous = samplers.putIfAbsent(identifier, type);
@@ -1269,6 +1433,19 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
     var previous = map.putIfAbsent(name, value);
     if (previous != null && !previous.equals(value))
       throw new IllegalArgumentException("Conflicting declarations: " + name);
+  }
+
+  /** The interface locations a struct with these members takes: one per member, a matrix's columns and an array's elements each. */
+  private static int structSlots(String members, Map<String, Integer> known) {
+    String code = members.replaceAll("(?s)/\\*.*?\\*/", "").replaceAll("//[^\\n]*", "");
+    Matcher member = Pattern.compile("(\\w+)\\s+(\\w+)\\s*(?:\\[\\s*(\\d+)\\s*\\])?\\s*;").matcher(code);
+    int slots = 0;
+    while (member.find()) {
+      String type = member.group(1);
+      int each = type.matches("mat[234].*") ? type.charAt(3) - '0' : known.getOrDefault(type, 1);
+      slots += each * (member.group(3) == null ? 1 : Integer.parseInt(member.group(3)));
+    }
+    return Math.max(1, slots);
   }
 
   private static int varyingLocations(UniformLayout.Declaration declaration) {

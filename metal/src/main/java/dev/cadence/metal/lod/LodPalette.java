@@ -33,6 +33,11 @@ final class LodPalette {
 		IDS.forEach(LodPalette::write);
 	}
 
+	/** The resources reloaded (LodResources, after LodColors.forget): every entry written again, the atlas and colors are new. */
+	static synchronized void refresh() {
+		if (table != 0) IDS.forEach(LodPalette::write);
+	}
+
 	/** The block's number (0 when the table is full, or for air and fluids: they keep the flat color). */
 	static int id(BlockState state) {
 		if (state.isAir() || !state.getFluidState().isEmpty() && state.getBlock() instanceof net.minecraft.world.level.block.LiquidBlock) return 0;
@@ -61,6 +66,11 @@ final class LodPalette {
 		}
 		putRgb(at + 32, l.top());
 		putRgb(at + 48, l.side());
+		// (a plant's tallest opaque texel, blocks: its quads drawn no higher, columns.metal lod_mesh_plant_vs)
+		int highest = 0;
+		for (int i = 0; i < 4; i++)
+			for (int k = 0; k < 4; k++) highest = Math.max(highest, (l.profile()[i] >>> (k * 8)) & 255);
+		MemoryUtil.memPutFloat(at + 60, highest / 16.0F);
 		for (int i = 0; i < 4; i++) MemoryUtil.memPutInt(at + 64 + i * 4L, l.profile()[i]);
 	}
 

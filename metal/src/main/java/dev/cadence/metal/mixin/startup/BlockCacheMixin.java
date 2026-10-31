@@ -15,7 +15,10 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  */
 @Mixin(Blocks.class)
 abstract class BlockCacheMixin {
-	@Redirect(method = "lambda$static$429", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/state/BlockState;initCache()V"))
+	// (any static lambda: the loop's is lambda$static$429 in 26.3, a number a hotfix can change; on by default since beta.20, so
+	// require = 0: not found, the caches are built as vanilla builds them, BH5-08)
+	@Redirect(method = "/^lambda\\$static\\$\\d+$/", require = 0,
+		at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/state/BlockState;initCache()V"))
 	private static void cadence$defer(BlockState state) {
 		if (Startup.parallelBlockCache()) Startup.deferInitCache(state);
 		else state.initCache();

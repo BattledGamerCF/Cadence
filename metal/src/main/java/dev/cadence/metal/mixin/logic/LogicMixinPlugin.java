@@ -18,11 +18,22 @@ public final class LogicMixinPlugin implements IMixinConfigPlugin {
 		dev.cadence.metal.Profile.apply(); // before any flag is read
 	}
 	/** Mixin class -> its switch name (cadence.logic.NAME). */
-	private static final Map<String, String> OPTION = Map.of(
-		"EntitySectionStorageMixin", "entitySections",
-		"BrainMixin", "brain",
-		"SecondaryPoiSensorMixin", "villagerSensor",
-		"LevelBlockEntityTickMixin", "blockEntityTick");
+	private static final Map<String, String> OPTION = Map.ofEntries(
+		Map.entry("EntitySectionStorageMixin", "entitySections"),
+		Map.entry("BrainMixin", "brain"),
+		Map.entry("SecondaryPoiSensorMixin", "villagerSensor"),
+		Map.entry("LevelBlockEntityTickMixin", "blockEntityTick"),
+		Map.entry("TickRangeTrackerMixin", "tickRange"),
+		Map.entry("TickRangeChunkTicksMixin", "tickRange"),
+		Map.entry("TickRangeLevelMixin", "tickRange"),
+		Map.entry("TickRangeTicksMixin", "tickRange"),
+		Map.entry("PathTypeCacheMixin", "pathCache"),
+		Map.entry("CollisionAirMixin", "collisionAir"),
+		Map.entry("SkySourcesMixin", "skySources"),
+		Map.entry("SkySourcesAccess", "skySources"),
+		Map.entry("AmbientParticlesMixin", "ambientParticles"),
+		Map.entry("AmbientSystemAccess", "ambientParticles"),
+		Map.entry("AmbientSamplerAccess", "ambientParticles"));
 
 	@Override public void onLoad(String mixinPackage) { }
 	@Override public String getRefMapperConfig() { return null; }

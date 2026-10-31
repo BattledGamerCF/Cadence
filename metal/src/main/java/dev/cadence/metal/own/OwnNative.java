@@ -38,6 +38,7 @@ final class OwnNative {
 	private static final MethodHandle QUADS_PRE = fn("mco_quads_pre", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle GPUTIME = fn("mco_set_gputime", false, null, JAVA_INT);
+	private static final MethodHandle HDR = fn("mco_hdr", false, null, java.lang.foreign.ValueLayout.JAVA_FLOAT, JAVA_LONG);
 	private static final MethodHandle QREC_VERIFY = fn("mco_qrec_verify", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle HIZ_TILED = fn("mco_set_hiz_tiled", false, null, JAVA_INT);
 	private static final MethodHandle SPLIT = fn("mco_split", false, JAVA_INT, JAVA_LONG, JAVA_LONG);
@@ -106,6 +107,9 @@ final class OwnNative {
 		return buffer(ctx, size, shared ? 1 : 0);
 	}
 
+	/** Measurement: -Dcadence.own.logBuffers=MB logs every buffer of at least MB megabytes as it is made, with its caller. */
+	private static final long LOG_BUFFERS = Long.getLong("cadence.own.logBuffers", -1);
+
 	/** kind: 0 private tracked, 1 shared untracked, 2 shared tracked. */
 	static long buffer(long ctx, long size, int kind) {
 		try {
@@ -113,6 +117,16 @@ final class OwnNative {
 			if (b != 0) {
 				LIVE.put(b, size);
 				LIVE_BYTES.addAndGet(size);
+				if (LOG_BUFFERS >= 0 && size >= LOG_BUFFERS << 20) {
+					StackTraceElement[] st = new Throwable().getStackTrace();
+					StringBuilder at = new StringBuilder();
+					for (int i = 1, n = 0; i < st.length && n < 2; i++) {
+						if (st[i].getClassName().endsWith("OwnNative")) continue;
+						at.append(n++ == 0 ? "" : " <- ").append(st[i].getClassName().substring(st[i].getClassName().lastIndexOf('.') + 1)).append(':').append(st[i].getLineNumber());
+					}
+					System.out.println(String.format(java.util.Locale.ROOT, "cadence-own buffer %.1f MB (%s) at %s, live %.1f MB", size / 1048576.0,
+						kind == 0 ? "private" : "shared", at, LIVE_BYTES.get() / 1048576.0));
+				}
 			}
 			return b;
 		} catch (Throwable t) {
@@ -364,6 +378,15 @@ final class OwnNative {
 		if (OwnCapture.ON) OwnCapture.unsupported("qrecVerify");
 		try {
 			QREC_VERIFY.invokeExact(own, enc, sections, recs, arena, stats, slots);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	/** HDR (OwnEmission): emissive texels' gain in own_fs and the atlas's emission mask (0: off). */
+	static void hdr(float gain, long emission) {
+		try {
+			HDR.invokeExact(gain, emission);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}

@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.system;
 
-import dev.cadence.shaders.cadence.ShaderToggle;
+import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -33,9 +33,13 @@ public final class BackgroundFps {
 
 	/** The frame-rate limit this asks for, or Integer.MAX_VALUE for none. */
 	public static int fpsCap() {
-		if (!enabled) return Integer.MAX_VALUE;
 		Minecraft mc = Minecraft.getInstance();
 		boolean background = fakeBackground || mc.getWindow() != null && !mc.getWindow().isFocused();
+		// (a world open to LAN running in the background: App Nap would slow its ticks for the players in it; a world only you
+		// play is left to nap, as In Background and Battery Saver want)
+		var server = mc.getSingleplayerServer();
+		dev.cadence.metal.MacSystem.appNapBusy(background && server != null && server.isPublished());
+		if (!enabled) return Integer.MAX_VALUE;
 		return background ? FPS : Integer.MAX_VALUE;
 	}
 }

@@ -1,0 +1,27 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+// The Iris API (net.irisshaders.iris.api.v0) answered by Cadence, for mods that use it. Nested in Cadence's jar as mod
+// cadence_iris_api: it doesn't claim the mod id iris. Mods that see an iris loaded apply mixins into Iris's internals
+// (ImmediatelyFast: missing targets, a warning today and a failed launch once it asks for loader 0.19.4+) or take Iris-only
+// paths (BH5). The optional provider jar (packaging/iris-provider, made by tools/release) claims it.
+base.archivesName = 'cadence-iris-api'
+version = '0.0.1+cadence'
+
+dependencies {
+	minecraft "com.mojang:minecraft:${minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${loader_version}"
+}
+
+processResources {
+	inputs.property 'version', version
+	filesMatching('fabric.mod.json') { expand 'version': version }
+}
+
+tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
+
+jar {
+	from(rootProject.file('LICENSE'))
+	from(rootProject.file('NOTICE'))
+}

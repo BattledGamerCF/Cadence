@@ -130,6 +130,8 @@ final class LodNoise {
 		return null;
 	}
 	final boolean slideTop;
+	/** A dimension without a floor (the End): columns get an underside (LodTile.floor) and void where nothing is solid. */
+	final boolean floating;
 	final BiomeSource biomes;
 	final @Nullable MultiNoiseBiomeSource multi;
 	final int seaLevel, minY, maxY;
@@ -170,6 +172,7 @@ final class LodNoise {
 		System.out.println("cadence-lod: final density " + (this.split != null ? "split: interpolated over " + sp.cellXz() + "x" + sp.cellY() + " cells, "
 			+ this.split.carvers().size() + " carver(s) per block" : "not split (" + (sp == null ? "unexpected shape" : "cells " + sp.cellXz() + "x" + sp.cellY()) + ")"));
 		this.slideTop = slideTop;
+		this.floating = level.dimension() == net.minecraft.world.level.Level.END;
 		Aquifer.Config aq = settings.aquifers().orElse(null);
 		Aquifer.FluidPicker picker = null;
 		if (aq != null && level.getChunkSource().getGenerator() instanceof NoiseBasedChunkGenerator nb) {
@@ -201,6 +204,11 @@ final class LodNoise {
 		NoiseGeneratorSettings settings = gen.generatorSettings().value();
 		RandomState random = level.getChunkSource().randomState();
 		DensityFunction terrain = settings.noiseRouter().finalDensity();
+		// Cadence: only the density's sign matters for the surface, so the game's interpolation over its cells (and the squeeze
+		// and positive scale around it) can go: sampled at far-terrain steps that interpolation builds block-sized buffers (the
+		// End: out of memory at the first coarse tile). The overworld takes its own path below.
+		Split shape = split(terrain, java.util.List.of());
+		if (shape != null && shape.carvers().isEmpty()) terrain = shape.inner();
 		boolean slide = false;
 		Optional<? extends Holder<DensityFunction>> cheese = level.registryAccess().lookupOrThrow(Registries.DENSITY_FUNCTION)
 			.get(ResourceKey.create(Registries.DENSITY_FUNCTION, Identifier.withDefaultNamespace("overworld/sloped_cheese")));
@@ -271,7 +279,10 @@ final class LodNoise {
 		// Surface per cell.
 		short[] h = t.height;
 		if (s == c) {
-			for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) h[z * size + x] = (short) surface(d, (x + z * g) * ny, ny, y0);
+			for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) {
+				h[z * size + x] = (short) surface(d, (x + z * g) * ny, ny, y0);
+				if (this.floating) this.floatingColumn(t, z * size + x, java.util.Arrays.copyOfRange(d, (x + z * g) * ny, (x + z * g) * ny + ny), ny, y0);
+			}
 		} else {
 			// bilinear between the 4-block corners (levels 0 and 1), then the crossing of the interpolated column
 			float[] col = new float[ny];
@@ -310,11 +321,28 @@ final class LodNoise {
 						}
 					}
 					h[z * size + x] = (short) top;
+					if (this.floating) this.floatingColumn(t, z * size + x, col, ny, y0);
 					if (aquifer != null) t.water[z * size + x] = this.waterOver(aquifer, col, x0 + x * c + c / 2, top, z0 + z * c + c / 2, y0);
 				}
 			}
 		}
 		this.finish(t, w, t0);
+	}
+
+	/**
+	 * A floorless dimension's column i (its 8-block samples col from y0): void when nothing is solid, else the underside of its
+	 * top solid run (the first air sample under the top; none: solid to the bottom).
+	 */
+	private void floatingColumn(LodTile t, int i, float[] col, int ny, int y0) {
+		int k = ny - 1;
+		while (k >= 0 && col[k] <= 0) k--;
+		if (k < 0) {
+			t.height[i] = LodTile.VOID;
+			return;
+		}
+		int b = k;
+		while (b >= 0 && col[b] > 0) b--;
+		if (b >= 0) t.floor[i] = (short) (y0 + (b + 1) * STEP_Y);
 	}
 
 	/** The top face of the water the game's aquifer puts over a column's ground (DRY: none; under sea level only). */
@@ -378,13 +406,20 @@ final class LodNoise {
 				int at = (x + z * n) * ny, k = ny - 1;
 				while (k >= 0 && d[at + k] <= 0) k--;
 				// a single solid sample with air under it is a thin floating pocket (an overhang's lip): a heightfield would
-				// stand it on a pillar to the ground, so look under it for the ground
-				while (k >= 1 && d[at + k - 1] <= 0) {
+				// stand it on a pillar to the ground, so look under it for the ground (not in a floorless dimension: there that
+				// is an island)
+				while (!this.floating && k >= 1 && d[at + k - 1] <= 0) {
 					k--;
 					while (k >= 0 && d[at + k] <= 0) k--;
 				}
+				if (this.floating) {
+					// the top solid run's underside: the first air sample under it (none: solid to the bottom)
+					int b = k;
+					while (b >= 0 && d[at + b] > 0) b--;
+					if (k >= 0 && b >= 0) t.floor[z * n + x] = (short) (y0 + (b + 1) * COARSE_Y);
+				}
 				int h;
-				if (k < 0) h = this.minY;
+				if (k < 0) h = this.floating ? LodTile.VOID : this.minY;
 				else if (k == ny - 1) h = y0 + k * COARSE_Y + 1;
 				else {
 					int bx = x0 + x * c, bz = z0 + z * c;
@@ -582,7 +617,8 @@ final class LodNoise {
 				int top = ground[i] - 1;
 				// water: what the game's aquifers put over the ground (levels 0-1: the sea, a local level, or nothing in cave
 				// mouths and pits); coarser levels: the sea over anything under its level
-				boolean wet = t.waterKnown ? t.water[i] != LodTile.DRY && t.water[i] > ground[i] : ground[i] < this.seaLevel;
+				// (a floorless dimension has no sea: its void and islands stay dry)
+				boolean wet = t.waterKnown ? t.water[i] != LodTile.DRY && t.water[i] > ground[i] : !this.floating && ground[i] < this.seaLevel;
 				int waterTop = t.waterKnown && wet ? t.water[i] : this.seaLevel;
 				// the game's gradient is over two blocks (x - 1 to x + 1); a cell is c blocks, so scale to that baseline
 				int gx = ground[z * size + Math.min(x + 1, last)] - ground[z * size + Math.max(x - 1, 0)];

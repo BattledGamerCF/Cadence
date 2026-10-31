@@ -98,7 +98,12 @@ public final class PackRenderTargets implements AutoCloseable {
     mipsCurrent.remove(texture);
   }
   private final List<PackTexture> owned = new ArrayList<>();
-  private final PackTexture[] depths = new PackTexture[3];
+  /**
+   * depthtex0-2, then (Cadence's far terrain through a pack's dh_* programs, Iris's names) dhDepthTex0 at 3 and dhDepthTex1 at 4:
+   * those two are made on first use (DH_DEPTH), so a pack or world without far terrain carries neither.
+   */
+  private final PackTexture[] depths = new PackTexture[5];
+  public static final int DH_DEPTH = 3;
   private PackTexture mergedDepth;
   private final PackTexture[] shadowDepths = new PackTexture[2];
   private final Map<Integer, PackTexture> shadowColors = new HashMap<>();
@@ -136,7 +141,7 @@ public final class PackRenderTargets implements AutoCloseable {
     this.height = height;
     this.shadowSize = shadowSize;
     try {
-      for (int i = 0; i < depths.length; i++)
+      for (int i = 0; i < DH_DEPTH; i++)
         depths[i] = allocate("depthtex" + i, GpuFormat.D32_FLOAT, width, height, 1);
       mergedDepth = allocate("merged hand depth", GpuFormat.D32_FLOAT, width, height, 1);
       for (int i = 0; i < shadowDepths.length; i++)
@@ -209,6 +214,11 @@ public final class PackRenderTargets implements AutoCloseable {
   }
 
   public PackTexture depth(int index) {
+    if (depths[index] == null) {
+      // dhDepthTex0/1: made on first use, defined as cleared (far) from then on
+      depths[index] = allocate(index == DH_DEPTH ? "dhDepthTex0" : "dhDepthTex1", GpuFormat.D32_FLOAT, width, height, 1);
+      clearDepth(device.createCommandEncoder(), depths[index]);
+    }
     return depths[index];
   }
 
@@ -285,6 +295,7 @@ public final class PackRenderTargets implements AutoCloseable {
       encoder.clearColorTexture(entry.getValue().write().texture, clear);
     }
     for (PackTexture depth : depths) {
+      if (depth == null) continue;
       pendingDepths.remove(depth);
       encoder.clearDepthTexture(depth.texture, 1);
     }
@@ -308,7 +319,7 @@ public final class PackRenderTargets implements AutoCloseable {
       // Only the readable side survives into geometry. Screen passes fully overwrite their outputs.
       clearColor(encoder, entry.getValue().read(), clearColor(entry.getKey()));
     }
-    for (PackTexture depth : depths) clearDepth(encoder, depth);
+    for (PackTexture depth : depths) if (depth != null) clearDepth(encoder, depth);
     if (!clearShadows) return;
     for (PackTexture depth : shadowDepths) clearDepth(encoder, depth);
     for (var color : shadowColors.entrySet()) {
@@ -346,7 +357,7 @@ public final class PackRenderTargets implements AutoCloseable {
   }
 
   public boolean needsDepthDefinition(int index) {
-    return pendingDepths.contains(depths[index]);
+    return depths[index] != null && pendingDepths.contains(depths[index]);
   }
 
   public boolean needsShadowColorDefinition(int index) {
@@ -405,7 +416,7 @@ public final class PackRenderTargets implements AutoCloseable {
       boolean withDepth,
       int depthIndex) {
     if (withDepth && (depthIndex < 0 || depthIndex >= depths.length))
-      throw new IllegalArgumentException("Depth attachment outside 0..2");
+      throw new IllegalArgumentException("Depth attachment outside 0..4");
     RenderPassDescriptor.Builder result = RenderPassDescriptor.builder(() -> name);
     for (int slot = 0; slot < outputs.size(); slot++) {
       int output = outputs.get(slot);
@@ -418,7 +429,7 @@ public final class PackRenderTargets implements AutoCloseable {
       }
     }
     if (withDepth) {
-      PackTexture target = shadow ? shadowDepths[0] : depths[depthIndex];
+      PackTexture target = shadow ? shadowDepths[0] : depth(depthIndex);
       result.withDepthAttachment(target.level(0), depthAttachmentClear(target));
     }
     return result.build();
@@ -439,7 +450,12 @@ public final class PackRenderTargets implements AutoCloseable {
   }
 
   public void copyDepth(int destination) {
-    copy(depths[0], depths[destination], width, height);
+    copy(depths[0], depth(destination), width, height);
+  }
+
+  /** Cadence: the far terrain's opaque depth (dhDepthTex0) into dhDepthTex1, before the translucent phase. */
+  public void copyDistantDepth() {
+    copy(depth(DH_DEPTH), depth(DH_DEPTH + 1), width, height);
   }
 
   public void copyShadowDepth() {
@@ -466,12 +482,16 @@ public final class PackRenderTargets implements AutoCloseable {
   // undefined (black streaks over Sildur's water). Such reads get a copy, made once per phase (opaque, then translucent).
   private final Map<Integer, PackTexture> colorFeedback = new HashMap<>();
   private final Set<Integer> colorFeedbackFresh = new HashSet<>();
-  private final PackTexture[] depthFeedback = new PackTexture[3];
-  private final boolean[] depthFeedbackFresh = new boolean[3];
+  private final PackTexture[] depthFeedback = new PackTexture[5];
+  private final boolean[] depthFeedbackFresh = new boolean[5];
+
+  /** Measurement only (self-test ab=nofeedback): feedback reads take the buffer itself, no copy (pictures may be wrong). */
+  public static volatile boolean SKIP_FEEDBACK_COPIES;
 
   /** The copy of color buffer index a program writing it reads, current for this phase. Outside an open pass only. */
   public PackTexture colorFeedback(int index) {
     PackTexture source = color(index);
+    if (SKIP_FEEDBACK_COPIES) return source;
     PackTexture copy = colorFeedback.get(index);
     int w = source.texture.getWidth(0), h = source.texture.getHeight(0);
     if (copy == null || copy.texture.getWidth(0) != w || copy.texture.getHeight(0) != h) {
@@ -486,12 +506,34 @@ public final class PackRenderTargets implements AutoCloseable {
     return copy;
   }
 
+  private final Map<Integer, PackTexture> shadowColorFeedback = new HashMap<>();
+
+  /** Cadence: a copy of shadow colour buffer index taken now (outside an open pass), for a shadow composite pass. */
+  public void copyShadowColorFeedback(int index) {
+    PackTexture source = shadowColor(index);
+    int w = source.texture.getWidth(0), h = source.texture.getHeight(0);
+    PackTexture copy = shadowColorFeedback.get(index);
+    if (copy == null || copy.texture.getWidth(0) != w || copy.texture.getHeight(0) != h) {
+      copy = allocate("shadowcolor" + index + " feedback", source.texture.getFormat(), w, h, 1);
+      shadowColorFeedback.put(index, copy);
+    }
+    ensureDefined(source);
+    device.createCommandEncoder().copyTextureToTexture(source.texture, copy.texture, 0, 0, 0, 0, 0, w, h);
+  }
+
+  /** The copy copyShadowColorFeedback last took of shadow colour buffer index. */
+  public PackTexture shadowColorFeedback(int index) {
+    PackTexture copy = shadowColorFeedback.get(index);
+    return copy != null ? copy : shadowColor(index);
+  }
+
   /** The copy of depth buffer index a program with that depth attachment reads, current for this phase. */
   public PackTexture depthFeedback(int index) {
+    if (SKIP_FEEDBACK_COPIES) return depth(index);
     if (depthFeedback[index] == null) depthFeedback[index] = allocate("depthtex" + index + " feedback", GpuFormat.D32_FLOAT, width, height, 1);
     if (!depthFeedbackFresh[index]) {
       depthFeedbackFresh[index] = true;
-      copy(depths[index], depthFeedback[index], width, height);
+      copy(depth(index), depthFeedback[index], width, height);
     }
     return depthFeedback[index];
   }

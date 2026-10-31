@@ -26,9 +26,11 @@ final class LodNative {
 	private static final MethodHandle COLS_COMPOSITE = fn("mcl_cols_composite", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle MESH_TILE = fn("mcl_mesh_tile", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT,
-		JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT);
+		JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_INT);
 	private static final MethodHandle MESH_CULL = fn("mcl_mesh_cull", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT);
+	private static final MethodHandle MESH_PACK_MODE = fn("mcl_mesh_pack_mode", false, null, JAVA_LONG, JAVA_LONG);
+	private static final MethodHandle MESH_SHADERS = fn("mcl_mesh_shaders", false, null, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle MESH_DRAW = fn("mcl_mesh_draw", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_LONG,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT,
 		JAVA_LONG, JAVA_INT);
@@ -116,11 +118,16 @@ final class LodNative {
 		if (r != 0) throw new IllegalStateException(MemoryUtil.memUTF8(err));
 	}
 
-	/** Meshes one tile (lodmesh.c) from native memory into native memory; any thread. The quad count, or -1 when cap is too small. */
+	/**
+	 * Meshes one tile (lodmesh.c) from native memory into native memory; any thread. The quad count, or -1 when cap is too small.
+	 * color (shader-pack mode; colorLogN its toroidal size): faces merge only within one colour; 0: geometric merging. floating: a
+	 * dimension without a floor (columns end at their depth; the deepest y is void).
+	 */
 	static int meshTile(long geom, long crown, long runs, long plantA, long plantB, int logN, int level, int tx, int tz, int neighbors, int block, long header,
-		long quads, int cap) {
+		long quads, int cap, long color, int colorLogN, boolean floating) {
 		try {
-			return (int) MESH_TILE.invokeExact(geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block, header, quads, cap);
+			return (int) MESH_TILE.invokeExact(geom, crown, runs, plantA, plantB, logN, level, tx, tz, neighbors, block, header, quads, cap, color, colorLogN,
+				floating ? 1 : 0);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}
@@ -131,6 +138,23 @@ final class LodNative {
 		try {
 			MESH_CULL.invokeExact(lod, enc, frame, frameLength, comp, compLength, table, arena, mask, args, inst, plantInst, survivors, horizon, list, geom, crowns,
 				blocks, fences ? 1 : 0);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	/** Cadence: a shader pack draws the far terrain (color: the clipmap's colour words), or 0: the far terrain draws itself. */
+	static void meshPackMode(long lod, long color) {
+		try {
+			MESH_PACK_MODE.invokeExact(lod, color);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	static void meshShaders(long lod, boolean on) {
+		try {
+			MESH_SHADERS.invokeExact(lod, on ? 1 : 0);
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}
@@ -200,10 +224,38 @@ final class LodNative {
 		}
 	}
 
+	/** -Dcadence.lod.memlog=true: every far-terrain buffer counted under the code that asked for it (MemLog: memLog()). */
+	static final boolean MEMLOG = Boolean.getBoolean("cadence.lod.memlog");
+	private static final java.util.Map<String, long[]> LEDGER = new java.util.concurrent.ConcurrentHashMap<>();
+
+	private static void account(long size) {
+		String at = StackWalker.getInstance().walk(f -> f.skip(2).findFirst().map(x -> x.getClassName().replace("dev.cadence.metal.lod.", "")
+			+ "." + x.getMethodName() + ":" + x.getLineNumber()).orElse("?"));
+		long[] e = LEDGER.computeIfAbsent(at, k -> new long[2]);
+		synchronized (e) {
+			e[0] += size;
+			e[1]++;
+		}
+	}
+
+	/** The ledger, largest first (MB, count), for the log. */
+	static String memLog() {
+		StringBuilder b = new StringBuilder("cadence-lod memory (buffers asked for, MB):");
+		long total = 0;
+		var rows = new java.util.ArrayList<>(LEDGER.entrySet());
+		rows.sort((x, y) -> Long.compare(y.getValue()[0], x.getValue()[0]));
+		for (var r : rows) {
+			total += r.getValue()[0];
+			b.append(String.format(java.util.Locale.ROOT, "\n  %8.1f  x%-5d %s", r.getValue()[0] / 1048576.0, r.getValue()[1], r.getKey()));
+		}
+		return b.append(String.format(java.util.Locale.ROOT, "\n  %8.1f  total", total / 1048576.0)).toString();
+	}
+
 	/** A CPU-readable, hazard-tracked buffer. */
 	static long sharedTrackedBuffer(long ctx, long size) {
 		try {
 			long b = (long) SHARED_TRACKED.invokeExact(ctx, size);
+			if (MEMLOG) account(size);
 			if (b == 0) throw new IllegalStateException("lod: buffer of " + size + " bytes failed");
 			return b;
 		} catch (Throwable t) {
@@ -214,6 +266,7 @@ final class LodNative {
 	static long privateBuffer(long ctx, long size) {
 		try {
 			long b = (long) PRIVATE_BUFFER.invokeExact(ctx, size);
+			if (MEMLOG) account(size);
 			if (b == 0) throw new IllegalStateException("lod: private buffer of " + size + " bytes failed");
 			return b;
 		} catch (Throwable t) {
@@ -225,6 +278,7 @@ final class LodNative {
 	static long privateUntrackedBuffer(long ctx, long size) {
 		try {
 			long b = (long) PRIVATE_UNTRACKED.invokeExact(ctx, size);
+			if (MEMLOG) account(size);
 			if (b == 0) throw new IllegalStateException("lod: private buffer of " + size + " bytes failed");
 			return b;
 		} catch (Throwable t) {
@@ -235,6 +289,7 @@ final class LodNative {
 	static long buffer(long ctx, long size) {
 		try {
 			long b = (long) BUFFER.invokeExact(ctx, size);
+			if (MEMLOG) account(size);
 			if (b == 0) throw new IllegalStateException("lod: buffer of " + size + " bytes failed");
 			return b;
 		} catch (Throwable t) {

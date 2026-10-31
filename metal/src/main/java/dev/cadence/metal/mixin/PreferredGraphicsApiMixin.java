@@ -16,7 +16,7 @@ abstract class PreferredGraphicsApiMixin {
 	@Inject(method = "caption", at = @At("RETURN"), cancellable = true)
 	private void cadence$caption(CallbackInfoReturnable<net.minecraft.network.chat.Component> cir) {
 		if ((Object) this == PreferredGraphicsApi.DEFAULT && Boolean.parseBoolean(System.getProperty("cadence.metal", "true")))
-			cir.setReturnValue(net.minecraft.network.chat.Component.literal("Cadence (Metal)"));
+			cir.setReturnValue(dev.cadence.metal.Lang.literal("Cadence (Metal)"));
 	}
 
 	@Inject(method = "getBackendsToTry", at = @At("RETURN"), cancellable = true)

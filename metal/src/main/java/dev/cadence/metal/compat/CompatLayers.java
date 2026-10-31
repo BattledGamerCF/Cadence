@@ -37,7 +37,7 @@ import org.objectweb.asm.tree.MethodNode;
  * aside for that mod: a "compatibility layer" is that area running on the vanilla code path, which the other mod was written
  * for, while every other Cadence optimization stays on.
  * <ul>
- * <li>Independent hooks (the CPU and game-logic mixins): only the conflicting mixin is left out ({@link #yields}).</li>
+ * <li>Independent hooks (the CPU, game-logic and network mixins): only the conflicting mixin is left out ({@link #yields}).</li>
  * <li>Cadence's own terrain renderer (its mixins work together): turned off as a whole (cadence.own=false); terrain then goes
  * through the game's section pipeline, still drawn by the Metal backend with Cadence's culling.</li>
  * <li>Everything else: reported (log and the settings screen), not changed yet.</li>
@@ -97,8 +97,25 @@ public final class CompatLayers {
 		return summary;
 	}
 
+	/** The other mods Cadence makes room for (a step aside or a report), by name, for the settings screen. */
+	public static synchronized List<String> mods() {
+		Set<String> mods = new LinkedHashSet<>();
+		for (Layer l : LAYERS.values()) mods.addAll(l.mods);
+		return List.copyOf(mods);
+	}
+
 	public static synchronized List<Layer> layers() {
 		return List.copyOf(LAYERS.values());
+	}
+
+	/** The name players know a mod by: a module nested in another mod's jar ("Dynamic FPS · Common") goes by that mod's. */
+	private static String displayName(ModContainer mod) {
+		String name = mod.getMetadata().getName();
+		for (var outer = mod.getContainingMod(); outer.isPresent(); outer = outer.get().getContainingMod()) {
+			String outerName = outer.get().getMetadata().getName();
+			if (name.startsWith(outerName)) name = outerName;
+		}
+		return name;
 	}
 
 	/** Profile.apply, before any flag is read. Never throws: a failure leaves Cadence as it was, with a log line. */
@@ -110,8 +127,8 @@ public final class CompatLayers {
 			List<Hook> ours = new ArrayList<>(), theirs = new ArrayList<>();
 			for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
 				String id = mod.getMetadata().getId();
-				NAMES.put(id, mod.getMetadata().getName());
-				if (id.startsWith("cadence")) read(mod, ours);
+				NAMES.put(id, displayName(mod));
+				if (java.util.Set.of("cadence", "cadence_shaders", "cadence_hud").contains(id)) read(mod, ours);  // (only our own ids)
 				else if (!known(id)) read(mod, theirs);
 			}
 			if (Boolean.getBoolean("cadence.compat.log")) {
@@ -128,7 +145,7 @@ public final class CompatLayers {
 				if (mods.isEmpty()) continue;
 				String area = area(o.mixin);
 				boolean applied = act && (area.equals("own terrain renderer") || o.mixin.startsWith("dev.cadence.metal.mixin.cpu.")
-					|| o.mixin.startsWith("dev.cadence.metal.mixin.logic."));
+					|| o.mixin.startsWith("dev.cadence.metal.mixin.logic.") || o.mixin.startsWith("dev.cadence.metal.mixin.net."));
 				Layer prev = LAYERS.get(o.mixin);
 				if (prev != null) mods.addAll(prev.mods);
 				LAYERS.put(o.mixin, new Layer(o.mixin, area, mods, applied));
@@ -137,11 +154,76 @@ public final class CompatLayers {
 					else YIELDING.add(o.mixin);
 				}
 			}
+			// the Apple sound engine (dev.cadence.metal.audio.AppleAudio) replaces OpenAL under the game's audio classes: a mod
+			// that hooks them (sound physics, reverb: they drive OpenAL sources and effects themselves) keeps OpenAL
+			Set<String> audio = new LinkedHashSet<>();
+			for (Hook t : theirs) if (t.target.replace('.', '/').startsWith("com/mojang/blaze3d/audio/")) audio.add(NAMES.getOrDefault(t.mod, t.mod));
+			if (!audio.isEmpty()) {
+				LAYERS.put("dev.cadence.metal.mixin.audio", new Layer("dev.cadence.metal.mixin.audio", "Apple sound engine", audio, act));
+				if (act && System.getProperty("cadence.audio") == null) System.setProperty("cadence.audio", "openal");
+			}
+			requested(ours);
 			if (ownOff && !"false".equals(System.getProperty("cadence.own"))) System.setProperty("cadence.own", "false");
 			report();
 		} catch (RuntimeException | LinkageError e) {
 			System.out.println("[cadence] compat: couldn't read the other mods' mixins (" + e + "); nothing changed");
 		}
+	}
+
+	/**
+	 * Cadence API: what other mods ask Cadence to leave on the vanilla path, in their fabric.mod.json ("custom": {"cadence":
+	 * {"stepAside": [...]}}; areas in dev.cadence.api.Cadence). ours: Cadence's own hooks (their mixin names).
+	 */
+	private static void requested(List<Hook> ours) {
+		for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
+			var custom = mod.getMetadata().getCustomValue("cadence");
+			if (custom == null || custom.getType() != net.fabricmc.loader.api.metadata.CustomValue.CvType.OBJECT) continue;
+			var list = custom.getAsObject().get("stepAside");
+			if (list == null || list.getType() != net.fabricmc.loader.api.metadata.CustomValue.CvType.ARRAY) continue;
+			String who = NAMES.getOrDefault(mod.getMetadata().getId(), mod.getMetadata().getId());
+			for (var v : list.getAsArray()) {
+				if (v.getType() != net.fabricmc.loader.api.metadata.CustomValue.CvType.STRING) {
+					System.out.println("[cadence] compat: " + who + " asks to step aside with a " + v.getType() + " (an area's name is a string): ignored");
+					continue;
+				}
+				String area = v.getAsString().strip();
+				Set<String> mixins = new LinkedHashSet<>();
+				switch (area) {
+					case "terrain" -> {
+						ownOff = true;
+						LAYERS.merge("api:terrain", new Layer("api:terrain", "own terrain renderer", Set.of(who), true), CompatLayers::join);
+					}
+					case "farTerrain" -> {
+						System.setProperty("cadence.lod", "false");
+						System.clearProperty("cadence.lod.radius");
+						LAYERS.merge("api:farTerrain", new Layer("api:farTerrain", "far terrain", Set.of(who), true), CompatLayers::join);
+					}
+					case "entityModels" -> ours.stream().filter(h -> h.mixin.substring(h.mixin.lastIndexOf('.') + 1).startsWith("Model")).forEach(h -> mixins.add(h.mixin));
+					case "cpu" -> ours.stream().filter(h -> h.mixin.startsWith("dev.cadence.metal.mixin.cpu.")).forEach(h -> mixins.add(h.mixin));
+					case "logic" -> ours.stream().filter(h -> h.mixin.startsWith("dev.cadence.metal.mixin.logic.")).forEach(h -> mixins.add(h.mixin));
+					default -> {
+						if (!area.startsWith("mixin:")) {
+							System.out.println("[cadence] compat: " + who + " asks to step aside in an unknown area: " + area);
+							continue;
+						}
+						String name = area.substring(6);
+						ours.stream().filter(h -> h.mixin.equals(name) || h.mixin.endsWith("." + name)).forEach(h -> mixins.add(h.mixin));
+						// (was silent: a misspelt name looked like it worked)
+						if (mixins.isEmpty()) System.out.println("[cadence] compat: " + who + " asks to step aside in a mixin Cadence doesn't have: " + name);
+					}
+				}
+				for (String m : mixins) {
+					YIELDING.add(m);
+					LAYERS.merge(m, new Layer(m, area(m), Set.of(who), true), CompatLayers::join);
+				}
+			}
+		}
+	}
+
+	private static Layer join(Layer a, Layer b) {
+		Set<String> mods = new LinkedHashSet<>(a.mods);
+		mods.addAll(b.mods);
+		return new Layer(a.cadenceMixin, a.area, mods, a.applied || b.applied);
 	}
 
 	/** Mods known to work with Cadence as it is (Fabric API, the loader, Java, Minecraft itself). */

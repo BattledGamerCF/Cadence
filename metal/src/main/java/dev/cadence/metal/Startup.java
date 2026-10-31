@@ -89,10 +89,16 @@ public final class Startup {
 				}
 				i++;
 			}
-			if (out != null) out.close();
 			// registry order (numeric ids) of blocks and items: Items' initialisation can move to a cache worker
-			for (var b : net.minecraft.core.registries.BuiltInRegistries.BLOCK) h = mix(h, net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(b).hashCode());
-			for (var it : net.minecraft.core.registries.BuiltInRegistries.ITEM) h = mix(h, net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(it).hashCode());
+			for (var b : net.minecraft.core.registries.BuiltInRegistries.BLOCK) {
+				h = mix(h, net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(b).hashCode());
+				if (out != null) out.println("block " + net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(b));
+			}
+			for (var it : net.minecraft.core.registries.BuiltInRegistries.ITEM) {
+				h = mix(h, net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(it).hashCode());
+				if (out != null) out.println("item " + net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(it));
+			}
+			if (out != null) out.close();
 		} catch (ReflectiveOperationException | java.io.IOException e) {
 			throw new IllegalStateException(e);
 		}
@@ -118,7 +124,9 @@ public final class Startup {
 			}
 			return h;
 		}
-		if (v instanceof net.minecraft.world.level.material.FluidState fs) return fs.toString().hashCode();
+		// (by its fluid's id, amount and source flag: its toString holds the fluid's identity hash, different every run)
+		if (v instanceof net.minecraft.world.level.material.FluidState fs)
+			return mix(mix(net.minecraft.core.registries.BuiltInRegistries.FLUID.getKey(fs.getType()).hashCode(), fs.getAmount()), fs.isSource() ? 1 : 0);
 		throw new IllegalStateException("block cache digest: unhandled value type " + v.getClass().getName());
 	}
 

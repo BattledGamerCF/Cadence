@@ -70,7 +70,9 @@ final class OwnFrapi implements OwnApi.Mesher {
 				abgr[v] = c & 0xFF00FF00 | (c & 0xFF0000) >> 16 | (c & 0xFF) << 16;
 				light[v] = quad.lightmap(v);
 			}
-			this.quads.layers[layer == ChunkSectionLayer.SOLID ? 0 : 1].quad(p, abgr, uv, light);
+			OwnQuads.Layer l = this.quads.layers[layer == ChunkSectionLayer.SOLID ? 0 : 1];
+			if (OwnMergeStat.ON) l.spriteOk = true;  // (mergestat: no sprite here; an upper bound, as most block sprites aren't animated)
+			l.quad(p, abgr, uv, light);
 			return;
 		}
 		VertexConsumer sink = this.translucentSink;

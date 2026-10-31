@@ -29,4 +29,9 @@ public final class FrameHints {
 
 	/** Measurement only (self-test ab=drop-NAME): draws whose pipeline name contains this are skipped; null: none. */
 	public static volatile String dropPipeline;
+
+	/** -Dcadence.metal.trace=later: the GPU trace of a frame a moment from now (the self-test's "gputrace" step). */
+	public static void traceSoon() {
+		MetalEncoder.traceSoon();
+	}
 }

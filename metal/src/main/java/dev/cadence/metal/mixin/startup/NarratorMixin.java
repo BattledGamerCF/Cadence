@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 /** -Dcadence.startup.narrator=lazy: GameNarrator gets a narrator that is created on its first use. */
 @Mixin(GameNarrator.class)
 abstract class NarratorMixin {
-	@Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lcom/mojang/text2speech/Narrator;getNarrator()Lcom/mojang/text2speech/Narrator;"))
+	@Redirect(method = "<init>", require = 0, at = @At(value = "INVOKE", target = "Lcom/mojang/text2speech/Narrator;getNarrator()Lcom/mojang/text2speech/Narrator;"))
 	private static Narrator cadence$lazy() {
 		return new LazyNarrator();
 	}

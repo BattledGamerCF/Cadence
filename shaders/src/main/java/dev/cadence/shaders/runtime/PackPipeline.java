@@ -27,7 +27,8 @@ public record PackPipeline(
     int renderStage,
     float alphaTestRef,
     String primarySampler,
-    java.util.List<SamplerBinding> samplerBindings)
+    java.util.List<SamplerBinding> samplerBindings,
+    java.util.Set<String> readSamplers)
     implements AutoCloseable {
 
   public enum SamplerKind {
@@ -54,6 +55,10 @@ public record PackPipeline(
       SamplerBinding binding = of(sampler);
       if (fullscreen && binding.kind() == SamplerKind.ALBEDO)
         return new SamplerBinding(binding.name(), binding.shaderName(), SamplerKind.COLOR, 0, binding.comparison());
+      // Cadence: in a world program, gcolor is texture unit 0, the block texture, as OptiFine binds samplers by unit (RRe36's
+      // Nostalgia and Vanilla Plus read their albedo through it; as colortex0 every block was one flat colour)
+      if (!fullscreen && binding.name().equals("gcolor"))
+        return new SamplerBinding(binding.name(), binding.shaderName(), SamplerKind.ALBEDO, 0, binding.comparison());
       return binding;
     }
 
@@ -71,6 +76,10 @@ public record PackPipeline(
       } else if (name.matches("depthtex[012]")) {
         kind = SamplerKind.DEPTH;
         index = name.charAt(8) - '0';
+      } else if (name.matches("dhDepthTex[01]?")) {
+        // Cadence's far terrain drawn through the pack's dh_* programs (Iris's names): its own depth, opaque (0) and with water (1)
+        kind = SamplerKind.DEPTH;
+        index = PackRenderTargets.DH_DEPTH + (name.endsWith("1") ? 1 : 0);
       } else if (name.matches("shadowtex[01]")
           || name.equals("shadow")
           || name.equals("watershadow")) {
@@ -188,18 +197,24 @@ public record PackPipeline(
     for (int slot = 0; slot < translated.drawBuffers().size(); slot++) {
       int target = translated.drawBuffers().get(slot);
       if (target < 0 || shadow && !targets.shadowColorAttached(target, slot)) builder.withUnusedColorTargetState(slot);
-      else
+      else {
+        var format =
+            finalPass
+                ? com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM
+                : shadow
+                    ? targets.shadowColor(target).texture.getFormat()
+                    : targets.format(target);
+        // Cadence: an integer buffer (Noble's RGBA32UI material data) is never blended, as OpenGL ignores blending for
+        // integer formats (Metal refuses it)
+        boolean integer = format.name().endsWith("_UINT") || format.name().endsWith("_SINT");
         builder.withColorTargetState(
             slot,
             new ColorTargetState(
                 // Cadence: blend.<program>[.<buffer>] from shaders.properties (PackBlend)
-                finalPass ? Optional.empty() : PackBlend.resolve(source.name(), target, shadow, fullscreen ? Optional.empty() : blend),
-                finalPass
-                    ? com.mojang.renderpearl.api.GpuFormat.RGBA8_UNORM
-                    : shadow
-                        ? targets.shadowColor(target).texture.getFormat()
-                        : targets.format(target),
+                finalPass || integer ? Optional.empty() : PackBlend.resolve(source.name(), target, shadow, fullscreen ? Optional.empty() : blend),
+                format,
                 ColorTargetState.WRITE_ALL));
+      }
     }
     boolean depth = original != null && original.getDepthStencilState() != null;
     if (depth) {
@@ -263,8 +278,22 @@ public record PackPipeline(
       if (e instanceof RuntimeException r) throw r;
       throw new IllegalStateException(e);
     }
-    if (compiled == null)
+    if (compiled == null) {
+      // -Dcadence.shaders.dumpFailedPipelines=DIR: the translated GLSL of a pipeline that didn't compile, for reading
+      String dump = System.getProperty("cadence.shaders.dumpFailedPipelines");
+      if (dump != null) {
+        try {
+          java.nio.file.Path dir = java.nio.file.Path.of(dump);
+          java.nio.file.Files.createDirectories(dir);
+          String base = translated.label().replaceAll("[^A-Za-z0-9_.-]", "_");
+          java.nio.file.Files.writeString(dir.resolve(base + ".vsh"), translated.vertexSource());
+          java.nio.file.Files.writeString(dir.resolve(base + ".fsh"), translated.fragmentSource());
+        } catch (java.io.IOException | RuntimeException ignored) {
+          // diagnostics only
+        }
+      }
       throw new IllegalStateException("Pack pipeline compilation failed: " + translated.label());
+    }
     String primarySampler =
         original != null
                 && original
@@ -300,7 +329,108 @@ public record PackPipeline(
         renderStage,
         alphaTestRef,
         primarySampler,
-        samplerBindings);
+        samplerBindings,
+        readSet(translated, samplerBindings));
+  }
+
+  private static java.util.Set<String> readSet(TranslatedProgram translated, java.util.List<SamplerBinding> samplerBindings) {
+    // (each source counted once for every sampler: a regex search per sampler and source was 93% of compiling a pack's
+    // pipelines, the game paused 0.3-4 s when a pack was switched on)
+    SourceCounts vertex = SourceCounts.of(translated.vertexSource()), fragment = SourceCounts.of(translated.fragmentSource());
+    var out = samplerBindings.stream().map(SamplerBinding::name)
+        .filter(n -> { String shader = shaderName(samplerBindings, n); return vertex.reads(shader) || fragment.reads(shader); })
+        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    if (Boolean.getBoolean("cadence.shaders.logReads"))
+      org.slf4j.LoggerFactory.getLogger("cadence_shaders").info("reads {}: {} of {}", translated.label(), new java.util.TreeSet<>(out),
+          samplerBindings.stream().map(SamplerBinding::name).sorted().toList());
+    return out;
+  }
+
+  private static String shaderName(java.util.List<SamplerBinding> bindings, String name) {
+    for (SamplerBinding b : bindings) if (b.name().equals(name)) return b.shaderName();
+    return name;
+  }
+
+  /** Cadence: whether this program's code samples the named sampler (not only declares it: see reads). */
+  public boolean readsSampler(SamplerBinding sampler) {
+    return readSamplers.contains(sampler.name());
+  }
+
+  /**
+   * Cadence: whether the program's code uses this sampler beyond declaring it. Packs declare every buffer in shared
+   * includes: Complementary's world programs declare colortex0, 3, 4 and 6 (and depthtex0) while drawing into them, which
+   * cost a full-size copy of each per phase (ShaderRuntime.prepareFeedback) though most never read them.
+   */
+  static boolean reads(TranslatedProgram translated, String name) {
+    return SourceCounts.of(translated.vertexSource()).reads(name) || SourceCounts.of(translated.fragmentSource()).reads(name);
+  }
+
+  /**
+   * One source's identifiers, each with how often it appears as a whole word (as the regex \bNAME\b counts it: a word is a
+   * run of ASCII letters, digits and underscores) and how often it is declared as {@code uniform <type> NAME;} (as
+   * \buniform\s+\w+\s+NAME\s*; counts it). A name is read when it appears more often than it is declared.
+   */
+  record SourceCounts(java.util.Map<String, Integer> tokens, java.util.Map<String, Integer> declared) {
+    private static final SourceCounts NONE = new SourceCounts(java.util.Map.of(), java.util.Map.of());
+
+    boolean reads(String name) {
+      return tokens.getOrDefault(name, 0) > declared.getOrDefault(name, 0);
+    }
+
+    static SourceCounts of(String source) {
+      if (source == null) return NONE;
+      java.util.HashMap<String, Integer> tokens = new java.util.HashMap<>(), declared = new java.util.HashMap<>();
+      int n = source.length(), i = 0;
+      while (i < n) {
+        if (!word(source.charAt(i))) {
+          i++;
+          continue;
+        }
+        int start = i;
+        while (i < n && word(source.charAt(i))) i++;
+        String token = source.substring(start, i);
+        tokens.merge(token, 1, Integer::sum);
+        if (token.equals("uniform")) {
+          String name = declaredName(source, i);
+          if (name != null) declared.merge(name, 1, Integer::sum);
+        }
+      }
+      return new SourceCounts(tokens, declared);
+    }
+
+    /** After "uniform" at i: whitespace, a type (\w+), whitespace, the name, optional whitespace, ";" -> the name, else null. */
+    private static String declaredName(String s, int i) {
+      int n = s.length(), j = i;
+      while (j < n && space(s.charAt(j))) j++;
+      if (j == i) return null;
+      int t = j;
+      while (j < n && ascii(s.charAt(j))) j++;
+      if (j == t) return null;
+      int afterType = j;
+      while (j < n && space(s.charAt(j))) j++;
+      if (j == afterType) return null;
+      int nameStart = j;
+      while (j < n && word(s.charAt(j))) j++;
+      if (j == nameStart) return null;
+      String name = s.substring(nameStart, j);
+      while (j < n && space(s.charAt(j))) j++;
+      return j < n && s.charAt(j) == ';' ? name : null;
+    }
+
+    /** \b's word characters (java.util.regex since Java 19: ASCII letters, digits and the underscore). */
+    private static boolean word(char c) {
+      return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9';
+    }
+
+    /** \w: [a-zA-Z_0-9]. */
+    private static boolean ascii(char c) {
+      return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9';
+    }
+
+    /** \s: [ \t\n\x0B\f\r]. */
+    private static boolean space(char c) {
+      return c == ' ' || c == '\t' || c == '\n' || c == 0x0B || c == '\f' || c == '\r';
+    }
   }
 
   @Override

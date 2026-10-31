@@ -190,7 +190,10 @@ public final class OwnSeam {
 					hi = Math.max(hi, top);
 				}
 			}
-			ready = true;
+			// (the near terrain draws sections within vd of the camera's vertically too, OwnTerrain's cull: a surface outside that
+			// range isn't drawn, so the column stays the far terrain's. It counted as drawn whole, and from high up the land
+			// under the camera was a hole)
+			ready = (lo >> 4) >= sy - vd && (hi >> 4) <= sy + vd;
 			int ylo = Math.max(Math.max(minSy, sy - vd), lo >> 4), yhi = Math.min(Math.min(maxSy, sy + vd), hi >> 4);
 			for (int y = ylo; y <= yhi && ready; y++) {
 				int index = y - minSy;

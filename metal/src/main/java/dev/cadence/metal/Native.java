@@ -28,6 +28,10 @@ final class Native {
 	private static final SymbolLookup LIB = SymbolLookup.libraryLookup(extract(), Arena.global());
 
 	private static final MethodHandle CREATE = fn("mc_create", false, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT);
+	/** -Dcadence.metal4=true: the backend submits through Metal 4 (mcm4.m), Metal 3 otherwise; mc_metal4_on says which it got. */
+	public static final boolean METAL4_ASKED = Boolean.getBoolean("cadence.metal4");
+	private static final MethodHandle METAL4 = fn("mc_metal4", false, null, JAVA_INT);
+	private static final MethodHandle METAL4_ON = fn("mc_metal4_on", false, JAVA_INT);
 	private static final MethodHandle MAX_BUFFER_LENGTH = fn("mc_max_buffer_length", true, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle RELEASE = fn("mc_release", false, null, JAVA_LONG);
 	private static final MethodHandle BUFFER_NEW = fn("mc_buffer_new", false, JAVA_LONG, JAVA_LONG, JAVA_LONG);
@@ -64,6 +68,7 @@ final class Native {
 	private static final MethodHandle BUFFER_LENGTH = fn("mc_buffer_length", true, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PROFILE_BEGIN = fn("mc_profile_begin", false, JAVA_INT, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle RP_LOG = fn("mc_set_rp_log", false, null, JAVA_INT);
+	private static final MethodHandle BW_FLAGS = fn("mc_bw_flags", false, null, JAVA_INT);
 	private static final MethodHandle PROFILE_END = fn("mc_profile_end", false, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PROFILE_READ = fn("mc_profile_read", false, null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG);
 	private static final MethodHandle PROFILE_READ_ABS = fn("mc_profile_read_abs", false, null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG);
@@ -71,15 +76,19 @@ final class Native {
 	private static final MethodHandle DEVICE_ALLOCATED = fn("mc_device_allocated", false, JAVA_LONG, JAVA_LONG);
 	// Cadence: system signals (mcsys.m)
 	private static final MethodHandle THERMAL = fn("mc_thermal_state", false, JAVA_INT);
+	private static final MethodHandle APP_NAP_BUSY = fn("mc_app_nap_busy", false, null, JAVA_INT);
 	private static final MethodHandle FAN_COUNT = fn("mc_fan_count", false, JAVA_INT);
 	private static final MethodHandle FAN_RPM = fn("mc_fan_rpm", false, JAVA_INT, JAVA_INT);
 	private static final MethodHandle SYS_POWER = fn("mc_system_power_mw", false, JAVA_INT);
 	private static final MethodHandle LOW_POWER = fn("mc_low_power", false, JAVA_INT);
+	private static final MethodHandle COMPILE_STATS = fn("mc_compile_stats", false, null, JAVA_LONG);
+	private static final MethodHandle BATTERY_WH = fn("mc_battery_wh", false, java.lang.foreign.ValueLayout.JAVA_DOUBLE);
 	private static final MethodHandle MEM_PRESSURE = fn("mc_memory_pressure", false, JAVA_INT);
 	private static final MethodHandle MEM_PRESSURE_EVENTS = fn("mc_memory_pressure_events", false, JAVA_LONG);
 	private static final MethodHandle SET_QOS = fn("mc_set_qos", false, JAVA_INT, JAVA_INT);
 	private static final MethodHandle QOS_SELF = fn("mc_qos_self", false, JAVA_INT);
 	private static final MethodHandle DISPLAY_HZ = fn("mc_display_hz", false, JAVA_INT);
+	private static final MethodHandle DISPLAY_SCALE = fn("mc_display_scale", false, JAVA_INT);
 	private static final MethodHandle SYS_STRING = fn("mc_sys_string", false, JAVA_INT, ADDRESS, ADDRESS, JAVA_INT);
 	private static final MethodHandle SYS_LONG = fn("mc_sys_long", false, JAVA_LONG, ADDRESS);
 	private static final MethodHandle PRODUCT_NAME = fn("mc_product_name", false, JAVA_INT, ADDRESS, JAVA_INT);
@@ -109,6 +118,8 @@ final class Native {
 	private static final MethodHandle BLIT_FILL = fn("mc_blit_fill", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle BLIT_BUFFER_TO_TEXTURE = fn("mc_blit_buffer_to_texture", false, null,
 		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT);
+	private static final MethodHandle BLIT_BUFFER_TO_VOLUME = fn("mc_blit_buffer_to_volume", false, null,
+		JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT);
 	private static final MethodHandle BLIT_TEXTURE_TO_BUFFER = fn("mc_blit_texture_to_buffer", false, null,
 		JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle BLIT_TEXTURE_TO_TEXTURE = fn("mc_blit_texture_to_texture", false, null,
@@ -144,12 +155,20 @@ final class Native {
 		JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT);
 	private static final MethodHandle LAYER_CONFIGURE = fn("mc_layer_configure", false, null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT);
 	private static final MethodHandle LAYER_NEXT = fn("mc_layer_next", false, JAVA_LONG, JAVA_LONG);
+	private static final MethodHandle HDR_TONE = fn("mc_hdr_tone", true, null, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT);
+	private static final MethodHandle SCREEN_HEADROOM = fn("mc_screen_headroom", false, null, JAVA_LONG);
 	private static final MethodHandle PRESENT = fn("mc_present", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG);
+	private static final MethodHandle PRESENT_FENCED = fn("mc_present_fenced", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PRESENT_QUEUED = fn("mc_present_queued", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PRESENT_SKIPPED = fn("mc_present_skipped", false, JAVA_LONG);
 	private static final MethodHandle PRESENT_QUEUED_ACQUIRE = fn("mc_present_queued_acquire", false, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PRESENT_DROPPED = fn("mc_present_dropped", false, JAVA_LONG);
 	private static final MethodHandle PACE_ADAPT = fn("mc_pace_adapt", false, null, JAVA_INT);
+	private static final MethodHandle PRESENT_MINIMUM = fn("mc_present_minimum", false, null, JAVA_DOUBLE);
+	private static final MethodHandle ON_BATTERY = fn("mc_on_battery", false, JAVA_INT);
+	private static final MethodHandle PRESENT_STATS_ON = fn("mc_present_stats_on", false, null, JAVA_INT);
+	private static final MethodHandle PRESENT_STATS_TOTAL = fn("mc_present_stats_total", false, JAVA_LONG);
+	private static final MethodHandle PRESENT_STATS_LONG = fn("mc_present_stats_long", false, JAVA_LONG);
 	private static final MethodHandle PACE_EXTRA_MS = fn("mc_pace_extra_ms", false, JAVA_DOUBLE);
 	private static final MethodHandle PACE = fn("mc_pace", false, JAVA_INT, JAVA_DOUBLE);
 	private static final MethodHandle SLEEP_PRECISE = fn("mc_sleep_precise", false, null, JAVA_LONG);
@@ -163,15 +182,32 @@ final class Native {
 	}
 
 	private static Path extract() {
+		String tmp = System.getProperty("java.io.tmpdir");
 		try (InputStream in = Native.class.getResourceAsStream("/natives/libmcmetal.dylib")) {
+			if (in == null) throw new IOException("the mod's jar has no natives/libmcmetal.dylib (a damaged download?)");
 			Path dir = Files.createTempDirectory("mcmetal");
 			Path lib = dir.resolve("libmcmetal.dylib");
-			Files.copy(in, lib, StandardCopyOption.REPLACE_EXISTING);
-			lib.toFile().deleteOnExit();
+			// (deleted at exit in the reverse order of registration: the folder first would fail while it still holds the
+			// library, leaving an empty folder behind at every launch)
 			dir.toFile().deleteOnExit();
+			lib.toFile().deleteOnExit();
+			Files.copy(in, lib, StandardCopyOption.REPLACE_EXISTING);
 			return lib;
-		} catch (IOException e) {
-			throw new IllegalStateException("can't extract libmcmetal.dylib", e);
+		} catch (IOException | RuntimeException e) {
+			// the temporary folder can't be used (read-only, missing volume, odd java.io.tmpdir): the game folder instead
+			Path fallback = Path.of(System.getProperty("user.dir"), ".cadence-natives");
+			try (InputStream in = Native.class.getResourceAsStream("/natives/libmcmetal.dylib")) {
+				if (in == null) throw e;
+				Files.createDirectories(fallback);
+				Path lib = fallback.resolve("libmcmetal.dylib");
+				Files.copy(in, lib, StandardCopyOption.REPLACE_EXISTING);
+				System.out.println("[cadence] the temporary folder " + tmp + " can't be used (" + e + "): the native library is in " + fallback);
+				return lib;
+			} catch (IOException | RuntimeException e2) {
+				// (thrown from a static initializer: the crash report shows this message only, not the cause, so it says both)
+				throw new IllegalStateException("can't extract libmcmetal.dylib into the temporary folder " + tmp + " (" + e
+					+ ") or into " + fallback + " (" + e2 + "): is the disk full, or are those folders read-only?", e);
+			}
 		}
 	}
 
@@ -183,10 +219,24 @@ final class Native {
 
 	// The wrappers below exist only to turn invokeExact's Throwable into unchecked exceptions.
 
-	static long create(long name, int nameCap, long err, int errCap) { try { long c = (long) CREATE.invokeExact(name, nameCap, err, errCap); if (FrameCapture.ON) FrameCapture.Own.ctx = c; return c; } catch (Throwable t) { throw rethrow(t); } }
+	/** Whether the backend runs on Metal 4 (after create). */
+	public static boolean metal4() { try { return (int) METAL4_ON.invokeExact() != 0; } catch (Throwable t) { throw rethrow(t); } }
+
+	static long create(long name, int nameCap, long err, int errCap) { try { METAL4.invokeExact(METAL4_ASKED ? 1 : 0); long c = (long) CREATE.invokeExact(name, nameCap, err, errCap);
+		System.out.println("[cadence] Metal backend: " + (metal4() ? "Metal 4" : "Metal 3") + (METAL4_ASKED && !metal4() ? " (Metal 4 asked for, not available)" : "")); if (FrameCapture.ON) FrameCapture.Own.ctx = c; return c; } catch (Throwable t) { throw rethrow(t); } }
 	static long maxBufferLength(long ctx) { try { return (long) MAX_BUFFER_LENGTH.invokeExact(ctx); } catch (Throwable t) { throw rethrow(t); } }
 	static void release(long obj) { try { RELEASE.invokeExact(obj); } catch (Throwable t) { throw rethrow(t); } }
-	static long bufferNew(long ctx, long size) { try { return (long) BUFFER_NEW.invokeExact(ctx, size); } catch (Throwable t) { throw rethrow(t); } }
+	static long bufferNew(long ctx, long size) {
+		long handle;
+		try {
+			handle = (long) BUFFER_NEW.invokeExact(ctx, size);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+		// (Metal gives nil when the GPU or the Mac can't provide the memory: an error here, not a native crash at the first write)
+		if (handle == 0) throw new OutOfMemoryError("Metal couldn't allocate a GPU buffer of " + (size >> 20) + " MB");
+		return handle;
+	}
 	static long bufferPrivate(long ctx, long src, long size) { try { return (long) BUFFER_PRIVATE.invokeExact(ctx, src, size); } catch (Throwable t) { throw rethrow(t); } }
 	static long bufferContents(long buffer) { try { return (long) BUFFER_CONTENTS.invokeExact(buffer); } catch (Throwable t) { throw rethrow(t); } }
 	static long textureNew(long ctx, int format, int w, int h, int layers, int mips, int usage, int cube) { try { return (long) TEXTURE_NEW.invokeExact(ctx, format, w, h, layers, mips, usage, cube); } catch (Throwable t) { throw rethrow(t); } }
@@ -226,6 +276,8 @@ final class Native {
 	static long bufferLength(long buffer) { try { return (long) BUFFER_LENGTH.invokeExact(buffer); } catch (Throwable t) { throw rethrow(t); } }
 	/** Measurement: log every render encoder's load / store actions (the traced submit only). */
 	static void rpLog(boolean on) { try { RP_LOG.invokeExact(on ? 1 : 0); } catch (Throwable t) { throw rethrow(t); } }
+	/** Measurement only (mcmetal.m bwFlags): 1 the frame's last encoder stores no depth, 2 the present drawn twice. */
+	static void bwFlags(int f) { try { BW_FLAGS.invokeExact(f); } catch (Throwable t) { throw rethrow(t); } }
 	static boolean profileBegin(long enc, int maxEncoders) { try { return (int) PROFILE_BEGIN.invokeExact(enc, maxEncoders) != 0; } catch (Throwable t) { throw rethrow(t); } }
 	static long profileEnd(long enc, long countOut) { try { return (long) PROFILE_END.invokeExact(enc, countOut); } catch (Throwable t) { throw rethrow(t); } }
 	static void profileRead(long ctx, long samples, int count, long out) { try { PROFILE_READ.invokeExact(ctx, samples, count, out); } catch (Throwable t) { throw rethrow(t); } }
@@ -249,10 +301,26 @@ final class Native {
 	static void cullRest(long enc, long st, long draws, long drawsOff, int count) { try { CULL_REST.invokeExact(enc, st, draws, drawsOff, count); } catch (Throwable t) { throw rethrow(t); } }
 	static void cullT(long enc, long st, long draws, long drawsOff, int count, long infos, long infosOff) { try { CULL_T.invokeExact(enc, st, draws, drawsOff, count, infos, infosOff); } catch (Throwable t) { throw rethrow(t); } }
 	static void fxSpatialRelease(long scaler) { try { FX_SPATIAL_RELEASE.invokeExact(scaler); } catch (Throwable t) { throw rethrow(t); } }
+	static void appNapBusy(int busy) { try { APP_NAP_BUSY.invokeExact(busy); } catch (Throwable t) { throw rethrow(t); } }
 	static int thermalState() { try { return (int) THERMAL.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int fanCount() { try { return (int) FAN_COUNT.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int systemPowerMw() { try { return (int) SYS_POWER.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int fanRpm(int i) { try { return (int) FAN_RPM.invokeExact(i); } catch (Throwable t) { throw rethrow(t); } }
+	/** {library compile seconds, libraries, pipeline creation seconds, pipelines} since the start (mc_compile_stats). */
+	public static double[] compileStats() {
+		try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
+			long out = stack.nmalloc(8, 32);
+			COMPILE_STATS.invokeExact(out);
+			double[] r = new double[4];
+			for (int i = 0; i < 4; i++) r[i] = org.lwjgl.system.MemoryUtil.memGetDouble(out + i * 8L);
+			return r;
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	static double batteryWh() { try { return (double) BATTERY_WH.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+
 	static int lowPower() { try { return (int) LOW_POWER.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int memoryPressure() { try { return (int) MEM_PRESSURE.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static long memoryPressureEvents() { try { return (long) MEM_PRESSURE_EVENTS.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
@@ -263,11 +331,18 @@ final class Native {
 	static int productName(java.lang.foreign.MemorySegment out, int cap) { try { return (int) PRODUCT_NAME.invokeExact(out, cap); } catch (Throwable t) { throw rethrow(t); } }
 	static int gpuCores() { try { return (int) GPU_CORES.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int benchGpu(java.lang.foreign.MemorySegment out) { try { return (int) BENCH_GPU.invokeExact(out); } catch (Throwable t) { throw rethrow(t); } }
+	static void presentMinimum(double seconds) { try { PRESENT_MINIMUM.invokeExact(seconds); } catch (Throwable t) { throw rethrow(t); } }
+	static void presentStatsOn(int on) { try { PRESENT_STATS_ON.invokeExact(on); } catch (Throwable t) { throw rethrow(t); } }
+	static long presentStatsTotal() { try { return (long) PRESENT_STATS_TOTAL.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static long presentStatsLong() { try { return (long) PRESENT_STATS_LONG.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static int onBattery() { try { return (int) ON_BATTERY.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int displayHz() { try { return (int) DISPLAY_HZ.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static int displayScale() { try { return (int) DISPLAY_SCALE.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static long deviceAllocated(long ctx) { try { return (long) DEVICE_ALLOCATED.invokeExact(ctx); } catch (Throwable t) { throw rethrow(t); } }
 	static int profileCount(long enc) { try { return (int) PROFILE_COUNT.invokeExact(enc); } catch (Throwable t) { throw rethrow(t); } }
 	static void blitBuffer(long enc, long src, long srcOff, long dst, long dstOff, long size) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitBuffer(false, src, srcOff, dst, dstOff, size); try { BLIT_BUFFER.invokeExact(enc, src, srcOff, dst, dstOff, size); } catch (Throwable t) { throw rethrow(t); } }
 	static void fillBuffer(long enc, long buffer, long offset, long length, int value) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.fill(false, buffer, offset, length, value); try { BLIT_FILL.invokeExact(enc, buffer, offset, length, value); } catch (Throwable t) { throw rethrow(t); } }
+	static void blitBufferToVolume(long enc, long src, long off, int bytesPerRow, int bytesPerImage, long dst, int w, int h, int d) { try { BLIT_BUFFER_TO_VOLUME.invokeExact(enc, src, off, bytesPerRow, bytesPerImage, dst, w, h, d); } catch (Throwable t) { throw rethrow(t); } }
 	static void blitBufferToTexture(long enc, long src, long off, int bytesPerRow, int bytesPerImage, long dst, int slice, int mip, int x, int y, int w, int h) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitBufferToTexture(src, off, bytesPerRow, bytesPerImage, dst, slice, mip, x, y, w, h); try { BLIT_BUFFER_TO_TEXTURE.invokeExact(enc, src, off, bytesPerRow, bytesPerImage, dst, slice, mip, x, y, w, h); } catch (Throwable t) { throw rethrow(t); } }
 	static void blitTextureToBuffer(long enc, long src, int mip, int x, int y, int w, int h, long dst, long off, int bytesPerRow) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitTextureToBuffer(src, mip, x, y, w, h, dst, off, bytesPerRow); try { BLIT_TEXTURE_TO_BUFFER.invokeExact(enc, src, mip, x, y, w, h, dst, off, bytesPerRow); } catch (Throwable t) { throw rethrow(t); } }
 	static void blitTextureToTexture(long enc, long src, long dst, int mip, int dx, int dy, int sx, int sy, int w, int h) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.blitTextureToTexture(src, dst, mip, dx, dy, sx, sy, w, h); try { BLIT_TEXTURE_TO_TEXTURE.invokeExact(enc, src, dst, mip, dx, dy, sx, sy, w, h); } catch (Throwable t) { throw rethrow(t); } }
@@ -302,7 +377,10 @@ final class Native {
 	static void debugPop(long enc) { try { R_DEBUG_POP.invokeExact(enc); } catch (Throwable t) { throw rethrow(t); } }
 	static void clearRect(long enc, long color, long depth, float r, float g, float b, float a, float depthValue, int x, int y, int w, int h, int mip) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.clearRect(color, depth, r, g, b, a, depthValue, x, y, w, h, mip); try { CLEAR_RECT.invokeExact(enc, color, depth, r, g, b, a, depthValue, x, y, w, h, mip); } catch (Throwable t) { throw rethrow(t); } }
 	static void layerConfigure(long ctx, long layer, int w, int h, int vsync) { try { LAYER_CONFIGURE.invokeExact(ctx, layer, w, h, vsync); } catch (Throwable t) { throw rethrow(t); } }
+	static void hdrTone(float headroom, float knee, int mode) { try { HDR_TONE.invokeExact(headroom, knee, mode); } catch (Throwable t) { throw rethrow(t); } }
+	static void screenHeadroom(long out) { try { SCREEN_HEADROOM.invokeExact(out); } catch (Throwable t) { throw rethrow(t); } }
 	static long layerNext(long layer) { try { return (long) LAYER_NEXT.invokeExact(layer); } catch (Throwable t) { throw rethrow(t); } }
+	static void presentFenced(long enc, long drawable, long texture, long fence) { try { PRESENT_FENCED.invokeExact(enc, drawable, texture, fence); } catch (Throwable t) { throw rethrow(t); } }
 	static void present(long enc, long drawable, long texture) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.present(texture); try { PRESENT.invokeExact(enc, drawable, texture); } catch (Throwable t) { throw rethrow(t); } }
 	static int presentQueued(long enc, long drawable, long texture) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.present(texture); try { return (int) PRESENT_QUEUED.invokeExact(enc, drawable, texture); } catch (Throwable t) { throw rethrow(t); } }
 	static long presentSkipped() { try { return (long) PRESENT_SKIPPED.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }

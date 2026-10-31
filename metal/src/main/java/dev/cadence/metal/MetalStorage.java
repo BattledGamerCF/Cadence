@@ -21,9 +21,13 @@ public final class MetalStorage {
 
 	/**
 	 * Set-1 binding {@code binding}: a buffer (buffer object) or a texture (image or sampled texture); sampled: a combined
-	 * sampler, with {@code nearest} its filter (clamped to edge). handle: the native object now (it can change size).
+	 * sampler, with {@code nearest} its filter, clamped to edge unless {@code repeat} (a pack's tiling noise volume). handle: the
+	 * native object now (it can change size).
 	 */
-	public record Slot(int binding, boolean buffer, boolean sampled, boolean nearest, LongSupplier handle) {
+	public record Slot(int binding, boolean buffer, boolean sampled, boolean nearest, boolean repeat, LongSupplier handle) {
+		public Slot(int binding, boolean buffer, boolean sampled, boolean nearest, LongSupplier handle) {
+			this(binding, buffer, sampled, nearest, false, handle);
+		}
 	}
 
 	private static final ThreadLocal<List<Slot>> COMPILE = new ThreadLocal<>();

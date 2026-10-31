@@ -39,7 +39,8 @@ final class UniformDefaults {
   private static Float literal(String text) {
     if (text.equals("true")) return 1f;
     if (text.equals("false")) return 0f;
-    String number = text.replaceFirst("(?i)[fu]$", "");
+    // (a sign may be written apart from its number: "ivec3(- 98257195)", Rethinking Voxels)
+    String number = text.replaceFirst("(?i)[fu]$", "").replaceFirst("^([+-])\\s+", "$1");
     try {
       return Float.parseFloat(number);
     } catch (NumberFormatException e) {

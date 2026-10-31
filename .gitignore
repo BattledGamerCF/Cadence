@@ -16,3 +16,5 @@ mcopt-pack-cache/
 .vscode/
 logs/
 metal/run-guest/
+metal/run-compat/
+metal/run-bisect/

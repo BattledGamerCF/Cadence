@@ -89,7 +89,7 @@ public final class ShadowProxies {
 
 	private static int parseDistance() {
 		String v = System.getProperty("cadence.shadowProxyDistance",
-			dev.cadence.shaders.cadence.ShaderToggle.configValue("shadowProxyDistance", "96"));
+			dev.cadence.shaders.cadence.ui.ShaderToggle.configValue("shadowProxyDistance", "96"));
 		try {
 			int d = Integer.parseInt(v.strip());
 			return d <= 0 ? 0 : Math.max(32, d);

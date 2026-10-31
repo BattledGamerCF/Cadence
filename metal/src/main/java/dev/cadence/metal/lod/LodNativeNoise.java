@@ -94,7 +94,13 @@ final class LodNativeNoise {
 	/** Volume calls by size: 1, 2-16, 17-256, 257-4096, 4097-65536, more (and their values), logged every 2^17 calls. */
 	static final java.util.concurrent.atomic.AtomicLongArray sizeCalls = new java.util.concurrent.atomic.AtomicLongArray(6), sizeValues = new java.util.concurrent.atomic.AtomicLongArray(6);
 
+	/** -Dcadence.lod.noiseStats=true: count the volume calls by size and log them every 2^17 calls (development only). */
+	private static final boolean NOISE_STATS = Boolean.getBoolean("cadence.lod.noiseStats") || LodGenBench.ENABLED;
+
 	static void counted(int size) {
+		// (counted only when asked: every build logged a line every 131,072 calls, about one a second while the far terrain
+		// fills in, and all generation threads bumped these shared counters on every call)
+		if (!NOISE_STATS) return;
 		long n = volumes.incrementAndGet();
 		volumePoints.addAndGet(size);
 		int b = size <= 1 ? 0 : size <= 16 ? 1 : size <= 256 ? 2 : size <= 4096 ? 3 : size <= 65536 ? 4 : 5;
@@ -323,7 +329,7 @@ final class LodNativeNoise {
 		public float sampleValue(SamplerContext ctx, int x, int y, int z) {
 			Backend b = this.mode.backend;
 			if (b == Backend.PLAIN) return this.original.sampleValue(ctx, x, y, z);
-			points.incrementAndGet();
+			if (NOISE_STATS) points.incrementAndGet();
 			double xz = this.original.xzScale(), ys = this.original.yScale();
 			return b == Backend.NEON ? Natives.stackPoint(this.stack, x * xz, y * ys, z * xz) : LodNoiseKernels.stackPoint(this.stack, x * xz, y * ys, z * xz);
 		}
@@ -355,7 +361,7 @@ final class LodNativeNoise {
 		public float sampleValue(SamplerContext ctx, int x, int y, int z) {
 			Backend b = this.mode.backend;
 			if (b == Backend.PLAIN) return this.original.sampleValue(ctx, x, y, z);
-			points.incrementAndGet();
+			if (NOISE_STATS) points.incrementAndGet();
 			return b == Backend.NEON ? Natives.blendedPoint(this, x, y, z)
 				: LodNoiseKernels.blendedPoint(this.main, this.lo, this.hi, x, y, z, this.mainXz, this.mainY, this.limitXz, this.limitY);
 		}
@@ -389,6 +395,9 @@ final class LodNativeNoise {
 	static final class Natives {
 		private static final Linker LINKER = Linker.nativeLinker();
 		private static final MethodHandle NEW = fn("mcn_stack_new", false, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG);
+		private static final MethodHandle FREE = fn("mcn_stack_free", false, null, JAVA_LONG);
+		/** Frees a stack's native copy once its Java stack is unreachable (no worker can be using it then). */
+		private static final java.lang.ref.Cleaner CLEANER = java.lang.ref.Cleaner.create();
 		private static final MethodHandle VOLUME = fn("mcn_stack_volume", false, null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT,
 			JAVA_INT, JAVA_INT, JAVA_INT, JAVA_INT, JAVA_DOUBLE, JAVA_DOUBLE, JAVA_FLOAT, JAVA_INT, JAVA_INT);
 		private static final MethodHandle BLENDED = fn("mcn_blended_volume", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT,
@@ -410,7 +419,10 @@ final class LodNativeNoise {
 			return new IllegalStateException(t);
 		}
 
-		/** lodnoise.c's copy of the stack (kept for the session: a few hundred KB for the overworld's stacks). */
+		/**
+		 * lodnoise.c's copy of the stack, freed when the stack is collected (a few hundred KB for the overworld's stacks, made
+		 * for every world and dimension entered and kept for the session before).
+		 */
 		static void attach(LodNoiseKernels.Stack s) {
 			try (Arena a = Arena.ofConfined()) {
 				MemorySegment perms = a.allocate(256L * s.n), params = a.allocate(8L * 5 * s.n, 8), amps = a.allocate(4L * s.n, 4);
@@ -428,6 +440,14 @@ final class LodNativeNoise {
 				throw rethrow(t);
 			}
 			if (s.handle == 0) throw new IllegalStateException("mcn_stack_new failed");
+			long handle = s.handle;
+			CLEANER.register(s, () -> {
+				try {
+					FREE.invokeExact(handle);
+				} catch (Throwable t) {
+					// (at worst the copy stays)
+				}
+			});
 		}
 
 		/** Per thread: the native side writes here, then the values are copied into the buffer's array. */

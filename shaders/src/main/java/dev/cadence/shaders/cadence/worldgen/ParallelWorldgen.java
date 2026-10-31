@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * never had to share between features are made safe separately (StructureTemplate palette cache, per-StructureStart
  * placement).
  *
- * <p>OFF by default (-Dcadence.parallelWorldgen=true turns it on): measured on the M2 Air (docs/dev-log/DAY2.md), 26.3 already builds
+ * <p>OFF by default (-Dcadence.parallelWorldgen=true turns it on): measured on the M2 Air, 26.3 already builds
  * terrain — about 75% of generation's CPU — on every worker, generation runs at 4-5 cores, and with FEATURES moved off the
  * serial executor flying into new land at 20 blocks/s had fewer chunks ready ahead (5.0 vs 6.7 of 12) and forced areas
  * were no faster: each chunk's generation is a chain of waits, and the extra hand-off lengthens it.

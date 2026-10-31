@@ -25,7 +25,6 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.util.Mth;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
-import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
 /**
@@ -361,8 +360,10 @@ public final class AnimOnePass {
 			GpuTexture spare = dev.cadence.metal.AtlasDouble.spare(atlas);
 			if (!verify) {
 				if (own == null) continue;  // (can't happen: upload() takes nothing over without it)
-				try (MemoryStack stack = MemoryStack.stackPush()) {
-					long rects = stack.nmalloc(4, Math.max(1, drawn.length * (e.maxMip + 1)) * 28);
+				try {
+					// (a reusable native table, not LWJGL's 64 KB thread stack: an atlas with ~470+ animated sprites at 5 mip
+					// levels overflowed it, "Out of stack space", and the game stopped on its out-of-memory screen)
+					long rects = rectTable((long) Math.max(1, drawn.length * (e.maxMip + 1)) * 28);
 					int count = 0;
 					for (int mip = 0; mip <= e.maxMip; mip++) {
 						for (int i = 0; i < drawn.length; i++) {
@@ -396,6 +397,10 @@ public final class AnimOnePass {
 						failed.put(atlas, why);
 						continue;
 					}
+				} catch (RuntimeException | OutOfMemoryError t) {
+					// (any failure here goes back to vanilla's upload for this atlas, never takes the frame loop down)
+					failed.put(atlas, "the copy failed (" + t + ")");
+					continue;
 				}
 				if (spare != null) dev.cadence.metal.AtlasDouble.committed(atlas, drawn);
 			}
@@ -411,6 +416,21 @@ public final class AnimOnePass {
 			reject(atlas, ((OwnAnimAtlasAccess) atlas).cadence$animationStates(), f.getValue());
 			((OwnAnimAtlasAccess) atlas).cadence$uploadAnimationFrames();
 		}
+	}
+
+	private static long rectBuf;
+	private static long rectCap;
+
+	/** The rectangle table for one atlas's copy (render thread only): grown as needed, kept for the next tick. */
+	private static long rectTable(long bytes) {
+		if (bytes > rectCap) {
+			long size = Math.max(bytes, rectCap * 2);
+			long next = rectBuf == 0 ? MemoryUtil.nmemAlloc(size) : MemoryUtil.nmemRealloc(rectBuf, size);
+			if (next == 0) throw new OutOfMemoryError("animation rectangle table of " + size + " bytes");
+			rectBuf = next;
+			rectCap = size;
+		}
+		return rectBuf;
 	}
 
 	/** Reads back the scratch and the atlas's mips; every drawn rectangle compared pixel for pixel (logged cumulatively). */

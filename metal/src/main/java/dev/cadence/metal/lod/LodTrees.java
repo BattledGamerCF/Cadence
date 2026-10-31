@@ -28,6 +28,11 @@ final class LodTrees {
 		return PROFILES.computeIfAbsent(biome, LodTrees::derive);
 	}
 
+	/** The world was left: its biomes go (kept, they held every visited world's biome registry for the session). */
+	static void forget() {
+		PROFILES.clear();
+	}
+
 	private static Profile derive(Holder<Biome> biome) {
 		String name = biome.unwrapKey().map(k -> k.identifier().getPath()).orElse("");
 		BlockState oak = Blocks.OAK_LEAVES.defaultBlockState(), spruce = Blocks.SPRUCE_LEAVES.defaultBlockState(), birch = Blocks.BIRCH_LEAVES.defaultBlockState();

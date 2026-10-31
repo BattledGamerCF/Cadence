@@ -48,6 +48,8 @@ static void column(const LmIn *in, int ax, int az, Col *c) {
 	int m = (1 << in->logN) - 1;
 	int depth = GEOM_DEPTH(in->geom[((size_t) (az & m) << in->logN) | (size_t) (ax & m)]);
 	c->bot = depth > 0 && c->n > 0 ? c->hi[0] - depth : NEG_INF;
+	// (a floating column's void underneath is no occluder)
+	if (in->floating && c->n == 0) c->bot = NEG_INF;
 }
 
 static void column0(const LmIn *in, int ax, int az, Col *c) {
@@ -81,7 +83,31 @@ static void column0(const LmIn *in, int ax, int az, Col *c) {
 		}
 		return;
 	}
+	if (in->floating) {
+		// an island: its run's underside (GEOM_DEPTH blocks down; 0: to the bottom), nothing at all for the void
+		if (top <= LM_DEEP) return;
+		int depth = GEOM_DEPTH(g);
+		addIv(c, depth > 0 ? top - depth : NEG_INF, top, LM_K_GROUND);
+		return;
+	}
 	addIv(c, NEG_INF, top, LM_K_GROUND);
+}
+
+// (shader-pack mode) The colour a face of cell (ax, az) (absolute cells of the level) shows, to 4-5-4 bits, for merging
+// faces of one colour only: a top its top colour, any other face its side colour, the ground under a crown the crown word's
+// colour of it. 0 without colours (every face alike).
+static uint32_t faceColor(const LmIn *in, int ax, int az, int top, int kind) {
+	if (!in->color) return 0;
+	uint32_t c;
+	if (kind == LM_K_UNDER && in->crown) {
+		int m = (1 << in->logN) - 1;
+		c = (in->crown[((size_t) (az & m) << in->logN) | (size_t) (ax & m)] >> 12) & 0xFFFFu;
+	} else {
+		int m = (1 << in->colorLogN) - 1;
+		uint32_t cw = in->color[((size_t) (az & m) << in->colorLogN) | (size_t) (ax & m)];
+		c = top ? cw & 0xFFFFu : cw >> 16;
+	}
+	return ((c >> 1) & 0x7BEFu) | 0x10000u;
 }
 
 // a's intervals where b has none (b unknown: all of a's, the ground's from LM_DEEP). Returns the pieces.
@@ -177,16 +203,18 @@ static void rects(Out *o, uint32_t *rows, int b, int x0, int z0, int face, int k
 
 typedef struct {
 	int key;   // kind << 16 | (y + 512)
+	uint32_t col;   // (shader-pack mode) the face's colour (faceColor), else 0
 	int x, z;
 } Item;
 
 static int itemCmp(const void *a, const void *b) {
 	const Item *p = a, *q = b;
-	return p->key != q->key ? (p->key < q->key ? -1 : 1) : 0;
+	if (p->key != q->key) return p->key < q->key ? -1 : 1;
+	return p->col != q->col ? (p->col < q->col ? -1 : 1) : 0;
 }
 
-// Tops (bottoms = 0) or undersides (bottoms = 1) of the block's cells, merged per height and kind.
-static void flats(Out *o, const Col *cols, int b, int x0, int z0, int bottoms) {
+// Tops (bottoms = 0) or undersides (bottoms = 1) of the block's cells, merged per height and kind (and colour, LmIn.color).
+static void flats(Out *o, const LmIn *in, const Col *cols, int b, int x0, int z0, int bottoms) {
 	Item items[16 * 16 * MAX_IV];
 	int n = 0;
 	for (int z = 0; z < b; z++) {
@@ -196,6 +224,7 @@ static void flats(Out *o, const Col *cols, int b, int x0, int z0, int bottoms) {
 				if (bottoms && c->lo[k] == NEG_INF) continue;
 				int y = bottoms ? c->lo[k] : c->hi[k];
 				items[n].key = (int) c->kind[k] << 16 | (y + 512);
+				items[n].col = faceColor(in, in->tx * LM_TILE + x0 + x, in->tz * LM_TILE + z0 + z, !bottoms, c->kind[k]);
 				items[n].x = x;
 				items[n].z = z;
 				n++;
@@ -207,7 +236,7 @@ static void flats(Out *o, const Col *cols, int b, int x0, int z0, int bottoms) {
 	for (int i = 0; i < n;) {
 		int j = i;
 		uint32_t rows[16] = {0};
-		while (j < n && items[j].key == items[i].key) {
+		while (j < n && items[j].key == items[i].key && items[j].col == items[i].col) {
 			rows[items[j].z] |= 1u << items[j].x;
 			j++;
 		}
@@ -251,13 +280,17 @@ static int skirtFloor(const Col *cols, int cx, int cz, int dx, int dz) {
 // Walls of the block's cells facing one direction, in the planes from `first` to `last` (cell columns of the block across the
 // direction), merged along it. skirt: toward neighbors drawn by another level or by the real terrain (down to skirtFloor)
 // instead of this level's.
-static void walls(Out *o, const Col *cols, int b, int x0, int z0, int face, int first, int last, int skirt) {
+static void walls(Out *o, const LmIn *in, const Col *cols, int b, int x0, int z0, int face, int first, int last, int skirt) {
 	int dx = face == LM_F_XP ? 1 : face == LM_F_XN ? -1 : 0, dz = face == LM_F_ZP ? 1 : face == LM_F_ZN ? -1 : 0;
 	int alongX = dx == 0;   // z-facing walls run along x
 	for (int i = first; i <= last; i++) {
 		Pieces p[16];
+		uint32_t colG[16], colU[16];   // (shader-pack mode) row r's face colours: its ground's or crown's, the ground under a crown's
 		for (int r = 0; r < b; r++) {
 			int x = alongX ? r : i, z = alongX ? i : r;
+			int ax = in->tx * LM_TILE + x0 + x, az = in->tz * LM_TILE + z0 + z;
+			colG[r] = faceColor(in, ax, az, 0, LM_K_GROUND);
+			colU[r] = in->crown ? faceColor(in, ax, az, 0, LM_K_UNDER) : colG[r];
 			const Col *a = &cols[(z0 + z + 1) * REGION + (x0 + x + 1)];
 			Col floorCol = {1, {NEG_INF}, {0}, {LM_K_GROUND}};
 			if (skirt) floorCol.hi[0] = skirtFloor(cols, x0 + x, z0 + z, dx, dz);
@@ -272,7 +305,8 @@ static void walls(Out *o, const Col *cols, int b, int x0, int z0, int face, int 
 				if (p[r].used[k]) continue;
 				int lo = p[r].lo[k], hi = p[r].hi[k], kind = p[r].kind[k];
 				// a skirt's ground piece (its lowest): one cell each, its foot found on the GPU
-				int dynamic = skirt && k == 0 && kind != LM_K_CROWN;
+				// (not for a floating column: its skirt ends at its own underside, there is nothing below to reach)
+				int dynamic = skirt && k == 0 && kind != LM_K_CROWN && !in->floating;
 				if (dynamic) {
 					if (alongX) emitf(o, x0 + r, plane, 1, 1, face, kind, lo, hi, 0, 1);
 					else emitf(o, plane, z0 + r, 1, 1, face, kind, lo, hi, 0, 1);
@@ -281,6 +315,7 @@ static void walls(Out *o, const Col *cols, int b, int x0, int z0, int face, int 
 				int len = 1;
 				for (int s = r + 1; s < b; s++) {
 					int hit = -1;
+					if (kind == LM_K_UNDER ? colU[s] != colU[r] : colG[s] != colG[r]) break;
 					for (int j = 0; j < p[s].n; j++) {
 						if (!p[s].used[j] && p[s].lo[j] == lo && p[s].hi[j] == hi && p[s].kind[j] == kind) {
 							hit = j;
@@ -353,20 +388,20 @@ int lm_mesh(const LmIn *in, uint32_t *header, uint32_t *quads, int cap) {
 			for (int g = 0; g < LM_G_INFO; g++) {
 				int start = o.count;
 				switch (g) {
-				case LM_G_TOP: flats(&o, cols, b, x0, z0, 0); break;
-				case LM_G_BOTTOM: flats(&o, cols, b, x0, z0, 1); break;
-				case LM_G_XP: walls(&o, cols, b, x0, z0, LM_F_XP, 0, b - 2, 0); break;
-				case LM_G_XN: walls(&o, cols, b, x0, z0, LM_F_XN, 1, b - 1, 0); break;
-				case LM_G_ZP: walls(&o, cols, b, x0, z0, LM_F_ZP, 0, b - 2, 0); break;
-				case LM_G_ZN: walls(&o, cols, b, x0, z0, LM_F_ZN, 1, b - 1, 0); break;
-				case LM_G_BXP: walls(&o, cols, b, x0, z0, LM_F_XP, b - 1, b - 1, 0); break;
-				case LM_G_BXN: walls(&o, cols, b, x0, z0, LM_F_XN, 0, 0, 0); break;
-				case LM_G_BZP: walls(&o, cols, b, x0, z0, LM_F_ZP, b - 1, b - 1, 0); break;
-				case LM_G_BZN: walls(&o, cols, b, x0, z0, LM_F_ZN, 0, 0, 0); break;
-				case LM_G_SXP: walls(&o, cols, b, x0, z0, LM_F_XP, b - 1, b - 1, 1); break;
-				case LM_G_SXN: walls(&o, cols, b, x0, z0, LM_F_XN, 0, 0, 1); break;
-				case LM_G_SZP: walls(&o, cols, b, x0, z0, LM_F_ZP, b - 1, b - 1, 1); break;
-				case LM_G_SZN: walls(&o, cols, b, x0, z0, LM_F_ZN, 0, 0, 1); break;
+				case LM_G_TOP: flats(&o, in, cols, b, x0, z0, 0); break;
+				case LM_G_BOTTOM: flats(&o, in, cols, b, x0, z0, 1); break;
+				case LM_G_XP: walls(&o, in, cols, b, x0, z0, LM_F_XP, 0, b - 2, 0); break;
+				case LM_G_XN: walls(&o, in, cols, b, x0, z0, LM_F_XN, 1, b - 1, 0); break;
+				case LM_G_ZP: walls(&o, in, cols, b, x0, z0, LM_F_ZP, 0, b - 2, 0); break;
+				case LM_G_ZN: walls(&o, in, cols, b, x0, z0, LM_F_ZN, 1, b - 1, 0); break;
+				case LM_G_BXP: walls(&o, in, cols, b, x0, z0, LM_F_XP, b - 1, b - 1, 0); break;
+				case LM_G_BXN: walls(&o, in, cols, b, x0, z0, LM_F_XN, 0, 0, 0); break;
+				case LM_G_BZP: walls(&o, in, cols, b, x0, z0, LM_F_ZP, b - 1, b - 1, 0); break;
+				case LM_G_BZN: walls(&o, in, cols, b, x0, z0, LM_F_ZN, 0, 0, 0); break;
+				case LM_G_SXP: walls(&o, in, cols, b, x0, z0, LM_F_XP, b - 1, b - 1, 1); break;
+				case LM_G_SXN: walls(&o, in, cols, b, x0, z0, LM_F_XN, 0, 0, 1); break;
+				case LM_G_SZP: walls(&o, in, cols, b, x0, z0, LM_F_ZP, b - 1, b - 1, 1); break;
+				case LM_G_SZN: walls(&o, in, cols, b, x0, z0, LM_F_ZN, 0, 0, 1); break;
 				case LM_G_PLANT: plants(&o, in, b, x0, z0); break;
 				}
 				int count = o.count - start;

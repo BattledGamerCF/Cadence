@@ -90,7 +90,25 @@ struct DrawFrame {
 	int fadeMs;
 	int clipOnCpu;        // 1: clip below is ProjMat * ModelViewMat, multiplied once on the CPU (-Dcadence.own.cpuClip)
 	float4x4 clip;
+	int lightCount;       // dynamic light sources (DynamicLightList): xyz relative to the camera, w the light level
+	int lightPad0, lightPad1, lightPad2;
+	float4 lightBounds;   // a sphere around everything they reach: centre (camera-relative), radius squared
+	float4 lights[16];
 };
+
+// Cadence: the brightest dynamic light at p (camera-relative): a source's level minus its distance in blocks, as a placed light
+// falls off, through walls (as LambDynamicLights); 0 with none. Most vertices are outside every source's reach: one test against
+// the bounding sphere skips the loop for them, and a source out of reach skips its square root.
+static float dynamicLight(constant DrawFrame &df, float3 p) {
+	if (distance_squared(p, df.lightBounds.xyz) >= df.lightBounds.w) return 0.0;
+	float best = 0.0;
+	for (int i = 0; i < df.lightCount; i++) {
+		float4 l = df.lights[i];
+		float d2 = distance_squared(p, l.xyz);
+		if (d2 < l.w * l.w) best = max(best, l.w - sqrt(d2));
+	}
+	return min(best, 15.0);
+}
 
 // vanilla's std140 uniform blocks
 struct Projection { float4x4 ProjMat; };
@@ -379,6 +397,8 @@ struct FragFrame {
 	                      // F_TIE_CLOSE: a uint per record after those (TIE_PROMO: the frame a unit was promoted and appended to phase
 	                      // A), then one more (TIE_SEEN, -Dcadence.own.frag.tieCloseVerify)
 	uint capLimit;        // (fault injection, -Dcadence.own.frag.capFault=N) phase A and B lists hold at most N entries; 0 = their capacity
+	float farPlants;      // Far Plants (OwnTerrain.farPlantBlocks, the Max FPS preset): cutout units of the any-facing bucket (the cross
+	                      // models: grass, flowers, ferns, saplings) of sections this far or farther are not drawn; 0 = all drawn
 };
 
 // a list's entries this frame (fault injection: capLimit)
@@ -547,6 +567,7 @@ kernel void frag_cull(constant CullFrame &f [[buffer(0)]], device const Section 
 	uint end = s.recStart + s.recCount;
 	uint lean = 0;
 	uint bin = min(g.classes - 1, uint(length(o + 8.0) / g.binBlocks));
+	bool farPlants = g.farPlants > 0 && length(o + 8.0) >= g.farPlants;
 	// (flag 1024: phase A's units of a section this far or farther go to the second bank, drawn after the test)
 	uint aBank = (g.flags & 1024) != 0 && length(o + 8.0) >= g.nearBlocks ? g.lists / 2 : 0;
 	if ((g.flags & 1) != 0 && g.nowMs - s.uploadMs >= g.fadeMs) {
@@ -583,7 +604,7 @@ kernel void frag_cull(constant CullFrame &f [[buffer(0)]], device const Section 
 			case 5: vis = cam.z < plane + FACE_MARGIN; break;
 			default: vis = true; break;
 		}
-		if (!vis || layer > 1) continue;
+		if (!vis || layer > 1 || (layer == 1 && bucket == 6 && farPlants)) continue;
 		funnelFacing += (rec.meta & 63) + 1;
 		// (solid-section occlusion)
 		if (so.on != 0 && solidHidden(so, soTex, o + float3(int3(rec.lo & 255, (rec.lo >> 8) & 255, (rec.lo >> 16) & 255) - 16),
@@ -695,6 +716,7 @@ template <ushort W> static void fragCullS(constant CullFrame &f, device const Se
 	uint end = s.recStart + s.recCount;
 	uint lean = 0;
 	uint aBank = (g.flags & 1024) != 0 && length(o + 8.0) >= g.nearBlocks ? g.lists / 2 : 0;  // (flag 1024, as frag_cull)
+	bool farPlants = g.farPlants > 0 && length(o + 8.0) >= g.farPlants;  // (as frag_cull)
 	if ((g.flags & 1) != 0 && g.nowMs - s.uploadMs >= g.fadeMs) {
 		uint3 lo = uint3(255), hi = uint3(0);
 		for (uint r = s.recStart + sl; r < end; r += W) {
@@ -739,7 +761,7 @@ template <ushort W> static void fragCullS(constant CullFrame &f, device const Se
 				case 5: vis = cam.z < plane + FACE_MARGIN; break;
 				default: vis = true; break;
 			}
-			if (vis && layer <= 1) {
+			if (vis && layer <= 1 && !(layer == 1 && bucket == 6 && farPlants)) {
 				funnelFacing += quads;
 				float3 lo = o + float3(int3(rec.lo & 255, (rec.lo >> 8) & 255, (rec.lo >> 16) & 255) - 16);
 				float3 hi = o + float3(int3(rec.hi & 255, (rec.hi >> 8) & 255, (rec.hi >> 16) & 255) - 16);
@@ -1880,7 +1902,9 @@ static VOut ownShade(Vtx v, int3 origin, int uploadMs, constant DrawFrame &df, c
 		return o;
 	}
 	o.sphericalVertexDistance = length(pos);
-	float2 luv = clamp(float2(int2(v.uv2)) / 256.0 + 0.5 / 16.0, float2(0.5 / 16.0), float2(15.5 / 16.0));
+	float2 lc = float2(int2(v.uv2));
+	if (df.lightCount > 0) lc.x = max(lc.x, dynamicLight(df, pos) * 16.0);
+	float2 luv = clamp(lc / 256.0 + 0.5 / 16.0, float2(0.5 / 16.0), float2(15.5 / 16.0));
 	putColor(o, VS_MODE == 1 ? float4(v.color) / 255.0 : float4(v.color) / 255.0 * lightmap.sample(lightSampler, luv, level(0.0)));
 	o.texCoord0 = float2(v.uv0);
 #ifdef OWN_TPROBE
@@ -2215,7 +2239,8 @@ constant bool CUTOUT [[function_constant(0)]];
 constant float CUTOUT_LIMIT [[function_constant(5)]];  // vanilla's ALPHA_CUTOUT: 0.5 cutout, 0.1 translucent
 
 fragment float4 own_fs(VOut in [[stage_in]], constant Globals &g [[buffer(22)]], constant Terrain &t [[buffer(23)]], constant Fog &fog [[buffer(24)]],
-	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]], constant uint &cadFrag [[buffer(29)]]) {
+	texture2d<float> atlas [[texture(16)]], sampler atlasSampler [[sampler(14)]], constant uint &cadFrag [[buffer(29)]],
+	constant float &hdrGain [[buffer(30)]], texture2d<float> emission [[texture(18)]]) {
 #ifdef OWN_TPROBE
 	// (probes 1 and 3: the translucent fragment stage returns a constant, blending kept; translucent = cutout at limit 0.1)
 	if ((OWN_TPROBE == 1 || OWN_TPROBE == 3) && CUTOUT && CUTOUT_LIMIT < 0.2) return float4(0.2, 0.3, 0.8, 0.5);
@@ -2234,6 +2259,17 @@ fragment float4 own_fs(VOut in [[stage_in]], constant Globals &g [[buffer(22)]],
 	// F_LEAN: the chunk visibility is 1 (mix(x, y, 1) is y), the render-distance fog value 0 (max(e, 0) is e for e >= 0)
 	if (F_RICH) color = mix(fog.FogColor * float4(1, 1, 1, color.a), color, in.chunkVisibility);
 	if (CUTOUT && color.a < CUTOUT_LIMIT) discard_fragment();
+	// HDR (dev.cadence.metal.Hdr, hdrGain > 1): emissive blocks' bright texels above SDR white. emission: the atlas's emissive
+	// sprites (OwnEmission: the block's light level / 15 over each sprite only emissive blocks use); the weight follows the texel's
+	// brightness, so a torch's flame glows and its stick doesn't. The gain is linear; the colour here is sRGB-encoded.
+	if (hdrGain > 1.0f) {
+		constexpr sampler nearestS(coord::normalized, filter::nearest, address::clamp_to_edge);
+		float e = emission.sample(nearestS, in.texCoord0, level(0.0)).r;
+		if (e > 0.0f) {
+			float w = e * smoothstep(0.3f, 0.8f, max(max(color.r, color.g), color.b));
+			color.rgb *= pow(1.0f + (hdrGain - 1.0f) * w, 1.0f / 2.2f);
+		}
+	}
 	float fogValue;
 	if (F_FVT && in.fogIn != 0) {
 		fogValue = in.fogF;

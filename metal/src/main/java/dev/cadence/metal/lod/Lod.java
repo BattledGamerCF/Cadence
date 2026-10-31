@@ -19,7 +19,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FogType;
-import net.minecraft.world.level.storage.LevelResource;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4d;
 import org.joml.Matrix4f;
@@ -37,6 +36,7 @@ import org.lwjgl.system.MemoryUtil;
  * everything else.
  */
 public final class Lod {
+	private int memLogs;
 	private static @Nullable Lod instance;
 	private static boolean failed;
 	private static final boolean SODIUM = FabricLoader.getInstance().isModLoaded("sodium");
@@ -44,7 +44,7 @@ public final class Lod {
 	/** ColFrame in columns.metal: A, B, C, cam, origin, cols, lines, screen, mask, maskDist (10 x 16) + 12 levels x 32. */
 	static final int COL_FRAME_BYTES = 10 * 16 + MAX_LEVELS * 32;
 	/** CompFrame: float4x4 + A, B, C, screen, fogColor, fog, skyLight, faceShade, quadDepth, origin, camFrac, tex (12 x 16). */
-	static final int COMP_FRAME_BYTES = 64 + 12 * 16;
+	static final int COMP_FRAME_BYTES = 64 + 13 * 16;
 	private static final int MASK_MAX = 128;
 	private static final int RING = 4;
 
@@ -60,6 +60,8 @@ public final class Lod {
 	private long outBuf;
 	private int outW, outH;
 	private final java.util.ArrayDeque<long[]> releaseLater = new java.util.ArrayDeque<>();
+	/** Level frames begun: the clock releaseLater's entries are stamped with (advances with or without far terrain). */
+	private long releaseClock;
 	private @Nullable LodField field;
 	private @Nullable LodClip clip;
 	/** The mesh path's tiles (-Dcadence.lod.render=mesh), else null. */
@@ -67,6 +69,10 @@ public final class Lod {
 	/** The mesh's position-keyed lists (-Dcadence.lod.pk), else null. */
 	private @Nullable LodPk pk;
 	private @Nullable Object worldOwner;
+	/** Failures so far (fail): after STOP_AFTER the far terrain stays off for the session. */
+	private static int failures;
+	private static final int STOP_AFTER = 3;
+	private boolean stopped;
 	/** -Dcadence.lod.seam=DIR: the transition probe (LodSeam), else null. */
 	private final @Nullable LodSeam seam;
 	/** -Dcadence.lod.taa: the far terrain's temporal filter (LodTaa), else null. */
@@ -109,6 +115,7 @@ public final class Lod {
 		this.lod = LodNative.create(this.ctx, source());
 		this.paletteBuf = LodNative.buffer(this.ctx, (long) LodPalette.MAX * LodPalette.STRIDE * 4);
 		LodPalette.bind(LodNative.contents(this.paletteBuf));
+		LodResources.listen(Minecraft.getInstance());
 		this.dbgBuf = LodNative.buffer(this.ctx, 64);
 		this.dbgAddr = LodNative.contents(this.dbgBuf);
 		MemoryUtil.memSet(this.dbgAddr, 0, 64);
@@ -135,6 +142,12 @@ public final class Lod {
 			if (HANDOFF_PUSH > 0 && HANDOFF_PUSH < 1) src = "#define SEAM_DEPTH_PUSH " + HANDOFF_PUSH + "\n" + src;
 			if (LodTaaTile.CODES) src = "#define SEAM_TAA_TILE 1\n" + src;
 			if (Boolean.getBoolean("cadence.lod.thinTex")) src = "#define SEAM_THIN_TEX 1\n" + src;
+			if (LodConfig.PLANT_DISTANCE > 0) src = "#define LOD_PLANT_DIST " + LodConfig.PLANT_DISTANCE + "\n" + src;
+			if (LodConfig.DETAIL_PX > 0) src = "#define LOD_DETAIL_PX " + LodConfig.DETAIL_PX + "\n" + src;
+			// (measurement: -Dcadence.lod.defines=A,B compiles columns.metal with #define A 1, #define B 1, e.g. MESH_BENCH_FLAT)
+			for (String d : System.getProperty("cadence.lod.defines", "").split(",")) {
+				if (d.matches("[A-Z_][A-Z0-9_]*(=[0-9.]+)?")) src = "#define " + d.replace('=', ' ') + (d.contains("=") ? "" : " 1") + "\n" + src;
+			}
 			if (Boolean.getBoolean("cadence.lod.thin")) src = "#define SEAM_THIN 1\n#define SEAM_CROWN_LEVELS " + Math.max(1, LodConfig.CROWN_LEVELS) + "\n" + src;
 			return src;
 		} catch (IOException e) {
@@ -190,22 +203,80 @@ public final class Lod {
 	public static void beginLevel(CameraRenderState camera) {
 		Lod l = get();
 		if (l == null) return;
-		l.begin(camera);
+		try {
+			l.begin(camera);
+		} catch (RuntimeException | OutOfMemoryError e) {
+			fail("begin", e);
+		}
+	}
+
+	/**
+	 * Every entry point's handler: a failure, or the GPU out of memory (an Error), stops the far terrain
+	 * in this world or dimension: its tiles saved, workers stopped and buffers released as when the world is left, and it starts
+	 * again in the next one (after STOP_AFTER failures: not for the rest of the session). It used to abandon all of it (draw:
+	 * ~190 MB and the workers kept), or reach the packet handler (the chunk hook: the player disconnected).
+	 */
+	private static void fail(String where, Throwable e) {
+		failures++;
+		System.out.println("cadence-lod: far terrain stopped " + (failures >= STOP_AFTER ? "for this session" : "in this world") + " (" + where + "): " + e);
+		if (failures <= STOP_AFTER) e.printStackTrace(System.out);
+		activeReach = 0;
+		Lod l = instance;
+		if (l == null) return;
+		l.haveFrame = false;
+		try {
+			l.dropWorld(false);  // (its buffers RING frames later, as at a dimension change: this may be in the middle of a frame)
+		} catch (RuntimeException | Error e2) {
+			System.out.println("cadence-lod: releasing the far terrain failed: " + e2);
+		}
+		l.worldOwner = Minecraft.getInstance().level;  // (ensureWorld makes nothing more for this level)
+		if (failures >= STOP_AFTER) l.stopped = true;
+	}
+
+	private static int idleCalls;
+
+	/**
+	 * A frame of Render Max FPS (which draws no level, so no beginLevel or draw runs): every 256th call the far terrain's finished
+	 * work is applied and its edits saved, as draw does. The chunk summaries of every chunk loaded and unloaded otherwise piled
+	 * up unbounded (~11 KB each). Another world or dimension meanwhile: the old one's far terrain goes.
+	 */
+	public static void idle() {
+		if ((++idleCalls & 255) != 0) return;
+		Lod l = instance;
+		if (l == null || l.field == null) return;
+		if (l.worldOwner != Minecraft.getInstance().level) {
+			worldClosed();
+			return;
+		}
+		try {
+			l.field.integrate();
+			l.field.saveDirty(false);
+		} catch (RuntimeException | OutOfMemoryError e) {
+			fail("idle", e);
+		}
 	}
 
 	/** End of the level's opaque phase (after the real terrain and solid features): the far terrain. */
 	public static void drawSolid() {
+		run(false);
+	}
+
+	/**
+	 * Cadence (LodPackFrame.prepare): start of the level's solid pass with a shader pack that draws the far terrain: this frame's
+	 * far-terrain work, culled for the pack's program (drawSolid then has nothing left to do).
+	 */
+	static void drawForPack() {
+		run(true);
+	}
+
+	private static void run(boolean forPack) {
 		Lod l = instance;
 		if (l == null || !l.haveFrame) return;
 		l.haveFrame = false;
 		try {
-			l.draw();
-		} catch (RuntimeException e) {
-			failed = true;
-			instance = null;
-			activeReach = 0;
-			System.out.println("cadence-lod: far terrain stopped: " + e);
-			e.printStackTrace(System.out);
+			l.draw(forPack);
+		} catch (RuntimeException | OutOfMemoryError e) {
+			fail("draw", e);
 		}
 	}
 
@@ -296,8 +367,54 @@ public final class Lod {
 		}
 	}
 
+	/** A Far Distance change waiting to stand still before the far terrain is built again for it (-1: none), and since when. */
+	private int pendingRadius = -1;
+	private long pendingSince;
+
+	/**
+	 * Follows Video Settings > Far Distance: a reach the clipmap's levels cover applies at once (the draw, the fog and the tile
+	 * requests follow it); one that needs more or fewer levels, once the slider has stood still half a second, drops the
+	 * world's far terrain so ensureWorld builds it again this frame (as at a dimension change; the tiles come back from the
+	 * disk cache).
+	 */
+	private void followRadius() {
+		int want = LodConfig.requestedRadius();
+		if (want == LodConfig.radiusChunks()) {
+			this.pendingRadius = -1;
+			return;
+		}
+		if (this.clip == null) {
+			LodConfig.applyRadius(want);
+			return;
+		}
+		if (LodClip.levelsFor(this.clip.n, want * 16.0) == this.clip.levels) {
+			LodConfig.applyRadius(want);
+			if (this.field != null) this.field.reachChanged();
+			this.pendingRadius = -1;
+			return;
+		}
+		long now = System.nanoTime();
+		if (want != this.pendingRadius) {
+			this.pendingRadius = want;
+			this.pendingSince = now;
+			return;
+		}
+		if (now - this.pendingSince < 500_000_000L) return;
+		this.pendingRadius = -1;
+		LodConfig.applyRadius(want);
+		System.out.println("cadence-lod: far distance " + want + " chunks: far terrain built again with " + LodClip.levelsFor(this.clip.n, want * 16.0) + " levels");
+		this.dropWorld(false);
+		this.worldOwner = null;
+	}
+
 	private void begin(CameraRenderState camera) {
 		Minecraft mc = Minecraft.getInstance();
+		// (released buffers go RING level frames after their last use, also in a dimension without far terrain: they waited
+		// for the next far-terrain frame, ~190 MB held for a whole Nether trip)
+		this.releaseClock++;
+		while (!this.releaseLater.isEmpty() && this.releaseClock - this.releaseLater.peek()[0] >= RING) LodNative.release(this.releaseLater.poll()[1]);
+		if (LodResources.takeReload(mc)) this.resourcesReloaded(mc);
+		this.followRadius();
 		this.ensureWorld(mc);
 		if (this.field == null) {
 			activeReach = 0;
@@ -331,47 +448,122 @@ public final class Lod {
 		}
 	}
 
-	private void ensureWorld(Minecraft mc) {
-		ClientLevel level = mc.level;
-		MinecraftServer server = mc.getSingleplayerServer();
-		Object owner = level == null || server == null ? null : level;
-		if (owner == this.worldOwner) return;
+	/**
+	 * The resources reloaded (LodResources): the blocks' colors and the texture table are worked out again, and under other
+	 * resource packs a generated world's far terrain is made again (its cached tiles too: they carry the old packs' colors).
+	 * Explored land keeps its tiles until seen again.
+	 */
+	private void resourcesReloaded(Minecraft mc) {
+		LodColors.forget();
+		LodPalette.refresh();
+		if (this.field != null && this.field.generates && this.field.resources != LodResources.signature(mc)) {
+			System.out.println("cadence-lod: the resource packs changed: the far terrain is made again");
+			this.worldOwner = null;
+		}
+	}
+
+	/**
+	 * Lets the current world's far terrain go: its tiles saved, its workers stopped, every GPU buffer released (the clipmap's
+	 * five, the mesh's and the lists'), its beacons saved. now: the GPU is waited for and the buffers go at once (the world
+	 * was left: no frame will drain them); else they go RING frames later (another world's frames follow).
+	 */
+	private void dropWorld(boolean now) {
 		if (this.field != null) {
 			this.field.close();
 			this.field = null;
 		}
+		java.util.List<Long> buffers = new java.util.ArrayList<>();
 		if (this.mesh != null) {
 			this.mesh.close();
-			for (long b : this.mesh.buffers()) this.releaseLater.add(new long[] {this.frames, b});
+			for (long b : this.mesh.buffers()) buffers.add(b);
 			this.mesh = null;
 		}
 		if (this.pk != null) {
-			for (long b : this.pk.buffers()) this.releaseLater.add(new long[] {this.frames, b});
+			for (long b : this.pk.buffers()) buffers.add(b);
 			this.pk = null;
 		}
 		if (this.clip != null) {
-			this.releaseLater.add(new long[] {this.frames, this.clip.geomBuf});
-			this.releaseLater.add(new long[] {this.frames, this.clip.colorBuf});
-			this.releaseLater.add(new long[] {this.frames, this.clip.mipBuf});
-			this.releaseLater.add(new long[] {this.frames, this.clip.crownBuf});
+			// (all five: texBuf was left out, 12.6 MB lost at every dimension change)
+			buffers.add(this.clip.geomBuf);
+			buffers.add(this.clip.colorBuf);
+			buffers.add(this.clip.mipBuf);
+			buffers.add(this.clip.crownBuf);
+			buffers.add(this.clip.texBuf);
 			this.clip = null;
 		}
+		if (this.packColors != 0) {
+			LodNative.meshPackMode(this.lod, 0);
+			this.packColors = 0;
+		}
+		LodPackFrame.publish(0, 0);
+		LodBeacons.world(null);
+		LodTrees.forget();
+		activeReach = 0;
+		if (now) {
+			MetalBridge.waitIdle(this.encoder);
+			for (long b : buffers) LodNative.release(b);
+			while (!this.releaseLater.isEmpty()) LodNative.release(this.releaseLater.poll()[1]);
+		} else {
+			for (long b : buffers) this.releaseLater.add(new long[] {this.releaseClock, b});
+		}
+	}
+
+	/**
+	 * The player left the world (WorldClosed, through LodPackFrame): the far terrain goes with it now. It used to stay until
+	 * the next world's first frame: ~190 MB of GPU memory and the closed world held at the title screen, and its last tiles and
+	 * beacons unsaved if the game was quit from there.
+	 */
+	static void worldClosed() {
+		Lod l = instance;
+		if (l == null) return;
+		try {
+			l.dropWorld(true);
+		} catch (RuntimeException | Error e) {
+			System.out.println("cadence-lod: releasing the far terrain failed: " + e);
+		}
+		l.worldOwner = null;
+		l.haveFrame = false;
+	}
+
+	private void ensureWorld(Minecraft mc) {
+		ClientLevel level = mc.level;
+		MinecraftServer server = mc.getSingleplayerServer();
+		Object owner = level;
+		if (owner == this.worldOwner) return;
+		this.dropWorld(false);
 		this.worldOwner = owner;
-		if (owner == null) return;
-		ServerLevel sl = server.getLevel(level.dimension());
-		if (sl == null) return;
-		LodNoise noise = LodNoise.of(sl);
-		if (noise == null) {
-			System.out.println("cadence-lod: no far terrain in " + level.dimension().identifier() + " (not noise-generated, or a ceiling)");
-			return;
+		if (owner == null || this.stopped) return;
+		// Cadence: single player (and a LAN host) generates the far terrain from the world's own generator; on a server (or a
+		// LAN guest) there is no generator at hand: the far terrain is the land this player has explored, kept on disk per
+		// server and dimension (as Distant Horizons does without its server plugin)
+		LodNoise noise = null;
+		ServerLevel sl = null;
+		if (server != null) {
+			sl = server.getLevel(level.dimension());
+			if (sl == null) return;
+			if (level.dimensionType().hasCeiling()) {
+				System.out.println("cadence-lod: no far terrain in " + level.dimension().identifier() + " (a ceiling: the far view would be the roof)");
+				return;
+			}
+			noise = LodNoise.of(sl);
+			if (noise == null) System.out.println("cadence-lod: " + level.dimension().identifier() + " isn't noise-generated: far terrain from explored land only");
+		} else {
+			if (level.dimensionType().hasCeiling()) {
+				System.out.println("cadence-lod: no far terrain in " + level.dimension().identifier() + " (a ceiling: the far view would be the roof)");
+				return;
+			}
+			System.out.println("cadence-lod: on a server: far terrain from explored land only");
 		}
 		Path root = LodConfig.CACHE_DIR != null ? Path.of(LodConfig.CACHE_DIR) : mc.gameDirectory.toPath().resolve("cadence-lod");
-		String save = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize().getFileName().toString();
-		Path cache = root.resolve(save).resolve(level.dimension().identifier().getNamespace() + "_" + level.dimension().identifier().getPath());
+		Path cache = LodCacheDir.of(mc, level, sl, root);
+		if (cache == null) return;
 		// tiles cached under other crown or tree levels lack (or carry) data these levels need: their own directory
 		if (LodConfig.CROWN_LEVELS != 1 || LodConfig.TREE_LEVELS != 1) cache = cache.resolve("c" + LodConfig.CROWN_LEVELS + "t" + LodConfig.TREE_LEVELS);
 		this.clip = new LodClip(this.ctx, LodConfig.N, LodConfig.reachBlocks());
-		if (LodConfig.MESH) this.mesh = new LodMesh(this.ctx, this.clip);
+		if (LodConfig.MESH) {
+			this.mesh = new LodMesh(this.ctx, this.clip);
+			this.mesh.floating = level.dimension() == net.minecraft.world.level.Level.END;
+		}
 		if (this.mesh != null && LodPk.ENABLED) {
 			// (its passes order their outputs by hazard tracking, not -Dcadence.lod.meshFences' fences)
 			if (LodMesh.FENCES) System.out.println("cadence-lod: -Dcadence.lod.pk ignores -Dcadence.lod.meshFences");
@@ -383,21 +575,142 @@ public final class Lod {
 			if (this.publish == null) this.publish = new LodPublish(this.ctx);
 			this.clip.publisher = this.publish;
 		}
-		this.field = new LodField(noise, this.clip, cache);
-		if (LodGenBench.ENABLED) LodGenBench.start(noise, this.field);
+		this.field = new LodField(noise, this.clip, cache, LodResources.signature(mc));
+		LodBeacons.world(cache);
+		this.field.floating = level.dimension() == net.minecraft.world.level.Level.END;
+		if (LodGenBench.ENABLED && noise != null) LodGenBench.start(noise, this.field);
 		if (LodYield.ON) LodYield.top = this.clip.levels - 1;
 	}
 
-	private void draw() {
+	/** When the pack's merge mode began waiting for meshes (nanoTime; 0: settled), and whether a long wait was logged. */
+	private long unsettledSince;
+	private boolean unsettledLogged;
+
+	/** -Dcadence.lod.stillReuse=false: cull every frame, even with nothing changed (the A/B). */
+	private static final boolean STILL_REUSE = !"false".equals(System.getProperty("cadence.lod.stillReuse"));
+	private long lastCullKey, lastCullFrame = -2, stillFrames;
+	/**
+	 * -Dcadence.lod.moveReuse=false: cull every frame the view moves (the A/B). A moving view's cull is made for a frustum
+	 * GUARD wider (the tangent of each half-angle), and its survivors drawn again for up to MOVE_REUSE_FRAMES moving frames while the
+	 * view stays inside that wider frustum, in the same block, within half a block of where the cull was made: a turning or
+	 * walking player's far terrain is culled every 3rd or 4th frame instead of every frame.
+	 */
+	private static final boolean MOVE_REUSE = !"false".equals(System.getProperty("cadence.lod.moveReuse"));
+	private static final float GUARD = 1.12F;
+	private static final int MOVE_REUSE_FRAMES = Integer.getInteger("cadence.lod.moveReuseFrames", 3);
+	private final Matrix4f cullWideVp = new Matrix4f(), wideVp = new Matrix4f(), invVp = new Matrix4f();
+	private final org.joml.Vector4f corner = new org.joml.Vector4f();
+	private double cullX, cullY, cullZ;
+	private long lastRestKey, lastViewKey, cullRestKey, moveFrames;
+	private int reusedSinceCull;
+	private boolean cullWide;
+	/** -Dcadence.lod.stillLog: once a second, which part of the cull's key changed (view, mask, table). */
+	private static final boolean STILL_LOG = Boolean.getBoolean("cadence.lod.stillLog");
+	private long stillLogged, lastView, lastMask, lastTable;
+
+	/**
+	 * Everything the cull's result depends on, hashed: the view (its matrix and position), the real terrain's mask, the installed
+	 * meshes (the tile table), the cull's buffers and the mode. Equal keys: the last frame's cull holds for this one. Never 0.
+	 */
+	private long cullKey(LodMesh mesh, int rd, boolean pack) {
+		long view = 0x9E3779B97F4A7C15L;
+		for (int i = 0; i < 16; i++) view = mix(view, Float.floatToRawIntBits(this.viewProj.getRowColumn(i >> 2, i & 3)));
+		view = mix(view, Double.doubleToRawLongBits(this.camX));
+		view = mix(view, Double.doubleToRawLongBits(this.camY));
+		view = mix(view, Double.doubleToRawLongBits(this.camZ));
+		this.lastViewKey = view;
+		// (the rest: everything but the view, for the moving reuse)
+		long h = 0x2545F4914F6CDD1DL;
+		h = mix(h, this.maskOn ? 1 : 0);
+		h = mix(h, ((long) this.maskX << 32) ^ this.maskZ ^ ((long) this.maskSize << 16) ^ this.maskWords);
+		long hv = h;
+		if (this.maskOn) for (int i = 0; i < this.maskSize * this.maskWords; i++) h = mix(h, this.mask[i]);
+		long hm = h;
+		long table = mesh.tableHash();
+		h = mix(h, table);
+		h = mix(h, mesh.instBuf ^ (mesh.survBuf << 1));
+		h = mix(h, rd ^ (pack ? 1L << 40 : 0) ^ this.packColors);
+		// the look (pack mode bakes brightness, saturation and curvature into the cull's records: a still camera kept the old
+		// ones until it moved)
+		h = mix(h, Float.floatToRawIntBits(LodConfig.brightness()) ^ (long) Float.floatToRawIntBits(LodConfig.saturation()) << 32);
+		h = mix(h, Float.floatToRawIntBits(LodConfig.curvatureDrop()));
+		if (STILL_LOG && System.nanoTime() - this.stillLogged > 1_000_000_000L) {
+			this.stillLogged = System.nanoTime();
+			System.out.println("cadence-lod still: view " + (view != this.lastView ? "changed" : "same") + ", mask " + (hm - hv != this.lastMask ? "changed" : "same")
+				+ ", table " + (table != this.lastTable ? "changed" : "same"));
+		}
+		this.lastView = view;
+		this.lastMask = hm - hv;
+		this.lastTable = table;
+		this.lastRestKey = h;
+		h = mix(view, h);
+		return h == 0 ? 1 : h;
+	}
+
+	/**
+	 * Whether the last moving cull still holds for this frame's view: made with the guard band, a few frames ago, from the
+	 * same block and within half a block, and every corner of this view's far plane inside its wider frustum.
+	 */
+	private boolean cullHolds() {
+		if (!this.cullWide || this.reusedSinceCull >= MOVE_REUSE_FRAMES || this.lastRestKey != this.cullRestKey) return false;
+		if (Math.floor(this.camX) != Math.floor(this.cullX) || Math.floor(this.camY) != Math.floor(this.cullY) || Math.floor(this.camZ) != Math.floor(this.cullZ))
+			return false;
+		double dx = this.camX - this.cullX, dy = this.camY - this.cullY, dz = this.camZ - this.cullZ;
+		if (dx * dx + dy * dy + dz * dz > 0.25) return false;
+		this.viewProj.invert(this.invVp);
+		for (int k = 0; k < 4; k++) {
+			// the corner's ray (two points on it at depths -0.5 and 0.5: whichever way the depth runs, both finite, in front),
+			// a kilometre out: half a block at most between the two cameras is nothing there
+			float x = (k & 1) == 0 ? -1 : 1, y = (k & 2) == 0 ? -1 : 1;
+			this.corner.set(x, y, -0.5F, 1).mul(this.invVp);
+			if (this.corner.w == 0) return false;
+			float ax = this.corner.x / this.corner.w, ay = this.corner.y / this.corner.w, az = this.corner.z / this.corner.w;
+			this.corner.set(x, y, 0.5F, 1).mul(this.invVp);
+			if (this.corner.w == 0) return false;
+			float rx = this.corner.x / this.corner.w - ax, ry = this.corner.y / this.corner.w - ay, rz = this.corner.z / this.corner.w - az;
+			float len = (float) Math.sqrt(rx * rx + ry * ry + rz * rz);
+			if (!(len > 1e-6F)) return false;
+			float sign = rx * this.forward.x + ry * this.forward.y + rz * this.forward.z >= 0 ? 1 : -1;
+			float far = 1024 * sign / len;
+			this.corner.set(rx * far, ry * far, rz * far, 1).mul(this.cullWideVp);
+			if (this.corner.w <= 0 || Math.abs(this.corner.x) > 0.98F * this.corner.w || Math.abs(this.corner.y) > 0.98F * this.corner.w) return false;
+		}
+		return true;
+	}
+
+	private static long mix(long h, long v) {
+		h ^= v;
+		h *= 0xBF58476D1CE4E5B9L;
+		return h ^ (h >>> 31);
+	}
+
+	/** (stats) the cull's GPU time, sampled every 64th frame */
+	private double statCullMs;
+	private int statCulls;
+
+	/** (shader-pack mode) the colour words the native cull reads for the pack's records (0: the far terrain draws itself) */
+	private long packColors;
+
+	private void draw(boolean forPack) {
 		LodField w = this.field;
 		LodClip clip = this.clip;
 		if (w == null || clip == null) return;
+		// Cadence: a shader pack's dh_terrain program draws the far terrain (LodPackFrame): the cull leaves its records, the
+		// mesh merges faces only within one colour, and nothing is drawn here
+		boolean pack = LodPackFrame.wanted && this.mesh != null && this.pk == null;
+		if (this.mesh != null) {
+			long colors = pack ? clip.colorBuf : 0;
+			if (colors != this.packColors) {
+				LodNative.meshPackMode(this.lod, colors);
+				this.packColors = colors;
+				this.mesh.colorMerge(pack);
+			}
+		}
 		long start = System.nanoTime();
 		Minecraft mc = Minecraft.getInstance();
 		this.frames++;
 		this.seamArmed = this.seam != null || this.taaTile != null;
 		w.frame = this.frames;
-		while (!this.releaseLater.isEmpty() && this.frames - this.releaseLater.peek()[0] >= RING) LodNative.release(this.releaseLater.poll()[1]);
 		w.integrate();
 		if (LodMesh.REAL_OCC && !this.edited.isEmpty()) this.resnapshot(mc, start);
 		long t1 = System.nanoTime();
@@ -406,6 +719,7 @@ public final class Lod {
 		if (LodField.PRIO_SCREEN) w.updateScreen(this.camX, this.camZ, this.frustum, this.camY, this.viewProj, this.forward, this::maskSnapshot);
 		else w.update(this.camX, this.camZ, this.frustum, this.camY);
 		w.saveDirty(false);
+		if ((this.frames & 1023) == 0) LodBeacons.save();
 		long t2 = System.nanoTime();
 		this.partNanos[1] += t2 - t1;
 		int rd = mc.options.getEffectiveRenderDistance();
@@ -420,18 +734,29 @@ public final class Lod {
 		}
 		this.partNanos[2] += System.nanoTime() - t2;
 		boolean probeOn = this.probe(start);
-		if (!LodConfig.DRAW || !probeOn || !MetalBridge.inRenderPass(this.encoder)) {
+		if (!LodConfig.DRAW || !probeOn || !(pack ? forPack : !forPack && MetalBridge.inRenderPass(this.encoder))) {
 			this.statCpuNanos += System.nanoTime() - start;
 			this.sample(w, start);
 			if (LodConfig.STATS) this.stats(w);
 			return;
 		}
 		long enc = MetalBridge.enc(this.encoder);
-		int attachments = LodNative.attachments(enc);
-		int size = LodNative.encSize(enc);
-		int width = size >>> 16, height = size & 0xFFFF;
+		int attachments, width, height;
+		if (pack) {
+			// (no pass of the game's is open: the pack's targets are the window's size)
+			var target = mc.gameRenderer.mainRenderTarget();
+			attachments = 1;
+			width = target.width;
+			height = target.height;
+		} else {
+			attachments = LodNative.attachments(enc);
+			int size = LodNative.encSize(enc);
+			width = size >>> 16;
+			height = size & 0xFFFF;
+		}
 		if (attachments > 0 && width > 0 && height > 0) {
-			this.ensureOut(width, height);
+			// (the column march's output: the mesh never reads it, 8 bytes a pixel, 62 MB at 3456 x 2234)
+			if (this.mesh == null) this.ensureOut(width, height);
 			long maskBuf = this.maskBufs[(int) (this.frames % RING)];
 			MemoryUtil.memSet(this.maskAddrs[(int) (this.frames % RING)], 0, MASK_MAX * MASK_MAX / 8);
 			if (this.maskOn) {
@@ -451,10 +776,36 @@ public final class Lod {
 			if (columns > 0 && mesh != null) {
 				boolean gbuffer = false;
 				if (this.dumpNow(w)) this.dump(clip, this.maskAddrs[(int) (this.frames % RING)], width, height);
-				mesh.pack(this.viewProj, this.camX, this.camY, this.camZ, LodConfig.reachBlocks(), this.maskOn, this.maskX, this.maskZ, this.maskSize, this.maskWords,
-					rd * 16.0F + 48.0F);
-				long table = mesh.table(this.frames);
 				LodPk pk = this.pk;
+				// Cadence: a still camera over unchanged far terrain (the same view, real-terrain mask, installed meshes and buffers as
+				// the last frame's cull) draws the last cull's survivors again: no cull at all (1.6 ms of GPU a frame on an M2 at 512
+				// chunks), what a player standing to build or look around saves. Any change culls as before.
+				long prevView = this.lastViewKey;
+				long key = pk == null && STILL_REUSE ? this.cullKey(mesh, rd, pack) : 0;
+				boolean still = key != 0 && key == this.lastCullKey && this.lastCullFrame == this.frames - 1;
+				boolean moved = key != 0 && !still && MOVE_REUSE && this.lastCullFrame == this.frames - 1 && this.cullHolds();
+				boolean turning = key != 0 && MOVE_REUSE && this.lastViewKey != prevView;
+				this.lastCullFrame = this.frames;
+				if (still) {
+					this.stillFrames++;
+					mesh.noteStill();
+				} else if (moved) {
+					// the last moving cull's survivors drawn from this frame's view (the draw reads this frame's camera)
+					this.moveFrames++;
+					this.reusedSinceCull++;
+					mesh.pack(this.viewProj, this.camX, this.camY, this.camZ, LodConfig.reachBlocks(), this.maskOn, this.maskX, this.maskZ, this.maskSize,
+						this.maskWords, rd * 16.0F + 48.0F);
+					this.lastCullKey = key;
+				}
+				else {
+				// (the cull's buffers sized to the last counts, before this frame's cull and draw are encoded with them)
+				mesh.adapt(this.frames);
+				// (a moving view: culled for the wider frustum, the guard band the next frames' views may turn into)
+				boolean wide = turning && pk == null;
+				if (wide) new Matrix4f().scaling(1 / GUARD, 1 / GUARD, 1).mul(this.viewProj, this.wideVp);
+				mesh.pack(wide ? this.wideVp : this.viewProj, this.camX, this.camY, this.camZ, LodConfig.reachBlocks(), this.maskOn, this.maskX, this.maskZ, this.maskSize,
+					this.maskWords, rd * 16.0F + 48.0F);
+				long table = mesh.table(this.frames);
 				// (the load switch: every TIME_EVERY-th frame's cull samples its GPU time, read TIME_EVERY frames later)
 				boolean sample = (this.frames % LodPk.TIME_EVERY) == 0;
 				int slot = (int) ((this.frames / LodPk.TIME_EVERY) & 15);
@@ -462,6 +813,8 @@ public final class Lod {
 				if (pk != null && LodPk.LOAD && sample && !timed) this.cullTimes = false;
 				boolean listsRan = pk != null && pk.lists(this.camX, this.camY, this.camZ, this.viewProj, LodConfig.reachBlocks(), LodPk.LOAD && this.cullTimes,
 					timed);
+				// (Mesh Shaders on the default cull only: the position-keyed lists' cull feeds the compute path, BH8-16)
+				LodNative.meshShaders(this.lod, !listsRan && LodConfig.meshShaders());
 				if (listsRan) {
 					// the position-keyed lists: this frame's rebuilds, the live cull (the live ring, stale sectors), the lists' per-frame pass
 					pk.prepare(this.viewProj, this.camX, this.camY, this.camZ, LodConfig.reachBlocks(), this.forward.x, this.forward.z,
@@ -473,13 +826,68 @@ public final class Lod {
 						pkBufs, pk.rebuilding(), pk.liveNow ? 2 : 1, mesh.blocks());
 					pk.encoded(this.camX, this.camY, this.camZ);
 				} else {
+					if (LodConfig.STATS && (this.frames & 63) == 0) {
+						// (stats: every 64th cull's GPU time, read 64 frames later)
+						int cs = (int) ((this.frames >> 6) & 15);
+						double ms = LodNative.cullTime(this.lod, (cs - 1) & 15);
+						if (ms >= 0) {
+							this.statCullMs += ms;
+							this.statCulls++;
+						}
+						LodNative.cullTimeSlot(this.lod, cs);
+					}
+					if (wide) {
+						// the quad cull's view and screen for the wider frustum (as many pixels a degree: the same quads too small to cover a
+						// pixel centre are left out), put back for the draw once the cull has its copy
+						this.wideVp.getToAddress(this.compFrame);
+						MemoryUtil.memPutFloat(this.compFrame + 112, MemoryUtil.memGetFloat(this.compFrame + 112) * GUARD);
+						MemoryUtil.memPutFloat(this.compFrame + 116, MemoryUtil.memGetFloat(this.compFrame + 116) * GUARD);
+					}
 					LodNative.meshCull(this.lod, enc, mesh.frame, LodMesh.FRAME_BYTES, this.compFrame, COMP_FRAME_BYTES, table, mesh.arena(), maskBuf, mesh.argsBuf,
 						mesh.instBuf, mesh.plantBuf, mesh.survBuf, mesh.horizonBuf, mesh.listBuf, clip.geomBuf, clip.crownBuf, mesh.blocks(), LodMesh.FENCES);
+					if (wide) {
+						this.viewProj.getToAddress(this.compFrame);
+						MemoryUtil.memPutFloat(this.compFrame + 112, MemoryUtil.memGetFloat(this.compFrame + 112) / GUARD);
+						MemoryUtil.memPutFloat(this.compFrame + 116, MemoryUtil.memGetFloat(this.compFrame + 116) / GUARD);
+						mesh.pack(this.viewProj, this.camX, this.camY, this.camZ, LodConfig.reachBlocks(), this.maskOn, this.maskX, this.maskZ, this.maskSize,
+							this.maskWords, rd * 16.0F + 48.0F);
+					}
+				}
+				this.cullWide = wide;
+				if (wide) {
+					this.cullWideVp.set(this.wideVp);
+					this.cullX = this.camX;
+					this.cullY = this.camY;
+					this.cullZ = this.camZ;
+					this.reusedSinceCull = 0;
 				}
 				if (timed) {
 					pk.timedPath(slot, listsRan);
 					int old = (slot - 1) & 15;
 					pk.cullTime(old, LodNative.cullTime(this.lod, old));
+				}
+				// (after adapt: a grown buffer is part of the key)
+				this.lastCullKey = pk == null && STILL_REUSE ? this.cullKey(mesh, rd, pack) : 0;
+				this.cullRestKey = this.lastRestKey;
+				}
+				if (pack) {
+					// (nothing for the pack until every mesh is merged for it: the old ones draw as slabs of wrong colours. Never
+					// for long: after 5 s the far terrain is drawn as it is, and the tiles still waiting are logged)
+					boolean settled = mesh.modeSettled();
+					long now = System.nanoTime();
+					if (settled) this.unsettledSince = 0;
+					else if (this.unsettledSince == 0) this.unsettledSince = now;
+					else if (now - this.unsettledSince > 5_000_000_000L && !this.unsettledLogged) {
+						this.unsettledLogged = true;
+						System.out.println("cadence-lod: " + mesh.unsettled() + " far terrain tiles still merged for the other mode after 5 s: drawn as they are;"
+							+ mesh.unsettledReport());
+					}
+					if (settled || now - this.unsettledSince > 5_000_000_000L) LodPackFrame.publish(mesh.survBuf, mesh.argsBuf);
+					else LodPackFrame.publish(0, 0);
+					this.statCpuNanos += System.nanoTime() - start;
+					this.sample(w, start);
+					if (LodConfig.STATS) this.stats(w);
+					return;
 				}
 				long atlas = this.atlasHandle();
 				if (this.taa != null) this.taa.beforeDraw(this.camX, this.camY, this.camZ, rd * 16.0F + 48.0F);
@@ -578,7 +986,7 @@ public final class Lod {
 	/** The segmented walk's per-stretch maxima (GPU only), grown as needed. */
 	private long segMaxBuffer(int floats) {
 		if (floats > this.segMaxCap) {
-			if (this.segMaxBuf != 0) this.releaseLater.add(new long[] {this.frames, this.segMaxBuf});
+			if (this.segMaxBuf != 0) this.releaseLater.add(new long[] {this.releaseClock, this.segMaxBuf});
 			this.segMaxCap = Math.max(floats, this.segMaxCap * 2);
 			this.segMaxBuf = LodNative.privateBuffer(this.ctx, this.segMaxCap * 4L);
 		}
@@ -587,7 +995,7 @@ public final class Lod {
 
 	private void ensureOut(int width, int height) {
 		if (this.outBuf != 0 && width == this.outW && height == this.outH) return;
-		if (this.outBuf != 0) this.releaseLater.add(new long[] {this.frames, this.outBuf});
+		if (this.outBuf != 0) this.releaseLater.add(new long[] {this.releaseClock, this.outBuf});
 		this.outBuf = LodNative.privateBuffer(this.ctx, (long) width * height * 8);
 		this.outW = width;
 		this.outH = height;
@@ -817,6 +1225,11 @@ public final class Lod {
 		MemoryUtil.memPutFloat(c + 240, (float) (2 * Math.atan(tanY) / height));
 		MemoryUtil.memPutFloat(c + 244, this.atlasMips);
 		MemoryUtil.memPutFloat(c + 248, LodConfig.TEXTURES && this.atlasMips >= 0 ? 1 : 0);
+		// the player's look settings: brightness, saturation, the earth's curvature
+		MemoryUtil.memPutFloat(c + 256, LodConfig.brightness());
+		MemoryUtil.memPutFloat(c + 260, LodConfig.saturation());
+		MemoryUtil.memPutFloat(c + 264, LodConfig.curvatureDrop());
+		MemoryUtil.memPutFloat(c + 268, 0);
 		MemoryUtil.memPutFloat(c + 252, Integer.getInteger("cadence.lod.debugView", 0));
 		return columns;
 	}
@@ -1099,17 +1512,22 @@ public final class Lod {
 
 	private final float[] sky = new float[3];
 	private long probeLast, probeWindow = -1, probeReport;
-	private final long[] probeNanos = new long[2], probeFrames = new long[2];
+	private final long[] probeNanos = new long[2], probeFrames = new long[2], probeGpu = new long[2];
+	private long probeGpuLast;
 	private boolean probeOn;
 
 	/** The in-run A/B (-Dcadence.lod.probe): whether this frame draws; frame intervals are booked to the state that drew them. */
 	private boolean probe(long now) {
 		if (LodConfig.PROBE_MS <= 0) return true;
+		// (and the GPU's busy time, which a covered window's paced presents don't hide: GpuBusy, a couple of frames late)
+		long gpu = dev.cadence.metal.GpuBusy.totalNanos();
 		if (this.probeLast != 0) {
 			int k = this.probeOn ? 1 : 0;
 			this.probeNanos[k] += now - this.probeLast;
 			this.probeFrames[k]++;
+			this.probeGpu[k] += gpu - this.probeGpuLast;
 		}
+		this.probeGpuLast = gpu;
 		this.probeLast = now;
 		long window = now / (LodConfig.PROBE_MS * 1_000_000L);
 		if (window != this.probeWindow) {
@@ -1121,9 +1539,10 @@ public final class Lod {
 		if (this.probeReport == 0) this.probeReport = now;
 		if (now - this.probeReport > 5_000_000_000L && this.probeFrames[0] > 0 && this.probeFrames[1] > 0) {
 			double off = this.probeNanos[0] / 1e6 / this.probeFrames[0], on = this.probeNanos[1] / 1e6 / this.probeFrames[1];
-			System.out.printf("cadence-lod probe: on %.4f ms (%d frames, %.0f fps), off %.4f ms (%d, %.0f fps), cost %.4f ms, columns %d, rows %d%n", on,
-				this.probeFrames[1], 1000 / on, off, this.probeFrames[0], 1000 / off, on - off, this.lastColumns, this.lastR1 - this.lastR0 + 1);
-			this.probeNanos[0] = this.probeNanos[1] = this.probeFrames[0] = this.probeFrames[1] = 0;
+			double gOff = this.probeGpu[0] / 1e6 / this.probeFrames[0], gOn = this.probeGpu[1] / 1e6 / this.probeFrames[1];
+			System.out.printf("cadence-lod probe: on %.4f ms (%d frames, %.0f fps), off %.4f ms (%d, %.0f fps), cost %.4f ms, gpu on %.4f off %.4f cost %.4f ms, columns %d, rows %d%n", on,
+				this.probeFrames[1], 1000 / on, off, this.probeFrames[0], 1000 / off, on - off, gOn, gOff, gOn - gOff, this.lastColumns, this.lastR1 - this.lastR0 + 1);
+			this.probeNanos[0] = this.probeNanos[1] = this.probeFrames[0] = this.probeFrames[1] = this.probeGpu[0] = this.probeGpu[1] = 0;
 			this.probeReport = now;
 		}
 		return this.probeOn;
@@ -1158,6 +1577,7 @@ public final class Lod {
 	}
 
 	private void stats(LodField w) {
+		if (LodNative.MEMLOG && ++this.memLogs % 10 == 1) System.out.println(LodNative.memLog());
 		this.statFrames++;
 		long now = System.nanoTime();
 		if (now - this.statStart < 1_000_000_000L) return;
@@ -1181,18 +1601,24 @@ public final class Lod {
 			(LodField.CHUNK_TILES ? String.format(", chunk tiles %d (generations skipped %d)", w.chunkTiles.get(), w.chunkSkipped.get()) : "")
 				+ (CHUNK_HOLD ? String.format(", chunks held %d (released %d)", w.heldCount(), w.heldReleased) : ""));
 		StringBuilder gen = new StringBuilder();
-		for (int i = 0; i < 16; i++) {
+		for (int i = 0; i < 16 && w.noise != null; i++) {
 			long n = w.noise.stageNanos.get(i * 4 + 3);
 			if (n == 0) continue;
 			gen.append(String.format(" L%d:%d tiles %.0f/%.0f/%.0f ms", i, n, w.noise.stageNanos.get(i * 4) / 1e6 / n, w.noise.stageNanos.get(i * 4 + 1) / 1e6 / n,
 				w.noise.stageNanos.get(i * 4 + 2) / 1e6 / n));
 		}
 		if (gen.length() > 0) System.out.println("cadence-lod stats: generation density/biomes/materials per tile:" + gen);
+		if (w.forest != null) {
+			int[] c = w.forest.cached();
+			System.out.printf("cadence-lod stats: forest cache %d chunks of trees, %d of ground%n", c[0], c[1]);
+		}
 		LodMesh mesh = this.mesh;
 		if (mesh != null) {
 			long n = mesh.meshed.get();
 			System.out.printf("cadence-lod stats: mesh %d tiles installed, %d meshed (%.2f ms, %.0f quads a tile), %d pending, arena %.1f of %.0f MB%n", mesh.installed, n,
 				n == 0 ? 0 : mesh.meshNanos.get() / 1e6 / n, n == 0 ? 0 : (double) mesh.meshQuads.get() / n, mesh.pending(), mesh.usedMb(), mesh.arenaMb());
+			System.out.println("cadence-lod stats: cull " + mesh.counts() + (this.statCulls > 0 ? String.format(", %.2f ms on the GPU", this.statCullMs / this.statCulls) : "")
+				+ ", " + this.stillFrames + " frames reused the last cull, " + this.moveFrames + " moving frames reused a guard-band cull");
 		}
 		LodPk pk = this.pk;
 		if (pk != null) {
@@ -1240,8 +1666,28 @@ public final class Lod {
 	/** The client loaded a chunk, or is about to unload it (with whatever the player changed): it becomes far terrain too. */
 	public static void chunk(net.minecraft.world.level.chunk.LevelChunk chunk) {
 		Lod l = instance;
-		if (l == null || l.field == null || !LodConfig.CHUNKS || chunk == null) return;
-		l.field.chunk(chunk);
+		if (l == null || l.field == null || chunk == null) return;
+		try {
+			LodBeacons.chunk(chunk);
+			if (!LodConfig.CHUNKS) return;
+			l.field.chunk(chunk);
+		} catch (RuntimeException | OutOfMemoryError e) {
+			fail("chunk", e);  // (inside the game's packet handling: a throw from here disconnected the player)
+		}
+	}
+
+	/** A beacon the game draws this frame (LodBeacons remembers it). */
+	public static void beaconSeen(net.minecraft.world.level.block.entity.BlockEntity beacon) {
+		if (instance != null && instance.field != null) LodBeacons.seen(beacon);
+	}
+
+	/** The block entities' submission: the far terrain's beacon beams (where their chunks aren't loaded). */
+	public static void submitBeacons(com.mojang.blaze3d.vertex.PoseStack pose, net.minecraft.client.renderer.state.level.LevelRenderState state,
+		net.minecraft.client.renderer.SubmitNodeCollector collector) {
+		Lod l = instance;
+		ClientLevel level = Minecraft.getInstance().level;
+		if (l == null || l.field == null || level == null) return;
+		LodBeacons.submit(pose, state, collector, level, activeReach);
 	}
 
 	/**
@@ -1317,6 +1763,31 @@ public final class Lod {
 		return l != null && l.field != null && l.field.settled;
 	}
 
+	/**
+	 * (Far Terrain page) Pre-generates the far terrain within `chunks` chunks of the camera to the disk cache: tiles queued, 0
+	 * when all are cached already, -1 when far terrain isn't running here or can't generate (a server: explored land only).
+	 */
+	static int pregenerate(int chunks) {
+		Lod l = instance;
+		LodField w = l == null ? null : l.field;
+		if (w == null || !w.generates) return -1;
+		return w.pregenerate(l.camX, l.camZ, chunks);
+	}
+
+	/** A line for the HUD while the far terrain fills in view or pre-generates, else null. Render thread. */
+	static @Nullable String status() {
+		Lod l = instance;
+		LodField w = l == null ? null : l.field;
+		if (w == null) return null;
+		int queued = w.pregenQueued.get(), done = w.pregenDone.get();
+		// (not after generation stopped for memory: its dropped jobs are never counted done, S2-05)
+		if (done < queued && !w.outOfMemory()) return "Far terrain: pre-generating " + done * 100L / queued + "%";
+		int needed = w.needed, missing = w.missing;
+		// (a few tiles missing at the edge while moving is normal: shown only while a real share is still to come)
+		if (needed > 0 && missing * 20L > needed) return "Far terrain: " + (needed - missing) * 100L / needed + "% filled";
+		return null;
+	}
+
 	/** For the bench: seconds from the world's first request to settled (NaN while not). */
 	public static double settleSeconds() {
 		Lod l = instance;
@@ -1330,7 +1801,7 @@ public final class Lod {
 		Lod l = instance;
 		if (l == null || l.field == null || l.clip == null) return m;
 		LodField w = l.field;
-		m.put("reachChunks", LodConfig.RADIUS_CHUNKS);
+		m.put("reachChunks", LodConfig.radiusChunks());
 		m.put("n", l.clip.n);
 		m.put("levels", l.clip.levels);
 		m.put("clipMb", l.clip.bytes() / 1048576.0);

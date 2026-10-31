@@ -88,7 +88,7 @@ struct ColFrame {
 // plants, how high the opaque texels reach in each sixteenth of the side sprite's width (sixteenths of a block, a byte each).
 struct PaletteEntry {
     float4 topUv, sideUv;   // u0 v0 u1 v1
-    float4 topAvg, sideAvg; // rgb
+    float4 topAvg, sideAvg; // rgb; sideAvg.w: a plant's tallest opaque texel (blocks, the profile's highest)
     uint4 profile;
 };
 
@@ -1061,7 +1061,16 @@ struct CompFrame {
     int4 origin;         // floor(camera) xyz, w: log2 N
     float4 camFrac;      // camera - origin
     float4 tex;          // x: radians a pixel spans, y: the block atlas's highest mip, z: 1 = textures on level 0
+    float4 look;         // (Video Settings > Far Terrain) x: brightness, y: saturation (1, 1: as generated); z: earth curvature
+                         // (blocks a point drops per square block of horizontal distance; 0: flat)
 };
+
+// The far terrain's colour with the player's brightness and saturation.
+static inline half3 compLook(constant CompFrame& f, half3 c) {
+    if (f.look.x == 1.0 && f.look.y == 1.0) return c;
+    half l = dot(c, half3(0.2126h, 0.7152h, 0.0722h));
+    return max(mix(half3(l), c, half(f.look.y)) * half(f.look.x), half3(0.0h));
+}
 
 struct CompVOut {
     float4 position [[position]];
@@ -1098,6 +1107,13 @@ static inline int compTop(constant CompFrame& f, device const uint* geom, int x,
     int n = 1 << f.origin.w, m = n - 1;
     uint g = geom[((z & m) << f.origin.w) | (x & m)];
     return (g & GEOM_VALID) != 0u ? GEOM_Y(g) : -100000;
+}
+
+// How much of smooth lighting's occlusion shows at this distance: all of it where a block is 6 pixels or more on screen,
+// none at 3 or less (the darkening is then a pixel or two at a crease), linear between. tex.x: the radians a pixel spans.
+static inline float compAoWeight(constant CompFrame& f, float3 rel) {
+    float px = 1.0 / max(length(rel) * f.tex.x, 1e-6);
+    return saturate((px - 3.0) / 3.0);
 }
 
 // The game's smooth-lighting occlusion at a face vertex: its two side neighbors and the corner in the layer in front of the
@@ -1210,6 +1226,11 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
     }
     bool underCrown = (v.y & REC_UNDER_CROWN) != 0u;
     if (f.quadDepth.y == 0.0 || level != 0u || s.wet || underCrown && (s.face == FACE_TOP || f.tex.z == 0.0)) return true;
+#ifdef LOD_DETAIL_PX
+    // (level 0's near detail, textures and occlusion, only where a block is at least LOD_DETAIL_PX pixels on screen; past that
+    // the cell's own color, as the coarser levels draw: its 1-block shape stays)
+    if (1.0 / max(length(s.rel) * f.tex.x, 1e-6) < float(LOD_DETAIL_PX)) return true;
+#endif
     // near detail on level 0: the cell, from the hit's position (block coordinates relative to `origin`)
     float3 p = s.rel + f.camFrac.xyz;
     int ax, az;
@@ -1257,6 +1278,10 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
 #ifdef MESH_BENCH_NOAO
         return true;
 #endif
+        // (smooth lighting's occlusion only where a block is big enough on screen to show it: faded out from 6 to 3 pixels a
+        // block, and its eight loads skipped past that)
+        float aoW = compAoWeight(f, s.rel);
+        if (aoW <= 0.0) return true;
         // occluders: the neighbor columns rising above this top (the layer in front of the face)
         bool w = compTop(f, geom, gx - 1, gz) > top, e = compTop(f, geom, gx + 1, gz) > top;
         bool nn = compTop(f, geom, gx, gz - 1) > top, so = compTop(f, geom, gx, gz + 1) > top;
@@ -1264,7 +1289,7 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
         bool sw = compTop(f, geom, gx - 1, gz + 1) > top, se = compTop(f, geom, gx + 1, gz + 1) > top;
         float a00 = compVertexAo(w, nn, nw), a10 = compVertexAo(e, nn, ne), a01 = compVertexAo(w, so, sw), a11 = compVertexAo(e, so, se);
         float u = clamp(fx, 0.0, 1.0), vv = clamp(fz, 0.0, 1.0);
-        s.ao = mix(mix(a00, a10, u), mix(a01, a11, u), vv);
+        s.ao = mix(1.0, mix(mix(a00, a10, u), mix(a01, a11, u), vv), aoW);
         return true;
     }
     if (s.face == FACE_BOTTOM) return true;
@@ -1276,10 +1301,12 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
     float along = fxo != 0 ? fz : fx;
     int b = int(floor(y));
     float fy = y - float(b);
+    float aoW = compAoWeight(f, s.rel);
 #ifdef MESH_BENCH_NOAO
     int t0 = -100000, tm = -100000, tp = -100000;
 #else
-    int t0 = compTop(f, geom, ox, oz), tm = compTop(f, geom, ox - ux, oz - uz), tp = compTop(f, geom, ox + ux, oz + uz);
+    int t0 = aoW > 0.0 ? compTop(f, geom, ox, oz) : -100000, tm = aoW > 0.0 ? compTop(f, geom, ox - ux, oz - uz) : -100000,
+        tp = aoW > 0.0 ? compTop(f, geom, ox + ux, oz + uz) : -100000;
 #endif
     // solid(y, side): the block at height y in the front column (side 0), or its neighbor along the wall (-1 / +1)
     bool belowFront = b - 1 < t0, aboveFront = b + 1 < t0;
@@ -1287,7 +1314,7 @@ static inline bool compShade(constant CompFrame& f, uint2 v, device const uint* 
     float a00 = compVertexAo(belowFront, sideM, cMb), a10 = compVertexAo(belowFront, sideP, cPb);
     float a01 = compVertexAo(aboveFront, sideM, cMt), a11 = compVertexAo(aboveFront, sideP, cPt);
     float u = clamp(along, 0.0, 1.0), vv = clamp(fy, 0.0, 1.0);
-    s.ao = mix(mix(a00, a10, u), mix(a01, a11, u), vv);
+    s.ao = mix(1.0, mix(mix(a00, a10, u), mix(a01, a11, u), vv), aoW);
     // the top block's side (with its fringe) for the upper block, what is under it below
     float depth = float(top) - y;
     float2 wuv = float2(along, 1.0 - fy);
@@ -1309,6 +1336,7 @@ struct CompVanillaOut {
 // The game's own fog (fog.glsl): the larger of a linear fade over the render distance's range (cylindrical distance) and a
 // linear fade over the environmental range (spherical), both moved out to the far terrain's reach by LodFogMixin.
 static inline half3 compFog(constant CompFrame& f, float3 rel, half3 lit) {
+    lit = compLook(f, lit);
     float cyl = max(length(rel.xz), abs(rel.y));
     float sph = length(rel);
     float fr = saturate((cyl - f.fog.x) / max(f.fog.y - f.fog.x, 1e-3));
@@ -2340,6 +2368,7 @@ struct MeshVOut {
 };
 
 static inline float4 meshClip(constant CompFrame& f, float3 rel) {
+    rel.y -= f.look.z * dot(rel.xz, rel.xz);   // the earth's curvature (Far Terrain setting; 0: flat)
     float4 clip = f.viewProj * float4(rel, 1.0);
     clip.y = -clip.y;   // the backend draws GL's orientation flipped
 #ifdef SEAM_DEPTH_PUSH
@@ -2717,6 +2746,13 @@ static inline void meshSurface(constant CompFrame& f, float4 pos, uint info, dev
     float pc = float(plane) - (flat ? f.camFrac.y : face <= FACE_XN ? f.camFrac.x : f.camFrac.z);
     float dc = flat ? D.y : face <= FACE_XN ? D.x : D.z;
     float t = pc / (abs(dc) < 1e-12 ? (dc < 0.0 ? -1e-12 : 1e-12) : dc);
+    if (flat && f.look.z > 0.0) {
+        // with the earth's curvature the plane bends down by look.z x the horizontal distance squared (meshClip): the ray meets
+        // it where look.z |D.xz|^2 t^2 + D.y t - pc = 0, the nearer root (stable form)
+        float a = f.look.z * dot(D.xz, D.xz), b = D.y, c = -pc;
+        float q = -0.5 * (b + (b < 0.0 ? -1.0 : 1.0) * sqrt(max(b * b - 4.0 * a * c, 0.0)));
+        t = c / (abs(q) < 1e-12 ? 1e-12 : q);
+    }
     s.rel = D * max(t, 0.0);
     s.depth = pos.z;
     s.face = face;
@@ -2969,6 +3005,9 @@ fragment half4 lod_mesh_vanilla(MeshVOut in [[stage_in]], constant CompFrame& f 
                                 , constant SeamTaaFrame& tf [[buffer(30)]], texture2d<half> hist [[texture(21)]]
 #endif
                                 ) {
+#ifdef MESH_BENCH_FLAT
+    return half4(0.5h, 0.6h, 0.4h, 1.0h);  // (measurement: the fragment stage's own cost, -Dcadence.lod.defines=MESH_BENCH_FLAT)
+#endif
     if ((in.info & 7u) == 7u) {
         // the debug marks: 1 red (the block cull hid it), 2 green (the quad cull), 3 blue (the lists' visible set pruned it)
         uint m = (in.info >> 3) & 3u;
@@ -3118,7 +3157,8 @@ struct MeshPlantVOut {
 };
 
 vertex MeshPlantVOut lod_mesh_plant_vs(uint vid [[vertex_id]], uint iid [[instance_id]], constant CompFrame& f [[buffer(22)]],
-                                       device const MeshInstance* inst [[buffer(23)]], device const uint* arena [[buffer(24)]]) {
+                                       device const MeshInstance* inst [[buffer(23)]], device const uint* arena [[buffer(24)]],
+                                       device const uint* texWords [[buffer(20)]], device const PaletteEntry* palette [[buffer(21)]]) {
     uint4 in = inst[iid].a;
     uint q = vid >> 2, corner = vid & 3u;
     MeshPlantVOut o;
@@ -3134,11 +3174,27 @@ vertex MeshPlantVOut lod_mesh_plant_vs(uint vid [[vertex_id]], uint iid [[instan
     int oz = int((w1 >> 24) & 15u), oy = int((w1 >> 28) & 15u);
     int y0 = int(w1 & 0xFFFu) - 512;
     int ax = (int(in.z) << 6) + x, az = (int(in.w) << 6) + z;
+#ifdef LOD_PLANT_DIST
+    // (-Dcadence.lod.plantDistance: plants only this near, decided per plant from its own cell, so a quad is whole or gone; past
+    // it a plant is a few pixels and its quads, nearly all fragments discarded, were the far terrain's costliest per pixel)
+    float3 foot = float3(float(ax - f.origin.x) + 0.5, float(y0 - f.origin.y), float(az - f.origin.z) + 0.5) - f.camFrac.xyz;
+    if (dot(foot, foot) > float(LOD_PLANT_DIST) * float(LOD_PLANT_DIST)) {
+        o.position = float4(0.0, 0.0, -2.0, 1.0);
+        o.info = 0u;
+        return o;
+    }
+#endif
     float fox = float(ox) / 30.0 - 0.25, foz = float(oz) / 30.0 - 0.25, foy = -float(oy) / 60.0;
     bool a = corner == 1u || corner == 2u;
     float sa = a ? 0.95 : 0.05;
     float lx = sa, lz = quad == 0 ? sa : 1.0 - sa;
-    float ly = corner >= 2u ? float(blocks) : 0.0;
+    // the quad only as tall as the plant's opaque texels reach (the fragment stage cuts to them; above, every fragment was
+    // shaded to be discarded: short grass is about half a block)
+    int logN = f.origin.w, n = 1 << logN, m = n - 1;
+    uint pa = texWords[uint(n) * uint(n) + uint(((az & m) << logN) | (ax & m))];
+    uint lower = pa & 1023u, upper = (pa >> 10) & 1023u;
+    float top = float(blocks - 1) + palette[upper != 0u ? upper : lower].sideAvg.w + 1.0 / 16.0;
+    float ly = corner >= 2u ? min(top, float(blocks)) : 0.0;
     float3 rel = float3(float(ax - f.origin.x) + lx + fox, float(y0 - f.origin.y) + foy + ly, float(az - f.origin.z) + lz + foz) - f.camFrac.xyz;
     o.position = meshClip(f, rel);
     o.info = uint(quad) | (uint(ax - f.origin.x) & 0x7FFFu) << 1 | (uint(az - f.origin.z) & 0xFFFFu) << 16;
@@ -3757,4 +3813,139 @@ kernel void lod_pk_facet_commit(constant PkParams& pk [[buffer(14)]], device uin
     if (cnt[2u + k] != 0u) return;
     if (i < cnt[k]) recs[pkRecBase(pk, s) + i] = out[k * stride + i];
     if (i == 0u) sec[s * PK_SECTOR_WORDS] = cnt[k];
+}
+
+// ---- far terrain for shader packs (Cadence: their dh_terrain programs; DistantTerrain, ShaderRuntime) ----
+//
+// With a pack on, the far terrain culls as usual and draws nothing itself: the pack's own program draws the survivors, its
+// vertex stage reading them from this pass's records (each survivor rewritten in place, so no memory is added): the quad's
+// box in blocks from the origin (a stand-in's cut to its area, a skirt's foot lowered as lod_mesh_vs2 lowers it), its face,
+// one colour (its first cell's: in this mode the mesher merges only cells of one colour, lodmesh.c), the sky light and a
+// Distant Horizons material id (EDhApiBlockMaterial).
+//   x: x0 (17 bits, signed) | (x1 - x0) << 17 (15 bits)     y: z0 | (z1 - z0) << 17
+//   z: (y0 + 512) (12) | (y1 + 512) << 12 (12) | face << 24 (3; 7: nothing) | material << 27 (4)
+//   w: colour (RGB565) | sky light << 16 (4 bits)
+// args[112..114]: this pass's threadgroups; args[116..118]: the camera's offset from the origin (float bits), args[119] the
+// origin's y (the records' heights are absolute), args[120] the earth's curvature (CompFrame.look.z), for the vertex stage. The draw is the mesh's own: args 0-4 (instances of MESH_DRAW_Q survivors).
+#define PACK_ARGS 112u
+
+kernel void lod_mesh_pack_args(constant CompFrame& f [[buffer(22)]], device uint* args [[buffer(4)]], uint gid [[thread_position_in_grid]]) {
+    if (gid != 0u) return;
+    args[PACK_ARGS] = (args[ARGS_SURV] + 63u) / 64u;
+    args[PACK_ARGS + 1u] = 1u;
+    args[PACK_ARGS + 2u] = 1u;
+    args[PACK_ARGS + 4u] = as_type<uint>(f.camFrac.x);
+    args[PACK_ARGS + 5u] = as_type<uint>(f.camFrac.y);
+    args[PACK_ARGS + 6u] = as_type<uint>(f.camFrac.z);
+    args[PACK_ARGS + 7u] = uint(f.origin.y);
+    args[PACK_ARGS + 8u] = as_type<uint>(f.look.z);
+}
+
+// The material a pack's dh_terrain program tells surfaces apart by (lighting, wetness, subsurface scattering): what the cell's
+// colour and kind say it is.
+static inline uint packMaterial(uint c565, uint face, uint kind, bool wet) {
+    if (wet) return 12u;                         // DH_BLOCK_WATER
+    if (kind == 1u) return 1u;                   // DH_BLOCK_LEAVES
+    float3 c = float3(comp565(c565));
+    float hi = max(c.r, max(c.g, c.b)), lo = min(c.r, min(c.g, c.b));
+    float sat = hi > 0.0 ? (hi - lo) / hi : 0.0;
+    if (sat < 0.15) return hi > 0.8 ? 8u : 2u;   // DH_BLOCK_SNOW, DH_BLOCK_STONE
+    if (c.g >= c.r && c.g >= c.b) return face == FACE_TOP ? 13u : 5u;   // DH_BLOCK_GRASS (its sides: DH_BLOCK_DIRT)
+    if (c.r >= c.g && c.g >= c.b && hi > 0.6) return 9u;               // DH_BLOCK_SAND
+    return 5u;                                   // DH_BLOCK_DIRT
+}
+
+kernel void lod_mesh_pack(constant MeshFrame& mf [[buffer(0)]], device const uint4* table [[buffer(1)]], device const uint* arena [[buffer(2)]],
+                          device const uint* args [[buffer(4)]], device const MeshInstance* inst [[buffer(5)]], device uint4* survivors [[buffer(7)]],
+                          device const uint* geom [[buffer(12)]], device const uint* crowns [[buffer(13)]], device const uint* color [[buffer(14)]],
+                          constant CompFrame& f [[buffer(22)]], uint sidx [[thread_position_in_grid]]) {
+    if (sidx >= args[ARGS_SURV]) return;
+    uint4 r = survivors[sidx];
+    uint w0, w1;
+    int tx, tz, L;
+    bool clipped = false;
+    int4 clip = int4(0);
+    if ((r.w & (1u << 24)) != 0u) {
+        // a stand-in: quad r.x of instance r.z, cut to the instance's area
+        MeshInstance mi = inst[r.z];
+        if (!meshResolve(mf, table, mi) || r.x >= (mi.a.y & 255u)) {
+            survivors[sidx] = uint4(0u, 0u, 7u << 24, 0u);
+            return;
+        }
+        uint qi = mi.a.x + r.x;
+        w0 = arena[qi * 2u];
+        w1 = arena[qi * 2u + 1u];
+        tx = int(mi.a.z);
+        tz = int(mi.a.w);
+        L = int((mi.a.y >> 8) & 15u);
+        clipped = (mi.a.y & (1u << 12)) != 0u;
+        clip = mi.b;
+    } else {
+        w0 = r.x;
+        w1 = r.y;
+        tx = int(r.z);
+        tz = int(r.w << 12) >> 12;
+        L = int((r.w >> 20) & 15u);
+        if ((w0 >> 31) != 0u) {
+            // a skirt's foot: down to the surface across its seam
+            int y0 = int(w1 & 0xFFFu) - 512;
+            y0 = min(y0, meshSkirtFloor(mf, table, geom, crowns, w0, tx, tz, L));
+            w1 = (w1 & ~0xFFFu) | uint(y0 + 512);
+        }
+    }
+    int x = int(w0 & 127u), z = int((w0 >> 7) & 127u), e1 = int((w0 >> 14) & 63u) + 1, e2 = int((w0 >> 20) & 63u) + 1;
+    uint face = (w0 >> 26) & 7u, kind = (w0 >> 29) & 3u;
+    int y0 = int(w1 & 0xFFFu) - 512, y1 = int((w1 >> 12) & 0xFFFu) - 512;
+    if (face == FACE_PLANT) {
+        survivors[sidx] = uint4(0u, 0u, 7u << 24, 0u);
+        return;
+    }
+    // the box (cells of level L from the tile's corner, then blocks from the origin), as meshQuadCorner's corners span it
+    int ax0, ax1, az0, az1;
+    if (face == FACE_TOP || face == FACE_BOTTOM) {
+        ax0 = x; ax1 = x + e1; az0 = z; az1 = z + e2;
+        y1 = y0;
+    } else if (face == FACE_XP || face == FACE_XN) {
+        ax0 = ax1 = x; az0 = z; az1 = z + e1;
+    } else {
+        az0 = az1 = z; ax0 = x; ax1 = x + e1;
+    }
+    int bx0 = (((tx << 6) + ax0) << L) - f.origin.x, bx1 = (((tx << 6) + ax1) << L) - f.origin.x;
+    int bz0 = (((tz << 6) + az0) << L) - f.origin.z, bz1 = (((tz << 6) + az1) << L) - f.origin.z;
+    if (clipped) {
+        // as meshQuadCorner: a wall whose own cell lies outside the area vanishes, the rest is cut to it
+        bool outside = face == FACE_XP ? (bx0 <= clip.x || bx0 > clip.y) : face == FACE_XN ? (bx0 < clip.x || bx0 >= clip.y)
+            : face == FACE_ZP ? (bz0 <= clip.z || bz0 > clip.w) : face == FACE_ZN ? (bz0 < clip.z || bz0 >= clip.w) : false;
+        if (outside) {
+            survivors[sidx] = uint4(0u, 0u, 7u << 24, 0u);
+            return;
+        }
+        bx0 = clamp(bx0, clip.x, clip.y);
+        bx1 = clamp(bx1, clip.x, clip.y);
+        bz0 = clamp(bz0, clip.z, clip.w);
+        bz1 = clamp(bz1, clip.z, clip.w);
+    }
+    // the colour: the face's own cell (the side of the plane it belongs to), as meshSurface finds it
+    int cx = (tx << 6) + x, cz = (tz << 6) + z;
+    if (face == FACE_XP) cx -= 1;
+    else if (face == FACE_ZP) cz -= 1;
+    int logN = f.origin.w, m = (1 << logN) - 1;
+    uint idx = uint(L) * (1u << uint(2 * logN)) + uint(((cz & m) << logN) | (cx & m));
+    uint g = geom[idx], cw = color[idx];
+    uint c565 = face == FACE_TOP ? (cw & 0xFFFFu) : (cw >> 16);
+    if (kind == 2u) c565 = (crowns[idx] >> 12) & 0xFFFFu;
+    bool wet = (g & GEOM_WET) != 0u;
+    uint sky = kind == 2u ? 11u : 15u;
+    uint material = packMaterial(c565, face, kind, wet);
+    if (f.look.x != 1.0 || f.look.y != 1.0) {
+        half3 c = compLook(f, comp565(c565));
+        uint3 q = uint3(round(saturate(float3(c)) * float3(31.0, 63.0, 31.0)));
+        c565 = q.x << 11 | q.y << 5 | q.z;
+    }
+    uint4 o;
+    o.x = (uint(bx0) & 0x1FFFFu) | (uint(min(bx1 - bx0, 32767)) << 17);
+    o.y = (uint(bz0) & 0x1FFFFu) | (uint(min(bz1 - bz0, 32767)) << 17);
+    o.z = uint(clamp(y0, -512, 3583) + 512) | uint(clamp(y1, -512, 3583) + 512) << 12 | face << 24 | material << 27;
+    o.w = c565 | sky << 16;
+    survivors[sidx] = o;
 }

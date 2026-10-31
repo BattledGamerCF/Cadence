@@ -36,10 +36,37 @@ final class MetalEncoder implements CommandEncoderBackend {
 	 */
 	private static final int MAX_IN_FLIGHT = Integer.getInteger("cadence.metal.inFlight", 2);
 	/**
+	 * Render Max FPS (MetalBridge.uncappedPresent): frames in flight while it's on. Its frames are tiny (a clear and two lines of
+	 * text), so the GPU round trip of each, not its work, set the pace: 2 in flight reached ~9,100 fps on an M2, 4 ~12,000.
+	 * -Dcadence.metal.maxFpsInFlight. The rings frames share are fenced, not counted, so any depth is safe.
+	 */
+	private static final int MAX_FPS_IN_FLIGHT = Integer.getInteger("cadence.metal.maxFpsInFlight", 5);
+	static volatile boolean maxFps;
+	/** Record Mode: frames in flight while it's chosen (its frames are compute only; the GPU's per-frame latency is the limit). */
+	private static final int RECORD_IN_FLIGHT = Integer.getInteger("cadence.record.inFlight", 16);
+	static volatile boolean record;
+	/**
+	 * Record Mode: its frames committed recordBatch to a command buffer (-Dcadence.record.batch, 1: each its own). Each frame is
+	 * still its own dispatch rendering its own image; a command buffer costs the M2 ~20 us of its own (tools/record_bench.m
+	 * RB_BATCH), which at 20k frames a second is ~40% of a frame. A frame that presents commits at once.
+	 */
+	static volatile int recordBatch = Math.max(1, Integer.getInteger("cadence.record.batch", 4));
+	/** Set by Record when this frame was a record frame (only those are batched). */
+	public static boolean recordFrame;
+	private int recordBatched;
+	/**
 	 * -Dcadence.metal.trace=N prints every encoder operation of submit N, the tool for finding pass boundaries worth removing,
 	 * and the average per-encoder GPU time of submits N to N + PROFILE_FRAMES - 1. Traced runs are a few % slower; don't bench them.
 	 */
-	private static final long TRACE_SUBMIT = Long.getLong("cadence.metal.trace", -1);
+	private static volatile long TRACE_SUBMIT = "later".equals(System.getProperty("cadence.metal.trace")) ? Long.MAX_VALUE - 1000
+		: Long.getLong("cadence.metal.trace", -1);
+	/** The submit being recorded (for traceSoon). */
+	private static volatile long lastSubmit;
+
+	/** -Dcadence.metal.trace=later: the trace is taken of the submit a moment from now (the self-test's "gputrace" step). */
+	static void traceSoon() {
+		if (TRACE_SUBMIT >= 0) TRACE_SUBMIT = lastSubmit + 30;
+	}
 	/** -Dcadence.own.int.encLog (measurement only, with frameLog): GPU timestamps on every submit, each encoder logged (FrameLog's enclog.csv). */
 	private static final boolean ENC_LOG = Boolean.getBoolean("cadence.own.int.encLog");
 	/** -Dcadence.metal.passTest=N,MODE (measurement only, with encLog): N empty passes at the head of every 20th frame (mcmetal.m mc_pass_test). */
@@ -68,6 +95,20 @@ final class MetalEncoder implements CommandEncoderBackend {
 	}
 	/** Above this, an upload is cheaper as an async GPU blit than as a memcpy on the render thread. */
 	private static final long CPU_COPY_MAX = 256 << 10;
+	/** Measurement: -Dcadence.metal.uploadStats=true prints every 10 s how many buffer-write bytes went straight into the buffer vs through a staging copy and a GPU blit. */
+	private static final boolean UPLOAD_STATS = Boolean.getBoolean("cadence.metal.uploadStats");
+	private static long directBytes, stagedBytes, directWrites, stagedWrites, stagedArena, statsAt;
+
+	private static void uploadStat(boolean direct, long bytes, boolean arena) {
+		if (direct) { directBytes += bytes; directWrites++; } else { stagedBytes += bytes; stagedWrites++; if (arena) stagedArena += bytes; }
+		long now = System.nanoTime();
+		if (statsAt == 0) statsAt = now;
+		if (now - statsAt < 10_000_000_000L) return;
+		statsAt = now;
+		System.out.printf(java.util.Locale.ROOT, "[cadence] uploads 10s: direct %d writes %.1f MB, staged %d writes %.1f MB (arena %.1f MB)%n",
+			directWrites, directBytes / 1048576.0, stagedWrites, stagedBytes / 1048576.0, stagedArena / 1048576.0);
+		directBytes = stagedBytes = directWrites = stagedWrites = stagedArena = 0;
+	}
 	private static final int PROFILE_FRAMES = 100, PROFILE_ENCODERS = 256;
 	private static final boolean GPU_TIMES = Boolean.getBoolean("cadence.metal.gpuTimes");
 	/**
@@ -177,6 +218,10 @@ final class MetalEncoder implements CommandEncoderBackend {
 	@Override
 	public void submit() {
 		if (this.currentPass != null) throw new IllegalStateException("Cannot submit inside a render pass");
+		boolean recordOnly = recordFrame;
+		recordFrame = false;
+		if (recordOnly && !this.presentedThisSubmit && !profiled(this.submitIndex) && ++this.recordBatched < recordBatch) return;
+		this.recordBatched = 0;
 		this.trace("submit");
 		this.transientMemory.endSubmit();
 		long samples = 0;
@@ -234,6 +279,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 			}
 		}
 		this.inFlight.add(new Frame(this.submitIndex++, cmd, this.afterThisFrame));
+		lastSubmit = this.submitIndex;
 		if (TRACE_SUBMIT >= 0) Native.rpLog(this.submitIndex == TRACE_SUBMIT);  // (measurement: the traced submit's render encoders, mcmetal.m rpLog)
 		if (dev.cadence.metal.cpu.Cpu.FENCE_STATS) dev.cadence.metal.cpu.Cpu.fenceTick(this.submitIndex); // opt-in
 		this.afterThisFrame = new ArrayList<>();
@@ -249,7 +295,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 			Native.passTest(this.enc, PASS_TEST_N, PASS_TEST_MODE);
 			this.passTestPending = false;
 		}
-		while (this.inFlight.size() > MAX_IN_FLIGHT) this.retire(this.inFlight.poll(), WaitStats.INFLIGHT);
+		int depth = record ? Math.max(MAX_IN_FLIGHT, RECORD_IN_FLIGHT) : maxFps ? Math.max(MAX_IN_FLIGHT, MAX_FPS_IN_FLIGHT) : MAX_IN_FLIGHT;
+		while (this.inFlight.size() > depth) this.retire(this.inFlight.poll(), WaitStats.INFLIGHT);
 		if (STATS) this.stats();
 		if (WaitStats.ON) WaitStats.frame(this.submitIndex - 1);
 	}
@@ -376,7 +423,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public RenderPassBackend createRenderPass(RenderPassDescriptor descriptor) {
-		if (FrameLog.ON) FrameLog.op(FrameLog.PASSES, 1);
+		if (FrameLog.COUNT) FrameLog.op(FrameLog.PASSES, 1);
 		// Shaderpack runtime (-Dcadence.pack): the pass may draw into the pack's targets instead of its color attachments.
 		MetalHooks.PassRedirector redirector = MetalHooks.redirector;
 		MetalHooks.Redirect redirect = redirector == null ? null : redirector.redirect(descriptor);
@@ -463,6 +510,9 @@ final class MetalEncoder implements CommandEncoderBackend {
 			}
 			if (PROFILE_SPLIT) this.profileSplit("pass '" + descriptor.label().get() + "' begins" + (clearDepth ? " (depth clear)" : ""));
 			int continued = Native.renderBegin(this.enc, colorCount, colorHandles, clears, depthHandle, clearDepth ? 1 : 0, (float) depthValue, width, height);
+			// Render Max FPS: nothing reads a depth buffer after its pass (no world; each frame clears it again): not stored, a
+			// third of the frame's memory traffic
+			if (maxFps && depthHandle != 0) Native.discard(this.enc, depthHandle);
 			if (dev.cadence.metal.cpu.Cpu.PASS_AB) dev.cadence.metal.cpu.Cpu.PASS_TIMER.end();
 			this.passLazy = lazy && colorCount <= this.passColors.length;
 			if (this.passLazy) {
@@ -500,6 +550,8 @@ final class MetalEncoder implements CommandEncoderBackend {
 		}
 		this.currentPass = new MetalRenderPass(this, depth != null, area.x(), area.y(), area.width(), area.height(),
 			redirect != null ? redirect.delegate() : keptDelegate);
+		if (redirect == null && !colors.isEmpty() && colors.get(0) != null && colors.get(0).textureView().texture() instanceof MetalTexture t && t.floatFrame)
+			this.currentPass.floatColor = true;
 		return this.currentPass;
 	}
 
@@ -534,6 +586,28 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	boolean inRenderPass() {
 		return this.currentPass != null;
+	}
+
+	/** Cadence: one pair of uniform arrays kept between passes (MetalRenderPass.pending / bound), cleared. */
+	private Object @Nullable [] spareA, spareB;
+
+	Object[] uniformArray() {
+		Object[] a = this.spareA;
+		if (a != null) {
+			this.spareA = null;
+			return a;
+		}
+		a = this.spareB;
+		if (a != null) {
+			this.spareB = null;
+			return a;
+		}
+		return new Object[MetalRenderPass.MAX_UNIFORMS];
+	}
+
+	void returnUniformArrays(Object[] a, Object[] b) {
+		this.spareA = a;
+		this.spareB = b;
 	}
 
 	/** Far terrain (dev.cadence.metal.lod): the open pass's pipeline state again after its own draw; false when no pass is open. */
@@ -674,7 +748,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public void writeToBuffer(GpuBufferSlice destination, ByteBuffer data) {
-		if (FrameLog.ON) {
+		if (FrameLog.COUNT) {
 			FrameLog.op(FrameLog.BUF_WRITES, 1);
 			FrameLog.op(FrameLog.BUF_KB, data.remaining() >> 10);
 		}
@@ -687,10 +761,12 @@ final class MetalEncoder implements CommandEncoderBackend {
 			boolean whole = destination.offset() == 0 && data.remaining() == dst.size();
 			if (data.remaining() <= CPU_COPY_MAX && (this.idle(dst) || whole && dst.rename())) {
 				this.trace("writeToBuffer (cpu)", data.remaining());
+				if (UPLOAD_STATS) uploadStat(true, data.remaining(), dst.arena);
 				MemoryUtil.memCopy(MemoryUtil.memAddress(data), dst.address + destination.offset(), data.remaining());
 				if (dst.arena) this.terrain.invalidate(dst, destination.offset(), data.remaining());
 				return;
 			}
+			if (UPLOAD_STATS) uploadStat(false, data.remaining(), dst.arena);
 			this.trace("writeToBuffer", data.remaining());
 			GpuBufferSlice staging = this.transientMemory.uploadGpu(data, 1L, GpuBuffer.USAGE_COPY_SRC);
 			this.blitBuffer(this.use(staging.buffer()), staging.offset(), this.use(dst), destination.offset(), data.remaining());
@@ -712,7 +788,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public void copyToBuffer(GpuBufferSlice source, GpuBufferSlice target) {
-		if (FrameLog.ON) {
+		if (FrameLog.COUNT) {
 			FrameLog.op(FrameLog.BUF_COPIES, 1);
 			FrameLog.op(FrameLog.COPY_KB, source.length() >> 10);
 		}
@@ -736,7 +812,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public void writeToTexture(GpuTexture destination, ByteBuffer source, int mip, int layer, int x, int y, int width, int height) {
-		if (FrameLog.ON) {
+		if (FrameLog.COUNT) {
 			FrameLog.op(FrameLog.TEX_WRITES, 1);
 			FrameLog.op(FrameLog.TEX_PX, (long) width * height);
 		}
@@ -746,6 +822,15 @@ final class MetalEncoder implements CommandEncoderBackend {
 		int bytesPerRow = width * destination.getFormat().blockSize();
 		Native.blitBufferToTexture(this.enc, this.use(staging.buffer()).handle, staging.offset(), bytesPerRow, bytesPerRow * height,
 			((MetalTexture) destination).handle, layer, mip, x, y, width, height);
+	}
+
+	/** Cadence (MetalVolume): a 3D texture's whole level 0, depth slices one after another in {@code source}. */
+	void writeToVolume(MetalTexture destination, ByteBuffer source, int width, int height, int depth) {
+		this.trace("writeToVolume", destination, width + "x" + height + "x" + depth);
+		GpuBufferSlice staging = this.transientMemory.uploadGpu(source, 16L, GpuBuffer.USAGE_COPY_SRC);
+		int bytesPerRow = width * destination.getFormat().blockSize();
+		Native.blitBufferToVolume(this.enc, this.use(staging.buffer()).handle, staging.offset(), bytesPerRow, bytesPerRow * height,
+			destination.handle, width, height, depth);
 	}
 
 	@Override
@@ -775,7 +860,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 
 	@Override
 	public void copyTextureToTexture(GpuTexture source, GpuTexture destination, int mip, int destX, int destY, int sourceX, int sourceY, int width, int height) {
-		if (FrameLog.ON) FrameLog.op(FrameLog.TEX_COPIES, 1);
+		if (FrameLog.COUNT) FrameLog.op(FrameLog.TEX_COPIES, 1);
 		this.trace("copyTextureToTexture", source, destination, width + "x" + height);
 		this.flushClear(source);
 		this.flushClear(destination);
@@ -834,6 +919,15 @@ final class MetalEncoder implements CommandEncoderBackend {
 		} finally {
 			MetalEvents.end(event);
 		}
+	}
+
+	/** Record Mode: its frame's own texture (a native MTLTexture) presented instead of the game's target, after its fence. */
+	void presentHandle(long drawable, long texture, long fence) {
+		this.presentedThisSubmit = true;
+		if (GPU_TIMES) GpuTimes.present(this.submitIndex, drawable);
+		if (fence != 0) Native.presentFenced(this.enc, drawable, texture, fence);
+		else Native.present(this.enc, drawable, texture);
+		this.statPresents++;
 	}
 
 	void presentTexture(long drawable, GpuTextureView view) {

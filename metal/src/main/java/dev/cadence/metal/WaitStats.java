@@ -12,7 +12,7 @@ import java.util.Map;
 final class WaitStats {
 	static final boolean PRINT = Boolean.getBoolean("cadence.metal.waitStats");
 	/** The hooks run for the once-a-second print and for FrameLog's per-frame rows. */
-	static final boolean ON = PRINT || FrameLog.ON;
+	static final boolean ON = PRINT || FrameLog.COUNT;
 	static final int INFLIGHT = 0, FENCE = 1, DRAWABLE = 2, PACE = 3, DRAIN = 4;
 	private static final String[] NAMES = {"in-flight limit", "fence", "nextDrawable", "pacer", "drain"};
 	private static final long[] nanos = new long[5], counts = new long[5];
@@ -24,7 +24,7 @@ final class WaitStats {
 	}
 
 	static void wait(int site, long ns, long lag) {
-		if (FrameLog.ON) FrameLog.waited(site, ns);
+		if (FrameLog.COUNT) FrameLog.waited(site, ns);
 		nanos[site] += ns;
 		counts[site]++;
 		lagNanos[site][(int) Math.max(0, Math.min(5, lag))] += ns;
@@ -41,7 +41,7 @@ final class WaitStats {
 
 	/** End of a submit (one frame); submitIndex is the submit just made. */
 	static void frame(long submitIndex) {
-		if (FrameLog.ON) FrameLog.frame(submitIndex);
+		if (FrameLog.COUNT) FrameLog.frame(submitIndex);
 		if (!PRINT) return;
 		long now = System.nanoTime();
 		if (lastSubmit != 0) wall += now - lastSubmit;

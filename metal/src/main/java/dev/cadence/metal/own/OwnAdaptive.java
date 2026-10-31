@@ -50,6 +50,11 @@ final class OwnAdaptive {
 		// the window's cost per frame: its frame interval, as the in-run probe measures (GPU busy time retires frames late and
 		// misattributed them across these short windows). Under a frame cap both modes look alike and the choice stays.
 		double perFrame = (now - windowStart) / 1e6 / Math.max(1, framesInWindow);
+		if (framesInWindow < 4) {  // a few frames a second (minimised, a background cap, a long hitch): no verdict, try again later
+			exploring = false;
+			holdUntil = now + HOLD_NS;
+			return;
+		}
 		int m = trial ? 1 : 0;
 		sum[m] += perFrame;
 		frames[m]++;

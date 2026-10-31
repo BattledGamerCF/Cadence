@@ -10,6 +10,9 @@ public final class FrameWait {
 	}
 
 	public static void sleep(long nanos) {
+		long t0 = FrameLog.COUNT ? System.nanoTime() : 0;
 		Native.sleepPrecise(nanos);
+		// (the limiter's wait is a frame cap at work, not a stall: counted as the pacer's)
+		if (FrameLog.COUNT) FrameLog.waited(WaitStats.PACE, System.nanoTime() - t0);
 	}
 }

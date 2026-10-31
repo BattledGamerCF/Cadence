@@ -114,8 +114,21 @@ public final class PackPrograms implements AutoCloseable {
       throws ShaderPackException {
     this.pack = pack;
     this.options = Map.copyOf(options);
-    environment = PackEnvironment.definitions();
     directory = pack.dimensionFolder(dimension);
+    // Cadence: with far terrain running, a pack with a dh_terrain program draws it (DistantTerrain) and sees Iris's Distant
+    // Horizons macros, so its other programs take their DH paths too (fog to the far terrain's reach, dhDepthTex). Not in a
+    // dimension without far terrain (the Nether): the DH paths there made Photon black and superDuperVanilla all fog
+    boolean dhProgram = false;
+    if (dev.cadence.shaders.cadence.render.DistantTerrain.available())
+      for (ShaderProgram program : pack.programs(directory))
+        dhProgram |= program.name().equals("dh_terrain") && program.paths().containsKey(ShaderStage.VERTEX)
+            && program.paths().containsKey(ShaderStage.FRAGMENT);
+    distantProgram = dhProgram;
+    boolean distant = dhProgram && dev.cadence.shaders.cadence.render.DistantTerrain.drawsIn(dimension);
+    distantTerrain = distant;
+    Map<String, String> env = new java.util.LinkedHashMap<>(PackEnvironment.definitions());
+    if (distant) env.putAll(dev.cadence.shaders.cadence.render.DistantTerrain.definitions());
+    environment = env;
     properties = pack.properties(options, environment);
     Map<String, String> constants = new TreeMap<>();
     Map<String, String> definitions = pack.definitions(options, environment);
@@ -147,22 +160,20 @@ public final class PackPrograms implements AutoCloseable {
     try {
       List<Job> jobs = new java.util.ArrayList<>();
       for (ShaderProgram program : pack.programs(directory)) {
-        if (program.name().startsWith("dh_") || program.name().startsWith("voxy")) continue;
+        boolean dh = distant && program.name().equals("dh_terrain");
+        if (!dh && (program.name().startsWith("dh_") || program.name().startsWith("voxy"))) continue;
         // Cadence: only the program names OptiFine/Iris load. Packs ship others (disabled copies like I Like Vanilla's
         // "_gbuffers_entities_translucent", other mods' programs like Colorwheel's clrwl_*) that a loader never runs.
-        if (!KNOWN_PROGRAM.matcher(program.name()).matches()) continue;
+        if (!dh && !KNOWN_PROGRAM.matcher(program.name()).matches()) continue;
         if (!properties.programEnabled(program.identifier(), definitions)) continue;
         boolean computeOnly = program.name().matches(".*_[a-z]");
         if (program.paths().containsKey(ShaderStage.COMPUTE)) {
           // Cadence: an Iris compute program (prepare.csh, composite5_a.csh, ...): its own job; a fragment program of the
           // same name (composite5.vsh/.fsh) is a separate full-screen pass that runs after it
-          jobs.add(new Job(program, pack.source(program.paths().get(ShaderStage.COMPUTE), options, environment), "", true, true));
+          jobs.add(new Job(program, pack.source(program.paths().get(ShaderStage.COMPUTE), options, environment), "", true, true, false));
           if (computeOnly || !program.paths().containsKey(ShaderStage.FRAGMENT)) continue;
         } else if (computeOnly) continue;
-        if (program.name().matches("shadowcomp[0-9]*")) {
-          refuse(new UnsupportedOperationException("Shadow composite pass " + program.identifier() + " is not run yet"));
-          continue;
-        }
+        // (shadowcomp: a full-screen pass over the shadow map after the shadow pass, ShaderRuntime.compileScreen)
         if (!validateProgramProperties(program)) continue;
         if (!program.paths().containsKey(ShaderStage.VERTEX)
             || !program.paths().containsKey(ShaderStage.FRAGMENT)) {
@@ -172,16 +183,20 @@ public final class PackPrograms implements AutoCloseable {
           continue;
         }
         if (program.paths().size() - (program.paths().containsKey(ShaderStage.COMPUTE) ? 1 : 0) != 2) {
+          // Cadence: said in words a player can act on (the pack list shows it): Metal has no geometry or tessellation stages
+          var stages = program.paths().keySet();
+          String what = stages.contains(ShaderStage.GEOMETRY) && (stages.contains(ShaderStage.TESS_CONTROL) || stages.contains(ShaderStage.TESS_EVALUATION))
+              ? "geometry and tessellation shaders" : stages.contains(ShaderStage.GEOMETRY) ? "geometry shaders" : "tessellation shaders";
           refuse(new UnsupportedOperationException(
-              "Additional shader stage in " + program.identifier() + " " + program.paths().keySet()));
+              "it needs " + what + ", which Metal doesn't have (" + program.identifier() + ")"));
           continue;
         }
         String vertex = pack.source(program.paths().get(ShaderStage.VERTEX), options, environment);
         String fragment =
             pack.source(program.paths().get(ShaderStage.FRAGMENT), options, environment);
         boolean screen =
-            !program.name().startsWith("gbuffers_") && !program.name().equals("shadow");
-        jobs.add(new Job(program, vertex, fragment, screen, false));
+            !dh && !program.name().startsWith("gbuffers_") && !program.name().equals("shadow");
+        jobs.add(new Job(program, vertex, fragment, screen, false, dh));
       }
       // Cadence: the programs are translated in parallel (one shader compiler per worker; a pack's first load was ~9 s of
       // render thread for Complementary), then taken in the pack's order, so conflicts are found exactly as before.
@@ -190,6 +205,11 @@ public final class PackPrograms implements AutoCloseable {
         Job job = jobs.get(j);
         ShaderProgram program = job.program();
         String vertex = job.vertex(), fragment = job.fragment();
+        if (results[j] instanceof RuntimeException failure && job.distant()) {
+          // (the far terrain isn't drawn with this pack; the pack itself is fine)
+          org.slf4j.LoggerFactory.getLogger("cadence_shaders").warn("Far terrain not drawn with this pack: {}", failure.getMessage());
+          continue;
+        }
         if (results[j] instanceof RuntimeException failure) {
           if (CENSUS.get() == null) throw failure;
           CENSUS.get().add("Translation failed in " + program.identifier() + ": " + failure.getMessage());
@@ -272,7 +292,12 @@ public final class PackPrograms implements AutoCloseable {
   }
 
   /** false: the program is refused as a whole (recorded by a census; otherwise thrown). */
-  private record Job(ShaderProgram program, String vertex, String fragment, boolean screen, boolean compute) {}
+  private record Job(ShaderProgram program, String vertex, String fragment, boolean screen, boolean compute, boolean distant) {}
+
+  /** Cadence: whether this pack draws the far terrain (far terrain running here, and the pack has a dh_terrain program). */
+  public final boolean distantTerrain;
+  /** Cadence: whether the pack has a dh_terrain program (Distant Horizons support), in any dimension (far terrain running). */
+  public final boolean distantProgram;
 
   public final ShaderCompatibilityCompiler.StorageContext storageContext;
   /** Cadence: the pack's compute programs by name (prepare, prepare_a, composite5_b, setup1, ...). */
@@ -402,6 +427,10 @@ public final class PackPrograms implements AutoCloseable {
   private static Object translate(ShaderCompatibilityCompiler compiler, Job job) {
     try {
       if (job.compute()) return compiler.translateCompute(job.vertex(), job.program().identifier());
+      if (job.distant())
+        return compiler.translate(
+            job.vertex(), job.fragment(), job.program().identifier(),
+            dev.cadence.shaders.compile.MinecraftVertexAdapter.distantTerrain());
       return compiler.translate(
           job.vertex(),
           job.fragment(),
@@ -420,10 +449,9 @@ public final class PackPrograms implements AutoCloseable {
       return false;
     }
     for (String property : properties.values().keySet()) {
+      // (flip.PASS.BUFFER is honoured: ShaderRuntime.flipsAfter)
       if (property.equals("scale." + program.name())
-          || property.equals("scale." + program.identifier())
-          || property.startsWith("flip." + program.name() + ".")
-          || property.startsWith("flip." + program.identifier() + ".")) {
+          || property.equals("scale." + program.identifier())) {
         refuse(unsupported(program.identifier(), property));
       }
     }
@@ -460,18 +488,18 @@ public final class PackPrograms implements AutoCloseable {
     return CENTER_DEPTH.matcher(code).find();
   }
 
+  /**
+   * Cadence: a setting two programs declare differently (Nostalgia: shadowHardwareFiltering true in one, false in another)
+   * takes the later program's value, as Iris's directive holder does (each declaration it reads replaces the last); it used
+   * to refuse the pack.
+   */
   private static void merge(Map<String, String> into, Map<String, String> values)
       throws ShaderPackException {
     for (var entry : values.entrySet()) {
-      String existing = into.putIfAbsent(entry.getKey(), entry.getValue());
+      String existing = into.put(entry.getKey(), entry.getValue());
       if (existing != null && !existing.equals(entry.getValue()))
-        throw new ShaderPackException(
-            "Conflicting active pack setting "
-                + entry.getKey()
-                + ": "
-                + existing
-                + " / "
-                + entry.getValue());
+        org.slf4j.LoggerFactory.getLogger("cadence_shaders").info("Pack setting {} declared both {} and {}; using {}",
+            entry.getKey(), existing, entry.getValue(), entry.getValue());
     }
   }
 
@@ -496,6 +524,18 @@ public final class PackPrograms implements AutoCloseable {
     return sources.get(name);
   }
 
+  /** Cadence (PackTextures.setSamplerTypes): every program's samplers by name, with the GLSL type it declares them as. */
+  public Map<String, Map<String, String>> samplerTypes() {
+    Map<String, Map<String, String>> out = new HashMap<>();
+    for (Map<String, Source> group : List.of(sources, computes))
+      for (Source s : group.values()) {
+        Map<String, String> types = new HashMap<>();
+        for (var sampler : s.translated().samplers()) types.put(sampler.name(), sampler.type());
+        out.put(s.name(), types);
+      }
+    return out;
+  }
+
   public boolean readsSampler(String name) {
     return samplers.contains(name);
   }
@@ -506,12 +546,39 @@ public final class PackPrograms implements AutoCloseable {
 
   public Source resolve(String name) {
     Set<String> visited = new HashSet<>();
+    boolean shadow = name.startsWith("shadow");
     while (name != null && visited.add(name)) {
       Source source = sources.get(name);
       if (source != null) return source;
       name = FALLBACK.get(name);
     }
-    throw new UnsupportedOperationException("Pack has no applicable geometry program: " + visited);
+    if (shadow) throw new UnsupportedOperationException("Pack has no applicable shadow program: " + visited);
+    return vanillaGeometry();
+  }
+
+  private Source vanilla;
+
+  /**
+   * Cadence: geometry the pack has no program for, even down its fallback chain (Miniature has no gbuffers_basic,
+   * gbuffers_textured or gbuffers_skytextured), drawn as OptiFine and Iris draw it: the game's own look (its texture times
+   * the vertex colour and the light map) into colortex0. It used to refuse the pack. A draw without light-map coordinates
+   * (0, 0: the sun, the moon) isn't darkened.
+   */
+  private synchronized Source vanillaGeometry() {
+    if (vanilla != null) return vanilla;
+    String vertex =
+        "#version 120\nvarying vec2 texcoord;\nvarying vec2 lmcoord;\nvarying vec4 glcolor;\nvarying float lit;\n"
+            + "void main() {\n  gl_Position = ftransform();\n  texcoord = (gl_TextureMatrix[0] * gl_MultiTexCoord0).xy;\n"
+            + "  lmcoord = (gl_TextureMatrix[1] * gl_MultiTexCoord1).xy;\n  lit = gl_MultiTexCoord1.x + gl_MultiTexCoord1.y > 0.0 ? 1.0 : 0.0;\n"
+            + "  glcolor = gl_Color;\n}\n";
+    String fragment =
+        "#version 120\nuniform sampler2D gtexture;\nuniform sampler2D lightmap;\nvarying vec2 texcoord;\nvarying vec2 lmcoord;\n"
+            + "varying vec4 glcolor;\nvarying float lit;\n/* DRAWBUFFERS:0 */\nvoid main() {\n"
+            + "  vec4 light = lit > 0.5 ? texture2D(lightmap, lmcoord) : vec4(1.0);\n"
+            + "  gl_FragData[0] = texture2D(gtexture, texcoord) * glcolor * light;\n}\n";
+    TranslatedProgram translated = compiler.translate(vertex, fragment, directory + "/gbuffers_basic (Cadence)");
+    vanilla = new Source("gbuffers_basic", vertex, fragment, translated, new ShaderDirectives(List.of(0), Map.of()));
+    return vanilla;
   }
 
   // Cadence: asked every frame per phase (composite, deferred, ...); the regex below compiled once per program per call

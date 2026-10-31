@@ -50,7 +50,7 @@ public final class ShaderRuntime implements AutoCloseable {
   }
   private static final boolean SPARSE_PROJECTION =
       Boolean.getBoolean("cadence.shaders.sparseProjectionMatrices");
-  private static ShaderRuntime instance;
+  private static volatile ShaderRuntime instance;  // (read by chunk-compile workers and the pack-switch worker too)
   // Cadence render scale: the pack draws its whole frame at scale x the window into scaledOutput, then PackUpscale draws
   // that to the window. Null at scale 1 (exactly the original path).
   private com.mojang.renderpearl.api.textures.GpuTexture scaledOutput;
@@ -205,6 +205,10 @@ public final class ShaderRuntime implements AutoCloseable {
   }
 
   public static void install(ShaderRuntime runtime) {
+    // (Cadence API: dev.cadence.api.Cadence#shaderPack)
+    dev.cadence.metal.ApiHooks.shaderPack = runtime == null ? "" : dev.cadence.shaders.cadence.ui.ShaderToggle.selectedPack();
+    dev.cadence.metal.ApiHooks.shadowPass = false;
+    if (runtime == null) dev.cadence.metal.ApiHooks.sunPathRotation = 0;
     instance = runtime;
     // (Cadence: lazy clears are on with and without a pack now: MetalEncoder.LAZY_CLEARS)
   }
@@ -240,6 +244,18 @@ public final class ShaderRuntime implements AutoCloseable {
     return programs;
   }
 
+  /**
+   * Cadence: the far terrain with this pack, for the Far Terrain page and Video Settings: "draws" (its dh_terrain program
+   * draws it), "none" (no Distant Horizons support: no far terrain with it), "failed" (its dh_terrain program didn't
+   * translate or compile), "" (no far terrain in this dimension, or none running).
+   */
+  public String distantTerrainState() {
+    PackPrograms p = programs;
+    if (p == null || !p.distantProgram) return p != null && dev.cadence.shaders.cadence.render.DistantTerrain.available() ? "none" : "";
+    if (!p.distantTerrain) return "";
+    return distantFailed || p.find("dh_terrain") == null ? "failed" : "draws";
+  }
+
   public ShaderProperties properties() {
     return properties;
   }
@@ -265,9 +281,9 @@ public final class ShaderRuntime implements AutoCloseable {
             .texture();
     var main = minecraft.gameRenderer.mainRenderTarget();
     var chunks = minecraft.levelRenderer.sectionRenderDispatcher();
-    dev.cadence.shaders.cadence.RenderScale.frame(
+    dev.cadence.shaders.cadence.render.RenderScale.frame(
         System.nanoTime(), chunks != null && chunks.getCompileQueueSize() > 32);
-    float scale = dev.cadence.shaders.cadence.RenderScale.get();
+    float scale = dev.cadence.shaders.cadence.render.RenderScale.get();
     frameWidth = Math.max(1, Math.round(main.width * scale));
     frameHeight = Math.max(1, Math.round(main.height * scale));
     String nextDimension = minecraft.level.dimension().identifier().toString();
@@ -307,6 +323,7 @@ public final class ShaderRuntime implements AutoCloseable {
           PackPrograms.Source fin = programs.find("final");
           if (fin != null) writtenBefore.put(fin.name(), java.util.Set.copyOf(written));
           textures.setWrittenBefore(writtenBefore);
+          textures.setSamplerTypes(programs.samplerTypes());
         }
         mipmaps = new PackMipmaps(device());
         depthMerge = new PackDepthMerge(device());
@@ -419,7 +436,7 @@ public final class ShaderRuntime implements AutoCloseable {
       boolean reuseShadow =
           programs.find("shadow") != null
               && !shadowWritesStorage()
-              && dev.cadence.shaders.cadence.ShadowReuse.decide(
+              && dev.cadence.shaders.cadence.shadow.ShadowReuse.decide(
                   targets, cameraPos, uniforms.shadowDirectionWorld());
       targets.beginFrame(
           minecraft.gameRenderer.gameRenderState()
@@ -433,11 +450,11 @@ public final class ShaderRuntime implements AutoCloseable {
       geometryMipsDone.clear();
       if (reuseShadow) {
         uniforms.setShadowMatrices(
-            dev.cadence.shaders.cadence.ShadowReuse.projection(),
-            dev.cadence.shaders.cadence.ShadowReuse.view(cameraPos));
+            dev.cadence.shaders.cadence.shadow.ShadowReuse.projection(),
+            dev.cadence.shaders.cadence.shadow.ShadowReuse.view(cameraPos));
       } else {
         updateShadowMatrices();
-        dev.cadence.shaders.cadence.ShadowReuse.drawn(
+        dev.cadence.shaders.cadence.shadow.ShadowReuse.drawn(
             targets,
             cameraPos,
             uniforms.shadowDirectionWorld(),
@@ -447,7 +464,9 @@ public final class ShaderRuntime implements AutoCloseable {
       active = true;
       hand = false;
       shadow = false;
+      dev.cadence.metal.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
       deferred = false;
+      dev.cadence.shaders.cadence.render.DistantTerrain.want(programs.distantTerrain && !distantFailed);
       // Cadence: the pack's images and buffer objects (sized for this frame, cleared where asked), its setup programs once
       if (storage == null) storage = new PackStorage(programs.properties);
       storage.beginFrame(frameWidth, frameHeight);
@@ -491,6 +510,7 @@ public final class ShaderRuntime implements AutoCloseable {
     suspend();
     profile("shadow.begin");
     shadow = true;
+    dev.cadence.metal.ApiHooks.shadowPass = true;
     frameBuffers.clear();
     return true;
   }
@@ -504,6 +524,7 @@ public final class ShaderRuntime implements AutoCloseable {
   }
 
   public void endShadow() {
+    dev.cadence.metal.ApiHooks.shadowPass = false; // (first: suspend() can throw, BH5-10)
     suspend();
     profile("shadow.end");
     shadow = false;
@@ -518,12 +539,62 @@ public final class ShaderRuntime implements AutoCloseable {
     frameBuffers.clear();
   }
 
+  // ---- Cadence: the far terrain through the pack's dh_terrain program (DistantTerrain) ----
+
+  private PackPipeline distantPipeline;
+  /** The pack's dh_terrain program didn't compile: the far terrain isn't drawn with this pack (the pack runs on). */
+  private boolean distantFailed;
+  private static boolean distantLogged;
+
+  /**
+   * Start of the level's solid pass (the sky drawn, the real terrain not yet): the far terrain, culled this frame, drawn by
+   * the pack's dh_terrain program into its colour buffers with dhDepthTex0; the real terrain then draws over it.
+   */
+  public void drawDistantTerrain() {
+    if (!active || shadow || deferred || !programs.distantTerrain || distantFailed) return;
+    if (!dev.cadence.shaders.cadence.render.DistantTerrain.prepare()) return;
+    GpuBuffer arguments = dev.cadence.shaders.cadence.render.DistantTerrain.drawArguments();
+    if (arguments == null) return;
+    PackPipeline pipeline = distantPipeline;
+    if (pipeline == null) {
+      PackPrograms.Source source = programs.find("dh_terrain");
+      try {
+        if (source == null) throw new IllegalStateException("no dh_terrain program");
+        pipeline = distantPipeline =
+            PackPipeline.compile(
+                device(), source, source.translated(), dev.cadence.shaders.cadence.render.DistantTerrain.pipeline(), targets,
+                false, false, PackRenderTargets.DH_DEPTH, PackEnvironment.STAGES.indexOf("TERRAIN_SOLID"), 0f);
+      } catch (RuntimeException failure) {
+        distantFailed = true;
+        dev.cadence.shaders.cadence.render.DistantTerrain.want(false);
+        LoggerFactory.getLogger("cadence_shaders").warn("Far terrain not drawn with this pack: its dh_terrain program failed", failure);
+        return;
+      }
+    }
+    if (!distantLogged) {
+      distantLogged = true;
+      LoggerFactory.getLogger("cadence_shaders").info("Far terrain drawn by the pack's dh_terrain program");
+    }
+    suspend();
+    profile("far_terrain.begin");
+    prepare(pipeline);
+    try (RenderPass pass = open(pipeline)) {
+      pass.setPipeline(pipeline.compiled());
+      bind(pipeline, pass, Map.of());
+      pass.setIndexBuffer(dev.cadence.shaders.cadence.render.DistantTerrain.indices(), com.mojang.renderpearl.api.pipeline.IndexType.SHORT);
+      pass.drawIndexedIndirect(arguments.slice(0, RenderPass.INDIRECT_INDEXED_DRAW_SIZE), 1);
+    }
+    profile("far_terrain.end");
+  }
+
   public void beforeTranslucents() {
     if (!active || shadow || deferred) return;
     suspend();
     profile("world.opaque.end");
     // depthtex1 also receives opaque hand rendering; it must start from scene depth.
     targets.copyDepth(1);
+    // (the far terrain's depth as the translucent phase reads it: dhDepthTex1, only for packs that read it)
+    if (programs.distantTerrain && programs.readsSampler("dhDepthTex1")) targets.copyDistantDepth();
     if (programs.readsSampler("depthtex2")) targets.copyDepth(2);
     profile("depth.snapshot.end");
     execute("deferred");
@@ -565,14 +636,18 @@ public final class ShaderRuntime implements AutoCloseable {
         raw = true;
         try {
           var mainView = Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTextureView();
-          // Cadence: Apple's MetalFX spatial upscaler when chosen (upscaler=metalfx), else (or if it can't) the shader upscale.
-          if (!dev.cadence.shaders.cadence.RenderScale.metalFx()
-              || !dev.cadence.metal.MetalFxUpscaler.encode(scaledOutputView, mainView))
+          // Cadence: the Neural Engine upscaler when chosen (upscaler=neural; MetalFX until it's ready, or if it can't), Apple's
+          // MetalFX spatial upscaler when chosen (upscaler=metalfx), else (or if it can't) the shader upscale.
+          if (!dev.cadence.shaders.cadence.render.RenderScale.neural()) dev.cadence.metal.NeuralUpscaler.release();
+          boolean neural = dev.cadence.shaders.cadence.render.RenderScale.neural()
+              && dev.cadence.metal.NeuralUpscaler.encode(scaledOutputView, mainView);
+          if (!neural && (!dev.cadence.shaders.cadence.render.RenderScale.metalFx()
+              || !dev.cadence.metal.MetalFxUpscaler.encode(scaledOutputView, mainView)))
           {
-            if (upscale.fast() != dev.cadence.shaders.cadence.RenderScale.fastUpscale()) {
-              float sharpen = dev.cadence.shaders.cadence.RenderScale.sharpenFor(dev.cadence.shaders.cadence.RenderScale.get());
+            if (upscale.fast() != dev.cadence.shaders.cadence.render.RenderScale.fastUpscale()) {
+              float sharpen = dev.cadence.shaders.cadence.render.RenderScale.sharpenFor(dev.cadence.shaders.cadence.render.RenderScale.get());
               upscale.close();
-              upscale = new PackUpscale(device(), scaledOutput.getFormat(), sharpen, dev.cadence.shaders.cadence.RenderScale.fastUpscale());
+              upscale = new PackUpscale(device(), scaledOutput.getFormat(), sharpen, dev.cadence.shaders.cadence.render.RenderScale.fastUpscale());
             }
             upscale.run(device(), scaledOutputView, mainView);
           }
@@ -588,6 +663,7 @@ public final class ShaderRuntime implements AutoCloseable {
       active = false;
       hand = false;
       shadow = false;
+      dev.cadence.metal.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
       OriginalPipelines.prune();
     }
   }
@@ -599,6 +675,7 @@ public final class ShaderRuntime implements AutoCloseable {
     active = false;
     hand = false;
     shadow = false;
+    dev.cadence.metal.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
   }
 
   public boolean intercept(RenderPassDescriptor descriptor) {
@@ -732,6 +809,13 @@ public final class ShaderRuntime implements AutoCloseable {
   /** Cadence: a screen program's pipeline and its sparse-projection variant (or null); any thread. */
   private PackPipeline[] compileScreen(PackPrograms.Source source) {
     String name = source.name();
+    // Cadence: a shadow composite pass (shadowcomp) draws over the shadow map, into the shadow colour buffers (Nostalgia,
+    // Kappa and Vanilla Plus build their water caustics there); every other screen pass into the colour buffers
+    boolean shadowComposite = name.matches("shadowcomp[0-9]*");
+    if (shadowComposite) {
+      return new PackPipeline[] {
+          PackPipeline.compile(device(), source, source.translated(), null, targets, false, true, 0, 0, 0), null};
+    }
     PackPipeline dense =
         PackPipeline.compile(device(), source, source.translated(), null, targets, name.equals("final"), false, 0, 0, 0);
     PackPipeline sparse = null;
@@ -909,24 +993,46 @@ public final class ShaderRuntime implements AutoCloseable {
     return !pipeline.fullscreen() && !pipeline.shadow() && pipeline.depth() && pipeline.depthTarget() == index;
   }
 
+  /**
+   * Cadence: a feedback copy for this sampler only when the program's code samples it (PackPipeline.reads): a declared,
+   * unused sampler of a buffer the program draws into needs no copy (Complementary at 2940 x 1686: about 3 ms a frame of
+   * copies). -Dcadence.shaders.feedbackReads=false: every declared one, as before.
+   */
+  public static volatile boolean FEEDBACK_READS = !"false".equals(System.getProperty("cadence.shaders.feedbackReads"));
+
+  private static boolean copies(PackPipeline pipeline, PackPipeline.SamplerBinding sampler) {
+    return !FEEDBACK_READS || pipeline.readsSampler(sampler);
+  }
+
   /** Cadence: the feedback copies this program reads (made outside a pass: before it opens). */
   private void prepareFeedback(PackPipeline pipeline) {
     for (var sampler : pipeline.samplerBindings()) {
       if (textures.custom(pipeline.source().name(), sampler.name()) != null) continue;
-      if (sampler.kind() == PackPipeline.SamplerKind.COLOR && colorFeedback(pipeline, sampler.index()))
+      if (sampler.kind() == PackPipeline.SamplerKind.COLOR && colorFeedback(pipeline, sampler.index()) && copies(pipeline, sampler))
         targets.colorFeedback(sampler.index());
-      else if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index()))
+      else if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index()) && copies(pipeline, sampler))
         targets.depthFeedback(sampler.index());
+      else if (sampler.kind() == PackPipeline.SamplerKind.SHADOW_COLOR && shadowColorFeedback(pipeline, sampler.index()))
+        targets.copyShadowColorFeedback(sampler.index());
     }
+  }
+
+  /**
+   * Cadence: a shadow composite pass reading a shadow colour buffer it also draws into (Nostalgia's caustics read
+   * shadowcolor0 and write it): it reads a copy taken just before it, as Iris gives it the other side of a pair.
+   */
+  private static boolean shadowColorFeedback(PackPipeline pipeline, int index) {
+    return pipeline.shadow() && pipeline.fullscreen() && pipeline.translated().drawBuffers().contains(index);
   }
 
   public boolean requiresReadPreparation(PackPipeline pipeline) {
     for (var sampler : pipeline.samplerBindings()) {
       if (textures.custom(pipeline.source().name(), sampler.name()) != null) continue;
-      if (sampler.kind() == PackPipeline.SamplerKind.COLOR && colorFeedback(pipeline, sampler.index())
+      if (sampler.kind() == PackPipeline.SamplerKind.COLOR && colorFeedback(pipeline, sampler.index()) && copies(pipeline, sampler)
           && !targets.colorFeedbackReady(sampler.index())) return true;
-      if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index())
+      if (sampler.kind() == PackPipeline.SamplerKind.DEPTH && depthFeedback(pipeline, sampler.index()) && copies(pipeline, sampler)
           && !targets.depthFeedbackReady(sampler.index())) return true;
+      if (sampler.kind() == PackPipeline.SamplerKind.SHADOW_COLOR && shadowColorFeedback(pipeline, sampler.index())) return true;
       boolean needed =
           switch (sampler.kind()) {
             case COLOR -> targets.needsColorDefinition(sampler.index());
@@ -1154,6 +1260,8 @@ public final class ShaderRuntime implements AutoCloseable {
     return mipSampled(pipeline.source(), index);
   }
 
+  private static final java.util.Set<String> UNBOUND_LOGGED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
   private void bindTexture(
       PackPipeline pipeline,
       RenderPass pass,
@@ -1166,14 +1274,14 @@ public final class ShaderRuntime implements AutoCloseable {
       switch (sampler.kind()) {
         case COLOR -> {
           texture =
-              colorFeedback(pipeline, sampler.index())
+              colorFeedback(pipeline, sampler.index()) && copies(pipeline, sampler)
                   ? targets.colorFeedback(sampler.index())
-                  : targets.color(sampler.index());
+                  : targets.color(sampler.index());  // (or a sampler the code never reads: the buffer itself, no copy)
           if (!mipSampled(pipeline, sampler.index())) filter = textures.linearBaseLevel();
         }
         case DEPTH -> {
           texture =
-              depthFeedback(pipeline, sampler.index())
+              depthFeedback(pipeline, sampler.index()) && copies(pipeline, sampler)
                   ? targets.depthFeedback(sampler.index())
                   : targets.depth(sampler.index());
           filter = textures.nearest;
@@ -1183,7 +1291,9 @@ public final class ShaderRuntime implements AutoCloseable {
           filter = textures.nearest;
         }
         case SHADOW_COLOR -> {
-          texture = targets.shadowColor(sampler.index());
+          texture = shadowColorFeedback(pipeline, sampler.index())
+              ? targets.shadowColorFeedback(sampler.index())
+              : targets.shadowColor(sampler.index());
           if (targets.shadowSpecification(sampler.index()).nearest()) filter = textures.nearest;
         }
         case NOISE -> {
@@ -1215,9 +1325,15 @@ public final class ShaderRuntime implements AutoCloseable {
               filter = textures.albedoSampler(view, blockAtlas, filter);
           } else texture = textures.white;
         }
-        case CUSTOM ->
-            throw new UnsupportedOperationException(
-                "Unbound pack sampler " + sampler.name() + " in " + pipeline.source().name());
+        case CUSTOM -> {
+          // Cadence: a sampler another mod would supply (Voxy's vxDepthTexTrans, Distant Horizons' dh*: Mellow reads them
+          // without asking whether that mod is there): its "nothing here" value, white (depth 1, the far plane) for a depth
+          // texture and black for anything else, as with the mod absent. It used to stop the pack.
+          texture = sampler.name().toLowerCase(java.util.Locale.ROOT).contains("depth") ? textures.white : textures.black;
+          if (UNBOUND_LOGGED.add(sampler.name()))
+            LoggerFactory.getLogger("cadence_shaders").info("Sampler {} (another mod's) has no data here: {}", sampler.name(),
+                texture == textures.white ? "white (far depth)" : "black");
+        }
       }
     }
     if (view == null) view = texture.sampled;
@@ -1298,6 +1414,20 @@ public final class ShaderRuntime implements AutoCloseable {
 
   /** The native object behind one of a program's set-1 resources now (0: none). */
   long storageHandle(dev.cadence.shaders.compile.TranslatedProgram.Storage r) {
+    return storageHandle(null, r);
+  }
+
+  /** (program: the program's name, for a raw 3D custom texture of its stage; null for none) */
+  long storageHandle(String program, dev.cadence.shaders.compile.TranslatedProgram.Storage r) {
+    // Cadence: a raw 3D custom texture standing in for this sampler in the program's stage (Photon's
+    // texture.deferred.depthtex0 = scattering.dat TEXTURE_3D ...): a sampler3D reaches the shader as a set-1 resource
+    if (program != null && textures != null && r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED) {
+      PackTexture volume = textures.volume(program, r.name());
+      if (volume != null) return dev.cadence.metal.MetalBridge.textureHandle(volume.texture);
+    }
+    if (r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER
+        && dev.cadence.shaders.cadence.render.DistantTerrain.isFarBuffer(r.bufferIndex()))
+      return dev.cadence.shaders.cadence.render.DistantTerrain.bufferHandle(r.bufferIndex());
     if (storage == null) return 0;
     if (r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER) return storage.bufferHandle(r.bufferIndex());
     if (storage.hasImage(r.name())) return storage.imageHandle(r.name());
@@ -1314,20 +1444,32 @@ public final class ShaderRuntime implements AutoCloseable {
 
   /** A program's set-1 resources for the Metal backend (MetalStorage). */
   java.util.List<dev.cadence.metal.MetalStorage.Slot> storageSlots(dev.cadence.shaders.compile.TranslatedProgram translated) {
+    String program = programName(translated.label());
     java.util.List<dev.cadence.metal.MetalStorage.Slot> slots = new java.util.ArrayList<>();
     for (var r : translated.storage()) {
       if (r.binding() >= dev.cadence.metal.MetalStorage.MAX_BINDINGS)
         throw new UnsupportedOperationException(translated.label() + " has more than " + dev.cadence.metal.MetalStorage.MAX_BINDINGS
             + " images and buffer objects");
+      // (a raw 3D custom texture is filtered as its .mcmeta asks: Photon's cloud noise linear and repeating, its LUT clamped)
+      boolean[] volume = textures == null || r.kind() != dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED
+          ? null : textures.volumeFiltering(program, r.name());
       slots.add(
           new dev.cadence.metal.MetalStorage.Slot(
               r.binding(),
               r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER,
               r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED,
-              r.type().startsWith("i") || r.type().startsWith("u"),
-              () -> storageHandle(r)));
+              volume != null ? volume[0] : r.type().startsWith("i") || r.type().startsWith("u"),
+              volume != null && volume[1],
+              () -> storageHandle(program, r)));
     }
     return slots;
+  }
+
+  /** The program name in a translation label ("world0/deferred1", "pack/world0/gbuffers_terrain/early_alpha_demote"). */
+  private static String programName(String label) {
+    String l = label.endsWith("/early_alpha_demote") ? label.substring(0, label.length() - "/early_alpha_demote".length()) : label;
+    int slash = l.lastIndexOf('/');
+    return l.substring(slash + 1).replace(" (Cadence)", "");
   }
 
   private void runCompute(PackPrograms.Source source) {
@@ -1347,7 +1489,7 @@ public final class ShaderRuntime implements AutoCloseable {
       if (translated.uniforms().byteSize() > 0) pass.bytes(0, data);
       for (int i = 0; i < textures.length; i++) pass.texture(i, textures[i]);
       for (var r : translated.storage()) {
-        long h = storageHandle(r);
+        long h = storageHandle(source.name(), r);
         if (h == 0) continue;
         if (r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER)
           pass.buffer(dev.cadence.metal.MetalStorage.BUFFER_BASE + r.binding(), h);
@@ -1377,9 +1519,45 @@ public final class ShaderRuntime implements AutoCloseable {
       bind(pipeline, pass, Map.of());
       pass.draw(6, 1, 0, 0); // the full-screen quad (two triangles; ShaderCompatibilityCompiler FULLSCREEN)
     }
-    if (!pipeline.source().name().equals("final"))
-      targets.flip(pipeline.translated().drawBuffers());
+    if (!pipeline.source().name().equals("final") && !pipeline.shadow())
+      targets.flip(flipsAfter(pipeline.source().name(), pipeline.translated().drawBuffers()));
     profile("pass." + pipeline.source().name() + ".end");
+  }
+
+  /**
+   * Cadence: the buffers that change sides after a screen pass: the ones it drew into, then the pack's explicit
+   * flip.PASS.BUFFER directives (Iris): true flips a buffer the pass didn't draw into (Photon flips colortex6 after
+   * composite1, so later passes read the ambient occlusion its other side still holds), false keeps a drawn one from flipping.
+   */
+  private java.util.List<Integer> flipsAfter(String pass, java.util.List<Integer> drawn) {
+    Map<Integer, Boolean> explicit = explicitFlips().get(pass);
+    if (explicit == null) return drawn;
+    java.util.LinkedHashSet<Integer> out = new java.util.LinkedHashSet<>(drawn);
+    explicit.forEach((index, flip) -> {
+      if (flip) out.add(index);
+      else out.remove(index);
+    });
+    return java.util.List.copyOf(out);
+  }
+
+  private Map<String, Map<Integer, Boolean>> explicitFlips;
+
+  private Map<String, Map<Integer, Boolean>> explicitFlips() {
+    if (explicitFlips != null) return explicitFlips;
+    Map<String, Map<Integer, Boolean>> out = new java.util.HashMap<>();
+    for (var property : properties.values().entrySet()) {
+      String[] key = property.getKey().split("\\.");
+      if (key.length != 3 || !key[0].equals("flip")) continue;
+      String value = property.getValue().strip();
+      boolean flip = value.equals("true") || value.equals("1");
+      if (!flip && !value.equals("false") && !value.equals("0")) continue;
+      try {
+        out.computeIfAbsent(key[1], k -> new java.util.HashMap<>()).put(dev.cadence.shaders.pack.ShaderDirectives.colorBufferIndex(key[2]), flip);
+      } catch (dev.cadence.shaders.pack.ShaderPackException e) {
+        // not a colour buffer: ignored, as Iris does
+      }
+    }
+    return explicitFlips = out;
   }
 
   private int fullscreenDiscardMask(PackPipeline pipeline) {
@@ -1417,6 +1595,9 @@ public final class ShaderRuntime implements AutoCloseable {
   private void disposePipelines() {
     geometry.values().forEach(PackPipeline::close);
     geometry.clear();
+    if (distantPipeline != null) distantPipeline.close();
+    distantPipeline = null;
+    distantFailed = false;
     screens.values().forEach(PackPipeline::close);
     screens.clear();
     sparseScreens.values().forEach(PackPipeline::close);
@@ -1483,10 +1664,10 @@ public final class ShaderRuntime implements AutoCloseable {
                 1,
                 1);
     scaledOutputView = device().createTextureView(scaledOutput);
-    float sharpen = dev.cadence.shaders.cadence.RenderScale.sharpenFor(dev.cadence.shaders.cadence.RenderScale.get());
+    float sharpen = dev.cadence.shaders.cadence.render.RenderScale.sharpenFor(dev.cadence.shaders.cadence.render.RenderScale.get());
     if (upscale == null || upscale.sharpen() != sharpen) {
       if (upscale != null) upscale.close();
-      upscale = new PackUpscale(device(), format, sharpen, dev.cadence.shaders.cadence.RenderScale.fastUpscale());
+      upscale = new PackUpscale(device(), format, sharpen, dev.cadence.shaders.cadence.render.RenderScale.fastUpscale());
     }
     LoggerFactory.getLogger("cadence_shaders")
         .info("Cadence render scale: pack frame {}x{} upscaled to {}x{}", frameWidth, frameHeight, main.width, main.height);
@@ -1514,6 +1695,7 @@ public final class ShaderRuntime implements AutoCloseable {
     }
     ShadowRenderer.discardSelection();
     active = false;
+    dev.cadence.shaders.cadence.render.DistantTerrain.want(false);
     suspend();
     disposeGraph();
     if (materialAtlas != null) {

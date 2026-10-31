@@ -6,27 +6,27 @@ import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.BlockModelLighter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * -Dcadence.own.mesh.region: while our mesher runs vanilla's renderers on an OwnRegion, the lighter's light and shade lookups are
  * served from the region's per-position arrays (same values as vanilla's 100-entry hash caches compute). Any other level:
- * untouched.
+ * untouched. Wrapped, not a cancellable inject: that boxed every answer (a Float or an Integer per lookup, ~3% of everything
+ * allocated while flying over new terrain).
  */
 @Mixin(BlockModelLighter.Cache.class)
 abstract class OwnMeshLighterCacheMixin {
-	@Inject(method = "getLightCoords", at = @At("HEAD"), cancellable = true)
-	private void cadence$ownLight(BlockState state, BlockAndTintGetter level, BlockPos pos, CallbackInfoReturnable<Integer> cir) {
+	@WrapMethod(method = "getLightCoords")
+	private int cadence$ownLight(BlockState state, BlockAndTintGetter level, BlockPos pos, Operation<Integer> original) {
 		OwnRegion r = level instanceof OwnRegion o ? o : OwnRegion.FRAPI_REGION ? OwnRegion.forRegion(level) : null;
-		if (r != null) cir.setReturnValue(r.lightCoords(state, pos));
+		return r != null ? r.lightCoords(state, pos) : original.call(state, level, pos);
 	}
 
-	@Inject(method = "getShadeBrightness", at = @At("HEAD"), cancellable = true)
-	private void cadence$ownShade(BlockState state, BlockAndTintGetter level, BlockPos pos, CallbackInfoReturnable<Float> cir) {
+	@WrapMethod(method = "getShadeBrightness")
+	private float cadence$ownShade(BlockState state, BlockAndTintGetter level, BlockPos pos, Operation<Float> original) {
 		OwnRegion r = level instanceof OwnRegion o ? o : OwnRegion.FRAPI_REGION ? OwnRegion.forRegion(level) : null;
-		if (r != null) cir.setReturnValue(r.shadeBrightness(state, pos));
+		return r != null ? r.shadeBrightness(state, pos) : original.call(state, level, pos);
 	}
 }
