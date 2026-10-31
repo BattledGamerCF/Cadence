@@ -4,7 +4,7 @@ package dev.cadence.metal.own;
 import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -134,7 +134,7 @@ final class OwnFrag {
 	static final int TL_A1_MAX_CORES = Integer.getInteger("cadence.own.tl.a1SplitMaxCores", 0), TL_A1_MIN_CORES = Integer.getInteger("cadence.own.tl.a1SplitMinCores", 0);
 	private static final boolean TL_A1_GATED;
 	static {
-		int cores = dev.cadence.metal.Profile.gpuCores();
+		int cores = dev.cadence.metal.system.Profile.gpuCores();
 		boolean any = TL_A1_MAX_CORES > 0 || TL_A1_MIN_CORES > 0;
 		boolean on = !any || cores > 0 && (TL_A1_MAX_CORES > 0 && cores <= TL_A1_MAX_CORES || TL_A1_MIN_CORES > 0 && cores >= TL_A1_MIN_CORES);
 		TL_A1_GATED = !on;
@@ -246,7 +246,7 @@ final class OwnFrag {
 	/** -Dcadence.own.frag.a2ExactMaxCores=N: a2Exact only on GPUs of at most N cores (an unknown core count: off; 0: every GPU). */
 	static final int A2_MAX_CORES = Integer.getInteger("cadence.own.frag.a2ExactMaxCores", 0);
 	private static boolean coreGated(int max) {
-		int cores = dev.cadence.metal.Profile.gpuCores();
+		int cores = dev.cadence.metal.system.Profile.gpuCores();
 		return max > 0 && (cores <= 0 || cores > max);
 	}
 	private static final boolean EXACT_GATED = coreGated(EXACT_MAX_CORES), A2_GATED = coreGated(A2_MAX_CORES);
@@ -284,7 +284,7 @@ final class OwnFrag {
 	}
 	private static int vGroupShift() {
 		if (VGROUP != 2 && VGROUP != 4 && VGROUP != 8) return 0;
-		int cores = dev.cadence.metal.Profile.gpuCores();
+		int cores = dev.cadence.metal.system.Profile.gpuCores();
 		if (VGROUP_MIN_CORES > 0 && (cores <= 0 || cores < VGROUP_MIN_CORES)) return 0;
 		return Integer.numberOfTrailingZeros(VGROUP);
 	}
@@ -481,7 +481,7 @@ final class OwnFrag {
 	 * (5) keep needing it at every size tried (OWN-RENDERER.md, uocc by GPU).
 	 */
 	static final int UOCC_MAX_MP_CORES = Integer.getInteger("cadence.own.frag.uoccMaxMpCores", 0);
-	private static final boolean SIZE_SWITCH = UOCC_MAX_MP > 0 && (UOCC_MAX_MP_CORES <= 0 || dev.cadence.metal.Profile.gpuCores() >= UOCC_MAX_MP_CORES);
+	private static final boolean SIZE_SWITCH = UOCC_MAX_MP > 0 && (UOCC_MAX_MP_CORES <= 0 || dev.cadence.metal.system.Profile.gpuCores() >= UOCC_MAX_MP_CORES);
 	private static final @Nullable Config FLAGS_NO_UOCC = FLAGS != null && FLAGS.uocc() && (SIZE_SWITCH || OwnProbe.ON || TIE_CLOSE || OwnAdaptive.ON)
 		? Config.parse(flagString().replace("+uocc", "")) : null;
 
@@ -628,7 +628,7 @@ final class OwnFrag {
 		this.ctx = ctx;
 		this.enc = enc;
 		this.own = own;
-		System.out.println("cadence-own-frag: on" + (FLAGS != null ? " (" + FLAGS + ")" : " (probe modes only)") + (LISTS2 ? ", two sets of the cull's lists" : "") + (SPLIT_A ? ", phase A split around the test" : "") + (SPLIT_NEAR > 0 ? ", phase A split at " + SPLIT_NEAR + " blocks" + (NEAR_ONLY ? ", farther units tested, not drawn in phase A" : "") : "") + (TEST_LATE ? ", test after phase A's later part" : "") + (NEW_IN_A ? ", untested units in phase A" + (NEW_IN_A2 ? "'s later part" : "") : "") + (PYR_AUTO > 0 ? ", uocc pyramid coarser while >= " + PYR_AUTO + " texels wide" : "") + (SIZE_SWITCH && FLAGS_NO_UOCC != null ? ", no uocc above " + UOCC_MAX_MP + " MP" + (UOCC_MAX_MP_CORES > 0 ? " (gpu cores " + dev.cadence.metal.Profile.gpuCores() + " >= " + UOCC_MAX_MP_CORES + ")" : "") : UOCC_MAX_MP > 0 ? ", uocc at every size (gpu cores " + dev.cadence.metal.Profile.gpuCores() + " < " + UOCC_MAX_MP_CORES + ")" : ""));
+		System.out.println("cadence-own-frag: on" + (FLAGS != null ? " (" + FLAGS + ")" : " (probe modes only)") + (LISTS2 ? ", two sets of the cull's lists" : "") + (SPLIT_A ? ", phase A split around the test" : "") + (SPLIT_NEAR > 0 ? ", phase A split at " + SPLIT_NEAR + " blocks" + (NEAR_ONLY ? ", farther units tested, not drawn in phase A" : "") : "") + (TEST_LATE ? ", test after phase A's later part" : "") + (NEW_IN_A ? ", untested units in phase A" + (NEW_IN_A2 ? "'s later part" : "") : "") + (PYR_AUTO > 0 ? ", uocc pyramid coarser while >= " + PYR_AUTO + " texels wide" : "") + (SIZE_SWITCH && FLAGS_NO_UOCC != null ? ", no uocc above " + UOCC_MAX_MP + " MP" + (UOCC_MAX_MP_CORES > 0 ? " (gpu cores " + dev.cadence.metal.system.Profile.gpuCores() + " >= " + UOCC_MAX_MP_CORES + ")" : "") : UOCC_MAX_MP > 0 ? ", uocc at every size (gpu cores " + dev.cadence.metal.system.Profile.gpuCores() + " < " + UOCC_MAX_MP_CORES + ")" : ""));
 	}
 
 	/**
@@ -858,7 +858,7 @@ final class OwnFrag {
 	/** tieClose: every 5 s, the frames by fallback reason, the promotions a counted frame, the rings. */
 	private void tieLog() {
 		long now = System.nanoTime();
-		if (!dev.cadence.metal.FrameHints.LOG_STATS || now - this.tieLogAt < 5_000_000_000L) return;
+		if (!dev.cadence.metal.backend.FrameHints.LOG_STATS || now - this.tieLogAt < 5_000_000_000L) return;
 		this.tieLogAt = now;
 		long[] t = TIE_FRAMES;
 		long all = t[0] + t[1] + t[2] + t[3] + t[4] + t[5];
@@ -1144,10 +1144,10 @@ final class OwnFrag {
 	/** (every 5 s while a1Exact or a2Exact is requested) the effective mode, from the native telemetry (mco_frag_exact_telemetry). */
 	private void exactLog() {
 		long now = System.nanoTime();
-		if (!dev.cadence.metal.FrameHints.LOG_STATS || !(this.a1Req || this.a2Req) || now - this.exactLogAt < 5_000_000_000L) return;
+		if (!dev.cadence.metal.backend.FrameHints.LOG_STATS || !(this.a1Req || this.a2Req) || now - this.exactLogAt < 5_000_000_000L) return;
 		this.exactLogAt = now;
 		OwnNative.fragExactTelemetry(this.own, this.exactTel);
-		int cores = dev.cadence.metal.Profile.gpuCores();
+		int cores = dev.cadence.metal.system.Profile.gpuCores();
 		StringBuilder b = new StringBuilder("cadence-own-frag exact: requested a1 " + this.a1Req + " a2 " + this.a2Req + "; effective a1 " + this.a1Exact + " a2 "
 			+ this.a2Exact + (EXACT_GATED ? " (gated: exactMaxCores " + EXACT_MAX_CORES + ", gpu cores " + cores + ")" : "")
 			+ (A2_GATED && this.a2Req ? " (a2 gated: a2ExactMaxCores " + A2_MAX_CORES + ", gpu cores " + cores + ")" : "")

@@ -5,7 +5,7 @@ import dev.cadence.shaders.runtime.ShaderRenderPass;
 import dev.cadence.shaders.runtime.ShaderRuntime;
 import java.util.List;
 import java.util.Map;
-import dev.cadence.metal.GpuCull;
+import dev.cadence.metal.backend.GpuCull;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;

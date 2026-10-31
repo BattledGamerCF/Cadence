@@ -11,11 +11,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 abstract class HdrMainTargetMixin {
 	@Inject(method = "allocateColorAttachment", at = @At("HEAD"))
 	private void cadence$hdrBegin(CallbackInfoReturnable<?> cir) {
-		dev.cadence.metal.Hdr.creatingFrame = true;
+		dev.cadence.metal.backend.Hdr.creatingFrame = true;
 	}
 
 	@Inject(method = "allocateColorAttachment", at = @At("RETURN"))
 	private void cadence$hdrEnd(CallbackInfoReturnable<?> cir) {
-		dev.cadence.metal.Hdr.creatingFrame = false;
+		dev.cadence.metal.backend.Hdr.creatingFrame = false;
 	}
 }

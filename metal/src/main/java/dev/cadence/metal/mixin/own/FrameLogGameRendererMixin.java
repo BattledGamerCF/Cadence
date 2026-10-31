@@ -1,7 +1,7 @@
 // Cadence: derived from mcopt (c) Noah Dunnagan, Apache-2.0; modified.
 package dev.cadence.metal.mixin.own;
 
-import dev.cadence.metal.FrameLog;
+import dev.cadence.metal.backend.FrameLog;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;

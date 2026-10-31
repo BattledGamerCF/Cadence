@@ -23,21 +23,21 @@ public final class QuickSetupScreens {
 				QuickSetup.done(mac);
 				Minecraft.getInstance().gui.setScreen(parent);
 			}
-		}, dev.cadence.metal.Lang.literal("Set up Cadence for your Mac"),
-			dev.cadence.metal.Lang.literal("Cadence optimizes Minecraft for your " + name + " automatically: it adjusts resolution, frame rate and "
+		}, dev.cadence.metal.system.Lang.literal("Set up Cadence for your Mac"),
+			dev.cadence.metal.system.Lang.literal("Cadence optimizes Minecraft for your " + name + " automatically: it adjusts resolution, frame rate and "
 				+ "shadows while you play to keep the game smooth and your Mac cool.\nSet Up checks what your Mac can do (about 15 "
 				+ "seconds) and recommends settings. Nothing changes until you press Apply."),
-			dev.cadence.metal.Lang.literal("Set Up"), dev.cadence.metal.Lang.literal("Not Now"));
+			dev.cadence.metal.system.Lang.literal("Set Up"), dev.cadence.metal.system.Lang.literal("Not Now"));
 	}
 
 	/** What matters more: steady and cool, or every frame the Mac can make. */
 	public static Screen goal(Screen parent) {
 		return new CadenceConfirmScreen(smooth -> start(parent, smooth ? QuickSetup.Goal.SMOOTH : QuickSetup.Goal.MAX_FPS),
-			dev.cadence.metal.Lang.literal("What matters more to you?"),
-			dev.cadence.metal.Lang.literal("Smooth & Cool: the frame rate matches your screen, your Mac stays cooler and quieter, and the game "
+			dev.cadence.metal.system.Lang.literal("What matters more to you?"),
+			dev.cadence.metal.system.Lang.literal("Smooth & Cool: the frame rate matches your screen, your Mac stays cooler and quieter, and the game "
 				+ "stays steady for long sessions.\nMax FPS: as many frames as your Mac can make; it runs warmer"
 				+ (QuickSetup.detect().fanless() ? "" : " and the fans work harder") + "."),
-			dev.cadence.metal.Lang.literal("Smooth & Cool"), dev.cadence.metal.Lang.literal("Max FPS"));
+			dev.cadence.metal.system.Lang.literal("Smooth & Cool"), dev.cadence.metal.system.Lang.literal("Max FPS"));
 	}
 
 	public static void start(Screen parent) {
@@ -46,10 +46,10 @@ public final class QuickSetupScreens {
 
 	public static void start(Screen parent, QuickSetup.Goal goal) {
 		Minecraft mc = Minecraft.getInstance();
-		mc.gui.setScreen(new GenericMessageScreen(dev.cadence.metal.Lang.literal("Setting up Cadence...")));
+		mc.gui.setScreen(new GenericMessageScreen(dev.cadence.metal.system.Lang.literal("Setting up Cadence...")));
 		Thread t = new Thread(() -> {
 			try {
-				QuickSetup.Result r = QuickSetup.run(stage -> mc.execute(() -> mc.gui.setScreen(new GenericMessageScreen(dev.cadence.metal.Lang.literal(stage)))), goal);
+				QuickSetup.Result r = QuickSetup.run(stage -> mc.execute(() -> mc.gui.setScreen(new GenericMessageScreen(dev.cadence.metal.system.Lang.literal(stage)))), goal);
 				mc.execute(() -> mc.gui.setScreen(results(r, parent)));
 			} catch (Throwable failure) {
 				// (the "Setting up..." screen has no buttons: a test that throws must not leave the player on it)
@@ -66,23 +66,23 @@ public final class QuickSetupScreens {
 
 	public static Screen results(QuickSetup.Result r, Screen parent) {
 		Minecraft mc = Minecraft.getInstance();
-		MutableComponent msg = dev.cadence.metal.Lang.literal(r.mac().describe()).withStyle(ChatFormatting.GRAY);
-		if (!r.measured()) msg.append(dev.cadence.metal.Lang.literal("\n(Your Mac was warm, so Cadence used its built-in profile.)").withStyle(ChatFormatting.GRAY));
+		MutableComponent msg = dev.cadence.metal.system.Lang.literal(r.mac().describe()).withStyle(ChatFormatting.GRAY);
+		if (!r.measured()) msg.append(dev.cadence.metal.system.Lang.literal("\n(Your Mac was warm, so Cadence used its built-in profile.)").withStyle(ChatFormatting.GRAY));
 		if (r.changes().isEmpty()) {
-			msg.append(dev.cadence.metal.Lang.literal("\n\nYour settings already suit this Mac."));
+			msg.append(dev.cadence.metal.system.Lang.literal("\n\nYour settings already suit this Mac."));
 			return new CadenceConfirmScreen(ok -> {
 				QuickSetup.done(r.mac());
 				mc.gui.setScreen(parent);
-			}, dev.cadence.metal.Lang.literal("Cadence is set up"), msg, dev.cadence.metal.Lang.literal("Done"), dev.cadence.metal.Lang.literal("Back"));
+			}, dev.cadence.metal.system.Lang.literal("Cadence is set up"), msg, dev.cadence.metal.system.Lang.literal("Done"), dev.cadence.metal.system.Lang.literal("Back"));
 		}
-		msg.append(dev.cadence.metal.Lang.literal("\n"));
+		msg.append(dev.cadence.metal.system.Lang.literal("\n"));
 		for (QuickSetup.Change c : r.changes())
-			msg.append(dev.cadence.metal.Lang.literal("\n" + c.what() + ": " + c.from() + " → ").append(dev.cadence.metal.Lang.literal(c.to()).withStyle(ChatFormatting.GREEN))
-				.append(dev.cadence.metal.Lang.literal("  " + c.why()).withStyle(ChatFormatting.GRAY)));
+			msg.append(dev.cadence.metal.system.Lang.literal("\n" + c.what() + ": " + c.from() + " → ").append(dev.cadence.metal.system.Lang.literal(c.to()).withStyle(ChatFormatting.GREEN))
+				.append(dev.cadence.metal.system.Lang.literal("  " + c.why()).withStyle(ChatFormatting.GRAY)));
 		return new CadenceConfirmScreen(apply -> {
 			if (apply) QuickSetup.apply(r);
 			else QuickSetup.done(r.mac());
 			mc.gui.setScreen(parent);
-		}, dev.cadence.metal.Lang.literal("Recommended for your Mac"), msg, dev.cadence.metal.Lang.literal("Apply"), dev.cadence.metal.Lang.literal("Keep My Settings"), 460);
+		}, dev.cadence.metal.system.Lang.literal("Recommended for your Mac"), msg, dev.cadence.metal.system.Lang.literal("Apply"), dev.cadence.metal.system.Lang.literal("Keep My Settings"), 460);
 	}
 }

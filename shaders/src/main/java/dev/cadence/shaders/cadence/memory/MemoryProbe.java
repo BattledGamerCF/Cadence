@@ -21,7 +21,7 @@ public final class MemoryProbe {
 
 	public static String summary(SectionRenderDispatcher dispatcher) {
 		StringBuilder out = new StringBuilder();
-		long gpu = dev.cadence.metal.GpuMemory.allocatedBytes();
+		long gpu = dev.cadence.metal.backend.GpuMemory.allocatedBytes();
 		out.append(String.format(Locale.ROOT, "metal %.0f MB", gpu / 1048576.0));
 		if (dispatcher == null) return out.toString();
 		try {

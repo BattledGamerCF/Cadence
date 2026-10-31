@@ -137,17 +137,17 @@ public final class PackCensus {
           java.nio.ByteBuffer spirv = null;
           try {
             spirv = dev.cadence.shaders.runtime.PackCompute.spirv(compute.translated().vertexSource(), compute.translated().label());
-            List<dev.cadence.metal.MetalCompute.SamplerState> states = new java.util.ArrayList<>();
+            List<dev.cadence.metal.backend.MetalCompute.SamplerState> states = new java.util.ArrayList<>();
             for (int i = 0; i < compute.translated().samplers().size(); i++)
-              states.add(new dev.cadence.metal.MetalCompute.SamplerState(false, false, false, false));
-            List<dev.cadence.metal.MetalStorage.Slot> slots = new java.util.ArrayList<>();
+              states.add(new dev.cadence.metal.backend.MetalCompute.SamplerState(false, false, false, false));
+            List<dev.cadence.metal.backend.MetalStorage.Slot> slots = new java.util.ArrayList<>();
             for (var r : compute.translated().storage())
-              slots.add(new dev.cadence.metal.MetalStorage.Slot(r.binding(),
+              slots.add(new dev.cadence.metal.backend.MetalStorage.Slot(r.binding(),
                   r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER,
                   r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED, false, () -> 0L));
-            String[] msl = dev.cadence.metal.MetalCompute.translateKernel(spirv, states, slots);
+            String[] msl = dev.cadence.metal.backend.MetalCompute.translateKernel(spirv, states, slots);
             if (METAL) {
-              String metal = dev.cadence.metal.MetalCompute.check(spirv, 2);
+              String metal = dev.cadence.metal.backend.MetalCompute.check(spirv, 2);
               if (metal != null) problems.add("Metal " + compute.translated().label() + " kernel: " + metal);
             }
             if (DUMP != null) Files.writeString(DUMP.resolve(compute.translated().label().replaceAll("[^A-Za-z0-9._-]", "_") + ".metal"), msl[0]);
@@ -222,7 +222,7 @@ public final class PackCensus {
           if (org.lwjgl.util.shaderc.Shaderc.shaderc_result_get_compilation_status(result)
               == org.lwjgl.util.shaderc.Shaderc.shaderc_compilation_status_success && METAL) {
             // on through SPIRV-Cross and Metal's compiler (no window needed)
-            String metal = dev.cadence.metal.MetalCompute.check(org.lwjgl.util.shaderc.Shaderc.shaderc_result_get_bytes(result), stage);
+            String metal = dev.cadence.metal.backend.MetalCompute.check(org.lwjgl.util.shaderc.Shaderc.shaderc_result_get_bytes(result), stage);
             if (metal != null) problems.add("Metal " + program.label() + (stage == 0 ? " vertex: " : " fragment: ") + metal);
           }
           if (org.lwjgl.util.shaderc.Shaderc.shaderc_result_get_compilation_status(result)

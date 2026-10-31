@@ -1,7 +1,7 @@
 // Cadence: derived from mcopt (c) Noah Dunnagan, Apache-2.0; modified.
 package dev.cadence.metal.mixin;
 
-import dev.cadence.metal.FrameWait;
+import dev.cadence.metal.backend.FrameWait;
 import net.minecraft.client.FramerateLimiter;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;

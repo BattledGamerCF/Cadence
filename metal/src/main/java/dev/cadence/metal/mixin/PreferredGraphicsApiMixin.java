@@ -2,7 +2,7 @@
 package dev.cadence.metal.mixin;
 
 import com.mojang.renderpearl.api.device.GpuBackend;
-import dev.cadence.metal.MetalBackend;
+import dev.cadence.metal.backend.MetalBackend;
 import net.minecraft.client.PreferredGraphicsApi;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -16,7 +16,7 @@ abstract class PreferredGraphicsApiMixin {
 	@Inject(method = "caption", at = @At("RETURN"), cancellable = true)
 	private void cadence$caption(CallbackInfoReturnable<net.minecraft.network.chat.Component> cir) {
 		if ((Object) this == PreferredGraphicsApi.DEFAULT && Boolean.parseBoolean(System.getProperty("cadence.metal", "true")))
-			cir.setReturnValue(dev.cadence.metal.Lang.literal("Cadence (Metal)"));
+			cir.setReturnValue(dev.cadence.metal.system.Lang.literal("Cadence (Metal)"));
 	}
 
 	@Inject(method = "getBackendsToTry", at = @At("RETURN"), cancellable = true)

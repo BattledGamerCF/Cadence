@@ -36,7 +36,7 @@ public final class LookSettings {
 	}
 
 	private static Component biomeColoursLabel() {
-		return dev.cadence.metal.Lang.literal("Biome Colours: " + BiomeGrade.strength().label);
+		return dev.cadence.metal.system.Lang.literal("Biome Colours: " + BiomeGrade.strength().label);
 	}
 
 	static <E extends Enum<E>> E parse(Class<E> type, String value, E fallback) {

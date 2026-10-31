@@ -2,7 +2,7 @@ package dev.cadence.metal.mixin;
 
 import com.mojang.renderpearl.api.commands.RenderPass;
 import dev.cadence.api.RenderStage;
-import dev.cadence.metal.ApiHooks;
+import dev.cadence.metal.backend.ApiHooks;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.state.level.CameraRenderState;

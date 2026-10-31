@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.benchmark;
 
-import dev.cadence.metal.MacSystem;
+import dev.cadence.metal.backend.MacSystem;
 import dev.cadence.shaders.cadence.ui.CadenceSettings;
 import dev.cadence.shaders.cadence.render.RenderScale;
 import dev.cadence.shaders.cadence.ui.ShaderToggle;
@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
  * <p>The run is driven from the render thread: {@link #frame()} is called once per frame (BenchmarkFrameMixin, just before the
  * camera is set up). Each frame it checks the run is still sane (a world, no screen, Minecraft in front), sets the player's yaw
  * from the elapsed time (a constant speed, so every run shows the same views in the same order), and, after a 2 second warm-up,
- * records the interval since the previous frame. GPU time comes from {@link dev.cadence.metal.GpuBusy} (the same figure Auto
+ * records the interval since the previous frame. GPU time comes from {@link dev.cadence.metal.backend.GpuBusy} (the same figure Auto
  * resolution uses; it works with or without a shader pack) and the render thread's CPU time from the JVM, both as totals over
  * the measured part divided by its frame count.
  *
@@ -180,7 +180,7 @@ public final class Benchmark {
 
 	private static long gpuTotal() {
 		try {
-			return dev.cadence.metal.GpuBusy.totalNanos();
+			return dev.cadence.metal.backend.GpuBusy.totalNanos();
 		} catch (LinkageError e) {
 			return 0;  // (not on Cadence's Metal backend)
 		}

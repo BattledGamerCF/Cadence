@@ -100,7 +100,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			Session session = new Session(name, pack, lang, props);
 			session.profile = s.profile;
 			session.own.putAll(s.own);
-			return new PackSettingsScreen(parent, session, "screen", dev.cadence.metal.Lang.literal(ShaderToggle.display(name) + " Settings"), true);
+			return new PackSettingsScreen(parent, session, "screen", dev.cadence.metal.system.Lang.literal(ShaderToggle.display(name) + " Settings"), true);
 		} catch (Exception e) {
 			LoggerFactory.getLogger("cadence_shaders").warn("Shader Pack Settings: can't read {}: {}", name, e.toString());
 			return null;
@@ -113,7 +113,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		this.optionButtons.clear();
 		if (this.top) {
 			int wrap = Math.max(120, Math.min(this.list.getRowWidth(), this.width - 24));
-			for (Component line : CadenceSettings.wrap(dev.cadence.metal.Lang.literal(
+			for (Component line : CadenceSettings.wrap(dev.cadence.metal.system.Lang.literal(
 				"Click: next value · Shift-click: previous · Apply to see it").withStyle(ChatFormatting.GRAY), wrap, this.font))
 				this.list.addHeader(line);
 		}
@@ -165,13 +165,13 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		// (three buttons of 120 on the first page are 376 GUI pixels; the smallest GUI is 320 wide: narrower then)
 		int buttons = this.top ? 3 : 2;
 		w = Math.max(60, Math.min(w, (this.width - 2 * 8 - 12) / buttons));
-		if (this.top) row.addChild(Button.builder(dev.cadence.metal.Lang.literal("Reset to Defaults"), b -> {
+		if (this.top) row.addChild(Button.builder(dev.cadence.metal.system.Lang.literal("Reset to Defaults"), b -> {
 			this.session.own.clear();
 			this.session.profile = "";
 			this.session.changed();
 			this.rebuildWidgets();
-		}).width(w).tooltip(Tooltip.create(dev.cadence.metal.Lang.literal("Every option back to the pack author's defaults, and no profile."))).build());
-		row.addChild(Button.builder(dev.cadence.metal.Lang.literal("Apply"), b -> {
+		}).width(w).tooltip(Tooltip.create(dev.cadence.metal.system.Lang.literal("Every option back to the pack author's defaults, and no profile."))).build());
+		row.addChild(Button.builder(dev.cadence.metal.system.Lang.literal("Apply"), b -> {
 			if (this.session.changed) this.apply();
 		}).width(w).tooltip(Tips.of("Saves these settings and reloads the pack now, so you can see them.",
 			"#Done does the same as you leave.")).build());
@@ -180,10 +180,10 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 
 	private AbstractWidget pageButton(String page) {
 		String label = this.session.lang.getOrDefault("screen." + page, page.replace('_', ' '));
-		Button.Builder b = Button.builder(dev.cadence.metal.Lang.literal(label + "§r..."), btn -> this.minecraft.gui.setScreen(
-			new PackSettingsScreen(this, this.session, "screen." + page, dev.cadence.metal.Lang.literal(strip(label)), false)));
+		Button.Builder b = Button.builder(dev.cadence.metal.system.Lang.literal(label + "§r..."), btn -> this.minecraft.gui.setScreen(
+			new PackSettingsScreen(this, this.session, "screen." + page, dev.cadence.metal.system.Lang.literal(strip(label)), false)));
 		String help = this.session.lang.get("screen." + page + ".comment");
-		if (help != null) b.tooltip(Tooltip.create(dev.cadence.metal.Lang.literal(help)));
+		if (help != null) b.tooltip(Tooltip.create(dev.cadence.metal.system.Lang.literal(help)));
 		Button built = b.build();
 		this.pageButtons.add(built);
 		return built;
@@ -202,7 +202,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			this.session.own.clear();  // a profile sets the options it names, as in Iris
 			this.session.changed();
 			this.rebuildWidgets();
-		}).tooltip(Tooltip.create(dev.cadence.metal.Lang.literal("The pack author's quality presets: " + list
+		}).tooltip(Tooltip.create(dev.cadence.metal.system.Lang.literal("The pack author's quality presets: " + list
 			+ ". Choosing one sets its options; changing an option afterwards makes it Custom."))).build();
 	}
 
@@ -211,7 +211,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 	}
 
 	private Component profileLabel() {
-		return dev.cadence.metal.Lang.literal("Profile: " + this.profileName(this.session.profile) + (this.session.own.isEmpty() ? "" : " (Custom)"));
+		return dev.cadence.metal.system.Lang.literal("Profile: " + this.profileName(this.session.profile) + (this.session.own.isEmpty() ? "" : " (Custom)"));
 	}
 
 	/** An option: a slider when the author lists it under sliders=, a plain line when it has one value, else a button. */
@@ -223,9 +223,9 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			: Tips.of("Default: " + this.valueText(name, option.defaultValue()));
 		if (values.size() <= 1) {
 			// (an information line, like BSL's "BSL v10.1.8 by Capt Tatsu")
-			Button info = Button.builder(dev.cadence.metal.Lang.literal(this.session.lang.getOrDefault("option." + name, name.replace('_', ' '))), b -> { }).build();
+			Button info = Button.builder(dev.cadence.metal.system.Lang.literal(this.session.lang.getOrDefault("option." + name, name.replace('_', ' '))), b -> { }).build();
 			info.active = false;
-			if (help != null) info.setTooltip(Tooltip.create(dev.cadence.metal.Lang.literal(help)));
+			if (help != null) info.setTooltip(Tooltip.create(dev.cadence.metal.system.Lang.literal(help)));
 			return info;
 		}
 		AbstractWidget w;
@@ -263,8 +263,8 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		ShaderOption option = this.session.pack.options().get(name);
 		String value = this.session.values().getOrDefault(name, option.defaultValue());
 		String label = this.session.lang.getOrDefault("option." + name, name.replace('_', ' '));
-		var c = dev.cadence.metal.Lang.literal(label + "§r: ");
-		Component v = dev.cadence.metal.Lang.literal(this.valueText(name, value));
+		var c = dev.cadence.metal.system.Lang.literal(label + "§r: ");
+		Component v = dev.cadence.metal.system.Lang.literal(this.valueText(name, value));
 		return c.append(value.equals(option.defaultValue()) ? v : v.copy().withStyle(ChatFormatting.YELLOW));
 	}
 
@@ -310,8 +310,8 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 	private Component sliderLabel(String name, String value) {
 		ShaderOption option = this.session.pack.options().get(name);
 		String label = this.session.lang.getOrDefault("option." + name, name.replace('_', ' '));
-		Component v = dev.cadence.metal.Lang.literal(this.valueText(name, value));
-		return dev.cadence.metal.Lang.literal(label + "§r: ").append(value.equals(option.defaultValue()) ? v : v.copy().withStyle(ChatFormatting.YELLOW));
+		Component v = dev.cadence.metal.system.Lang.literal(this.valueText(name, value));
+		return dev.cadence.metal.system.Lang.literal(label + "§r: ").append(value.equals(option.defaultValue()) ? v : v.copy().withStyle(ChatFormatting.YELLOW));
 	}
 
 	/** Self-test: the Nth (1-based) page button / option button of the open settings page pressed. */
@@ -348,7 +348,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 				Properties p = new Properties();
 				this.session.own.forEach(p::setProperty);
 				// (Properties' own byte format, as Iris writes this file)
-				dev.cadence.metal.ConfigFiles.store(p, file, "Shader pack settings (Cadence; the same file Iris uses)", false);
+				dev.cadence.metal.system.ConfigFiles.store(p, file, "Shader pack settings (Cadence; the same file Iris uses)", false);
 			}
 		} catch (IOException e) {
 			LoggerFactory.getLogger("cadence_shaders").warn("Shader Pack Settings: can't save {}: {}", file, e.toString());
@@ -363,7 +363,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 		if (!Files.isRegularFile(file)) return out;
 		Properties p = new Properties();
 		try (var in = Files.newInputStream(file)) {
-			dev.cadence.metal.ConfigFiles.load(p, in);
+			dev.cadence.metal.system.ConfigFiles.load(p, in);
 		} catch (IOException | IllegalArgumentException e) {
 			return out;
 		}

@@ -2,7 +2,7 @@
 package dev.cadence.metal.mixin.startup;
 
 import com.mojang.text2speech.Narrator;
-import dev.cadence.metal.LazyNarrator;
+import dev.cadence.metal.backend.LazyNarrator;
 import net.minecraft.client.GameNarrator;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

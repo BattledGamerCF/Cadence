@@ -123,7 +123,7 @@ public final class CadenceSelfTest {
 					double sum = 0;
 					int n = 0;
 					for (int k = 0; k < seconds * 4; k++) {
-						double w = dev.cadence.metal.MacSystem.systemWatts();
+						double w = dev.cadence.metal.backend.MacSystem.systemWatts();
 						if (w > 0) { sum += w; n++; }
 						sleep(250);
 					}
@@ -131,8 +131,8 @@ public final class CadenceSelfTest {
 				} else if (lower.equals("batteryinfo")) {
 					// "batteryinfo": the battery estimate's inputs (energy left, the Mac's draw) and its text
 					LOGGER.info("[selftest] batteryinfo: {} Wh left, Mac draws {} W, on battery {}, Low Power Mode {}, estimate '{}'",
-						String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.batteryWh()), String.format(Locale.ROOT, "%.1f", dev.cadence.metal.MacSystem.systemWatts()),
-						dev.cadence.metal.MacSystem.onBattery(), dev.cadence.metal.MacSystem.lowPowerMode(), dev.cadence.metal.MacSystem.batteryTimeLeft());
+						String.format(Locale.ROOT, "%.1f", dev.cadence.metal.backend.MacSystem.batteryWh()), String.format(Locale.ROOT, "%.1f", dev.cadence.metal.backend.MacSystem.systemWatts()),
+						dev.cadence.metal.backend.MacSystem.onBattery(), dev.cadence.metal.backend.MacSystem.lowPowerMode(), dev.cadence.metal.backend.MacSystem.batteryTimeLeft());
 				} else if (lower.startsWith("voice=")) {
 					// "voice=PHRASE": a phrase as if Voice Control heard it (the helper's recognition aside), what it did logged
 					String phrase = step.substring(6).replace('_', ' ');
@@ -195,7 +195,7 @@ public final class CadenceSelfTest {
 					});
 				} else if (lower.startsWith("hdr=")) {
 					// "hdr=on|off": the HDR button's switch (not saved), applied at the next frame
-					dev.cadence.metal.Hdr.setWanted(lower.endsWith("on"));
+					dev.cadence.metal.backend.Hdr.setWanted(lower.endsWith("on"));
 				} else if (lower.startsWith("smooth=")) {
 					// "smooth=on|off": Smooth Textures (not saved)
 					dev.cadence.metal.neural.SmoothTextures.setWanted(lower.endsWith("on"));
@@ -228,8 +228,8 @@ public final class CadenceSelfTest {
 						dev.cadence.metal.rt.RayTracing.tracer(), dev.cadence.metal.rt.RayTracing.usedHardware(), dev.cadence.metal.rt.RayTracing.support(),
 						dev.cadence.metal.rt.RayTracing.backlog()));
 				} else if (lower.equals("hdrstats")) {
-					// "hdrstats": the main target's brightest value and the share of pixels above SDR white (dev.cadence.metal.Hdr)
-					mc.execute(() -> dev.cadence.metal.Hdr.debugStats(line -> LOGGER.info("[selftest] hdrstats: {}", line)));
+					// "hdrstats": the main target's brightest value and the share of pixels above SDR white (dev.cadence.metal.backend.Hdr)
+					mc.execute(() -> dev.cadence.metal.backend.Hdr.debugStats(line -> LOGGER.info("[selftest] hdrstats: {}", line)));
 					sleep(500);
 				} else if (lower.equals("serverchunks")) {
 					// "serverchunks": Keep Server Chunks' state (multiplayer guest checks): chunks loaded and kept, the distances
@@ -254,13 +254,13 @@ public final class CadenceSelfTest {
 							api.getMethod("isRenderingShadowPass").invoke(iris), api.getMethod("getSunPathRotation").invoke(iris),
 							config.getClass().getMethod("areShadersEnabled").invoke(config),
 							api.getMethod("openMainIrisScreenObj", Object.class).invoke(iris, (Object) null),
-							dev.cadence.metal.Profile.realIris(net.fabricmc.loader.api.FabricLoader.getInstance()));
+							dev.cadence.metal.system.Profile.realIris(net.fabricmc.loader.api.FabricLoader.getInstance()));
 					} catch (ReflectiveOperationException | LinkageError e) {
 						LOGGER.info("[selftest] irisapi: unavailable: {}", e.toString());
 					}
 				} else if (lower.equals("compilestats")) {
 					// "compilestats": time spent compiling shader libraries and creating pipelines since the start
-					double[] c = dev.cadence.metal.MetalBridge.compileStats();
+					double[] c = dev.cadence.metal.backend.MetalBridge.compileStats();
 					LOGGER.info("[selftest] compilestats: {} libraries in {} ms, {} pipelines in {} ms", (long) c[1], Math.round(c[0] * 1000), (long) c[3], Math.round(c[2] * 1000));
 				} else if (lower.startsWith("framegen=")) {
 					// "framegen=smooth|responsive|off": Frame Generation's mode (not saved)
@@ -361,7 +361,7 @@ public final class CadenceSelfTest {
 					});
 				} else if (lower.equals("gputrace")) {
 					// "gputrace" (with -Dcadence.metal.trace=later): the GPU trace of a frame a moment from now, in stdout
-					dev.cadence.metal.FrameHints.traceSoon();
+					dev.cadence.metal.backend.FrameHints.traceSoon();
 				} else if (lower.startsWith("ab=")) {
 					// "ab=FEATURE:SECONDS": flips FEATURE every 2 s for SECONDS and compares GPU/interval ms of the 1-s windows that
 					// fall wholly in each state (thermal drift is slow next to 2 s, so both states see the same Mac)
@@ -811,7 +811,7 @@ public final class CadenceSelfTest {
 						LOGGER.info("[selftest] histo failed: {}", e.toString());
 					}
 				} else if (lower.equals("heapdump")) {
-					// "heapdump": the live heap to run/heap-HHmmss.hprof (full GC first), for tools/HeapPaths.java
+					// "heapdump": the live heap to run/heap-HHmmss.hprof (full GC first)
 					try {
 						java.nio.file.Path file = mc.gameDirectory.toPath().resolve("heap-" + java.time.LocalTime.now().format(
 							java.time.format.DateTimeFormatter.ofPattern("HHmmss")) + ".hprof");
@@ -1189,9 +1189,9 @@ public final class CadenceSelfTest {
 					BusyScene.build(mc);
 				} else if (lower.equals("presents")) {
 					// "presents": start counting how evenly frames reach the screen; "presents?" logs the count since
-					dev.cadence.metal.MacSystem.presentStatsStart();
+					dev.cadence.metal.backend.MacSystem.presentStatsStart();
 				} else if (lower.equals("presents?")) {
-					long[] p = dev.cadence.metal.MacSystem.presentStats();
+					long[] p = dev.cadence.metal.backend.MacSystem.presentStats();
 					LOGGER.info("[selftest] presents: {} intervals, {} longer than 1.5 refreshes ({})", p[0], p[1],
 						p[0] == 0 ? "no presented times" : String.format(java.util.Locale.ROOT, "%.2f%%", 100.0 * p[1] / p[0]));
 				} else if (lower.startsWith("recordmode=")) {
@@ -1204,14 +1204,14 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("recordinterp=")) {
 					dev.cadence.metal.record.Record.interpolate = lower.endsWith("on");
 				} else if (lower.startsWith("recorddump=")) {
-					// "recorddump=name": the record frame's inputs into results-able files (tools/record_bench.m)
+					// "recorddump=name": the record frame's inputs into results-able files (timed outside the game)
 					String name = lower.substring(11);
 					mc.execute(() -> LOGGER.info("[selftest] record dump {}: {}", name,
 						dev.cadence.metal.record.Record.dump(mc.gameDirectory.toPath().resolve("screenshots").resolve("dump-" + name))));
 				} else if (lower.startsWith("recordextract=")) {
 					dev.cadence.metal.record.Record.skipExtract = lower.endsWith("skip");
 				} else if (lower.startsWith("recordbatch=")) {
-					dev.cadence.metal.MetalBridge.recordBatch(Integer.parseInt(lower.substring(12)));
+					dev.cadence.metal.backend.MetalBridge.recordBatch(Integer.parseInt(lower.substring(12)));
 				} else if (lower.startsWith("recordheight=")) {
 					dev.cadence.metal.record.Record.height = Integer.parseInt(lower.substring(13));
 				} else if (lower.startsWith("maxfpsmode=")) {
@@ -1223,11 +1223,11 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("battery=")) {
 					// "battery=on|off": behave as if the Mac were on its battery (BatteryMode), or as it really is
 					dev.cadence.shaders.cadence.system.BatteryMode.fakeBattery = lower.endsWith("on");
-					LOGGER.info("[selftest] battery: macOS says on battery = {}, cap now {}", dev.cadence.metal.MacSystem.onBattery(),
+					LOGGER.info("[selftest] battery: macOS says on battery = {}, cap now {}", dev.cadence.metal.backend.MacSystem.onBattery(),
 						dev.cadence.shaders.cadence.system.BatteryMode.fpsCap());
 				} else if (lower.equals("pipelines")) {
 					// "pipelines": time spent making Metal pipelines so far (translation, MSL compile, pipeline state), and cache hits
-					LOGGER.info("[selftest] pipelines: {}", new java.util.TreeMap<>(dev.cadence.metal.MetalPipeline.compileStats()));
+					LOGGER.info("[selftest] pipelines: {}", new java.util.TreeMap<>(dev.cadence.metal.backend.MetalPipeline.compileStats()));
 				} else if (lower.equals("mspt")) {
 					// "mspt": the integrated server's average tick time over its last 100 ticks (Cadence Logic measurements)
 					var host = mc.getSingleplayerServer();
@@ -1339,7 +1339,7 @@ public final class CadenceSelfTest {
 				case "hiz" -> dev.cadence.shaders.cadence.hiz.HiZ.enabled = on;
 				case "hizvanilla" -> dev.cadence.shaders.cadence.hiz.HiZ.vanilla = on;
 				case "packeddraws" -> dev.cadence.shaders.cadence.alloc.PackedDraws.enabled = on;
-				case "depthdiscard" -> dev.cadence.metal.FrameHints.depthDiscard = on;
+				case "depthdiscard" -> dev.cadence.metal.backend.FrameHints.depthDiscard = on;
 				case "heapcompact" -> dev.cadence.shaders.cadence.memory.ChunkHeapCompactor.enabled = on;
 				case "shadowproxy" -> dev.cadence.shaders.cadence.shadow.ShadowProxies.setDistance(on ? 96 : 0);
 				case "shadowrate" -> ShadowReuse.setRate(on ? 2 : 1);
@@ -1349,7 +1349,7 @@ public final class CadenceSelfTest {
 				case "meshlight" -> dev.cadence.shaders.cadence.mesh.MeshLightCache.enabled = on;
 				case "meshtint" -> dev.cadence.shaders.cadence.mesh.MeshTintCache.enabled = on;
 				case "facepacked" -> dev.cadence.shaders.cadence.facecull.FaceCull.packedGroups = on;
-				case "lazyclears" -> dev.cadence.metal.FrameHints.lazyClears(on);
+				case "lazyclears" -> dev.cadence.metal.backend.FrameHints.lazyClears(on);
 				case "modelwrite" -> dev.cadence.metal.cpu.Cpu.modelWrite = on;
 				case "fpscounter" -> System.setProperty("cadence.fpsCounter", Boolean.toString(on));
 				case "rgssskip" -> dev.cadence.metal.own.OwnTerrain.rgssSkip(on);
@@ -1364,11 +1364,11 @@ public final class CadenceSelfTest {
 				case "nofeedback" -> dev.cadence.shaders.runtime.PackRenderTargets.SKIP_FEEDBACK_COPIES = on;
 				case "feedbackreads" -> dev.cadence.shaders.runtime.ShaderRuntime.FEEDBACK_READS = on;
 				case "dynlights" -> DynamicLights.setForTest(on ? DynamicLights.Mode.ALL : DynamicLights.Mode.OFF);
-				case "finaldepth" -> dev.cadence.metal.MetalBridge.bandwidthTest(on ? 1 : 0);
-				case "present2" -> dev.cadence.metal.MetalBridge.bandwidthTest(on ? 2 : 0);
+				case "finaldepth" -> dev.cadence.metal.backend.MetalBridge.bandwidthTest(on ? 1 : 0);
+				case "present2" -> dev.cadence.metal.backend.MetalBridge.bandwidthTest(on ? 2 : 0);
 				default -> {
 					// "skip-PROGRAM": ON = that pack program draws nothing (its GPU cost, measured interleaved: thermal drift cancels)
-					if (feature.startsWith("drop-")) dev.cadence.metal.FrameHints.dropPipeline = on ? feature.substring(5) : null;
+					if (feature.startsWith("drop-")) dev.cadence.metal.backend.FrameHints.dropPipeline = on ? feature.substring(5) : null;
 					else if (feature.startsWith("skip-"))
 						dev.cadence.shaders.runtime.ShaderRenderPass.SKIP_PROGRAMS = on ? java.util.Set.of(feature.substring(5)) : java.util.Set.of();
 					else LOGGER.info("[selftest] ab: unknown feature {}", feature);
@@ -1473,7 +1473,7 @@ public final class CadenceSelfTest {
 			LOGGER.info("[selftest] {} {}: memory {}", index, step, MemoryProbe.summary(mc.levelRenderer.sectionRenderDispatcher()));
 			LOGGER.info("[selftest] {} {}: {}", index, step, MemoryProbe.census(mc));
 			try {
-				LOGGER.info("[selftest] {} {}: gpu {}", index, step, dev.cadence.metal.GpuMemory.census(14));
+				LOGGER.info("[selftest] {} {}: gpu {}", index, step, dev.cadence.metal.backend.GpuMemory.census(14));
 			} catch (LinkageError e) {
 				// not on Cadence's Metal backend
 			}

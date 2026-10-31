@@ -66,7 +66,7 @@ final class OwnAdaptive {
 			else if (!choice && on < off * (1 - MARGIN)) choice = true;
 			decisions++;
 			if (before != choice) switches++;
-			if (dev.cadence.metal.FrameHints.LOG_STATS && (before != choice || decisions % 20 == 1))
+			if (dev.cadence.metal.backend.FrameHints.LOG_STATS && (before != choice || decisions % 20 == 1))
 				System.out.printf("cadence-own adaptive occlusion: with %.3f ms, without %.3f ms -> %s (%d decisions, %d switches)%n",
 					on, off, choice ? "with" : "without", decisions, switches);
 			exploring = false;

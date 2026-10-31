@@ -10,8 +10,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import dev.cadence.metal.FrameCapture;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.FrameCapture;
+import dev.cadence.metal.backend.MetalBridge;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
@@ -19,7 +19,7 @@ import static java.lang.foreign.ValueLayout.JAVA_INT;
 import static java.lang.foreign.ValueLayout.JAVA_LONG;
 
 /**
- * The own renderer's side of the frame capture (dev.cadence.metal.FrameCapture, -Dcadence.own.capture; off by default: every hook in
+ * The own renderer's side of the frame capture (dev.cadence.metal.backend.FrameCapture, -Dcadence.own.capture; off by default: every hook in
  * OwnNative and OwnTerrain is a constant-false branch). Logs every OwnNative call that encodes GPU work or sets its state, with its
  * frame blobs and the uniform blocks each draw binds. In terrain mode (-Dcadence.own.capture.mode=terrain) it also keeps the level
  * pass's encoder serials around each call and, in image frames, splits the pass to copy its attachments before and after our opaque

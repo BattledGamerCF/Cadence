@@ -78,7 +78,7 @@ public final class RenderScale {
 	 * -Dcadence.upscaler=cadence|metalfx overrides it for tests.
 	 */
 	// Cadence: four upscalers. 0 Apple (MetalFX), 1 Smooth (Cadence bicubic + sharpen), 2 Fast (bilinear, cheapest), 3 Neural Engine
-	// (dev.cadence.metal.NeuralUpscaler: the world, with or without a shader pack; MetalFX where it can't)
+	// (dev.cadence.metal.backend.NeuralUpscaler: the world, with or without a shader pack; MetalFX where it can't)
 	public static final int UPSCALE_APPLE = 0, UPSCALE_SMOOTH = 1, UPSCALE_FAST = 2, UPSCALE_NEURAL = 3, UPSCALERS = 4;
 	private static volatile int upscaler = parseUpscaler(
 		System.getProperty("cadence.upscaler", ShaderToggle.configValue("upscaler", "metalfx")));
@@ -289,7 +289,7 @@ public final class RenderScale {
 			windowStart = 0;
 			return;
 		}
-		long gpuNow = dev.cadence.metal.GpuBusy.totalNanos();
+		long gpuNow = dev.cadence.metal.backend.GpuBusy.totalNanos();
 		if (windowStart == 0) {
 			windowStart = nowNanos;
 			windowGpuStart = gpuNow;

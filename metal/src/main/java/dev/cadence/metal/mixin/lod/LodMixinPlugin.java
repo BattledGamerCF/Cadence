@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
  */
 public final class LodMixinPlugin implements IMixinConfigPlugin {
 	static {
-		dev.cadence.metal.Profile.apply(); // before any flag is read
+		dev.cadence.metal.system.Profile.apply(); // before any flag is read
 	}
 
 	private static final boolean ENABLED = Boolean.getBoolean("cadence.lod") || System.getProperty("cadence.lod.radius") != null;

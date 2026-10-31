@@ -34,7 +34,7 @@ static NSString *presentSource = @
 	"fragment float4 present_fs(V v [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]]) {\n"
 	"  return t.sample(s, v.uv);\n"
 	"}\n"
-	// Cadence HDR (dev.cadence.metal.Hdr): the frame is a float target holding the game's sRGB-encoded values, with light sources
+	// Cadence HDR (dev.cadence.metal.backend.Hdr): the frame is a float target holding the game's sRGB-encoded values, with light sources
 	// above 1.0; the drawable is extended linear sRGB, where 1.0 is the display's SDR white and its headroom the brightest it shows
 	// now. Values up to the knee pass unchanged; above it, by the brightest channel (hue kept), they roll off into the headroom.
 	// mode 0: no headroom (SDR or the screen at full brightness): above 1.0 scaled back to 1.0, hue kept. (fg_fs_hdr in

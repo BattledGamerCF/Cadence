@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 /** Edge cap mixins (-Dcadence.edgeCap=true|N, see EdgeCap): applied only with the flag; without it the game is unchanged. */
 public final class EdgeMixinPlugin implements IMixinConfigPlugin {
 	@Override public void onLoad(String mixinPackage) {
-		dev.cadence.metal.Profile.apply(); // before any flag is read: a profile may set cadence.edgeCap
+		dev.cadence.metal.system.Profile.apply(); // before any flag is read: a profile may set cadence.edgeCap
 	}
 	@Override public String getRefMapperConfig() { return null; }
 	@Override public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {

@@ -1,4 +1,4 @@
-"""Trims keys the way dev.cadence.metal.Lang trims text before looking it up (spaces and punctuation at the edges)."""
+"""Trims keys the way dev.cadence.metal.system.Lang trims text before looking it up (spaces and punctuation at the edges)."""
 import json, sys
 EDGE = " :;,.()·\n"
 keys = json.load(open(sys.argv[1]))

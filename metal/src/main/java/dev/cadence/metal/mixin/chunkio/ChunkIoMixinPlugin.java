@@ -18,7 +18,7 @@ public final class ChunkIoMixinPlugin implements IMixinConfigPlugin {
 	static {
 		// the integrated builds apply their default profile (e.g. -Dcadence.chunk.saveSkip) before any flag is read
 		try {
-			Class.forName("dev.cadence.metal.Profile").getMethod("apply").invoke(null);
+			Class.forName("dev.cadence.metal.system.Profile").getMethod("apply").invoke(null);
 		} catch (ClassNotFoundException e) {
 			// a build without profiles: the flags come from the command line only
 		} catch (ReflectiveOperationException e) {

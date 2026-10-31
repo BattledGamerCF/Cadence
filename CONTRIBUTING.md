@@ -66,7 +66,7 @@ fields and call sites against Minecraft 26.3. This catches mistakes that would o
 
 ## Translations
 
-Cadence's text is written in British English in the code, and the English is the translation key. Text shown to the player goes through `dev.cadence.metal.Lang` (`Lang.literal(...)` in place of `Component.literal(...)`, and every `Tips` tooltip). Each language is a JSON file in `metal/src/main/resources/cadence/lang/`, named with Minecraft's language code (`de_de.json`), mapping English to the translation.
+Cadence's text is written in British English in the code, and the English is the translation key. Text shown to the player goes through `dev.cadence.metal.system.Lang` (`Lang.literal(...)` in place of `Component.literal(...)`, and every `Tips` tooltip). Each language is a JSON file in `metal/src/main/resources/cadence/lang/`, named with Minecraft's language code (`de_de.json`), mapping English to the translation.
 
 - A key with `{}` is a template for text put together from parts, such as `Performance: {}`. The parts are translated in turn. A translation that needs the parts in another order writes `{1}`, `{2}` instead of `{}`.
 - Spaces and punctuation at the start and end of a text are kept as written; the key is the text between them.

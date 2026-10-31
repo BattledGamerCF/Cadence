@@ -2,8 +2,8 @@ package dev.cadence.shaders.runtime;
 
 import static org.lwjgl.util.shaderc.Shaderc.*;
 
-import dev.cadence.metal.MetalCompute;
-import dev.cadence.metal.MetalStorage;
+import dev.cadence.metal.backend.MetalCompute;
+import dev.cadence.metal.backend.MetalStorage;
 import dev.cadence.shaders.compile.TranslatedProgram;
 import java.nio.ByteBuffer;
 import java.util.List;

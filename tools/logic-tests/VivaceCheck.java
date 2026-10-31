@@ -1,4 +1,4 @@
-package dev.cadence.metal;
+package dev.cadence.metal.system;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

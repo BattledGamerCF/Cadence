@@ -52,7 +52,7 @@ public final class SpirvCache {
       Path file = d.resolve(key + ".spv");
       byte[] bytes = Files.readAllBytes(file);
       if (bytes.length < 20 || bytes.length % 4 != 0) return null;
-      dev.cadence.metal.DiskCacheBudget.used(file);
+      dev.cadence.metal.system.DiskCacheBudget.used(file);
       ByteBuffer out = org.lwjgl.system.MemoryUtil.memAlloc(bytes.length);
       out.put(bytes).flip();
       hits++;
@@ -97,7 +97,7 @@ public final class SpirvCache {
     try {
       d = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir().resolve("cadence-cache").resolve("spirv");
       Files.createDirectories(d);
-      dev.cadence.metal.DiskCacheBudget.pruneOnce(d, Long.getLong("cadence.shaders.spirvCacheDisk", 256L << 20));
+      dev.cadence.metal.system.DiskCacheBudget.pruneOnce(d, Long.getLong("cadence.shaders.spirvCacheDisk", 256L << 20));
       return directory = d;
     } catch (Throwable e) {
       return null;

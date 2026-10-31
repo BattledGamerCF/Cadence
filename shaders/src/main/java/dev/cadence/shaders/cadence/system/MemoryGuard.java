@@ -2,7 +2,7 @@ package dev.cadence.shaders.cadence.system;
 
 import dev.cadence.shaders.cadence.memory.NativeTrim;
 import dev.cadence.shaders.cadence.render.RenderScale;
-import dev.cadence.metal.MacSystem;
+import dev.cadence.metal.backend.MacSystem;
 import org.slf4j.LoggerFactory;
 
 /**

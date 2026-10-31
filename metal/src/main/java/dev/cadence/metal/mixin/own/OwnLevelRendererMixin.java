@@ -49,11 +49,11 @@ abstract class OwnLevelRendererMixin {
 	private void cadence$ownOpaque(ChunkSectionsToRender sections, ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas,
 		boolean wireframe) {
 		OwnTerrain own = OwnTerrain.get();
-		dev.cadence.metal.GpuProfileMark.mark("own opaque terrain");
+		dev.cadence.metal.backend.GpuProfileMark.mark("own opaque terrain");
 		if (own != null && group == ChunkSectionLayerGroup.OPAQUE && !wireframe && this.viewArea != null
 			&& own.drawOpaque(this.levelRenderState.cameraRenderState, this.viewArea.getViewDistance(), OwnSeam.fadeMs(Util.toMillis(this.optionsRenderState.chunkSectionFadeInTime)),
 				sampler, atlas, ((LevelRenderer) (Object) this).visibleSections())) {
-			dev.cadence.metal.GpuProfileMark.mark("after own opaque terrain");
+			dev.cadence.metal.backend.GpuProfileMark.mark("after own opaque terrain");
 			return;
 		}
 		sections.renderGroup(group, renderPass, sampler, atlas, wireframe);
@@ -64,11 +64,11 @@ abstract class OwnLevelRendererMixin {
 	private void cadence$ownTranslucent(ChunkSectionsToRender sections, ChunkSectionLayerGroup group, RenderPass renderPass, GpuSampler sampler, GpuTextureView atlas,
 		boolean wireframe) {
 		OwnTerrain own = OwnTerrain.get();
-		dev.cadence.metal.GpuProfileMark.mark("own translucent terrain");
+		dev.cadence.metal.backend.GpuProfileMark.mark("own translucent terrain");
 		if (own != null && OwnTerrain.TRANSLUCENT && group == ChunkSectionLayerGroup.TRANSLUCENT && !wireframe
 			&& own.drawTranslucent(this.levelRenderState.cameraRenderState, OwnSeam.fadeMs(Util.toMillis(this.optionsRenderState.chunkSectionFadeInTime)), sampler, atlas,
 				((LevelRenderer) (Object) this).visibleSections())) {
-			dev.cadence.metal.GpuProfileMark.mark("after own translucent terrain");
+			dev.cadence.metal.backend.GpuProfileMark.mark("after own translucent terrain");
 			return;
 		}
 		sections.renderGroup(group, renderPass, sampler, atlas, wireframe);

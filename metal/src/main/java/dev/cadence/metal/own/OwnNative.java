@@ -5,7 +5,7 @@ import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
 import java.lang.foreign.MemoryLayout;
 import java.lang.invoke.MethodHandle;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
@@ -78,15 +78,15 @@ final class OwnNative {
 
 	static long create(long ctx, String source, boolean compact, boolean fat, boolean cpuClip) {
 		if (OwnCapture.ON) {
-			dev.cadence.metal.FrameCapture.Own.compact = compact;
-			dev.cadence.metal.FrameCapture.Own.fat = fat;
-			dev.cadence.metal.FrameCapture.Own.cpuClip = cpuClip;
-			dev.cadence.metal.FrameCapture.Own.exactPos = source.startsWith("#define OWN_EXACT_POS 1\n");
+			dev.cadence.metal.backend.FrameCapture.Own.compact = compact;
+			dev.cadence.metal.backend.FrameCapture.Own.fat = fat;
+			dev.cadence.metal.backend.FrameCapture.Own.cpuClip = cpuClip;
+			dev.cadence.metal.backend.FrameCapture.Own.exactPos = source.startsWith("#define OWN_EXACT_POS 1\n");
 			// every #define line the caller put in front of terrain.metal (exactPos, qrec, ...): the replay compiles its tree's terrain.metal
 			// with the same prefix
 			int at = 0;
 			while (source.startsWith("#define ", at) && source.indexOf('\n', at) > 0) at = source.indexOf('\n', at) + 1;
-			dev.cadence.metal.FrameCapture.Own.prefix = source.substring(0, at);
+			dev.cadence.metal.backend.FrameCapture.Own.prefix = source.substring(0, at);
 		}
 		try (MemoryStack stack = MemoryStack.stackPush()) {
 			long err = stack.nmalloc(1, 16384);
@@ -410,7 +410,7 @@ final class OwnNative {
 
 	/** top: the tiled pyramid's small top levels in one dispatch (-Dcadence.own.hizTop). */
 	static void setHizTiled(boolean on, boolean top, boolean gather) {
-		if (OwnCapture.ON) dev.cadence.metal.FrameCapture.Own.hizBits = (on ? 1 : 0) | (top ? 2 : 0) | (gather ? 4 : 0) | (Integer.getInteger("cadence.own.frag.uoccDebug", 0) & 255) << 8
+		if (OwnCapture.ON) dev.cadence.metal.backend.FrameCapture.Own.hizBits = (on ? 1 : 0) | (top ? 2 : 0) | (gather ? 4 : 0) | (Integer.getInteger("cadence.own.frag.uoccDebug", 0) & 255) << 8
 			| (Boolean.getBoolean("cadence.own.frag.uoccEnc") ? 1 << 16 : 0) | (Boolean.getBoolean("cadence.own.frag.testFast") ? 1 << 17 : 0)
 			| (Boolean.getBoolean("cadence.own.frag.testBox") ? 1 << 18 : 0) | (Boolean.getBoolean("cadence.own.frag.testGather") ? 1 << 19 : 0);
 		try {

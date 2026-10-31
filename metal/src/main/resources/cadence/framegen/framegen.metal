@@ -166,7 +166,7 @@ fragment float4 fg_fs(VOut in [[stage_in]], constant Frame &f [[buffer(0)]],
 	return float4(fgColor(in, f, colorA, distA, colorB, distB, latest), 1.0f);
 }
 
-// HDR (dev.cadence.metal.Hdr): into the float, extended linear drawable with the present's tone mapping (mcmetal.m present_hdr_fs,
+// HDR (dev.cadence.metal.backend.Hdr): into the float, extended linear drawable with the present's tone mapping (mcmetal.m present_hdr_fs,
 // the same code)
 struct Tone { float headroom; float knee; uint mode; float pad; };
 static float3 srgbDecode(float3 c) { c = max(c, 0.0f); return select(pow((c + 0.055f) / 1.055f, 2.4f), c / 12.92f, c <= 0.04045f); }

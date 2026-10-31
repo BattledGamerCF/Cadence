@@ -57,22 +57,22 @@ public final class Tips {
 
 	/** "Performance impact: High (lowers fps)": the label and the note plain, the word in its colour. */
 	public static MutableComponent impactLine(Rated rated) {
-		MutableComponent word = dev.cadence.metal.Lang.literal(rated.impact().label);
+		MutableComponent word = dev.cadence.metal.system.Lang.literal(rated.impact().label);
 		if (rated.impact().colour != null) word = word.withStyle(rated.impact().colour);
-		return dev.cadence.metal.Lang.literal("Performance impact: ").withStyle(ChatFormatting.WHITE).append(word)
-			.append(dev.cadence.metal.Lang.literal(rated.effect()).withStyle(ChatFormatting.WHITE));
+		return dev.cadence.metal.system.Lang.literal("Performance impact: ").withStyle(ChatFormatting.WHITE).append(word)
+			.append(dev.cadence.metal.system.Lang.literal(rated.effect()).withStyle(ChatFormatting.WHITE));
 	}
 
 	public static MutableComponent text(String intro, String... lines) {
-		MutableComponent out = dev.cadence.metal.Lang.literal(intro);
+		MutableComponent out = dev.cadence.metal.system.Lang.literal(intro);
 		for (String line : lines) {
 			out.append("\n");
-			if (line.startsWith("#")) out.append(dev.cadence.metal.Lang.literal(line.substring(1)).withStyle(ChatFormatting.GRAY));
+			if (line.startsWith("#")) out.append(dev.cadence.metal.system.Lang.literal(line.substring(1)).withStyle(ChatFormatting.GRAY));
 			else {
 				int bar = line.indexOf('|');
-				if (bar < 0) out.append(dev.cadence.metal.Lang.literal(line));
-				else out.append(dev.cadence.metal.Lang.literal(line.substring(0, bar)).withStyle(ChatFormatting.GREEN))
-					.append(dev.cadence.metal.Lang.literal(": " + line.substring(bar + 1)));
+				if (bar < 0) out.append(dev.cadence.metal.system.Lang.literal(line));
+				else out.append(dev.cadence.metal.system.Lang.literal(line.substring(0, bar)).withStyle(ChatFormatting.GREEN))
+					.append(dev.cadence.metal.system.Lang.literal(": " + line.substring(bar + 1)));
 			}
 		}
 		return out;

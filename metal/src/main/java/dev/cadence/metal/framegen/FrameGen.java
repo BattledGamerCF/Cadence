@@ -3,7 +3,7 @@ package dev.cadence.metal.framegen;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import net.minecraft.client.Minecraft;
@@ -117,7 +117,7 @@ public final class FrameGen {
 	public static void target(int renderedRate, int shownRate) {
 		long now = System.nanoTime();
 		boolean wanted = effective() != Mode.OFF && !failed && HOOKS && renderedRate > 0 && shownRate > renderedRate
-			&& (effective() != Mode.RESPONSIVE || dev.cadence.metal.FrameWait.ENABLED);
+			&& (effective() != Mode.RESPONSIVE || dev.cadence.metal.backend.FrameWait.ENABLED);
 		// (the backend is up whenever this is asked for in a world: read once then)
 		if (wanted && metal4 < 0) metal4 = MetalBridge.metal4() ? 1 : 0;
 		// (no snapshots lately, World Resolution below 100% for one: not running for a few seconds, so the cap isn't halved for

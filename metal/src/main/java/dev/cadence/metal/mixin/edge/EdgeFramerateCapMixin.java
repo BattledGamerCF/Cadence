@@ -2,7 +2,7 @@
 package dev.cadence.metal.mixin.edge;
 
 import com.mojang.blaze3d.platform.FramerateLimitTracker;
-import dev.cadence.metal.EdgeCap;
+import dev.cadence.metal.system.EdgeCap;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

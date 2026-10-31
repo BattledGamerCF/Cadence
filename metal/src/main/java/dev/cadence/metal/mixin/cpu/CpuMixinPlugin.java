@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 /** These mixins apply only when a -Dcadence.cpu.* property turns their lever on, so by default the game is unchanged. */
 public final class CpuMixinPlugin implements IMixinConfigPlugin {
 	static {
-		dev.cadence.metal.Profile.apply(); // before any flag is read
+		dev.cadence.metal.system.Profile.apply(); // before any flag is read
 	}
 
 	@Override public void onLoad(String mixinPackage) { }

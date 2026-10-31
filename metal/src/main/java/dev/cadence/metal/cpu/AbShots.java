@@ -42,11 +42,11 @@ public final class AbShots {
 
 	private static void lever(boolean on) {
 		switch (WHAT) {
-			case "texel" -> dev.cadence.metal.TexelViewsSwitch.set(on);
+			case "texel" -> dev.cadence.metal.backend.TexelViewsSwitch.set(on);
 			case "model" -> Cpu.modelActive = on;
 			case "leash" -> Cpu.leashActive = on;
 			case "fence" -> Cpu.fenceActive = on;
-			case "pass" -> dev.cadence.metal.TexelViewsSwitch.pass(on);
+			case "pass" -> dev.cadence.metal.backend.TexelViewsSwitch.pass(on);
 			default -> { }
 		}
 	}

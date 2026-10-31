@@ -26,7 +26,7 @@ public final class BenchmarkScreens {
 	/** The Video Settings button: greyed out, with the reason as its tooltip, when no world is open. */
 	public static Button button(Screen parent) {
 		Minecraft mc = Minecraft.getInstance();
-		Button b = Button.builder(dev.cadence.metal.Lang.literal("Benchmark..."), x -> mc.gui.setScreen(offer(parent)))
+		Button b = Button.builder(dev.cadence.metal.system.Lang.literal("Benchmark..."), x -> mc.gui.setScreen(offer(parent)))
 			.width(Button.DEFAULT_WIDTH)
 			.tooltip(Tips.of(Tips.Impact.NONE, "Measures how smooth the game is on your Mac (about 30 seconds).",
 				"#Your view turns once round in place. Compare two settings, or two Macs.",
@@ -45,11 +45,11 @@ public final class BenchmarkScreens {
 		return new CadenceConfirmScreen(yes -> {
 			if (yes) run(parent);
 			else mc.gui.setScreen(parent);
-		}, dev.cadence.metal.Lang.literal("Benchmark your Mac"),
-			dev.cadence.metal.Lang.literal("This measures how smooth Minecraft runs with your current settings. It takes about 30 seconds: your view "
+		}, dev.cadence.metal.system.Lang.literal("Benchmark your Mac"),
+			dev.cadence.metal.system.Lang.literal("This measures how smooth Minecraft runs with your current settings. It takes about 30 seconds: your view "
 				+ "turns slowly once all the way round, with the screen clear of menus and the HUD hidden.\nDon't touch anything while it "
 				+ "runs. Press Escape to stop.\nThe results stay on this Mac. You can save them as a picture to share."),
-			dev.cadence.metal.Lang.literal("Start"), dev.cadence.metal.Lang.literal("Cancel"));
+			dev.cadence.metal.system.Lang.literal("Start"), dev.cadence.metal.system.Lang.literal("Cancel"));
 	}
 
 	/** Starts the run now; the results card (or a short notice, if it stopped early) follows. */
@@ -83,7 +83,7 @@ public final class BenchmarkScreens {
 		private int capture;
 
 		ResultsScreen(Benchmark.Result r, double[] previous, Screen parent) {
-			super(dev.cadence.metal.Lang.literal("Cadence Benchmark"));
+			super(dev.cadence.metal.system.Lang.literal("Cadence Benchmark"));
 			this.r = r;
 			this.previous = previous;
 			this.parent = parent;
@@ -95,19 +95,19 @@ public final class BenchmarkScreens {
 			// (four buttons in a row; narrower on a small window or a big GUI scale)
 			int gap = 6, w = Math.max(60, Math.min(100, (this.width - 12 - 3 * gap) / 4)), x = this.width / 2 - (4 * w + 3 * gap) / 2,
 				y = Math.min(this.height - 28, this.cardTop() + this.cardHeight() + 26);
-			this.buttons.add(this.addRenderableWidget(Button.builder(dev.cadence.metal.Lang.literal("Save Image"), b -> this.beginCapture())
+			this.buttons.add(this.addRenderableWidget(Button.builder(dev.cadence.metal.system.Lang.literal("Save Image"), b -> this.beginCapture())
 				.bounds(x, y, w, 20).tooltip(Tips.of("Saves this card as a picture in your screenshots folder.")).build()));
 			boolean detailed = dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed();
-			this.buttons.add(this.addRenderableWidget(Button.builder(dev.cadence.metal.Lang.literal(detailed ? "Fewer Details" : "More Details"), b -> {
+			this.buttons.add(this.addRenderableWidget(Button.builder(dev.cadence.metal.system.Lang.literal(detailed ? "Fewer Details" : "More Details"), b -> {
 					dev.cadence.shaders.cadence.ui.CadenceSettings.setBenchmarkDetailed(!dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed());
 					this.rebuildWidgets();
 				})
 				.bounds(x + w + gap, y, w, 20).tooltip(Tips.of(detailed ? "Back to the average frame rate and what it ran on."
 					: "Also the slowest 1% of frames, the worst single frame, and graphics and processor time per frame.",
 					"#Remembered for the next benchmark.")).build()));
-			this.buttons.add(this.addRenderableWidget(Button.builder(dev.cadence.metal.Lang.literal("Run Again"), b -> run(this.parent))
+			this.buttons.add(this.addRenderableWidget(Button.builder(dev.cadence.metal.system.Lang.literal("Run Again"), b -> run(this.parent))
 				.bounds(x + 2 * (w + gap), y, w, 20).build()));
-			this.buttons.add(this.addRenderableWidget(Button.builder(dev.cadence.metal.Lang.literal("Done"), b -> this.onClose())
+			this.buttons.add(this.addRenderableWidget(Button.builder(dev.cadence.metal.system.Lang.literal("Done"), b -> this.onClose())
 				.bounds(x + 3 * (w + gap), y, w, 20).build()));
 		}
 

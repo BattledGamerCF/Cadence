@@ -7,7 +7,7 @@ import com.mojang.renderpearl.api.pipeline.DepthStencilState;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import dev.cadence.metal.lod.LodPackFrame;
 import dev.cadence.shaders.compile.MinecraftVertexAdapter;
 import java.nio.ByteBuffer;

@@ -49,7 +49,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		Screen self = this;
 		// shaders first: the pack in use (the list behind it) and its settings
 		net.minecraft.client.gui.components.Button settings = net.minecraft.client.gui.components.Button.builder(
-				dev.cadence.metal.Lang.literal("Shader Pack Settings..."), b -> {
+				dev.cadence.metal.system.Lang.literal("Shader Pack Settings..."), b -> {
 					Screen next = dev.cadence.shaders.cadence.ui.PackSettingsScreen.open(self);
 					if (next != null) this.minecraft.gui.setScreen(next);
 					else dev.cadence.shaders.cadence.system.Notices.post("Can't open this pack's settings",
@@ -63,7 +63,7 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		this.list.addSmall(ShaderToggle.packsButton(self), settings);
 		String mac = ShaderToggle.configValue("setupMac", "");
 		this.list.addSmall(dev.cadence.shaders.cadence.ui.CadenceSettings.presetButton(),
-			net.minecraft.client.gui.components.Button.builder(dev.cadence.metal.Lang.literal("Quick Setup..."),
+			net.minecraft.client.gui.components.Button.builder(dev.cadence.metal.system.Lang.literal("Quick Setup..."),
 				b -> this.minecraft.gui.setScreen(dev.cadence.shaders.cadence.setup.QuickSetupScreens.offer(self)))
 			.width(net.minecraft.client.gui.components.Button.DEFAULT_WIDTH)
 			.tooltip(dev.cadence.shaders.cadence.ui.Tips.of("Tests your Mac (about 15 seconds) and recommends settings.",
@@ -107,14 +107,14 @@ public abstract class VideoSettingsShadersMixin extends OptionsSubScreen {
 		var api = this.list.findOption(this.options.preferredGraphicsBackend());
 		if (api == null) return;
 		api.active = false;
-		api.setMessage(dev.cadence.metal.Lang.literal("Graphics API: Metal"));
+		api.setMessage(dev.cadence.metal.system.Lang.literal("Graphics API: Metal"));
 		api.setTooltip(dev.cadence.shaders.cadence.ui.Tips.of("Cadence always draws with Apple's Metal.",
 			"#This setting only matters without Cadence installed."));
 	}
 
 	/** A section heading in vanilla's own style (bold, underlined), so Cadence's sections read like the rest of the screen. */
 	private static Component heading(String text) {
-		return dev.cadence.metal.Lang.literal(text).withStyle(net.minecraft.ChatFormatting.BOLD, net.minecraft.ChatFormatting.UNDERLINE);
+		return dev.cadence.metal.system.Lang.literal(text).withStyle(net.minecraft.ChatFormatting.BOLD, net.minecraft.ChatFormatting.UNDERLINE);
 	}
 
 	@Inject(method = "removed", at = @At("HEAD"))

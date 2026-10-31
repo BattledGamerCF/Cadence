@@ -8,7 +8,7 @@ import com.mojang.renderpearl.api.textures.FilterMode;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
-import dev.cadence.metal.MetalGpuSampler;
+import dev.cadence.metal.backend.MetalGpuSampler;
 import dev.cadence.shaders.compile.ShaderCompatibilityCompiler.ShadowComparison;
 import dev.cadence.shaders.pack.ShaderPack;
 import dev.cadence.shaders.pack.ShaderProperties;
@@ -439,9 +439,9 @@ public final class PackTextures implements AutoCloseable {
     }
     out.flip();
     if (dims == 3) {
-      GpuTexture volume = dev.cadence.metal.MetalVolume.create(device, "shader pack " + path, format, w, h, d);
+      GpuTexture volume = dev.cadence.metal.backend.MetalVolume.create(device, "shader pack " + path, format, w, h, d);
       if (volume == null) throw new UnsupportedOperationException("3D textures need Cadence's Metal renderer");
-      dev.cadence.metal.MetalVolume.upload(volume, out, w, h, d);
+      dev.cadence.metal.backend.MetalVolume.upload(volume, out, w, h, d);
       PackTexture result = new PackTexture(device, volume);
       owned.add(result);
       return new RawTexture(result, "sampler3D");

@@ -23,7 +23,7 @@ public final class ShaderKeys {
 	/** Instant Replay's last 30 s to replays/ (a background thread), the result in chat. */
 	public static void saveReplay(Minecraft mc) {
 		dev.cadence.metal.rec.Replay.save(mc.gameDirectory.toPath(), line -> mc.execute(() -> {
-			if (mc.player != null) mc.player.sendSystemMessage(dev.cadence.metal.Lang.literal(line).withStyle(net.minecraft.ChatFormatting.GRAY));
+			if (mc.player != null) mc.player.sendSystemMessage(dev.cadence.metal.system.Lang.literal(line).withStyle(net.minecraft.ChatFormatting.GRAY));
 		}));
 	}
 
@@ -59,7 +59,7 @@ public final class ShaderKeys {
 			// (without live switching this session the choice is only saved: say so, or K would seem to do nothing)
 			if (!dev.cadence.shaders.CadencePackGate.hooksApplied() && mc.player != null) {
 				String pack = ShaderToggle.selectedPack();
-				mc.player.sendSystemMessage(dev.cadence.metal.Lang.literal("Shaders: "
+				mc.player.sendSystemMessage(dev.cadence.metal.system.Lang.literal("Shaders: "
 					+ (pack.isEmpty() ? "Off" : ShaderToggle.display(pack)) + " from the next start (this session can't switch packs live)")
 					.withStyle(net.minecraft.ChatFormatting.GRAY));
 			}

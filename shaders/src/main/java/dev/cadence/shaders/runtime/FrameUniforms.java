@@ -271,7 +271,7 @@ public final class FrameUniforms {
         (float) Math.toRadians(probe.getValue(EnvironmentAttributes.SUN_ANGLE, partialTicks));
     put("moonPhase", probe.getValue(EnvironmentAttributes.MOON_PHASE, partialTicks).index());
     float pathDegrees = (float) globals.floatConstant("sunPathRotation", 0);
-    dev.cadence.metal.ApiHooks.sunPathRotation = pathDegrees; // (Cadence API, the Iris API's getSunPathRotation)
+    dev.cadence.metal.backend.ApiHooks.sunPathRotation = pathDegrees; // (Cadence API, the Iris API's getSunPathRotation)
     float pathRotation = (float) Math.toRadians(pathDegrees);
     float moonAngle =
         (float) Math.toRadians(probe.getValue(EnvironmentAttributes.MOON_ANGLE, partialTicks));

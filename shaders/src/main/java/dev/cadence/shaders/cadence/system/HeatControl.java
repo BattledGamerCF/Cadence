@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.system;
 
-import dev.cadence.metal.MacSystem;
+import dev.cadence.metal.backend.MacSystem;
 import dev.cadence.shaders.cadence.render.RenderScale;
 import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import dev.cadence.shaders.cadence.shadow.ShadowReuse;

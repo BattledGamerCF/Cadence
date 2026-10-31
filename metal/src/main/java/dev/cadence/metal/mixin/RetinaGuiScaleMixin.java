@@ -1,7 +1,7 @@
 package dev.cadence.metal.mixin;
 
 import com.mojang.blaze3d.platform.Window;
-import dev.cadence.metal.Retina;
+import dev.cadence.metal.system.Retina;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
@@ -15,6 +15,6 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 abstract class RetinaGuiScaleMixin {
 	@ModifyVariable(method = "calculateScale", at = @At("HEAD"), argsOnly = true, ordinal = 0)
 	private int cadence$halveForPointSize(int guiScale) {
-		return guiScale > 0 && !Retina.on() && dev.cadence.metal.MacSystem.displayScale() >= 1.5 ? Math.max(1, (guiScale + 1) / 2) : guiScale;
+		return guiScale > 0 && !Retina.on() && dev.cadence.metal.backend.MacSystem.displayScale() >= 1.5 ? Math.max(1, (guiScale + 1) / 2) : guiScale;
 	}
 }
