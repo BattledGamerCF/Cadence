@@ -30,7 +30,10 @@ public final class LogicMixinPlugin implements IMixinConfigPlugin {
 		Map.entry("PathTypeCacheMixin", "pathCache"),
 		Map.entry("CollisionAirMixin", "collisionAir"),
 		Map.entry("SkySourcesMixin", "skySources"),
-		Map.entry("SkySourcesAccess", "skySources"));
+		Map.entry("SkySourcesAccess", "skySources"),
+		Map.entry("AmbientParticlesMixin", "ambientParticles"),
+		Map.entry("AmbientSystemAccess", "ambientParticles"),
+		Map.entry("AmbientSamplerAccess", "ambientParticles"));
 
 	@Override public void onLoad(String mixinPackage) { }
 	@Override public String getRefMapperConfig() { return null; }

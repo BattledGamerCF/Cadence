@@ -644,26 +644,44 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("meshreport=")) {
 					dev.cadence.shaders.cadence.mesh.MeshStateCache.report(lower.substring(11));
 				} else if (lower.startsWith("tpbiome=")) {
-					// "tpbiome=dark_forest": the player to the surface of the nearest such biome (within 6400 blocks), facing east
+					// "tpbiome=dark_forest": the player to the surface of the nearest such biome (within 6400 blocks), facing east;
+					// "tpbiome=the_nether:crimson_forest": in another dimension (its nearest open floor at y 32-100 there)
 					String biome = lower.substring(8).strip();
+					String biomeDim = biome.contains(":") ? biome.substring(0, biome.indexOf(':')) : null;
+					if (biomeDim != null) biome = biome.substring(biome.indexOf(':') + 1);
+					String biomeName = biome;
 					var srv = mc.getSingleplayerServer();
 					if (srv != null) {
 						String name = mc.getUser().getName();
 						srv.execute(() -> {
 							var level = srv.overworld();
+							if (biomeDim != null) {
+								for (var l : srv.getAllLevels()) if (l.dimension().identifier().getPath().equals(biomeDim)) level = l;
+							}
 							var player = srv.getPlayerList().getPlayerByName(name);
 							if (player == null) return;
-							var found = level.findClosestBiome3d(h -> h.unwrapKey().map(k -> k.identifier().getPath().equals(biome)).orElse(false),
-								player.blockPosition(), 6400, 32, 64);
+							var start = biomeDim != null ? new net.minecraft.core.BlockPos(8, 64, 8) : player.blockPosition();
+							var found = level.findClosestBiome3d(h -> h.unwrapKey().map(k -> k.identifier().getPath().equals(biomeName)).orElse(false),
+								start, 6400, 32, 64);
 							if (found == null) {
-								LOGGER.info("[selftest] tpbiome: no {} found", biome);
+								LOGGER.info("[selftest] tpbiome: no {} found", biomeName);
 								return;
 							}
 							var p = found.getFirst();
 							int y = level.getChunk(p).getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, p.getX() & 15, p.getZ() & 15) + 2;
+							if (biomeDim != null) {  // (a roofed dimension: the first air above a solid block, from y 32 up)
+								y = 100;
+								for (int yy = 32; yy < 100; yy++) {
+									var at = new net.minecraft.core.BlockPos(p.getX(), yy, p.getZ());
+									if (level.getBlockState(at).isAir() && level.getBlockState(at.above()).isAir() && !level.getBlockState(at.below()).isAir()) {
+										y = yy;
+										break;
+									}
+								}
+							}
 							srv.getCommands().performPrefixedCommand(srv.createCommandSourceStack(),
-								"tp " + name + " " + p.getX() + " " + y + " " + p.getZ() + " -90 10");
-							LOGGER.info("[selftest] tpbiome {}: {} {} {}", biome, p.getX(), y, p.getZ());
+								(biomeDim != null ? "execute in minecraft:" + biomeDim + " run " : "") + "tp " + name + " " + p.getX() + " " + y + " " + p.getZ() + " -90 10");
+							LOGGER.info("[selftest] tpbiome {}: {} {} {}", biomeName, p.getX(), y, p.getZ());
 						});
 					}
 				} else if (lower.equals("leaves=smart") || lower.equals("leaves=detailed")) {

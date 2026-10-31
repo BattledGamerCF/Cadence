@@ -2,6 +2,13 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.29 / shaders 0.3.28 (2026-10-30)
+
+- **Cadence Logic `ambientParticles`:** the client's animate tick (biome particles, 20 times a second) skips the biome lookup at
+  each of its 1,334 spots when no biome with particles is in reach: about 25% cheaper (330-420 to 260-290 µs a tick), the same
+  particles (917,504 lookups checked against vanilla's).
+- Self-test step `tpbiome=` takes a dimension (`tpbiome=the_nether:crimson_forest`).
+
 ## 0.4.0-beta.28 / shaders 0.3.27 (2026-10-29)
 
 - **Native network path for servers.** On a connection to a server, the two byte-stream stages Minecraft runs in Java are
