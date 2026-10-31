@@ -240,7 +240,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component presetLabel() {
-		return Component.literal("Performance: " + current().label);
+		return dev.cadence.metal.Lang.literal("Performance: " + current().label);
 	}
 
 	/** Cooling (HeatControl.Cooling): how early Cadence eases off as the Mac heats up. */
@@ -276,8 +276,8 @@ public final class CadenceSettings {
 	}
 
 	private static Component heatLabel() {
-		if (HeatControl.level() > 0) return Component.literal("Cooling: Easing Off").withStyle(ChatFormatting.YELLOW);
-		return Component.literal("Cooling: " + HeatControl.cooling().label);
+		if (HeatControl.level() > 0) return dev.cadence.metal.Lang.literal("Cooling: Easing Off").withStyle(ChatFormatting.YELLOW);
+		return dev.cadence.metal.Lang.literal("Cooling: " + HeatControl.cooling().label);
 	}
 
 	/** Leaves (SmartLeaves): Detailed (vanilla) or Smart. */
@@ -294,7 +294,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component leavesLabel() {
-		return Component.literal("Leaves: " + (dev.cadence.shaders.cadence.mesh.SmartLeaves.enabled() ? "Smart" : "Detailed"));
+		return dev.cadence.metal.Lang.literal("Leaves: " + (dev.cadence.shaders.cadence.mesh.SmartLeaves.enabled() ? "Smart" : "Detailed"));
 	}
 
 	// ---- FPS Counter (the Cadence HUD's "NN fps", read by it through cadence.fpsCounter) and Benchmark Details ----
@@ -322,7 +322,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component replayLabel() {
-		return Component.literal("Instant Replay: " + (dev.cadence.metal.rec.Replay.enabled() ? "On (F10 saves)" : "Off"));
+		return dev.cadence.metal.Lang.literal("Instant Replay: " + (dev.cadence.metal.rec.Replay.enabled() ? "On (F10 saves)" : "Off"));
 	}
 
 	/** Overlay: Off, FPS (the counter in the top-left corner), Full (the counter and the performance lines under it). */
@@ -343,8 +343,8 @@ public final class CadenceSettings {
 	}
 
 	private static Component overlayLabel() {
-		if (dev.cadence.shaders.cadence.render.PerformanceOverlay.on()) return Component.literal("Overlay: Full");
-		return Component.literal("Overlay: " + ("false".equals(System.getProperty("cadence.fpsCounter")) ? "Off" : "FPS"));
+		if (dev.cadence.shaders.cadence.render.PerformanceOverlay.on()) return dev.cadence.metal.Lang.literal("Overlay: Full");
+		return dev.cadence.metal.Lang.literal("Overlay: " + ("false".equals(System.getProperty("cadence.fpsCounter")) ? "Off" : "FPS"));
 	}
 
 	/** The Benchmark card's More/Fewer Details button; saved as benchmarkDetails=. */
@@ -366,7 +366,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component maxFpsLabel() {
-		return Component.literal("Minimal Renderer: " + (MaxFpsMode.chosen() ? "On" : "Off"));
+		return dev.cadence.metal.Lang.literal("Minimal Renderer: " + (MaxFpsMode.chosen() ? "On" : "Off"));
 	}
 
 	/** On Battery (system.BatteryMode): Match Display, Saver, Off. */
@@ -385,7 +385,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component batteryLabel() {
-		return Component.literal("On Battery: " + dev.cadence.shaders.cadence.system.BatteryMode.mode().label);
+		return dev.cadence.metal.Lang.literal("On Battery: " + dev.cadence.shaders.cadence.system.BatteryMode.mode().label);
 	}
 
 	/** Frame Generation (FrameGenSetting, FrameGen): Smooth, Responsive, Neural, Off. */
@@ -412,8 +412,8 @@ public final class CadenceSettings {
 			case -1 -> " (not here: Smooth)";
 			default -> "";
 		};
-		if (!neural.isEmpty()) return Component.literal("Frame Generation: " + mode.label + neural);
-		return Component.literal("Frame Generation: " + mode.label + (mode != dev.cadence.metal.framegen.FrameGen.Mode.OFF && dev.cadence.metal.framegen.FrameGen.running()
+		if (!neural.isEmpty()) return dev.cadence.metal.Lang.literal("Frame Generation: " + mode.label + neural);
+		return dev.cadence.metal.Lang.literal("Frame Generation: " + mode.label + (mode != dev.cadence.metal.framegen.FrameGen.Mode.OFF && dev.cadence.metal.framegen.FrameGen.running()
 			? " (" + dev.cadence.metal.framegen.FrameGen.renderedRate() + " -> " + 2 * dev.cadence.metal.framegen.FrameGen.renderedRate() + ")" : ""));
 	}
 
@@ -446,12 +446,12 @@ public final class CadenceSettings {
 
 	private static Component keepChunksLabel() {
 		int kept = dev.cadence.shaders.cadence.server.ServerChunks.kept();
-		return Component.literal("Keep Server Chunks: " + (dev.cadence.shaders.cadence.server.ServerChunks.on() ? kept > 0 ? "On (" + kept + ")" : "On" : "Off"));
+		return dev.cadence.metal.Lang.literal("Keep Server Chunks: " + (dev.cadence.shaders.cadence.server.ServerChunks.on() ? kept > 0 ? "On (" + kept + ")" : "On" : "Off"));
 	}
 
 	private static Component autoRdLabel() {
 		int held = dev.cadence.shaders.cadence.render.AutoRenderDistance.holding();
-		return Component.literal("Auto Render Distance: " + (dev.cadence.shaders.cadence.render.AutoRenderDistance.on() ? held > 0 ? "On (" + held + ")" : "On" : "Off"));
+		return dev.cadence.metal.Lang.literal("Auto Render Distance: " + (dev.cadence.shaders.cadence.render.AutoRenderDistance.on() ? held > 0 ? "On (" + held + ")" : "On" : "Off"));
 	}
 
 	/** Dynamic Lights (DynamicLights): Off, Held Items, All. */
@@ -478,7 +478,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component dynamicLightsLabel() {
-		return Component.literal("Dynamic Lights: " + (DynamicLights.LAMB ? "LambDynamicLights" : DynamicLights.mode().label));
+		return dev.cadence.metal.Lang.literal("Dynamic Lights: " + (DynamicLights.LAMB ? "LambDynamicLights" : DynamicLights.mode().label));
 	}
 
 	/** Cadence Messages (CadenceMessages): the join line and the corner notices. */
@@ -495,7 +495,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component messagesLabel() {
-		return Component.literal("Cadence Messages: " + (dev.cadence.shaders.cadence.system.CadenceMessages.enabled() ? "On" : "Off"));
+		return dev.cadence.metal.Lang.literal("Cadence Messages: " + (dev.cadence.shaders.cadence.system.CadenceMessages.enabled() ? "On" : "Off"));
 	}
 
 	/** In Background (BackgroundFps): frames drawn while another app is active. */
@@ -512,7 +512,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component backgroundLabel() {
-		return Component.literal("In Background: " + (dev.cadence.shaders.cadence.system.BackgroundFps.enabled()
+		return dev.cadence.metal.Lang.literal("In Background: " + (dev.cadence.shaders.cadence.system.BackgroundFps.enabled()
 			? dev.cadence.shaders.cadence.system.BackgroundFps.FPS + " fps" : "Normal"));
 	}
 
@@ -556,8 +556,8 @@ public final class CadenceSettings {
 	}
 
 	private static Component javaLabel(java.nio.file.Path gameDir) {
-		if (dev.cadence.metal.Vivace.running() && System.getenv("CADENCE_JAVA") == null) return Component.literal("Java: Vivace");
-		return Component.literal("Java: " + (wantsVivace(gameDir) ? "Vivace" : "Launcher's"));
+		if (dev.cadence.metal.Vivace.running() && System.getenv("CADENCE_JAVA") == null) return dev.cadence.metal.Lang.literal("Java: Vivace");
+		return dev.cadence.metal.Lang.literal("Java: " + (wantsVivace(gameDir) ? "Vivace" : "Launcher's"));
 	}
 
 	/** The status line about Java: a restart to switch, or why Vivace isn't in use; null when nothing to say. */
@@ -565,9 +565,9 @@ public final class CadenceSettings {
 		java.nio.file.Path gameDir = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir();
 		boolean want = wantsVivace(gameDir), on = dev.cadence.metal.Vivace.running(), ours = System.getenv("CADENCE_JAVA") != null;
 		String note = dev.cadence.metal.Vivace.note();
-		if (want && !on && !note.isEmpty()) return Component.literal(note).withStyle(ChatFormatting.YELLOW);
-		if (want && !on) return Component.literal("Restart Minecraft to play on Vivace").withStyle(ChatFormatting.YELLOW);
-		if (!want && on && ours) return Component.literal("Restart Minecraft to play on the launcher's Java").withStyle(ChatFormatting.YELLOW);
+		if (want && !on && !note.isEmpty()) return dev.cadence.metal.Lang.literal(note).withStyle(ChatFormatting.YELLOW);
+		if (want && !on) return dev.cadence.metal.Lang.literal("Restart Minecraft to play on Vivace").withStyle(ChatFormatting.YELLOW);
+		if (!want && on && ours) return dev.cadence.metal.Lang.literal("Restart Minecraft to play on the launcher's Java").withStyle(ChatFormatting.YELLOW);
 		return null;
 	}
 
@@ -591,18 +591,18 @@ public final class CadenceSettings {
 
 	private static Component packCheckLabel() {
 		if (dev.cadence.shaders.cadence.packcheck.PackCheck.running())
-			return Component.literal("Faster Shadows: Testing").withStyle(ChatFormatting.YELLOW);
+			return dev.cadence.metal.Lang.literal("Faster Shadows: Testing").withStyle(ChatFormatting.YELLOW);
 		var runtime = dev.cadence.shaders.runtime.ShaderRuntime.get();
 		if (runtime == null || runtime.programs() == null)
-			return Component.literal(net.minecraft.client.Minecraft.getInstance().level == null ? "Faster Shadows: No World" : "Faster Shadows: No Pack")
+			return dev.cadence.metal.Lang.literal(net.minecraft.client.Minecraft.getInstance().level == null ? "Faster Shadows: No World" : "Faster Shadows: No Pack")
 				.withStyle(ChatFormatting.GRAY);
-		if (runtime.programs().shadowCullingEligibility.eligible()) return Component.literal("Faster Shadows: On");
+		if (runtime.programs().shadowCullingEligibility.eligible()) return dev.cadence.metal.Lang.literal("Faster Shadows: On");
 		var saved = dev.cadence.shaders.cadence.packcheck.PackCheck.savedResult();
-		if (saved == null) return Component.literal("Faster Shadows: Test");
+		if (saved == null) return dev.cadence.metal.Lang.literal("Faster Shadows: Test");
 		return switch (saved) {
-			case SAFE -> Component.literal("Faster Shadows: On").withStyle(ChatFormatting.GREEN);
-			case UNSAFE -> Component.literal("Faster Shadows: Not Safe").withStyle(ChatFormatting.GRAY);
-			case INCONCLUSIVE -> Component.literal("Faster Shadows: Unsure").withStyle(ChatFormatting.GRAY);
+			case SAFE -> dev.cadence.metal.Lang.literal("Faster Shadows: On").withStyle(ChatFormatting.GREEN);
+			case UNSAFE -> dev.cadence.metal.Lang.literal("Faster Shadows: Not Safe").withStyle(ChatFormatting.GRAY);
+			case INCONCLUSIVE -> dev.cadence.metal.Lang.literal("Faster Shadows: Unsure").withStyle(ChatFormatting.GRAY);
 		};
 	}
 
@@ -626,11 +626,11 @@ public final class CadenceSettings {
 		for (String word : pieces) {
 			String next = cur.length() == 0 ? word : cur + sep + word;
 			if (cur.length() > 0 && font.width(next) > width) {
-				out.add(Component.literal(cur.toString()).withStyle(line.getStyle()));
+				out.add(dev.cadence.metal.Lang.literal(cur.toString()).withStyle(line.getStyle()));
 				cur = new StringBuilder(word);
 			} else cur = new StringBuilder(next);
 		}
-		if (cur.length() > 0) out.add(Component.literal(cur.toString()).withStyle(line.getStyle()));
+		if (cur.length() > 0) out.add(dev.cadence.metal.Lang.literal(cur.toString()).withStyle(line.getStyle()));
 		return out;
 	}
 
@@ -639,25 +639,25 @@ public final class CadenceSettings {
 		List<Component> lines = new ArrayList<>();
 		// always one short line: Cadence tunes the game on its own by default, and says so (each button shows its own setting)
 		List<String> auto = new ArrayList<>();
-		if (RenderScale.isAuto()) auto.add("resolution");
-		if (HeatControl.enabled()) auto.add("cooling");
-		if (dev.cadence.shaders.cadence.system.BackgroundFps.enabled()) auto.add("background fps");
-		lines.add(auto.isEmpty() ? Component.literal("Automatic tuning off: your settings as set").withStyle(ChatFormatting.GRAY)
-			: Component.literal("Tuned automatically: " + String.join(" · ", auto)).withStyle(ChatFormatting.GREEN));
+		if (RenderScale.isAuto()) auto.add(dev.cadence.metal.Lang.tr("resolution"));
+		if (HeatControl.enabled()) auto.add(dev.cadence.metal.Lang.tr("cooling"));
+		if (dev.cadence.shaders.cadence.system.BackgroundFps.enabled()) auto.add(dev.cadence.metal.Lang.tr("background fps"));
+		lines.add(auto.isEmpty() ? dev.cadence.metal.Lang.literal("Automatic tuning off: your settings as set").withStyle(ChatFormatting.GRAY)
+			: dev.cadence.metal.Lang.literal("Tuned automatically: " + String.join(" · ", auto)).withStyle(ChatFormatting.GREEN));
 		// (Render Max FPS: Heat Control, On Battery and Max Framerate don't apply, so their holds aren't shown)
 		if (dev.cadence.shaders.cadence.render.MaxFpsMode.chosen())
-			lines.add(Component.literal("Minimal Renderer: nothing holds the frame rate back").withStyle(ChatFormatting.YELLOW));
-		else if (HeatControl.level() > 0) lines.add(Component.literal(HeatControl.shortDescribe()).withStyle(ChatFormatting.YELLOW));
+			lines.add(dev.cadence.metal.Lang.literal("Minimal Renderer: nothing holds the frame rate back").withStyle(ChatFormatting.YELLOW));
+		else if (HeatControl.level() > 0) lines.add(dev.cadence.metal.Lang.literal(HeatControl.shortDescribe()).withStyle(ChatFormatting.YELLOW));
 		// Retina changes at the next launch (a preset or the Retina button): said here too, so it's not missed
 		if (ShaderToggle.retinaConfigured() != dev.cadence.metal.Retina.on())
-			lines.add(Component.literal("Restart Minecraft to turn Retina " + (ShaderToggle.retinaConfigured() ? "on" : "off")).withStyle(ChatFormatting.YELLOW));
-		if (MemoryGuard.level() > 0) lines.add(Component.literal(MemoryGuard.shortDescribe()).withStyle(ChatFormatting.YELLOW));
+			lines.add(dev.cadence.metal.Lang.literal("Restart Minecraft to turn Retina " + (ShaderToggle.retinaConfigured() ? "on" : "off")).withStyle(ChatFormatting.YELLOW));
+		if (MemoryGuard.level() > 0) lines.add(dev.cadence.metal.Lang.literal(MemoryGuard.shortDescribe()).withStyle(ChatFormatting.YELLOW));
 		// on battery: how long it lasts at the Mac's draw now (and Low Power Mode, which Cadence follows as Battery Saver)
 		String battery = dev.cadence.metal.MacSystem.batteryTimeLeft();
 		// (Low Power Mode said only while it saves: with On Battery Off it doesn't, BH4-15)
 		boolean lpm = dev.cadence.shaders.cadence.system.BatteryMode.lowPower() && dev.cadence.shaders.cadence.system.BatteryMode.saving();
 		if (!battery.isEmpty() || lpm)
-			lines.add(Component.literal((battery.isEmpty() ? "" : "Battery: about " + battery + " left at this rate")
+			lines.add(dev.cadence.metal.Lang.literal((battery.isEmpty() ? "" : "Battery: about " + battery + " left at this rate")
 				+ (lpm ? (battery.isEmpty() ? "" : " · ") + "Low Power Mode: saving like Battery Saver" : ""))
 				.withStyle(ChatFormatting.AQUA));
 		Component farTerrain = FarTerrainScreen.packNote();
@@ -666,7 +666,7 @@ public final class CadenceSettings {
 		if (java != null) lines.add(java);
 		// other mods that hook what Cadence replaces: those areas run vanilla's code for them (CompatLayers; the log has the detail)
 		List<String> mods = dev.cadence.metal.compat.CompatLayers.mods();
-		if (!mods.isEmpty()) lines.add(Component.literal("Works alongside: " + String.join(" · ", mods)).withStyle(ChatFormatting.AQUA));
+		if (!mods.isEmpty()) lines.add(dev.cadence.metal.Lang.literal("Works alongside: " + String.join(" · ", mods)).withStyle(ChatFormatting.AQUA));
 		return lines;
 	}
 }

@@ -77,7 +77,7 @@ public final class PhotoMode {
 		// (milliseconds in the name: two shots in one second overwrote the first)
 		String name = "cadence-photo-" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH.mm.ss.SSS")) + ".png";
 		Screenshot.grab(mc.gameDirectory, name, mc.gameRenderer.mainRenderTarget(), 1, message -> mc.execute(() -> {
-			if (mc.player != null) mc.player.sendSystemMessage(Component.literal(samples > 0 ? "Photo Mode (path traced, " + samples + " samples"
+			if (mc.player != null) mc.player.sendSystemMessage(dev.cadence.metal.Lang.literal(samples > 0 ? "Photo Mode (path traced, " + samples + " samples"
 				+ (denoised ? ", denoised" : "") + ", " + took + " ms): " : "Photo Mode: ")
 				.append(message));
 		}));

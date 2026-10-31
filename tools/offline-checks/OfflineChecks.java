@@ -17,6 +17,15 @@ public class OfflineChecks {
 	}
 
 	public static void main(String[] args) throws Exception {
+		// translations (dev.cadence.metal.Lang): exact keys, trimmed edges, templates with parts translated in turn
+		System.setProperty("cadence.lang", "de_de");
+		String perf = dev.cadence.metal.Lang.tr("Performance: Recommended");
+		check(!perf.equals("Performance: Recommended") && !perf.contains("{"), "Lang: a template and its part translated (" + perf + ")");
+		check(dev.cadence.metal.Lang.tr("Max Quality").equals(dev.cadence.metal.Lang.tr("Max Quality:").replaceAll(":$", "")), "Lang: trailing punctuation kept around a translated key");
+		check(dev.cadence.metal.Lang.tr("zzz untranslated zzz").equals("zzz untranslated zzz"), "Lang: text without an entry stays English");
+		System.setProperty("cadence.lang", "en_gb");
+		check(dev.cadence.metal.Lang.tr("Performance: Recommended").equals("Performance: Recommended"), "Lang: en_gb is the text as written");
+		System.clearProperty("cadence.lang");
 		Path mcJar = Path.of(args[0]), packs = Path.of(args[1]);
 
 		// 1. the vanilla RGSS patch: applied to Minecraft's own include, exactly one early return, nothing else changed

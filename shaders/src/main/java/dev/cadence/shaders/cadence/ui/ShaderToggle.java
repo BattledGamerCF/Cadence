@@ -173,9 +173,9 @@ public final class ShaderToggle {
 	public static Button packsButton(net.minecraft.client.gui.screens.Screen parent) {
 		String pack = CadencePackGate.hooksApplied() ? ShaderSwitcher.target() : saved();
 		boolean none = choices().size() <= 1;
-		Component label = Component.literal("Shaders: " + (none && pack.isEmpty() ? "Add Packs" : display(pack)) + "...");
+		Component label = dev.cadence.metal.Lang.literal("Shaders: " + (none && pack.isEmpty() ? "Add Packs" : display(pack)) + "...");
 		if (!CadencePackGate.metalBackend()) {
-			Button off = Button.builder(Component.literal("Shaders: Unavailable"), b -> {
+			Button off = Button.builder(dev.cadence.metal.Lang.literal("Shaders: Unavailable"), b -> {
 			}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(CadencePackGate.NO_METAL + ".")).build();
 			off.active = false;
 			return off;
@@ -237,8 +237,8 @@ public final class ShaderToggle {
 	private static final float[] SCALES = {1.0f, 0.85f, 0.75f, 0.67f, 0.5f};
 
 	private static Component scaleLabel() {
-		if (RenderScale.isAuto()) return Component.literal("Resolution: Auto (" + Math.round(RenderScale.get() * 100) + "%)");
-		return Component.literal("Resolution: " + Math.round(RenderScale.get() * 100) + "%");
+		if (RenderScale.isAuto()) return dev.cadence.metal.Lang.literal("Resolution: Auto (" + Math.round(RenderScale.get() * 100) + "%)");
+		return dev.cadence.metal.Lang.literal("Resolution: " + Math.round(RenderScale.get() * 100) + "%");
 	}
 
 	/** World Resolution (RenderScale, with or without shaders): Auto, then 100% down to 50%. Live. */
@@ -280,8 +280,8 @@ public final class ShaderToggle {
 
 	private static Component retinaLabel() {
 		boolean want = retinaConfigured(), now = dev.cadence.metal.Retina.on();
-		Component base = Component.literal("Retina: " + (want ? "On" : "Off"));
-		return want == now ? base : base.copy().append(Component.literal("  (restart)").withStyle(ChatFormatting.YELLOW));
+		Component base = dev.cadence.metal.Lang.literal("Retina: " + (want ? "On" : "Off"));
+		return want == now ? base : base.copy().append(dev.cadence.metal.Lang.literal("  (restart)").withStyle(ChatFormatting.YELLOW));
 	}
 
 	/** Retina: the window at the display's full resolution, or at its point size (a quarter of the pixels). Next launch. */
@@ -341,12 +341,12 @@ public final class ShaderToggle {
 
 	private static Component shadowRateLabel() {
 		int r = ShadowReuse.effectiveRate();
-		Component base = Component.literal("Shadows: " + (r == 1 ? "Every Frame" : "Every " + r + (r == 2 ? "nd" : r == 3 ? "rd" : "th") + " Frame"));
+		Component base = dev.cadence.metal.Lang.literal("Shadows: " + (r == 1 ? "Every Frame" : "Every " + r + (r == 2 ? "nd" : r == 3 ? "rd" : "th") + " Frame"));
 		return r > ShadowReuse.rate() ? base.copy().withStyle(ChatFormatting.YELLOW) : base;
 	}
 
 	private static Component upscalerLabel() {
-		return Component.literal("Sharpening: " + switch (RenderScale.upscaler()) {
+		return dev.cadence.metal.Lang.literal("Sharpening: " + switch (RenderScale.upscaler()) {
 			case RenderScale.UPSCALE_SMOOTH -> "Smooth";
 			case RenderScale.UPSCALE_FAST -> "Fast";
 			case RenderScale.UPSCALE_NEURAL -> "Neural Engine";

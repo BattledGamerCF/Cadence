@@ -1,0 +1,14 @@
+{
+ "How vivid the far terrain's colours are (100%: as generated": "How vivid the far terrain's colors are (100%: as generated",
+ "1/1000: a few kilometres around": "1/1000: a few kilometers around",
+ "on disk: travelling there later shows it at once": "on disk: traveling there later shows it at once",
+ "Greyed out at 100% without shaders: nothing to sharpen": "Grayed out at 100% without shaders: nothing to sharpen",
+ "Everything is set for you: each block drawn in one colour (a 1x1 texture), lit and shaded as Minecraft's flat lighting does, entities as boxes, the hotbar, health, food and an F3 counter, at a low resolution with no upscaling, frame limit or VSync. Frame interpolation doubles the frames shown; the counter shows both. Any open screen draws the game as usual. Off again after a restart": "Everything is set for you: each block drawn in one color (a 1x1 texture), lit and shaded as Minecraft's flat lighting does, entities as boxes, the hotbar, health, food and an F3 counter, at a low resolution with no upscaling, frame limit or VSync. Frame interpolation doubles the frames shown; the counter shows both. Any open screen draws the game as usual. Off again after a restart",
+ "Spoken commands, recognised on your Mac only (Apple's on-device speech recognition; nothing is sent anywhere": "Spoken commands, recognized on your Mac only (Apple's on-device speech recognition; nothing is sent anywhere",
+ "The picture's colours graded for where you are, as a film is graded scene by scene": "The picture's colors graded for where you are, as a film is graded scene by scene",
+ "Warm in the desert, cool and pale in the snow, lush in a jungle, grey-green in a swamp, golden at sunset, blue at night": "Warm in the desert, cool and pale in the snow, lush in a jungle, gray-green in a swamp, golden at sunset, blue at night",
+ "reads the biome, its colours, the time and the weather, so biomes from mods get a grade too. Changes ease in over": "reads the biome, its colors, the time and the weather, so biomes from mods get a grade too. Changes ease in over",
+ "Biome Colours": "Biome Colors",
+ "Generates the far terrain within {} km of you now, in the background, and keeps it on disk: travelling there later shows it at once": "Generates the far terrain within {} km of you now, in the background, and keeps it on disk: traveling there later shows it at once",
+ "Biome Colours: {}": "Biome Colors: {}"
+}

@@ -64,8 +64,8 @@ public final class MetalBackend implements GpuBackend {
 				if (mc != null && mc.gui != null && (mc.gui.screen() instanceof net.minecraft.client.gui.screens.TitleScreen || mc.level != null)) {  // (once loading is done)
 					mc.execute(() -> net.minecraft.client.gui.components.toasts.SystemToast.addOrUpdate(mc.gui.toastManager(),
 						new net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId(10000L),
-						net.minecraft.network.chat.Component.literal("Cadence's Metal renderer couldn't start"),
-						net.minecraft.network.chat.Component.literal("Playing on Minecraft's own renderer. " + (why.length() > 90 ? why.substring(0, 90) + "..." : why))));
+						dev.cadence.metal.Lang.literal("Cadence's Metal renderer couldn't start"),
+						dev.cadence.metal.Lang.literal("Playing on Minecraft's own renderer. " + (why.length() > 90 ? why.substring(0, 90) + "..." : why))));
 					return;
 				}
 				try {

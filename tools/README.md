@@ -13,6 +13,7 @@
 | `offline-checks/run.sh` | Offline regression checks: the vanilla RGSS patch, shader profile tolerance, per-pack settings files and the compatibility layers' mixin reading |
 | `compat-run.sh` | The release jar with the mod compatibility set (`metal/run-compat`) in a production launch: PASS or FAIL (self-test finished, no mixin errors, benchmark ran), exceptions listed |
 | `compat-test-mod/build.sh` | Builds a tiny test mod that hooks code Cadence replaces (for the compatibility layers) |
+| `i18n/run.sh` | Lists Cadence's English UI text and checks every translation file against it (CONTRIBUTING.md, Translations) |
 | `logic-tests/run.sh` | Offline fuzz tests and a benchmark of the game-logic optimizations |
 | `pack-census.sh` | Lists what each shader pack needs that Cadence doesn't support yet, without starting the game |
 | `native-check.sh`, `msl-check.m` | Compile-check Metal shaders (Cadence's native programs, or any .metal file) through the Metal API, no Xcode needed |

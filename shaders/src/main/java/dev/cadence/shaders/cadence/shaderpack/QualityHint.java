@@ -64,7 +64,7 @@ public final class QualityHint {
 		if (pick == null) return;
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player == null) return;
-		mc.player.sendSystemMessage(Component.literal(String.format(Locale.ROOT,
+		mc.player.sendSystemMessage(dev.cadence.metal.Lang.literal(String.format(Locale.ROOT,
 			"Cadence: shaders are limited by the GPU (about %.0f fps, already at 50%% resolution). "
 				+ "Video Settings > Cadence: Shaders > Shader Profile: %s", 1000.0 / intervalMs,
 			pick[1] == null ? pick[0] + " is much faster." : pick[0] + " is faster, " + pick[1] + " fastest."))

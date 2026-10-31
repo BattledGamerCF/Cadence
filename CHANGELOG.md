@@ -2,6 +2,11 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.30 / shaders 0.3.29 (2026-10-31)
+
+- **Languages:** Cadence's menus, tooltips and messages follow Minecraft's language setting. Translations: English (UK and US), Spanish (Spain and Latin America), French, German, Italian, Portuguese (Brazil), Dutch, Polish, Russian, Turkish, Indonesian, Hindi, Simplified Chinese, Traditional Chinese, Japanese and Korean. They are machine-generated and not yet reviewed by native speakers. `tools/i18n/run.sh` checks the files; `-Dcadence.lang=CODE` previews a language.
+- Documentation rewritten in plainer wording. The facts, numbers, paths and links are unchanged.
+
 ## 0.4.0-beta.29 / shaders 0.3.28 (2026-10-30)
 
 - **Cadence Logic `ambientParticles`:** the client's animate tick (biome particles, 20 times a second) skips the biome lookup at

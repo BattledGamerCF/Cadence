@@ -102,7 +102,7 @@ public final class ShaderSwitcher {
 				reload(mc, MODE);
 				String why = reason(failure);
 				failures.put(pack, why);
-				tell(mc, Component.literal("Shader pack " + ShaderToggle.display(pack) + " stopped: " + why + " — shaders are off.")
+				tell(mc, dev.cadence.metal.Lang.literal("Shader pack " + ShaderToggle.display(pack) + " stopped: " + why + " — shaders are off.")
 					.withStyle(ChatFormatting.RED));
 			} finally {
 				failing = false;
@@ -201,7 +201,7 @@ public final class ShaderSwitcher {
 				}
 				LOGGER.info("Shaders switched to {} in {} ms ({} ms on the render thread; chunks rebuilding)",
 					pack.isEmpty() ? "off" : pack, (System.nanoTime() - t0) / 1_000_000, (System.nanoTime() - installStart) / 1_000_000);
-				tell(mc, Component.literal("Shaders: " + (pack.isEmpty() ? "Off" : ShaderToggle.display(pack))).withStyle(ChatFormatting.GRAY));
+				tell(mc, dev.cadence.metal.Lang.literal("Shaders: " + (pack.isEmpty() ? "Off" : ShaderToggle.display(pack))).withStyle(ChatFormatting.GRAY));
 			} catch (Exception | LinkageError e) {
 				LOGGER.error("Couldn't switch to shader pack {}; shaders are off", pack, e);
 				try {
@@ -212,7 +212,7 @@ public final class ShaderSwitcher {
 				active = "";
 				requested = "";
 				failures.put(pack, playerReason(e));
-				tell(mc, Component.literal("Couldn't load shader pack " + ShaderToggle.display(pack) + ": " + playerReason(e)
+				tell(mc, dev.cadence.metal.Lang.literal("Couldn't load shader pack " + ShaderToggle.display(pack) + ": " + playerReason(e)
 					+ " — shaders are off.").withStyle(ChatFormatting.RED));
 			}
 			// Cadence: a quality preset (or the same pack again) usually leaves every block's pack id and the vertex layout as

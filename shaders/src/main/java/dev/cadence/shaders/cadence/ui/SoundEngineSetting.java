@@ -65,11 +65,11 @@ public final class SoundEngineSetting {
 	}
 
 	private static Component pathsLabel() {
-		return Component.literal("Sound Around Corners: " + (dev.cadence.metal.audio.WorldAcoustics.paths() ? "On" : "Off"));
+		return dev.cadence.metal.Lang.literal("Sound Around Corners: " + (dev.cadence.metal.audio.WorldAcoustics.paths() ? "On" : "Off"));
 	}
 
 	private static Component reverbLabel() {
-		return Component.literal("World Reverb: " + (dev.cadence.metal.audio.WorldAcoustics.wanted() ? "On" : "Off"));
+		return dev.cadence.metal.Lang.literal("World Reverb: " + (dev.cadence.metal.audio.WorldAcoustics.wanted() ? "On" : "Off"));
 	}
 
 	public static Button button() {
@@ -95,7 +95,7 @@ public final class SoundEngineSetting {
 
 	private static Component label() {
 		boolean apple = AppleAudio.wanted();
-		return Component.literal("Sound Engine: " + (apple ? "Apple" : "OpenAL"));  // (the full name is wider than the button)
+		return dev.cadence.metal.Lang.literal("Sound Engine: " + (apple ? "Apple" : "OpenAL"));  // (the full name is wider than the button)
 	}
 
 	private static java.util.List<String> compatMods() {

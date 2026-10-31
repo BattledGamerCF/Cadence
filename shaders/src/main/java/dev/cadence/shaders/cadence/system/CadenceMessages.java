@@ -51,7 +51,7 @@ public final class CadenceMessages {
 		if (failure != null) {
 			launchFailure = null;
 			// (always shown, even with Cadence messages off: it explains why shaders are missing)
-			say(Component.literal("Cadence: " + failure).withStyle(net.minecraft.ChatFormatting.RED));
+			say(dev.cadence.metal.Lang.literal("Cadence: " + failure).withStyle(net.minecraft.ChatFormatting.RED));
 		}
 		if (!enabled || connection != null && shownOn.get() == connection) return;
 		shownOn = new java.lang.ref.WeakReference<>(connection);
@@ -102,13 +102,13 @@ public final class CadenceMessages {
 	}
 
 	private static MutableComponent grey(String text) {
-		return Component.literal(text).withStyle(ChatFormatting.GRAY);
+		return dev.cadence.metal.Lang.literal(text).withStyle(ChatFormatting.GRAY);
 	}
 
 	private static MutableComponent green(String text, String hover, String command) {
-		MutableComponent c = Component.literal(text).withStyle(ChatFormatting.GREEN);
+		MutableComponent c = dev.cadence.metal.Lang.literal(text).withStyle(ChatFormatting.GREEN);
 		c.withStyle(s -> {
-			var styled = s.withHoverEvent(new HoverEvent.ShowText(Component.literal(hover)));
+			var styled = s.withHoverEvent(new HoverEvent.ShowText(dev.cadence.metal.Lang.literal(hover)));
 			return command == null ? styled : styled.withClickEvent(new ClickEvent.RunCommand(command));
 		});
 		return c;

@@ -152,6 +152,12 @@ Most packs hold 60 fps with Auto resolution on an M2 MacBook Air. Pegasus is ver
 - Config files: `config/cadence.properties` and `config/cadence-shaders.properties` in your Minecraft folder. Set `profile=none` in `cadence.properties` to turn off Cadence's performance profile.
 - Advanced: every switch is also a `-Dcadence.*` JVM flag. To turn off the Metal renderer for a mod that needs OpenGL, use `cadence.metal=false`.
 
+## Languages
+
+Cadence's menus, tooltips and messages follow the language chosen in Options > Language: English (UK and US), Spanish (Spain and Latin America), French, German, Italian, Portuguese (Brazil), Dutch, Polish, Russian, Turkish, Indonesian, Hindi, Simplified Chinese, Traditional Chinese, Japanese and Korean. Regional variants use the closest file (for example, Canadian French uses French). Languages without a translation show English.
+
+The translations were machine-generated and have not yet been reviewed by native speakers. Hindi text shows with its letters unjoined, as in Minecraft's own Hindi: the game's font doesn't shape Devanagari. Corrections are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md#translations).
+
 ## Known issues
 
 - Mods that require Sodium, or Iris's internals beyond its API, or that draw with OpenGL directly, can't be used while the Metal renderer is on.

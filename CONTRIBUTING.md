@@ -64,6 +64,16 @@ fields and call sites against Minecraft 26.3. This catches mistakes that would o
   `grep "\[cadence\] stall" stdout.log`.
 - `tools/compat-run.sh` runs the release jar with the tested mods and reports PASS or FAIL. Run it before a release.
 
+## Translations
+
+Cadence's text is written in British English in the code, and the English is the translation key. Text shown to the player goes through `dev.cadence.metal.Lang` (`Lang.literal(...)` in place of `Component.literal(...)`, and every `Tips` tooltip). Each language is a JSON file in `metal/src/main/resources/cadence/lang/`, named with Minecraft's language code (`de_de.json`), mapping English to the translation.
+
+- A key with `{}` is a template for text put together from parts, such as `Performance: {}`. The parts are translated in turn. A translation that needs the parts in another order writes `{1}`, `{2}` instead of `{}`.
+- Spaces and punctuation at the start and end of a text are kept as written; the key is the text between them.
+- `en_gb` is the text as written and has no file. `en_us.json` holds the American spellings.
+- `tools/i18n/run.sh` lists every English text in the code and checks each language file against the list: missing or unused keys, and `{}` placeholders, `§` codes and line breaks that don't match. Run it after adding or changing text, then add the new keys to each file.
+- `-Dcadence.lang=CODE` shows a language without changing Minecraft's language setting.
+
 ## Code layout
 
 - `metal/`: the Metal backend. `dev.cadence.metal` is the renderer. Its sub-packages hold terrain (`own`, `chunk`), far

@@ -34,14 +34,14 @@ import org.slf4j.LoggerFactory;
  * by dropping their .zip files on the window (or with the folder button). Profile and Pack Settings act on the selected pack.
  */
 public final class ShaderPacksScreen extends OptionsSubScreen {
-	private static final Component HINT = Component.literal("Click a pack to turn it on. Drop .zip files here to add packs.")
+	private static final Component HINT = dev.cadence.metal.Lang.literal("Click a pack to turn it on. Drop .zip files here to add packs.")
 		.withStyle(ChatFormatting.GRAY);
 	private PackList packs;
 	private StringWidget hint;
 	private Button profileButton, settingsButton;
 
 	public ShaderPacksScreen(Screen parent) {
-		super(parent, Minecraft.getInstance().options, Component.literal("Shader Packs"));
+		super(parent, Minecraft.getInstance().options, dev.cadence.metal.Lang.literal("Shader Packs"));
 	}
 
 	@Override
@@ -71,10 +71,10 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 		this.profileButton = top.addChild(Button.builder(Component.empty(), b -> this.cycleProfile())
 			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES, "The pack author's quality presets.", "Lower|faster: simpler shadows and lighting",
 				"Higher|nicer, slower", "#Shift-click for the previous one. Your own changes in Pack Settings stay on top.")).build());
-		this.settingsButton = top.addChild(Button.builder(Component.literal("Pack Settings..."), b -> this.openSettings())
+		this.settingsButton = top.addChild(Button.builder(dev.cadence.metal.Lang.literal("Pack Settings..."), b -> this.openSettings())
 			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The selected pack's own options (sun, clouds, water, shadows...).")).build());
 		LinearLayout bottom = rows.addChild(LinearLayout.horizontal().spacing(8));
-		bottom.addChild(Button.builder(Component.literal("Open Packs Folder..."), b -> ShaderToggle.openPacksFolder())
+		bottom.addChild(Button.builder(dev.cadence.metal.Lang.literal("Open Packs Folder..."), b -> ShaderToggle.openPacksFolder())
 			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Opens the shaderpacks folder in Finder.",
 				"#Packs are .zip files (BSL, Complementary...). Leave them zipped.")).build());
 		bottom.addChild(Button.builder(CommonComponents.GUI_DONE, b -> this.onClose()).width(Button.DEFAULT_WIDTH).build());
@@ -107,7 +107,7 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 		this.profileButton.active = !profiles.isEmpty();
 		String now = ShaderToggle.profileFor(pack);
 		if (!profiles.contains(now)) now = "";
-		this.profileButton.setMessage(Component.literal("Profile: " + (!on ? "-" : profiles.isEmpty() ? "None" : pretty(now))));
+		this.profileButton.setMessage(dev.cadence.metal.Lang.literal("Profile: " + (!on ? "-" : profiles.isEmpty() ? "None" : pretty(now))));
 	}
 
 	private void cycleProfile() {
@@ -126,7 +126,7 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 	private void openSettings() {
 		Screen next = PackSettingsScreen.open(this);
 		if (next != null) this.minecraft.gui.setScreen(next);
-		else this.say(Component.literal("Can't read this pack's settings (see the log). The pack may still work.").withStyle(ChatFormatting.RED));
+		else this.say(dev.cadence.metal.Lang.literal("Can't read this pack's settings (see the log). The pack may still work.").withStyle(ChatFormatting.RED));
 	}
 
 	private static String pretty(String profile) {
@@ -174,9 +174,9 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 			if (updated.contains(added.get(0)) && added.get(0).equals(ShaderSwitcher.target())) ShaderSwitcher.reload();
 			else this.choose(added.get(0));
 		}
-		if (!refused.isEmpty()) this.say(Component.literal(String.join(", ", refused.stream().map(ShaderToggle::display).toList())
+		if (!refused.isEmpty()) this.say(dev.cadence.metal.Lang.literal(String.join(", ", refused.stream().map(ShaderToggle::display).toList())
 			+ (refused.size() == 1 ? " isn't a shader pack" : " aren't shader packs") + " (no shaders folder inside).").withStyle(ChatFormatting.RED));
-		else if (!added.isEmpty()) this.say(Component.literal((updated.size() == added.size() ? "Updated " : "Added ")
+		else if (!added.isEmpty()) this.say(dev.cadence.metal.Lang.literal((updated.size() == added.size() ? "Updated " : "Added ")
 			+ String.join(", ", added.stream().map(ShaderToggle::display).toList()) + ".")
 			.withStyle(ChatFormatting.GREEN));
 	}
@@ -284,38 +284,38 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 				g.text(font, font.plainSubstrByWidth("then drop its .zip file on this window.", w), x, y + 12, 0xFFAAAAAA);
 				return;
 			}
-			MutableComponent name = Component.literal(this.pack.isEmpty() ? "Off" : ShaderToggle.display(this.pack));
+			MutableComponent name = dev.cadence.metal.Lang.literal(this.pack.isEmpty() ? "Off" : ShaderToggle.display(this.pack));
 			String active = ShaderSwitcher.active(), target = ShaderSwitcher.target();
 			Component state = null;
 			if (!CadencePackGate.hooksApplied() && this.pack.equals(ShaderToggle.selectedPack()) && !this.pack.equals(CadencePackGate.selectedPack()))
-				state = Component.literal("restart to turn on").withStyle(ChatFormatting.YELLOW);
-			else if (this.pack.equals(target) && !this.pack.equals(active)) state = Component.literal("turning on...").withStyle(ChatFormatting.YELLOW);
-			else if (this.pack.equals(active) && this.pack.equals(target)) state = Component.literal("in use").withStyle(ChatFormatting.GREEN);
+				state = dev.cadence.metal.Lang.literal("restart to turn on").withStyle(ChatFormatting.YELLOW);
+			else if (this.pack.equals(target) && !this.pack.equals(active)) state = dev.cadence.metal.Lang.literal("turning on...").withStyle(ChatFormatting.YELLOW);
+			else if (this.pack.equals(active) && this.pack.equals(target)) state = dev.cadence.metal.Lang.literal("in use").withStyle(ChatFormatting.GREEN);
 			int stateWidth = state == null ? 0 : font.width(state) + 6;
 			String shown = font.plainSubstrByWidth(name.getString(), w - stateWidth);
-			g.text(font, Component.literal(shown), x, y, 0xFFFFFFFF);
+			g.text(font, dev.cadence.metal.Lang.literal(shown), x, y, 0xFFFFFFFF);
 			if (state != null) g.text(font, state, x + w - font.width(state), y, 0xFFFFFFFF);
 			Component detail = this.detail();
 			String line = font.plainSubstrByWidth(detail.getString(), w);
-			g.text(font, Component.literal(line).withStyle(detail.getStyle()), x, y + 12, 0xFFFFFFFF);
+			g.text(font, dev.cadence.metal.Lang.literal(line).withStyle(detail.getStyle()), x, y + 12, 0xFFFFFFFF);
 			if (hovered && !line.equals(detail.getString())) g.setTooltipForNextFrame(detail, mouseX, mouseY);
 			else if (hovered && !this.pack.isEmpty()) {
 				PackCatalog.Known k = PackCatalog.lookup(this.pack);
 				if (k != null && k.runs() && ShaderSwitcher.failure(this.pack) == null)
-					g.setTooltipForNextFrame(Component.literal(k.weight().label + ": " + k.weight().hint + "."), mouseX, mouseY);
+					g.setTooltipForNextFrame(dev.cadence.metal.Lang.literal(k.weight().label + ": " + k.weight().hint + "."), mouseX, mouseY);
 			}
 		}
 
 		/** The second line: what Cadence knows about this pack. */
 		private Component detail() {
-			if (this.pack.isEmpty()) return Component.literal("No shaders: Cadence's fastest renderer").withStyle(ChatFormatting.GRAY);
-			if (!this.installed) return Component.literal("Its file is no longer in the shaderpacks folder").withStyle(ChatFormatting.RED);
+			if (this.pack.isEmpty()) return dev.cadence.metal.Lang.literal("No shaders: Cadence's fastest renderer").withStyle(ChatFormatting.GRAY);
+			if (!this.installed) return dev.cadence.metal.Lang.literal("Its file is no longer in the shaderpacks folder").withStyle(ChatFormatting.RED);
 			String failure = ShaderSwitcher.failure(this.pack);
-			if (failure != null) return Component.literal("Couldn't load: " + failure).withStyle(ChatFormatting.RED);
+			if (failure != null) return dev.cadence.metal.Lang.literal("Couldn't load: " + failure).withStyle(ChatFormatting.RED);
 			PackCatalog.Known k = PackCatalog.lookup(this.pack);
-			if (k == null) return Component.literal("Not tested with Cadence yet").withStyle(ChatFormatting.GRAY);
-			if (!k.runs()) return Component.literal("Doesn't run with Cadence: " + k.note()).withStyle(ChatFormatting.GOLD);
-			return Component.literal("Tested with Cadence · " + k.weight().label + (k.note().isEmpty() ? "" : " · " + k.note()))
+			if (k == null) return dev.cadence.metal.Lang.literal("Not tested with Cadence yet").withStyle(ChatFormatting.GRAY);
+			if (!k.runs()) return dev.cadence.metal.Lang.literal("Doesn't run with Cadence: " + k.note()).withStyle(ChatFormatting.GOLD);
+			return dev.cadence.metal.Lang.literal("Tested with Cadence · " + k.weight().label + (k.note().isEmpty() ? "" : " · " + k.note()))
 				.withStyle(ChatFormatting.GRAY);
 		}
 
@@ -337,8 +337,8 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 
 		@Override
 		public Component getNarration() {
-			if (this.pack == null) return Component.literal("No shader packs yet. Drop a pack's zip file on this window.");
-			return Component.literal(this.pack.isEmpty() ? "Off" : ShaderToggle.display(this.pack));
+			if (this.pack == null) return dev.cadence.metal.Lang.literal("No shader packs yet. Drop a pack's zip file on this window.");
+			return dev.cadence.metal.Lang.literal(this.pack.isEmpty() ? "Off" : ShaderToggle.display(this.pack));
 		}
 	}
 }
