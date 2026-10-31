@@ -2,6 +2,11 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 0.4.0-beta.31 / shaders 0.3.30 (2026-10-31)
+
+- **Fix: freezes near crowds of mobs with the Apple sound engine.** Each new sound started an audio node, and starting one waits for the audio hardware's next cycle (about 10 ms). Near a horde, dozens of sounds a second put the game's sound thread seconds behind, and frames froze for up to 2.6 s. After a freeze the game sent its queued movement at once, which could get you kicked from a server for sending packets too fast. Nodes are now started ahead of time and reused. In a test with 400 zombie sounds a second, frames over 100 ms dropped from 77 to 3, and the worst from 2.6 s to 0.6 s. CPU use is unchanged.
+- Self-test step `soundstorm=N:S` plays N zombie sounds a tick for S seconds and logs the render thread's worst gap.
+
 ## 0.4.0-beta.30 / shaders 0.3.29 (2026-10-31)
 
 - **Languages:** Cadence's menus, tooltips and messages follow Minecraft's language setting. Translations: English (UK and US), Spanish (Spain and Latin America), French, German, Italian, Portuguese (Brazil), Dutch, Polish, Russian, Turkish, Indonesian, Hindi, Simplified Chinese, Traditional Chinese, Japanese and Korean. They are machine-generated and not yet reviewed by native speakers. `tools/i18n/run.sh` checks the files; `-Dcadence.lang=CODE` previews a language.

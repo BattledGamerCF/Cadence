@@ -175,6 +175,35 @@ public final class CadenceSelfTest {
 					sleep(300);
 					int[] st = dev.cadence.metal.audio.AppleAudio.stats();
 					LOGGER.info("[selftest] sound {}: voices {} playing {} rendering {} | {}", id, st[0], st[1], st[4], mc.getSoundManager().getChannelDebugString());
+				} else if (lower.startsWith("soundstorm=")) {
+					// "soundstorm=N:S": for S seconds, N zombie sounds a tick at random spots within 16 blocks (a horde on a
+					// server); then the worst gap between the render thread's turns and the frames over 100 ms
+					String[] a = lower.substring(11).split(":");
+					int n = Integer.parseInt(a[0]);
+					long end = System.nanoTime() + (long) (Double.parseDouble(a.length > 1 ? a[1] : "10") * 1e9);
+					var ev = net.minecraft.sounds.SoundEvents.ZOMBIE_AMBIENT;
+					var rnd = net.minecraft.util.RandomSource.create(7);
+					long[] last = {System.nanoTime()}, worst = {0}, over = {0}, turns = {0};
+					while (System.nanoTime() < end) {
+						mc.execute(() -> {
+							long now = System.nanoTime();
+							worst[0] = Math.max(worst[0], now - last[0]);
+							if (now - last[0] > 100_000_000L) over[0]++;
+							last[0] = now;
+							turns[0]++;
+							if (mc.player == null) return;
+							var pos = mc.player.position();
+							for (int k = 0; k < n; k++)
+								mc.getSoundManager().play(new net.minecraft.client.resources.sounds.SimpleSoundInstance(ev,
+									net.minecraft.sounds.SoundSource.HOSTILE, 0.05f, 0.8f + rnd.nextFloat() * 0.4f, rnd,
+									pos.x + rnd.nextInt(33) - 16, pos.y, pos.z + rnd.nextInt(33) - 16));
+						});
+						sleep(50);
+					}
+					sleep(500);
+					int[] st = dev.cadence.metal.audio.AppleAudio.stats();
+					LOGGER.info("[selftest] soundstorm {} a tick: worst render-thread gap {} ms, {} gaps over 100 ms in {} turns | voices {} playing {} | {}",
+						n, worst[0] / 1_000_000, over[0], turns[0], st[0], st[1], mc.getSoundManager().getChannelDebugString());
 				} else if (lower.equals("pausesounds") || lower.equals("resumesounds")) {
 					// "pausesounds" / "resumesounds": every sound paused and resumed, as the pause menu does
 					boolean pause = lower.equals("pausesounds");

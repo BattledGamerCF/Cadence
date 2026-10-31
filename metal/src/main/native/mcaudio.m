@@ -11,6 +11,7 @@
 // Threading: the game calls in from its sound thread; the players' completion handlers run on the audio engine's threads and
 // only touch atomics. The engine restarts itself when the output changes (headphones plugged in, a new default device).
 #import <AVFAudio/AVFAudio.h>
+#include <mach/mach_time.h>
 #include <math.h>
 #include <os/lock.h>
 #include <stdatomic.h>
@@ -32,6 +33,9 @@ typedef struct Voice {
 	// from (the first corner, as far away as the way is long), the way's length and the dB its corners take off
 	int routed;
 	float ax, ay, az, routeLength, routeDb;
+	// what the node was last given (NaN / -1: nothing yet): each setter takes the engine's lock, and the same values come
+	// again and again; kept with the node when the voice goes idle, cleared when it is connected again
+	struct Applied { float volume, x, y, z, blend, occlusion, obstruction, rate; int mode, algorithm; } ap;
 } Voice;
 
 #define MAX_VOICES 512
@@ -40,18 +44,51 @@ static AVAudioEnvironmentNode *gEnv;
 static id gObserver;
 static Voice *gVoices[MAX_VOICES];
 static int gVoiceCount;
+// Voices whose sound ended, kept attached and connected for the next sound: attaching, connecting and detaching a node
+// reconfigures the running engine (milliseconds each, in step with the audio thread), and a crowd of mobs plays dozens of
+// sounds a second; the game's sound thread fell seconds behind and the render thread waited for it in SoundEngine.play
+// Starting a node waits for the audio thread's next IO cycle (~10 ms, even at a given time) holding the engine's lock (every
+// node setter waits for it), so idle voices are kept playing, and IDLE_WARM of them are made ready on a background queue
+// when the engine starts, before the world's sounds (attached, connected for mono 44.1 kHz, the format of most of the
+// game's sounds, and playing): a new sound then only schedules its buffer. (Not topped up while sounds play: the warming
+// held the engine's lock that the sound thread's setters needed; freed voices come back instead.)
+#define IDLE_MAX 256
+#define IDLE_WARM 192
+static Voice *gIdle[IDLE_MAX];
+static int gIdleCount;
 static os_unfair_lock gLock = OS_UNFAIR_LOCK_INIT;
+// the engine's graph (attach, connect, detach): taken after gLock, or alone (the warming queue, never holding it for gLock)
+static os_unfair_lock gGraphLock = OS_UNFAIR_LOCK_INIT;
+static dispatch_queue_t gWarmQueue;
+static atomic_int gWarming, gWarmStop;
+static AVAudioFormat *gWarmFormat;
+static void warmPool(void);
 static float gLx, gLy, gLz, gFx, gFy = 0, gFz = -1, gUx, gUy = 1, gUz;
 static atomic_int gRestarts;
 // The game's Directional Audio option: on, Apple's best HRTF everywhere; off, the output decides (spatial audio on headphones,
 // Apple's own rendering on the Mac's speakers)
 static AVAudio3DMixingRenderingAlgorithm gAlgorithm = AVAudio3DMixingRenderingAlgorithmAuto;
 static void playNode(Voice *v);
+static void silence(Voice *v);
 // World Reverb (WorldAcoustics.java): the reverb of the space around the listener (Apple's environment reverb, its preset and
 // level from rays cast into the blocks around) and how much of each spatial sound goes into it
 static int gReverbOn;
 static float gReverbBlend;
 static int gLastPreset = -1;  // (the reverb preset loaded into gEnv: -1 for a new environment, BH7-10)
+
+static void forget(Voice *v) {
+	v->ap = (struct Applied) {NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN, -1, -1};
+}
+static void setAlgorithm(Voice *v) {
+	if (v->ap.algorithm == (int) gAlgorithm) return;
+	v->node.renderingAlgorithm = gAlgorithm;
+	v->ap.algorithm = (int) gAlgorithm;
+}
+static void setRate(Voice *v) {
+	if (v->ap.rate == v->pitch) return;
+	v->node.rate = v->pitch;
+	v->ap.rate = v->pitch;
+}
 
 // ---- loudness and placement (gLock held) ----
 
@@ -89,15 +126,25 @@ static void place(Voice *v) {
 		}
 		gain *= fall;
 	}
-	v->node.volume = gain;
+	struct Applied *ap = &v->ap;
+	if (ap->volume != gain) v->node.volume = ap->volume = gain;
 	// a relative sound at the listener (the menu, music) isn't placed anywhere: it plays as recorded
-	v->node.sourceMode = v->relative && fabsf(v->x) + fabsf(v->y) + fabsf(v->z) < 1e-3f ? AVAudio3DMixingSourceModeBypass
+	int mode = v->relative && fabsf(v->x) + fabsf(v->y) + fabsf(v->z) < 1e-3f ? AVAudio3DMixingSourceModeBypass
 		: AVAudio3DMixingSourceModeSpatializeIfMono;
-	v->node.position = AVAudioMake3DPoint(px, py, pz);
-	int spatial = v->node.sourceMode != AVAudio3DMixingSourceModeBypass;
-	v->node.reverbBlend = gReverbOn && spatial ? gReverbBlend : 0.0f;
-	v->node.occlusion = gReverbOn && spatial ? occlusion : 0.0f;
-	v->node.obstruction = gReverbOn && spatial ? obstruction : 0.0f;
+	if (ap->mode != mode) v->node.sourceMode = (AVAudio3DMixingSourceMode) (ap->mode = mode);
+	if (ap->x != px || ap->y != py || ap->z != pz) {
+		v->node.position = AVAudioMake3DPoint(px, py, pz);
+		ap->x = px;
+		ap->y = py;
+		ap->z = pz;
+	}
+	int spatial = mode != AVAudio3DMixingSourceModeBypass;
+	float blend = gReverbOn && spatial ? gReverbBlend : 0.0f;
+	if (ap->blend != blend) v->node.reverbBlend = ap->blend = blend;
+	float occ = gReverbOn && spatial ? occlusion : 0.0f;
+	if (ap->occlusion != occ) v->node.occlusion = ap->occlusion = occ;
+	float obs = gReverbOn && spatial ? obstruction : 0.0f;
+	if (ap->obstruction != obs) v->node.obstruction = ap->obstruction = obs;
 }
 
 // ---- the engine ----
@@ -149,16 +196,113 @@ int mca_init(int directional, char *err, int cap) {
 						atomic_fetch_add(&gRestarts, 1);
 						for (int i = 0; i < gVoiceCount; i++)
 							if (gVoices[i]->state == V_PLAYING) playNode(gVoices[i]);
+						warmPool();
 					}
 					os_unfair_lock_unlock(&gLock);
 				});
 			}] retain];
+		if (!gWarmQueue) gWarmQueue = dispatch_queue_create("cadence.audio.warm", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0));
+		if (!gWarmFormat) gWarmFormat = [[AVAudioFormat alloc] initStandardFormatWithSampleRate:44100 channels:1];
+		atomic_store(&gWarmStop, 0);
+		warmPool();
 		return 1;
 	}
 }
 
+// Tops the idle voices up to IDLE_WARM on the warming queue (one run at a time).
+static void warmPool(void) {
+	if (!gWarmQueue || atomic_exchange(&gWarming, 1)) return;
+	dispatch_async(gWarmQueue, ^{
+		@autoreleasepool {
+			// idle nodes an engine restart stopped (a new output) started again, one at a time out of the pool
+			for (;;) {
+				Voice *v = NULL;
+				os_unfair_lock_lock(&gLock);
+				if (!atomic_load(&gWarmStop) && gEngine && gEngine.running)
+					for (int i = 0; i < gIdleCount; i++)
+						if (!gIdle[i]->node.playing) {
+							v = gIdle[i];
+							gIdle[i] = gIdle[--gIdleCount];
+							break;
+						}
+				os_unfair_lock_unlock(&gLock);
+				if (!v) break;
+				@try {
+					[v->node play];
+				} @catch (NSException *e) {
+					(void) e;
+				}
+				int playing = v->node.playing, kept = 0;
+				os_unfair_lock_lock(&gLock);
+				if (gIdleCount < IDLE_MAX && !atomic_load(&gWarmStop)) {
+					gIdle[gIdleCount++] = v;
+					kept = 1;
+				}
+				os_unfair_lock_unlock(&gLock);
+				if (!kept) {  // (the pool filled up with freed voices meanwhile)
+					[v->node stop];
+					os_unfair_lock_lock(&gGraphLock);
+					[gEngine detachNode:v->node];
+					os_unfair_lock_unlock(&gGraphLock);
+					[v->node release];
+					[v->connected release];
+					free(v);
+				}
+				if (!playing) break;
+			}
+			for (;;) {
+				os_unfair_lock_lock(&gLock);
+				int need = !atomic_load(&gWarmStop) && gEngine && gEngine.running && gIdleCount < IDLE_WARM;
+				os_unfair_lock_unlock(&gLock);
+				if (!need) break;
+				// (gEngine can't go while this runs: mca_shutdown sets gWarmStop and waits for the queue first)
+				Voice *v = calloc(1, sizeof(Voice));
+				forget(v);
+				v->node = [[AVAudioPlayerNode alloc] init];
+				os_unfair_lock_lock(&gGraphLock);
+				[gEngine attachNode:v->node];
+				@try {
+					[gEngine connect:v->node to:gEnv fromBus:0 toBus:gEnv.nextAvailableInputBus format:gWarmFormat];
+					v->connected = [gWarmFormat retain];
+				} @catch (NSException *e) {
+					(void) e;
+				}
+				os_unfair_lock_unlock(&gGraphLock);
+				if (v->connected) {
+					setAlgorithm(v);
+					@try {
+						[v->node play];
+					} @catch (NSException *e) {
+						(void) e;
+					}
+				}
+				int kept = 0;
+				os_unfair_lock_lock(&gLock);
+				if (v->connected && v->node.playing && !atomic_load(&gWarmStop) && gIdleCount < IDLE_MAX) {
+					gIdle[gIdleCount++] = v;
+					kept = 1;
+				}
+				os_unfair_lock_unlock(&gLock);
+				if (!kept) {
+					[v->node stop];
+					os_unfair_lock_lock(&gGraphLock);
+					[gEngine detachNode:v->node];
+					os_unfair_lock_unlock(&gGraphLock);
+					[v->node release];
+					[v->connected release];
+					free(v);
+					break;
+				}
+			}
+			atomic_store(&gWarming, 0);
+		}
+	});
+}
+
 void mca_shutdown(void) {
 	@autoreleasepool {
+		atomic_store(&gWarmStop, 1);
+		if (gWarmQueue) dispatch_sync(gWarmQueue, ^{});
 		os_unfair_lock_lock(&gLock);
 		if (gObserver) {
 			[[NSNotificationCenter defaultCenter] removeObserver:gObserver];
@@ -178,6 +322,14 @@ void mca_shutdown(void) {
 			free(v);
 		}
 		gVoiceCount = 0;
+		for (int i = 0; i < gIdleCount; i++) {
+			Voice *v = gIdle[i];
+			[gEngine detachNode:v->node];
+			[v->node release];
+			[v->connected release];
+			free(v);
+		}
+		gIdleCount = 0;
 		[gEnv release];
 		[gEngine release];
 		gEnv = nil;
@@ -254,10 +406,27 @@ void *mca_voice_new(void) {
 			os_unfair_lock_unlock(&gLock);
 			return NULL;
 		}
-		Voice *v = calloc(1, sizeof(Voice));
-		v->node = [[AVAudioPlayerNode alloc] init];
-		[gEngine attachNode:v->node];
-		v->node.renderingAlgorithm = gAlgorithm;
+		Voice *v;
+		if (gIdleCount > 0) {
+			v = gIdle[--gIdleCount];  // (stopped when it was freed; its connection and node kept)
+			AVAudioPlayerNode *node = v->node;
+			AVAudioFormat *connected = v->connected;
+			int generation = atomic_load(&v->generation);
+			struct Applied ap = v->ap;
+			memset(v, 0, sizeof(Voice));
+			v->node = node;
+			v->connected = connected;
+			v->ap = ap;
+			atomic_store(&v->generation, generation);
+		} else {
+			v = calloc(1, sizeof(Voice));
+			forget(v);
+			v->node = [[AVAudioPlayerNode alloc] init];
+			os_unfair_lock_lock(&gGraphLock);
+			[gEngine attachNode:v->node];
+			os_unfair_lock_unlock(&gGraphLock);
+		}
+		setAlgorithm(v);
 		v->pitch = 1;
 		v->volume = 1;
 		v->attenuate = 0;
@@ -272,14 +441,25 @@ void mca_voice_free(void *p) {
 		Voice *v = p;
 		if (!v) return;
 		os_unfair_lock_lock(&gLock);
+		if (atomic_load(&v->pending) > 0) silence(v);
 		atomic_fetch_add(&v->generation, 1);
-		[v->node stop];
-		if (gEngine) [gEngine detachNode:v->node];
 		for (int i = 0; i < gVoiceCount; i++)
 			if (gVoices[i] == v) {
 				gVoices[i] = gVoices[--gVoiceCount];
 				break;
 			}
+		if (gEngine && gIdleCount < IDLE_MAX) {
+			[v->staticBuf release];
+			v->staticBuf = nil;
+			v->state = V_STOPPED;
+			gIdle[gIdleCount++] = v;
+			os_unfair_lock_unlock(&gLock);
+			return;
+		}
+		[v->node stop];
+		os_unfair_lock_lock(&gGraphLock);
+		if (gEngine) [gEngine detachNode:v->node];
+		os_unfair_lock_unlock(&gGraphLock);
 		os_unfair_lock_unlock(&gLock);
 		[v->node release];
 		[v->connected release];
@@ -288,33 +468,58 @@ void mca_voice_free(void *p) {
 	}
 }
 
+// What is queued on a voice cut off at once. A playing node keeps playing: [node stop] waits on the audio thread and the next
+// [node play] waits for an IO cycle (~10 ms each), and a crowd of mobs starts dozens of sounds a second (the game's sound
+// thread fell seconds behind). A node that isn't playing (paused, or never started) is stopped: that empties its queue.
+static void silence(Voice *v) {
+	if (!v->connected || !v->node.playing) {
+		[v->node stop];
+		return;
+	}
+	AVAudioPCMBuffer *s = [[AVAudioPCMBuffer alloc] initWithPCMFormat:v->connected frameCapacity:1];
+	if (!s) {
+		[v->node stop];
+		return;
+	}
+	s.frameLength = 1;
+	AudioBufferList *l = s.mutableAudioBufferList;
+	for (UInt32 i = 0; i < l->mNumberBuffers; i++) memset(l->mBuffers[i].mData, 0, l->mBuffers[i].mDataByteSize);
+	[v->node scheduleBuffer:s atTime:nil options:AVAudioPlayerNodeBufferInterrupts completionHandler:nil];
+	[s release];
+}
+
 // The node connected for buffers of this format (mono and stereo, any rate: the environment mixer converts the rate).
 static void connectFor(Voice *v, AVAudioFormat *f) {
 	if (v->connected && v->connected.channelCount == f.channelCount && v->connected.sampleRate == f.sampleRate) return;
 	[v->node stop];
+	os_unfair_lock_lock(&gGraphLock);
 	@try {
 		[gEngine disconnectNodeOutput:v->node];
 		AVAudioNodeBus bus = gEnv.nextAvailableInputBus;
 		[gEngine connect:v->node to:gEnv fromBus:0 toBus:bus format:f];
 	} @catch (NSException *e) {
 		(void) e;
+		os_unfair_lock_unlock(&gGraphLock);
 		[v->connected release];
 		v->connected = nil;
 		return;
 	}
+	os_unfair_lock_unlock(&gGraphLock);
 	[v->connected release];
 	v->connected = [f retain];
 	// (a node's 3D settings are on its connection to the environment: set again)
-	v->node.renderingAlgorithm = gAlgorithm;
-	v->node.rate = v->pitch;
+	forget(v);
+	setAlgorithm(v);
+	setRate(v);
 	place(v);
 }
 
 // The node playing, if the engine runs (AVAudioPlayerNode throws otherwise: the engine restarting after an output change).
 static void playNode(Voice *v) {
-	if (!v->connected || !gEngine.running) return;
+	if (!v->connected || !gEngine.running || v->node.playing) return;
 	@try {
-		[v->node play];
+		// (at a host time: [node play] with no time waits for the audio thread's next IO cycle to pick one, ~10 ms)
+		[v->node playAtTime:[AVAudioTime timeWithHostTime:mach_absolute_time()]];
 	} @catch (NSException *e) {
 		(void) e;
 	}
@@ -336,8 +541,8 @@ static void schedule(Voice *v, AVAudioPCMBuffer *b, int loop) {
 }
 
 static void resetQueue(Voice *v) {
+	if (atomic_load(&v->pending) > 0) silence(v);
 	atomic_fetch_add(&v->generation, 1);
-	[v->node stop];
 	atomic_store(&v->pending, 0);
 	atomic_store(&v->processed, 0);
 	v->scheduled = 0;
@@ -446,7 +651,7 @@ void mca_voice_set(void *p, int what, float a, float b, float c) {
 		case P_POSITION: v->x = a; v->y = b; v->z = c; break;
 		case P_PITCH:
 			v->pitch = fminf(fmaxf(a, 0.5f), 2.0f);
-			v->node.rate = v->pitch;
+			setRate(v);
 			break;
 		case P_VOLUME: v->volume = a; break;
 		case P_LOOPING: {
