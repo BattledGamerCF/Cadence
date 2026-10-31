@@ -4,7 +4,7 @@ import static java.lang.foreign.ValueLayout.JAVA_DOUBLE;
 import static java.lang.foreign.ValueLayout.JAVA_INT;
 import static java.lang.foreign.ValueLayout.JAVA_LONG;
 
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import java.io.InputStream;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -69,7 +69,7 @@ public final class Replay {
 		long now = System.nanoTime();
 		if (now - lastCapture < 1_000_000_000L / FPS - 500_000L) return;
 		int w = view.getWidth(0), h = view.getHeight(0);
-		if (replay != 0 && openedHdr != dev.cadence.metal.Hdr.active()) {
+		if (replay != 0 && openedHdr != dev.cadence.metal.backend.Hdr.active()) {
 			closeLater();
 			return;
 		}
@@ -138,7 +138,7 @@ public final class Replay {
 			// the video: 1920 wide (HEVC; 1280 for H.264), no wider than the frame, the window's aspect, even sizes
 			outW = Math.max(2, Math.min(WIDTH, w) & ~1);
 			outH = Math.max(2, (int) Math.round((double) outW * h / Math.max(1, w)) & ~1);
-			boolean hdr = dev.cadence.metal.Hdr.active();
+			boolean hdr = dev.cadence.metal.backend.Hdr.active();
 			int codec = hdr ? 2 : HEVC ? 1 : 0;
 			long s = MemoryUtil.nmemAlloc(src.length() * 3L + 1), err = MemoryUtil.nmemAlloc(512);
 			try {

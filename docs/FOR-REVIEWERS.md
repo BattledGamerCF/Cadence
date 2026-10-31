@@ -18,7 +18,7 @@ Metal API instead of OpenGL, and adds engine optimizations, shader-pack support 
 
 - `libmcmetal.dylib` (arm64) is built from the Objective-C and C sources in `metal/src/main/native` by the Gradle build
   (`clang`, no prebuilt binaries). At startup it is extracted from the jar to the system temp directory and loaded with the
-  Java Foreign Function & Memory API (`dev.cadence.metal.Native`). If the temp directory can't be used, it goes in a
+  Java Foreign Function & Memory API (`dev.cadence.metal.backend.Native`). If the temp directory can't be used, it goes in a
   `.cadence-natives` folder in the game directory.
   - It links only these frameworks: Apple's Metal, MetalFX, QuartzCore, CoreVideo, CoreGraphics, IOKit, AppKit, AVFAudio
     and Foundation. It also links the system's zlib (`libz`, for the network path's decompression).

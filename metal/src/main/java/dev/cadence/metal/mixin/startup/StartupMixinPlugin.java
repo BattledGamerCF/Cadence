@@ -10,13 +10,13 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 /** Each startup mixin applies only when its -Dcadence.startup.* flag asks for it; with none set the game is unchanged. */
 public final class StartupMixinPlugin implements IMixinConfigPlugin {
 	static {
-		dev.cadence.metal.Profile.apply(); // before any flag is read
+		dev.cadence.metal.system.Profile.apply(); // before any flag is read
 	}
 
 	@Override public void onLoad(String mixinPackage) { }
 	@Override public String getRefMapperConfig() { return null; }
 	@Override public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-		// System properties only: loading dev.cadence.metal.Startup here would load game classes before their own mixins apply.
+		// System properties only: loading dev.cadence.metal.system.Startup here would load game classes before their own mixins apply.
 		if (mixinClassName.endsWith("NarratorMixin")) return "lazy".equals(System.getProperty("cadence.startup.narrator"));
 		if (mixinClassName.endsWith("CrashPreloadMixin")) return "async".equals(System.getProperty("cadence.startup.crashPreload"));
 		if (mixinClassName.endsWith("BlockCacheMixin") || mixinClassName.endsWith("BootstrapCacheMixin")) return !System.getProperty("cadence.startup.blockCache", "").isEmpty();

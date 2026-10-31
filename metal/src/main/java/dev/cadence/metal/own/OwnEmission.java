@@ -3,8 +3,8 @@ package dev.cadence.metal.own;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.textures.GpuTexture;
-import dev.cadence.metal.Hdr;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.Hdr;
+import dev.cadence.metal.backend.MetalBridge;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -23,7 +23,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.lwjgl.system.MemoryUtil;
 
 /**
- * HDR (dev.cadence.metal.Hdr): the block atlas's emission mask, an R8 texture the atlas's size that own_fs (terrain.metal) reads
+ * HDR (dev.cadence.metal.backend.Hdr): the block atlas's emission mask, an R8 texture the atlas's size that own_fs (terrain.metal) reads
  * at the same coordinates. A sprite counts as emissive when blocks that give light use it and no block that doesn't: the
  * lit furnace's front and the jack o'lantern's face, not the furnace's sides or the pumpkin's. Its texels hold the block's light
  * level / 15 (the brightest user's); the shader weighs that by each texel's own brightness. Lava (drawn by the fluid renderer,

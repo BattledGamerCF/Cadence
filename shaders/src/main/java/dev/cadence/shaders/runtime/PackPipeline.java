@@ -4,8 +4,8 @@ package dev.cadence.shaders.runtime;
 import com.mojang.renderpearl.api.device.GpuDevice;
 import com.mojang.renderpearl.api.pipeline.*;
 import com.mojang.renderpearl.frontend.FrontendGpuDevice;
-import dev.cadence.metal.MetalPipelineMath;
-import dev.cadence.metal.MetalPipelineResources;
+import dev.cadence.metal.backend.MetalPipelineMath;
+import dev.cadence.metal.backend.MetalPipelineResources;
 import dev.cadence.shaders.compile.ShaderCompatibilityCompiler;
 import dev.cadence.shaders.compile.TranslatedProgram;
 import dev.cadence.shaders.compile.UniformLayout;
@@ -267,10 +267,10 @@ public record PackPipeline(
             relaxedFragmentMath
                 ? MetalPipelineMath.openRelaxedFragment(description.getLocation().toString())
                 : null;
-        var groups = dev.cadence.metal.MetalPipelineSamplers.open(samplerGroups);
+        var groups = dev.cadence.metal.backend.MetalPipelineSamplers.open(samplerGroups);
         // Cadence: the pack's images, buffer objects and 3D textures this program uses (set 1)
         var storage =
-            dev.cadence.metal.MetalStorage.open(
+            dev.cadence.metal.backend.MetalStorage.open(
                 runtime == null || translated.storage().isEmpty() ? List.of() : runtime.storageSlots(translated))) {
       compiled =
           device.compilePipeline(description, shaderSource, Runnable::run).join().finishCompile();

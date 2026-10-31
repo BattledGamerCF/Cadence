@@ -2,7 +2,7 @@
 package dev.cadence.metal.mixin.edge;
 
 import java.util.concurrent.CompletableFuture;
-import dev.cadence.metal.EdgeCap;
+import dev.cadence.metal.system.EdgeCap;
 import net.minecraft.server.level.GenerationChunkHolder;
 import net.minecraft.util.StaticCache2D;
 import net.minecraft.world.level.chunk.ChunkAccess;

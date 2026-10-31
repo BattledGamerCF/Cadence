@@ -19,6 +19,6 @@ abstract class NativePipelineSourceMixin {
 	@Inject(method = "generateBackendCreateInfo", at = @At("RETURN"))
 	private void cadence$madeFrom(RenderPipeline pipeline, ShaderSource source, ReferenceArrayList<BackendRenderPipeline.CreateInfo.Shader> shaders,
 		Object2IntOpenHashMap<String> locations, CallbackInfoReturnable<BackendRenderPipeline.CreateInfo> cir) {
-		dev.cadence.metal.NativeShaders.madeFrom(cir.getReturnValue(), pipeline);
+		dev.cadence.metal.backend.NativeShaders.madeFrom(cir.getReturnValue(), pipeline);
 	}
 }

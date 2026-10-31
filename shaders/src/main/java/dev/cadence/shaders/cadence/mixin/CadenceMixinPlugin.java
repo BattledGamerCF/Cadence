@@ -23,7 +23,7 @@ public final class CadenceMixinPlugin implements IMixinConfigPlugin {
 
 	@Override
 	public void onLoad(String mixinPackage) {
-		dev.cadence.metal.Legacy.migrateProperties();
+		dev.cadence.metal.system.Legacy.migrateProperties();
 	}
 
 	@Override

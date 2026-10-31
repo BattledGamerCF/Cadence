@@ -5,7 +5,7 @@ import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
 import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import org.joml.Matrix4d;
 import org.joml.Matrix4f;
 import org.joml.Vector3d;

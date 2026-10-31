@@ -43,7 +43,7 @@ public final class ShaderProperties {
       throws ShaderPackException {
     Properties parsed = new Properties();
     try {
-      dev.cadence.metal.ConfigFiles.load(parsed, new StringReader(filter(source, definitions)));
+      dev.cadence.metal.system.ConfigFiles.load(parsed, new StringReader(filter(source, definitions)));
     } catch (IOException | IllegalArgumentException e) {
       throw new ShaderPackException("Invalid shader properties: " + e.getMessage(), e);
     }

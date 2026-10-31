@@ -18,7 +18,7 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
  */
 public final class ChunkMixinPlugin implements IMixinConfigPlugin {
 	static {
-		dev.cadence.metal.Profile.apply(); // before any flag is read
+		dev.cadence.metal.system.Profile.apply(); // before any flag is read
 	}
 	private static final Map<String, List<String>> YIELDS_TO = Map.of(
 		"AcquirePoiMixin", List.of("lithium"),

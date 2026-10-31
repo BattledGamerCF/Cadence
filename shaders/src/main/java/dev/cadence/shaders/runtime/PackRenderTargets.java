@@ -176,7 +176,7 @@ public final class PackRenderTargets implements AutoCloseable {
           int w = spec.width(width), h = spec.height(height);
           int mips = spec.mipmaps() ? 32 - Integer.numberOfLeadingZeros(Math.max(w, h)) : 1;
           PackTexture a, b;
-          try (var writable = storageColors.contains(key) ? dev.cadence.metal.MetalStorage.writableTextures() : null) {
+          try (var writable = storageColors.contains(key) ? dev.cadence.metal.backend.MetalStorage.writableTextures() : null) {
             a = allocate("colortex" + key + " A", spec.format(), w, h, mips);
             b = allocate("colortex" + key + " B", spec.format(), w, h, mips);
           } catch (Exception e) {
@@ -266,7 +266,7 @@ public final class PackRenderTargets implements AutoCloseable {
           ShadowSpec spec = shadowSpecification(key);
           int mips = spec.mipmaps() ? 32 - Integer.numberOfLeadingZeros(shadowSize) : 1;
           PackTexture texture;
-          try (var writable = storageShadowColors.contains(key) ? dev.cadence.metal.MetalStorage.writableTextures() : null) {
+          try (var writable = storageShadowColors.contains(key) ? dev.cadence.metal.backend.MetalStorage.writableTextures() : null) {
             texture = allocate("shadowcolor" + key, spec.format(), shadowSize, shadowSize, mips);
           } catch (Exception e) {
             throw e instanceof RuntimeException r ? r : new IllegalStateException(e);

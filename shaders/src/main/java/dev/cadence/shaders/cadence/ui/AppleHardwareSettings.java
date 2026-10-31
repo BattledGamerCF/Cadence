@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.ui;
 
-import dev.cadence.metal.Hdr;
+import dev.cadence.metal.backend.Hdr;
 import dev.cadence.metal.rt.RayTracing;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
@@ -44,7 +44,7 @@ public final class AppleHardwareSettings {
 
 	private static Component voiceLabel() {
 		String st = dev.cadence.shaders.cadence.voice.VoiceControl.status();
-		return dev.cadence.metal.Lang.literal("Voice Control: " + (dev.cadence.shaders.cadence.voice.VoiceControl.wanted() ? "On" : "Off") + (st.isEmpty() ? "" : " (" + st + ")"));
+		return dev.cadence.metal.system.Lang.literal("Voice Control: " + (dev.cadence.shaders.cadence.voice.VoiceControl.wanted() ? "On" : "Off") + (st.isEmpty() ? "" : " (" + st + ")"));
 	}
 
 	/** Smooth Textures: Off / On (dev.cadence.metal.neural.SmoothTextures). */
@@ -65,7 +65,7 @@ public final class AppleHardwareSettings {
 
 	private static Component smoothLabel() {
 		String st = dev.cadence.metal.neural.SmoothTextures.status();
-		return dev.cadence.metal.Lang.literal("Smooth Textures: " + (dev.cadence.metal.neural.SmoothTextures.wanted() ? "On" : "Off") + (st.isEmpty() ? "" : " (" + st + ")"));
+		return dev.cadence.metal.system.Lang.literal("Smooth Textures: " + (dev.cadence.metal.neural.SmoothTextures.wanted() ? "On" : "Off") + (st.isEmpty() ? "" : " (" + st + ")"));
 	}
 
 	/** Style Filter: Off / a painting's style (dev.cadence.metal.neural.StyleFilter, on the Neural Engine). */
@@ -87,7 +87,7 @@ public final class AppleHardwareSettings {
 
 	private static Component styleLabel() {
 		String st = dev.cadence.metal.neural.StyleFilter.status();
-		return dev.cadence.metal.Lang.literal("Style Filter: " + dev.cadence.metal.neural.StyleFilter.style().label + (st.isEmpty() ? "" : " (" + st + ")"));
+		return dev.cadence.metal.system.Lang.literal("Style Filter: " + dev.cadence.metal.neural.StyleFilter.style().label + (st.isEmpty() ? "" : " (" + st + ")"));
 	}
 
 	private static <E extends Enum<E>> E parse(Class<E> type, String value, E fallback) {
@@ -138,17 +138,17 @@ public final class AppleHardwareSettings {
 
 	private static Component rtLabel() {
 		RayTracing.Mode mode = RayTracing.mode();
-		if (mode == RayTracing.Mode.OFF) return dev.cadence.metal.Lang.literal("Ray Tracing: Off");
+		if (mode == RayTracing.Mode.OFF) return dev.cadence.metal.system.Lang.literal("Ray Tracing: Off");
 		String name = switch (mode) {
 			case SHADOWS -> "Shadows";
 			case LIGHTING -> "Lighting";
 			default -> "Neural";
 		};
 		// ("RT" with Torches: "Ray Tracing: Lighting + Torches" is wider than the button)
-		return dev.cadence.metal.Lang.literal(RayTracing.torchShadows() ? "RT: " + name + " + Torches" : "Ray Tracing: " + name);
+		return dev.cadence.metal.system.Lang.literal(RayTracing.torchShadows() ? "RT: " + name + " + Torches" : "Ray Tracing: " + name);
 	}
 
-	/** HDR: Off / On (dev.cadence.metal.Hdr). */
+	/** HDR: Off / On (dev.cadence.metal.backend.Hdr). */
 	public static Button hdrButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(hdrLabel(), b -> {
@@ -162,9 +162,9 @@ public final class AppleHardwareSettings {
 	}
 
 	private static Component hdrLabel() {
-		if (!Hdr.wanted()) return dev.cadence.metal.Lang.literal("HDR: Off");
+		if (!Hdr.wanted()) return dev.cadence.metal.system.Lang.literal("HDR: Off");
 		float h = Hdr.active() ? Hdr.headroom() : 0;
-		return dev.cadence.metal.Lang.literal("HDR: On" + (h > 1.05f ? String.format(java.util.Locale.ROOT, " (%.1fx)", h) : ""));
+		return dev.cadence.metal.system.Lang.literal("HDR: On" + (h > 1.05f ? String.format(java.util.Locale.ROOT, " (%.1fx)", h) : ""));
 	}
 
 	private static net.minecraft.client.gui.components.Tooltip hdrTip() {

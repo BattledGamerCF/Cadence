@@ -21,7 +21,7 @@ public final class Notices {
 		if (mc == null) return;
 		mc.execute(() -> {
 			if (mc.gui == null) return;
-			SystemToast.addOrUpdate(mc.gui.toastManager(), ID, dev.cadence.metal.Lang.literal(title), dev.cadence.metal.Lang.literal(detail.isEmpty() ? " " : detail));
+			SystemToast.addOrUpdate(mc.gui.toastManager(), ID, dev.cadence.metal.system.Lang.literal(title), dev.cadence.metal.system.Lang.literal(detail.isEmpty() ? " " : detail));
 		});
 	}
 }

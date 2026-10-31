@@ -85,7 +85,7 @@ public final class AnimCopy {
 		// (reads the property itself: ATLAS_WRITE, which calls this, is initialised before MIN_CORES)
 		int min = Integer.getInteger("cadence.own.int.animMinCores", 0);
 		if (min <= 0 || !Boolean.getBoolean("cadence.own.int.atlasWrite")) return true;
-		int cores = dev.cadence.metal.Profile.gpuCores();
+		int cores = dev.cadence.metal.system.Profile.gpuCores();
 		boolean ok = cores >= min;
 		System.out.println("cadence-own: atlasWrite / one-pass animation " + (ok ? "on" : "off") + " (gpu cores " + (cores < 0 ? "unknown" : cores)
 			+ (ok ? " >= " : " < ") + min + ")");
@@ -140,7 +140,7 @@ public final class AnimCopy {
 		// then the copies: with shader-write atlases (-Dcadence.own.int.atlasWrite), one compute dispatch a mip; else blits, all mips in one run
 		OwnTerrain own = OwnTerrain.get();
 		if (!verify && !NO_COPY && ATLAS_WRITE && own != null && isAnimatedAtlas(atlas)) {
-			long src = dev.cadence.metal.MetalBridge.textureHandle(l.scratch), dst = dev.cadence.metal.MetalBridge.textureHandle(target);
+			long src = dev.cadence.metal.backend.MetalBridge.textureHandle(l.scratch), dst = dev.cadence.metal.backend.MetalBridge.textureHandle(target);
 			try (MemoryStack stack = MemoryStack.stackPush()) {
 				long rects = stack.nmalloc(4, n * 24);
 				boolean ok = true;

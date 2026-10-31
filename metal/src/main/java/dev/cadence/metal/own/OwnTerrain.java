@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
@@ -470,7 +470,7 @@ public final class OwnTerrain {
 		int rd = Minecraft.getInstance().options.renderDistance().get();
 		boolean preSizeRequested = Boolean.getBoolean("cadence.own.arena.preSize");
 		int preSizeMaxCores = Integer.getInteger("cadence.own.arena.preSizeMaxCores", 8);
-		int gpuCores = dev.cadence.metal.Profile.gpuCores();
+		int gpuCores = dev.cadence.metal.system.Profile.gpuCores();
 		boolean preSize = OwnArenaSizing.preSizeEnabled(preSizeRequested, gpuCores, preSizeMaxCores);
 		this.arenaPhysicalUnits = OwnArenaSizing.reserveUnits(preSize, rd, COMPACT);
 		this.arenaBuffer = OwnNative.buffer(this.ctx, (long) this.arenaPhysicalUnits * ARENA_QUAD, true);
@@ -1141,21 +1141,21 @@ public final class OwnTerrain {
 		for (Object e; (e = this.events.poll()) != null; ) {
 			switch (e) {
 				case Publish p -> {
-					if (dev.cadence.metal.FrameLog.ON) dev.cadence.metal.FrameLog.event(dev.cadence.metal.FrameLog.PUBLISH);
+					if (dev.cadence.metal.backend.FrameLog.ON) dev.cadence.metal.backend.FrameLog.event(dev.cadence.metal.backend.FrameLog.PUBLISH);
 					this.publish(p);
 				}
 				case Clear c -> {
-					if (dev.cadence.metal.FrameLog.ON) dev.cadence.metal.FrameLog.event(dev.cadence.metal.FrameLog.CLEAR);
+					if (dev.cadence.metal.backend.FrameLog.ON) dev.cadence.metal.backend.FrameLog.event(dev.cadence.metal.backend.FrameLog.CLEAR);
 					this.setSlot(c.slot, null, 0, 0, 0, 0);
 					this.compiled[c.slot] = 0;
 					this.seamSerial++;
 				}
 				case Release r -> {
-					if (dev.cadence.metal.FrameLog.ON) dev.cadence.metal.FrameLog.event(dev.cadence.metal.FrameLog.RELEASE);
+					if (dev.cadence.metal.backend.FrameLog.ON) dev.cadence.metal.backend.FrameLog.event(dev.cadence.metal.backend.FrameLog.RELEASE);
 					this.release(r.mesh);
 				}
 				case Resort r -> {
-					if (dev.cadence.metal.FrameLog.ON) dev.cadence.metal.FrameLog.event(dev.cadence.metal.FrameLog.RESORT);
+					if (dev.cadence.metal.backend.FrameLog.ON) dev.cadence.metal.backend.FrameLog.event(dev.cadence.metal.backend.FrameLog.RESORT);
 					this.resort(r);
 				}
 				default -> throw new IllegalStateException();
@@ -1191,9 +1191,9 @@ public final class OwnTerrain {
 	// ---- render thread: the frame ----
 
 	private void beginFrame() {
-		if (dev.cadence.metal.FrameLog.COUNT) dev.cadence.metal.FrameLog.begin(dev.cadence.metal.FrameLog.OWN_BEGIN);
+		if (dev.cadence.metal.backend.FrameLog.COUNT) dev.cadence.metal.backend.FrameLog.begin(dev.cadence.metal.backend.FrameLog.OWN_BEGIN);
 		this.beginFrame0();
-		if (dev.cadence.metal.FrameLog.COUNT) dev.cadence.metal.FrameLog.end(dev.cadence.metal.FrameLog.OWN_BEGIN);
+		if (dev.cadence.metal.backend.FrameLog.COUNT) dev.cadence.metal.backend.FrameLog.end(dev.cadence.metal.backend.FrameLog.OWN_BEGIN);
 	}
 
 	private void beginFrame0() {
@@ -1232,7 +1232,7 @@ public final class OwnTerrain {
 		// records in use; tieCloseFallback must grow the lists before encoding, counted as 'lists grown at the cull')
 		if (live > this.listCap && !LIST_GROW_FAULT) this.growLists(Integer.highestOneBit(live) * 2);
 		this.pickRing();
-		if (OwnTieGroups.ON && dev.cadence.metal.FrameHints.LOG_STATS) this.tieGroupLog();
+		if (OwnTieGroups.ON && dev.cadence.metal.backend.FrameHints.LOG_STATS) this.tieGroupLog();
 	}
 
 	private long tgLogAt;
@@ -2715,7 +2715,7 @@ public final class OwnTerrain {
 			}
 			this.tsFrames++;
 		}
-		if (TCULL && ++this.tcFrames % 600 == 0 && dev.cadence.metal.FrameHints.LOG_STATS) {
+		if (TCULL && ++this.tcFrames % 600 == 0 && dev.cadence.metal.backend.FrameHints.LOG_STATS) {
 			long now = System.nanoTime();
 			if (now > this.tcLogAt) {
 				this.tcLogAt = now + 5_000_000_000L;
@@ -2753,7 +2753,7 @@ public final class OwnTerrain {
 				if (m != null && !(m.tOut = this.tFrNow && this.tOutside(m, slot, cx, cy, cz))) n += this.tCount(m, slot, cx, cy, cz);
 			}
 		}
-		if (this.tFrNow && ++this.tFrFrames % 600 == 0 && dev.cadence.metal.FrameHints.LOG_STATS) {
+		if (this.tFrNow && ++this.tFrFrames % 600 == 0 && dev.cadence.metal.backend.FrameHints.LOG_STATS) {
 			long now = System.nanoTime();
 			if (now > this.tFrLogAt) {
 				this.tFrLogAt = now + 5_000_000_000L;
@@ -3115,7 +3115,7 @@ public final class OwnTerrain {
 	private void probeSelect() {
 		this.probeOverride = OwnProbe.select(PROBE_MODES[this.probeMode]);
 		applyNativeFlags();
-		dev.cadence.metal.GpuTimes.probeTag(this.probeMode, this.probeWindow, PROBE_MODES);
+		dev.cadence.metal.backend.GpuTimes.probeTag(this.probeMode, this.probeWindow, PROBE_MODES);
 	}
 
 	/** The RGSS skip (OwnNative.rgssSkip) switched at runtime: the self-test's A/B and picture checks (render thread). */

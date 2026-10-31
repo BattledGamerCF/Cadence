@@ -1,7 +1,7 @@
 // Cadence: derived from mcopt (c) Noah Dunnagan, Apache-2.0; modified.
 package dev.cadence.metal.mixin;
 
-import dev.cadence.metal.AtlasDouble;
+import dev.cadence.metal.backend.AtlasDouble;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

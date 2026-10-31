@@ -4,7 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -183,7 +183,7 @@ public final class SmoothTextures {
 	private static void upload(GpuTexture t, Object encoder) {
 		var device = RenderSystem.getDevice();
 		release();
-		try (var writable = dev.cadence.metal.MetalStorage.writableTextures()) {
+		try (var writable = dev.cadence.metal.backend.MetalStorage.writableTextures()) {
 			tex2x = device.createTexture(() -> "Cadence smooth block atlas", GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_COPY_SRC,
 				GpuFormat.RGBA8_UNORM, w * 2, h * 2, 1, mips + 1);
 		} catch (Exception e) {

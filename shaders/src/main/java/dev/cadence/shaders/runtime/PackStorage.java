@@ -1,7 +1,7 @@
 package dev.cadence.shaders.runtime;
 
 import com.mojang.renderpearl.api.GpuFormat;
-import dev.cadence.metal.MetalCompute;
+import dev.cadence.metal.backend.MetalCompute;
 import dev.cadence.shaders.compile.ShaderCompatibilityCompiler;
 import dev.cadence.shaders.pack.ShaderPackException;
 import dev.cadence.shaders.pack.ShaderProperties;

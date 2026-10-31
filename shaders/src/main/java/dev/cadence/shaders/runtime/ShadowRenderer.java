@@ -414,7 +414,7 @@ public final class ShadowRenderer {
               selected.padding(),
               selected.eligibility());
       // (statistics for tests: -Dcadence.logStats=true or a self-test run; silent in play)
-      if (RECEIVER_CULLING && dev.cadence.metal.FrameHints.LOG_STATS && cullingFrames++ % 120 == 0) {
+      if (RECEIVER_CULLING && dev.cadence.metal.backend.FrameHints.LOG_STATS && cullingFrames++ % 120 == 0) {
         LoggerFactory.getLogger("cadence_shaders")
             .info("Shadow receiver culling: {}", lastCullingStats);
       }

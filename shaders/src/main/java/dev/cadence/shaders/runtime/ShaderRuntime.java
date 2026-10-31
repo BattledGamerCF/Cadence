@@ -11,7 +11,7 @@ import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.renderpearl.api.textures.GpuSampler;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.api.textures.GpuTextureView;
-import dev.cadence.metal.MetalPassHints;
+import dev.cadence.metal.backend.MetalPassHints;
 import dev.cadence.shaders.compile.MatrixUniformSpecialization;
 import dev.cadence.shaders.compile.MinecraftVertexAdapter;
 import dev.cadence.shaders.compile.ShaderCompatibilityCompiler;
@@ -206,9 +206,9 @@ public final class ShaderRuntime implements AutoCloseable {
 
   public static void install(ShaderRuntime runtime) {
     // (Cadence API: dev.cadence.api.Cadence#shaderPack)
-    dev.cadence.metal.ApiHooks.shaderPack = runtime == null ? "" : dev.cadence.shaders.cadence.ui.ShaderToggle.selectedPack();
-    dev.cadence.metal.ApiHooks.shadowPass = false;
-    if (runtime == null) dev.cadence.metal.ApiHooks.sunPathRotation = 0;
+    dev.cadence.metal.backend.ApiHooks.shaderPack = runtime == null ? "" : dev.cadence.shaders.cadence.ui.ShaderToggle.selectedPack();
+    dev.cadence.metal.backend.ApiHooks.shadowPass = false;
+    if (runtime == null) dev.cadence.metal.backend.ApiHooks.sunPathRotation = 0;
     instance = runtime;
     // (Cadence: lazy clears are on with and without a pack now: MetalEncoder.LAZY_CLEARS)
   }
@@ -464,7 +464,7 @@ public final class ShaderRuntime implements AutoCloseable {
       active = true;
       hand = false;
       shadow = false;
-      dev.cadence.metal.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
+      dev.cadence.metal.backend.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
       deferred = false;
       dev.cadence.shaders.cadence.render.DistantTerrain.want(programs.distantTerrain && !distantFailed);
       // Cadence: the pack's images and buffer objects (sized for this frame, cleared where asked), its setup programs once
@@ -510,7 +510,7 @@ public final class ShaderRuntime implements AutoCloseable {
     suspend();
     profile("shadow.begin");
     shadow = true;
-    dev.cadence.metal.ApiHooks.shadowPass = true;
+    dev.cadence.metal.backend.ApiHooks.shadowPass = true;
     frameBuffers.clear();
     return true;
   }
@@ -524,7 +524,7 @@ public final class ShaderRuntime implements AutoCloseable {
   }
 
   public void endShadow() {
-    dev.cadence.metal.ApiHooks.shadowPass = false; // (first: suspend() can throw, BH5-10)
+    dev.cadence.metal.backend.ApiHooks.shadowPass = false; // (first: suspend() can throw, BH5-10)
     suspend();
     profile("shadow.end");
     shadow = false;
@@ -638,11 +638,11 @@ public final class ShaderRuntime implements AutoCloseable {
           var mainView = Minecraft.getInstance().gameRenderer.mainRenderTarget().getColorTextureView();
           // Cadence: the Neural Engine upscaler when chosen (upscaler=neural; MetalFX until it's ready, or if it can't), Apple's
           // MetalFX spatial upscaler when chosen (upscaler=metalfx), else (or if it can't) the shader upscale.
-          if (!dev.cadence.shaders.cadence.render.RenderScale.neural()) dev.cadence.metal.NeuralUpscaler.release();
+          if (!dev.cadence.shaders.cadence.render.RenderScale.neural()) dev.cadence.metal.backend.NeuralUpscaler.release();
           boolean neural = dev.cadence.shaders.cadence.render.RenderScale.neural()
-              && dev.cadence.metal.NeuralUpscaler.encode(scaledOutputView, mainView);
+              && dev.cadence.metal.backend.NeuralUpscaler.encode(scaledOutputView, mainView);
           if (!neural && (!dev.cadence.shaders.cadence.render.RenderScale.metalFx()
-              || !dev.cadence.metal.MetalFxUpscaler.encode(scaledOutputView, mainView)))
+              || !dev.cadence.metal.backend.MetalFxUpscaler.encode(scaledOutputView, mainView)))
           {
             if (upscale.fast() != dev.cadence.shaders.cadence.render.RenderScale.fastUpscale()) {
               float sharpen = dev.cadence.shaders.cadence.render.RenderScale.sharpenFor(dev.cadence.shaders.cadence.render.RenderScale.get());
@@ -663,7 +663,7 @@ public final class ShaderRuntime implements AutoCloseable {
       active = false;
       hand = false;
       shadow = false;
-      dev.cadence.metal.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
+      dev.cadence.metal.backend.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
       OriginalPipelines.prune();
     }
   }
@@ -675,7 +675,7 @@ public final class ShaderRuntime implements AutoCloseable {
     active = false;
     hand = false;
     shadow = false;
-    dev.cadence.metal.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
+    dev.cadence.metal.backend.ApiHooks.shadowPass = false;  // (the API flag with it, BH5-10)
   }
 
   public boolean intercept(RenderPassDescriptor descriptor) {
@@ -1080,7 +1080,7 @@ public final class ShaderRuntime implements AutoCloseable {
       if (target != null) {
         targets.ensureDefined(target);
         // Cadence: with lazy clears that clear is only noted; written now, before the pass opens, not by splitting it
-        if (FLUSH_SAMPLED_CLEARS) dev.cadence.metal.MetalCompute.flushClear(target.texture);
+        if (FLUSH_SAMPLED_CLEARS) dev.cadence.metal.backend.MetalCompute.flushClear(target.texture);
       }
     }
     prepareFeedback(pipeline);
@@ -1154,7 +1154,7 @@ public final class ShaderRuntime implements AutoCloseable {
             case SHADOW_DEPTH -> targets.shadowDepth(sampler.index());
             default -> null;
           };
-      if (target != null && !attached.contains(target.texture)) dev.cadence.metal.MetalCompute.flushClear(target.texture);
+      if (target != null && !attached.contains(target.texture)) dev.cadence.metal.backend.MetalCompute.flushClear(target.texture);
     }
   }
 
@@ -1366,24 +1366,24 @@ public final class ShaderRuntime implements AutoCloseable {
         && shadow.translated().storage().stream()
             .anyMatch(r -> r.kind() != dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED);
   }
-  private final Map<String, dev.cadence.metal.MetalCompute.Kernel> kernels = new java.util.HashMap<>();
+  private final Map<String, dev.cadence.metal.backend.MetalCompute.Kernel> kernels = new java.util.HashMap<>();
   private final Map<String, java.nio.ByteBuffer> kernelUniforms = new java.util.HashMap<>();
 
-  private dev.cadence.metal.MetalCompute.Kernel kernel(PackPrograms.Source source) {
+  private dev.cadence.metal.backend.MetalCompute.Kernel kernel(PackPrograms.Source source) {
     return kernels.computeIfAbsent(
         source.name(),
         name -> {
           var translated = source.translated();
-          java.util.List<dev.cadence.metal.MetalCompute.SamplerState> states = new java.util.ArrayList<>();
+          java.util.List<dev.cadence.metal.backend.MetalCompute.SamplerState> states = new java.util.ArrayList<>();
           for (var sampler : translated.samplers())
             states.add(samplerState(PackPipeline.SamplerBinding.of(sampler, true), sampler.type()));
           return PackCompute.compile(translated, states, storageSlots(translated), programs.relaxedFragmentMath);
         });
   }
 
-  private dev.cadence.metal.MetalCompute.SamplerState samplerState(PackPipeline.SamplerBinding b, String type) {
+  private dev.cadence.metal.backend.MetalCompute.SamplerState samplerState(PackPipeline.SamplerBinding b, String type) {
     boolean integer = type.startsWith("i") || type.startsWith("u");
-    return new dev.cadence.metal.MetalCompute.SamplerState(
+    return new dev.cadence.metal.backend.MetalCompute.SamplerState(
         integer || b.kind() == PackPipeline.SamplerKind.DEPTH
             || b.kind() == PackPipeline.SamplerKind.SHADOW_DEPTH && !b.comparison(),
         b.kind() == PackPipeline.SamplerKind.NOISE,
@@ -1407,7 +1407,7 @@ public final class ShaderRuntime implements AutoCloseable {
             default -> textures.white;
           };
     targets.ensureDefined(t);
-    return dev.cadence.metal.MetalBridge.textureHandle(t.texture);
+    return dev.cadence.metal.backend.MetalBridge.textureHandle(t.texture);
   }
 
   private static final java.util.regex.Pattern COLOR_IMAGE = java.util.regex.Pattern.compile("(shadow)?colorimg([0-9]+)");
@@ -1423,7 +1423,7 @@ public final class ShaderRuntime implements AutoCloseable {
     // texture.deferred.depthtex0 = scattering.dat TEXTURE_3D ...): a sampler3D reaches the shader as a set-1 resource
     if (program != null && textures != null && r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED) {
       PackTexture volume = textures.volume(program, r.name());
-      if (volume != null) return dev.cadence.metal.MetalBridge.textureHandle(volume.texture);
+      if (volume != null) return dev.cadence.metal.backend.MetalBridge.textureHandle(volume.texture);
     }
     if (r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER
         && dev.cadence.shaders.cadence.render.DistantTerrain.isFarBuffer(r.bufferIndex()))
@@ -1437,24 +1437,24 @@ public final class ShaderRuntime implements AutoCloseable {
       PackTexture t = m.group(1) != null ? targets.shadowColor(index) : targets.color(index);
       targets.ensureDefined(t);
       targets.wrote(t); // (an image the program may store to: its mip levels go stale)
-      return dev.cadence.metal.MetalBridge.textureHandle(t.texture);
+      return dev.cadence.metal.backend.MetalBridge.textureHandle(t.texture);
     }
     return 0;
   }
 
   /** A program's set-1 resources for the Metal backend (MetalStorage). */
-  java.util.List<dev.cadence.metal.MetalStorage.Slot> storageSlots(dev.cadence.shaders.compile.TranslatedProgram translated) {
+  java.util.List<dev.cadence.metal.backend.MetalStorage.Slot> storageSlots(dev.cadence.shaders.compile.TranslatedProgram translated) {
     String program = programName(translated.label());
-    java.util.List<dev.cadence.metal.MetalStorage.Slot> slots = new java.util.ArrayList<>();
+    java.util.List<dev.cadence.metal.backend.MetalStorage.Slot> slots = new java.util.ArrayList<>();
     for (var r : translated.storage()) {
-      if (r.binding() >= dev.cadence.metal.MetalStorage.MAX_BINDINGS)
-        throw new UnsupportedOperationException(translated.label() + " has more than " + dev.cadence.metal.MetalStorage.MAX_BINDINGS
+      if (r.binding() >= dev.cadence.metal.backend.MetalStorage.MAX_BINDINGS)
+        throw new UnsupportedOperationException(translated.label() + " has more than " + dev.cadence.metal.backend.MetalStorage.MAX_BINDINGS
             + " images and buffer objects");
       // (a raw 3D custom texture is filtered as its .mcmeta asks: Photon's cloud noise linear and repeating, its LUT clamped)
       boolean[] volume = textures == null || r.kind() != dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED
           ? null : textures.volumeFiltering(program, r.name());
       slots.add(
-          new dev.cadence.metal.MetalStorage.Slot(
+          new dev.cadence.metal.backend.MetalStorage.Slot(
               r.binding(),
               r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER,
               r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.SAMPLED,
@@ -1484,7 +1484,7 @@ public final class ShaderRuntime implements AutoCloseable {
     for (int i = 0; i < textures.length; i++)
       textures[i] = samplerTexture(source.name(), PackPipeline.SamplerBinding.of(translated.samplers().get(i), true));
     int[] groups = PackCompute.groups(source, translated, frameWidth, frameHeight);
-    try (var pass = dev.cadence.metal.MetalCompute.begin()) {
+    try (var pass = dev.cadence.metal.backend.MetalCompute.begin()) {
       pass.kernel(kernel);
       if (translated.uniforms().byteSize() > 0) pass.bytes(0, data);
       for (int i = 0; i < textures.length; i++) pass.texture(i, textures[i]);
@@ -1492,8 +1492,8 @@ public final class ShaderRuntime implements AutoCloseable {
         long h = storageHandle(source.name(), r);
         if (h == 0) continue;
         if (r.kind() == dev.cadence.shaders.compile.TranslatedProgram.Storage.Kind.BUFFER)
-          pass.buffer(dev.cadence.metal.MetalStorage.BUFFER_BASE + r.binding(), h);
-        else pass.texture(dev.cadence.metal.MetalStorage.TEXTURE_BASE + r.binding(), h);
+          pass.buffer(dev.cadence.metal.backend.MetalStorage.BUFFER_BASE + r.binding(), h);
+        else pass.texture(dev.cadence.metal.backend.MetalStorage.TEXTURE_BASE + r.binding(), h);
       }
       java.util.List<Integer> local = translated.drawBuffers();
       pass.dispatch(groups[0], groups[1], groups[2], local.get(0), local.get(1), local.get(2));
@@ -1630,7 +1630,7 @@ public final class ShaderRuntime implements AutoCloseable {
       programs.close();
       programs = null;
     }
-    for (var k : kernels.values()) dev.cadence.metal.MetalCompute.release(k.pipeline());
+    for (var k : kernels.values()) dev.cadence.metal.backend.MetalCompute.release(k.pipeline());
     kernels.clear();
     kernelUniforms.clear();
     if (storage != null) {

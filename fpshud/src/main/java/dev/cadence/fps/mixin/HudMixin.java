@@ -53,7 +53,7 @@ abstract class HudMixin {
 			try {
 				cadenceFps$frameGen = java.lang.invoke.MethodHandles.publicLookup().findStatic(Class.forName("dev.cadence.metal.framegen.FrameGen"), "shownFps",
 					java.lang.invoke.MethodType.methodType(int.class, int.class));
-				cadenceFps$batteryTime = java.lang.invoke.MethodHandles.publicLookup().findStatic(Class.forName("dev.cadence.metal.MacSystem"), "batteryTimeLeft",
+				cadenceFps$batteryTime = java.lang.invoke.MethodHandles.publicLookup().findStatic(Class.forName("dev.cadence.metal.backend.MacSystem"), "batteryTimeLeft",
 					java.lang.invoke.MethodType.methodType(String.class));
 			} catch (ReflectiveOperationException | LinkageError e) {
 				cadenceFps$frameGen = null;

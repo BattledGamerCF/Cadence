@@ -1,7 +1,7 @@
 // Cadence: derived from mcopt (c) Noah Dunnagan, Apache-2.0; modified.
 package dev.cadence.metal.mixin;
 
-import dev.cadence.metal.ResidentAnim;
+import dev.cadence.metal.backend.ResidentAnim;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

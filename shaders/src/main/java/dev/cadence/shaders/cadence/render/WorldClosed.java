@@ -28,7 +28,7 @@ public final class WorldClosed {
 			WorldScale.releaseWorld();
 			dev.cadence.metal.rt.RayTracing.release();  // (its voxel window holds the level, BH7-03)
 			dev.cadence.metal.neural.StyleFilter.release();
-			dev.cadence.metal.NeuralUpscaler.release();  // (BH7-11)
+			dev.cadence.metal.backend.NeuralUpscaler.release();  // (BH7-11)
 			dev.cadence.metal.audio.WorldAcoustics.worldClosed();  // (Sound Around Corners' grid held the level, BH8-01)
 			ShadowCompileCull.reset();
 			dev.cadence.scene.SceneViews.worldChanged();

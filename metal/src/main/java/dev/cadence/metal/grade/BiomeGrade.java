@@ -3,7 +3,7 @@ package dev.cadence.metal.grade;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.BiomeColors;

@@ -50,7 +50,7 @@ public final class MaxFpsMode {
 		bucketFrames = 0;
 		bucketStart = 0;
 		try {
-			if (BLANK) dev.cadence.metal.MetalBridge.uncappedPresent(value);
+			if (BLANK) dev.cadence.metal.backend.MetalBridge.uncappedPresent(value);
 			else dev.cadence.metal.record.Record.set(value);
 		} catch (RuntimeException | LinkageError e) {
 			// not on the Metal backend: vsync stays as the option says

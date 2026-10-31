@@ -95,7 +95,7 @@ public final class PackCheck {
 		if (!Files.isRegularFile(file())) return;
 		Properties p = new Properties();
 		try (Reader r = Files.newBufferedReader(file(), StandardCharsets.UTF_8)) {
-			dev.cadence.metal.ConfigFiles.load(p, r);
+			dev.cadence.metal.system.ConfigFiles.load(p, r);
 			for (String k : p.stringPropertyNames()) results.put(k, p.getProperty(k));
 		} catch (IOException e) {
 			// no saved checks
@@ -106,7 +106,7 @@ public final class PackCheck {
 		Properties p = new Properties();
 		p.putAll(results);
 		try {
-			dev.cadence.metal.ConfigFiles.store(p, file(), "Cadence pack checks: safe = shadow receiver culling verified for that pack, options and dimension", true);
+			dev.cadence.metal.system.ConfigFiles.store(p, file(), "Cadence pack checks: safe = shadow receiver culling verified for that pack, options and dimension", true);
 		} catch (IOException e) {
 			LoggerFactory.getLogger("cadence").info("Pack check: can't save {}: {}", file(), e.toString());
 		}

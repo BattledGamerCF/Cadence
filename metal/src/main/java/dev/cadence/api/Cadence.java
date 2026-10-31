@@ -1,7 +1,7 @@
 package dev.cadence.api;
 
-import dev.cadence.metal.ApiHooks;
-import dev.cadence.metal.MetalCompute;
+import dev.cadence.metal.backend.ApiHooks;
+import dev.cadence.metal.backend.MetalCompute;
 import dev.cadence.metal.compat.CompatLayers;
 
 /**

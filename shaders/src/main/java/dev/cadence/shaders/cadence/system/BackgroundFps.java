@@ -38,7 +38,7 @@ public final class BackgroundFps {
 		// (a world open to LAN running in the background: App Nap would slow its ticks for the players in it; a world only you
 		// play is left to nap, as In Background and Battery Saver want)
 		var server = mc.getSingleplayerServer();
-		dev.cadence.metal.MacSystem.appNapBusy(background && server != null && server.isPublished());
+		dev.cadence.metal.backend.MacSystem.appNapBusy(background && server != null && server.isPublished());
 		if (!enabled) return Integer.MAX_VALUE;
 		return background ? FPS : Integer.MAX_VALUE;
 	}

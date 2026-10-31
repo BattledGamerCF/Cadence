@@ -38,9 +38,9 @@ public final class PerformanceOverlay {
 			: "Frames: " + renderedFps + " rendered");
 		double interval = RenderScale.lastIntervalMs(), gpu = RenderScale.lastGpuMs();
 		if (interval > 0) l.add(String.format(Locale.ROOT, "Frame %.2f ms, GPU %.2f ms, scale %d%%", interval, gpu, Math.round(RenderScale.get() * 100)));
-		double watts = dev.cadence.metal.MacSystem.systemWatts();
+		double watts = dev.cadence.metal.backend.MacSystem.systemWatts();
 		l.add("Mac: " + dev.cadence.shaders.cadence.system.HeatControl.thermalWords() + (watts > 0 ? String.format(Locale.ROOT, ", %.1f W", watts) : ""));
-		String battery = dev.cadence.metal.MacSystem.batteryTimeLeft();
+		String battery = dev.cadence.metal.backend.MacSystem.batteryTimeLeft();
 		if (!battery.isEmpty()) l.add("Battery: about " + battery + " left");
 		if (dev.cadence.shaders.cadence.system.BatteryMode.saving()) l.add("Saving power (Battery Saver" + (dev.cadence.shaders.cadence.system.BatteryMode.lowPower() ? ", Low Power Mode" : "") + ")");
 		return lines = l;

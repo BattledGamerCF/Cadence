@@ -3,7 +3,7 @@ package dev.cadence.metal.rt;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import net.minecraft.client.Minecraft;
@@ -349,7 +349,7 @@ public final class RayTracing {
 		gpuFrames++;
 		long now = System.nanoTime();
 		if (now - gpuAt > 500_000_000L) {
-			long busy = dev.cadence.metal.GpuBusy.totalNanos();
+			long busy = dev.cadence.metal.backend.GpuBusy.totalNanos();
 			if (gpuAt != 0 && gpuFrames > 0) gpuMs = (busy - gpuNanos) / 1e6f / gpuFrames;
 			gpuAt = now;
 			gpuNanos = busy;

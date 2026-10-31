@@ -11,7 +11,7 @@ public final class SystemMonitor {
 		if (started) return;
 		started = true;
 		Thread t = new Thread(() -> {
-			dev.cadence.metal.MacSystem.setQos(dev.cadence.metal.MacSystem.QOS_UTILITY);
+			dev.cadence.metal.backend.MacSystem.setQos(dev.cadence.metal.backend.MacSystem.QOS_UTILITY);
 			while (true) {
 				try {
 					HeatControl.poll(System.nanoTime());

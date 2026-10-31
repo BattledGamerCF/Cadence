@@ -19,18 +19,18 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
  *
  * <p>Several of them patch the same game code as Cadence's own near terrain (LevelRenderer's section draw lists, the section
  * compiler, the block renderer); two redirects of one call can't both apply. With a pack selected, Cadence's profile turns its
- * own terrain off (dev.cadence.metal.Profile.shaderPackSelected) and these apply; with none, this mod changes nothing at all and
+ * own terrain off (dev.cadence.metal.system.Profile.shaderPackSelected) and these apply; with none, this mod changes nothing at all and
  * Cadence runs at full speed. Selecting a pack already needs a restart, so nothing is lost. The same check as Cadence's:
  * -Dcadence.shaders.pack, else {@code pack=} in config/cadence-shaders.properties, non-blank.
  */
 public final class CadencePackGate implements IMixinConfigPlugin {
 	static {
-		dev.cadence.metal.Legacy.migrateProperties(); // -DminecraftShaders.* / -DminecraftScene.* from before the rename, before any flag is read
+		dev.cadence.metal.system.Legacy.migrateProperties(); // -DminecraftShaders.* / -DminecraftScene.* from before the rename, before any flag is read
 	}
 	private static final String PACK = selectedName();
 	private static final boolean SELECTED = !PACK.isBlank();
 	/** Shader switching (Profile.liveSwitching): "instant" loads the hooks with no pack too; "auto" (default) only with a pack. */
-	private static final boolean LIVE = dev.cadence.metal.Profile.liveSwitching(configValue("shaderSwitching", null),
+	private static final boolean LIVE = dev.cadence.metal.system.Profile.liveSwitching(configValue("shaderSwitching", null),
 		configValue("liveSwitching", null), SELECTED);
 	private static final boolean HOOKS = SELECTED || LIVE;
 
@@ -45,11 +45,11 @@ public final class CadencePackGate implements IMixinConfigPlugin {
 	}
 
 	private static String configValue(String key, String fallback) {
-		Path cfg = dev.cadence.metal.Legacy.readable(FabricLoader.getInstance().getConfigDir(), dev.cadence.metal.Legacy.SHADERS_CONFIG, dev.cadence.metal.Legacy.SHADERS_CONFIG_OLD);
+		Path cfg = dev.cadence.metal.system.Legacy.readable(FabricLoader.getInstance().getConfigDir(), dev.cadence.metal.system.Legacy.SHADERS_CONFIG, dev.cadence.metal.system.Legacy.SHADERS_CONFIG_OLD);
 		if (!Files.isRegularFile(cfg)) return fallback;
 		Properties p = new Properties();
 		try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
-			dev.cadence.metal.ConfigFiles.load(p, r);
+			dev.cadence.metal.system.ConfigFiles.load(p, r);
 		} catch (IOException e) {
 			return fallback;
 		}
@@ -81,11 +81,11 @@ public final class CadencePackGate implements IMixinConfigPlugin {
 	private static String selectedName() {
 		String pack = System.getProperty("cadence.shaders.pack");
 		if (pack == null) {
-			Path cfg = dev.cadence.metal.Legacy.readable(FabricLoader.getInstance().getConfigDir(), dev.cadence.metal.Legacy.SHADERS_CONFIG, dev.cadence.metal.Legacy.SHADERS_CONFIG_OLD);
+			Path cfg = dev.cadence.metal.system.Legacy.readable(FabricLoader.getInstance().getConfigDir(), dev.cadence.metal.system.Legacy.SHADERS_CONFIG, dev.cadence.metal.system.Legacy.SHADERS_CONFIG_OLD);
 			if (!Files.isRegularFile(cfg)) return "";
 			Properties p = new Properties();
 			try (Reader r = Files.newBufferedReader(cfg, StandardCharsets.UTF_8)) {
-				dev.cadence.metal.ConfigFiles.load(p, r);
+				dev.cadence.metal.system.ConfigFiles.load(p, r);
 			} catch (IOException e) {
 				System.out.println("[cadence-shaders] can't read " + cfg + ": " + e);
 				return "";

@@ -2259,7 +2259,7 @@ fragment float4 own_fs(VOut in [[stage_in]], constant Globals &g [[buffer(22)]],
 	// F_LEAN: the chunk visibility is 1 (mix(x, y, 1) is y), the render-distance fog value 0 (max(e, 0) is e for e >= 0)
 	if (F_RICH) color = mix(fog.FogColor * float4(1, 1, 1, color.a), color, in.chunkVisibility);
 	if (CUTOUT && color.a < CUTOUT_LIMIT) discard_fragment();
-	// HDR (dev.cadence.metal.Hdr, hdrGain > 1): emissive blocks' bright texels above SDR white. emission: the atlas's emissive
+	// HDR (dev.cadence.metal.backend.Hdr, hdrGain > 1): emissive blocks' bright texels above SDR white. emission: the atlas's emissive
 	// sprites (OwnEmission: the block's light level / 15 over each sprite only emissive blocks use); the weight follows the texel's
 	// brightness, so a torch's flame glows and its stick doesn't. The gain is linear; the colour here is sRGB-encoded.
 	if (hdrGain > 1.0f) {

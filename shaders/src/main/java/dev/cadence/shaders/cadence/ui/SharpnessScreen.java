@@ -13,16 +13,16 @@ import net.minecraft.network.chat.Component;
  */
 public final class SharpnessScreen extends OptionsSubScreen {
 	public SharpnessScreen(Screen parent) {
-		super(parent, Minecraft.getInstance().options, dev.cadence.metal.Lang.literal("Sharpness & Speed"));
+		super(parent, Minecraft.getInstance().options, dev.cadence.metal.system.Lang.literal("Sharpness & Speed"));
 	}
 
 	@Override
 	protected void addOptions() {
-		this.list.addHeader(dev.cadence.metal.Lang.literal("World Resolution").withStyle(net.minecraft.ChatFormatting.BOLD, net.minecraft.ChatFormatting.UNDERLINE));
-		this.list.addHeader(dev.cadence.metal.Lang.literal("Fewer pixels: more frames, a softer picture").withStyle(net.minecraft.ChatFormatting.GRAY));
+		this.list.addHeader(dev.cadence.metal.system.Lang.literal("World Resolution").withStyle(net.minecraft.ChatFormatting.BOLD, net.minecraft.ChatFormatting.UNDERLINE));
+		this.list.addHeader(dev.cadence.metal.system.Lang.literal("Fewer pixels: more frames, a softer picture").withStyle(net.minecraft.ChatFormatting.GRAY));
 		this.list.addSmall(ShaderToggle.scaleButton(), ShaderToggle.upscalerButton());
 		this.list.addSmall(ShaderToggle.retinaButton(), null);
-		this.list.addHeader(dev.cadence.metal.Lang.literal("With a Shader Pack").withStyle(net.minecraft.ChatFormatting.BOLD, net.minecraft.ChatFormatting.UNDERLINE));
+		this.list.addHeader(dev.cadence.metal.system.Lang.literal("With a Shader Pack").withStyle(net.minecraft.ChatFormatting.BOLD, net.minecraft.ChatFormatting.UNDERLINE));
 		this.list.addSmall(ShaderToggle.shadowRateButton(), CadenceSettings.packCheckButton());
 	}
 
@@ -34,7 +34,7 @@ public final class SharpnessScreen extends OptionsSubScreen {
 
 	/** The Video Settings button that opens this page. */
 	public static Button button(Screen parent) {
-		return Button.builder(dev.cadence.metal.Lang.literal("Sharpness & Speed..."), b -> Minecraft.getInstance().gui.setScreen(new SharpnessScreen(parent)))
+		return Button.builder(dev.cadence.metal.system.Lang.literal("Sharpness & Speed..."), b -> Minecraft.getInstance().gui.setScreen(new SharpnessScreen(parent)))
 			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.IMPROVES, "Trade picture sharpness for frame rate: Resolution, Sharpening, Retina, and shader shadows.",
 				"#Lower resolution or Retina off draws fewer pixels: much higher fps, especially in full screen, with a softer picture.")).build();
 	}

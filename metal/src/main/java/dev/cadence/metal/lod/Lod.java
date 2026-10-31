@@ -7,8 +7,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import dev.cadence.metal.MetalBridge;
-import dev.cadence.metal.MetalHooks;
+import dev.cadence.metal.backend.MetalBridge;
+import dev.cadence.metal.backend.MetalHooks;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -1520,7 +1520,7 @@ public final class Lod {
 	private boolean probe(long now) {
 		if (LodConfig.PROBE_MS <= 0) return true;
 		// (and the GPU's busy time, which a covered window's paced presents don't hide: GpuBusy, a couple of frames late)
-		long gpu = dev.cadence.metal.GpuBusy.totalNanos();
+		long gpu = dev.cadence.metal.backend.GpuBusy.totalNanos();
 		if (this.probeLast != 0) {
 			int k = this.probeOn ? 1 : 0;
 			this.probeNanos[k] += now - this.probeLast;

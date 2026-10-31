@@ -20,10 +20,10 @@ public record ShaderLoaderConfig(Path pack, Map<String, String> options, String 
     Path packs = gameDirectory.resolve("shaderpacks");
     Files.createDirectories(packs);
     Properties properties = new Properties();
-    Path config = dev.cadence.metal.Legacy.readable(configDirectory, dev.cadence.metal.Legacy.SHADERS_CONFIG, dev.cadence.metal.Legacy.SHADERS_CONFIG_OLD);
+    Path config = dev.cadence.metal.system.Legacy.readable(configDirectory, dev.cadence.metal.system.Legacy.SHADERS_CONFIG, dev.cadence.metal.system.Legacy.SHADERS_CONFIG_OLD);
     if (Files.isRegularFile(config)) {
       try (var input = Files.newBufferedReader(config)) {
-        dev.cadence.metal.ConfigFiles.load(properties, input);
+        dev.cadence.metal.system.ConfigFiles.load(properties, input);
       }
     }
     String selected =
@@ -45,7 +45,7 @@ public record ShaderLoaderConfig(Path pack, Map<String, String> options, String 
       if (Files.isRegularFile(own)) {
         Properties p = new Properties();
         try (var input = Files.newInputStream(own)) {
-          dev.cadence.metal.ConfigFiles.load(p, input);
+          dev.cadence.metal.system.ConfigFiles.load(p, input);
           for (String key : p.stringPropertyNames()) options.put(key, p.getProperty(key).trim());
         } catch (IOException | IllegalArgumentException e) {
           // (an unreadable settings file: the pack loads with its defaults, never refused)

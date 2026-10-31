@@ -132,7 +132,7 @@ public final class VoiceControl {
 		String p = phrase.toLowerCase(Locale.ROOT).replaceAll("[.,!?]", "").strip();
 		String did = act(mc, p, phrase);
 		last = phrase + " -> " + did;
-		if (mc.player != null && !did.isEmpty()) mc.gui.hud.setOverlayMessage(dev.cadence.metal.Lang.literal("Voice: " + did), false);
+		if (mc.player != null && !did.isEmpty()) mc.gui.hud.setOverlayMessage(dev.cadence.metal.system.Lang.literal("Voice: " + did), false);
 	}
 
 	private static String act(Minecraft mc, String p, String original) {

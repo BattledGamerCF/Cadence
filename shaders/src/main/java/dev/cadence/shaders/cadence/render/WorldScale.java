@@ -94,9 +94,9 @@ public final class WorldScale {
 		var targets = (Targets) gameRenderer;
 		targets.cadence$setTargets(savedMain, savedHand);
 		GpuTextureView destination = savedMain.getColorTextureView();
-		if (!RenderScale.neural()) dev.cadence.metal.NeuralUpscaler.release();  // (another upscaler chosen: its session goes, BH7-11)
-		boolean done = RenderScale.neural() && dev.cadence.metal.NeuralUpscaler.encode(worldView, destination);
-		if (!done && (!RenderScale.metalFx() || !dev.cadence.metal.MetalFxUpscaler.encode(worldView, destination))) {
+		if (!RenderScale.neural()) dev.cadence.metal.backend.NeuralUpscaler.release();  // (another upscaler chosen: its session goes, BH7-11)
+		boolean done = RenderScale.neural() && dev.cadence.metal.backend.NeuralUpscaler.encode(worldView, destination);
+		if (!done && (!RenderScale.metalFx() || !dev.cadence.metal.backend.MetalFxUpscaler.encode(worldView, destination))) {
 			float sharpen = RenderScale.sharpenFor(RenderScale.get());
 			boolean fast = RenderScale.fastUpscale();
 			if (upscale == null || upscale.sharpen() != sharpen || upscale.fast() != fast) {
@@ -147,7 +147,7 @@ public final class WorldScale {
 
 	static {
 		// (HDR on or off: the scaled world target is made again at its next use, in the new format)
-		dev.cadence.metal.Hdr.onRebuild(WorldScale::release);
+		dev.cadence.metal.backend.Hdr.onRebuild(WorldScale::release);
 	}
 
 	/** Cadence (WorldClosed): the scaled targets go with the world. */

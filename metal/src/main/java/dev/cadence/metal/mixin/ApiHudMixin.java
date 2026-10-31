@@ -1,7 +1,7 @@
 package dev.cadence.metal.mixin;
 
 import dev.cadence.api.RenderStage;
-import dev.cadence.metal.ApiHooks;
+import dev.cadence.metal.backend.ApiHooks;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;

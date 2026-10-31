@@ -96,7 +96,7 @@ public final class AnimOnePass {
 
 	static {
 		// (the same tests as upload's; with no sprite to draw neither path does anything)
-		if (ON) dev.cadence.metal.AtlasDouble.takenOver = atlas -> OwnTerrain.get() != null && ensure(atlas) != null;
+		if (ON) dev.cadence.metal.backend.AtlasDouble.takenOver = atlas -> OwnTerrain.get() != null && ensure(atlas) != null;
 	}
 	private static boolean dirty = true, warned;
 	private static GpuTexture scratch;
@@ -125,7 +125,7 @@ public final class AnimOnePass {
 		for (int i = 0; i < drawn.length; i++) drawn[i] = states.get(i).needsToDraw();
 		e.uploads++;
 		boolean verify = VERIFY > 0 && e.uploads % VERIFY == 0;
-		boolean[] stale = dev.cadence.metal.AtlasDouble.staleOfSpare(atlas);
+		boolean[] stale = dev.cadence.metal.backend.AtlasDouble.staleOfSpare(atlas);
 		boolean[] forced = new boolean[drawn.length];
 		if (stale != null) {
 			for (int i = 0; i < drawn.length && i < stale.length; i++) forced[i] = stale[i] && !drawn[i];
@@ -193,7 +193,7 @@ public final class AnimOnePass {
 		int max = TEST.equals("tall") ? 64 : RenderSystem.getDevice().getDeviceInfo().limits().maxTextureSize();
 		int h = layout(all, false);
 		if (h > max) return "the scratch would be " + h + " px tall, the limit " + max;
-		boolean writable = !TEST.equals("nowrite") && dev.cadence.metal.MetalBridge.shaderWritable(tex);
+		boolean writable = !TEST.equals("nowrite") && dev.cadence.metal.backend.MetalBridge.shaderWritable(tex);
 		if (AnimCopy.ATLAS_WRITE && writable && kernelReady()) e.copy = 1;
 		else if (BLIT) e.copy = 2;
 		else return writable ? "the compute copy's kernel isn't available" : "its texture isn't shader-writable (the compute copy needs it)";
@@ -357,7 +357,7 @@ public final class AnimOnePass {
 			boolean[] drawn = pe.getValue(), forced = PENDING_FORCED.get(atlas);
 			boolean verify = PENDING_VERIFY.getOrDefault(atlas, false);
 			// with two copies (-Dcadence.metal.atlasDouble) the copy goes into the spare, which then becomes the atlas's texture
-			GpuTexture spare = dev.cadence.metal.AtlasDouble.spare(atlas);
+			GpuTexture spare = dev.cadence.metal.backend.AtlasDouble.spare(atlas);
 			if (!verify) {
 				if (own == null) continue;  // (can't happen: upload() takes nothing over without it)
 				try {
@@ -381,10 +381,10 @@ public final class AnimOnePass {
 						}
 					}
 					GpuTexture dstTex = spare != null ? spare : atlas.getTexture();
-					long src = dev.cadence.metal.MetalBridge.textureHandle(scratch), dst = dev.cadence.metal.MetalBridge.textureHandle(dstTex);
+					long src = dev.cadence.metal.backend.MetalBridge.textureHandle(scratch), dst = dev.cadence.metal.backend.MetalBridge.textureHandle(dstTex);
 					boolean ok;
 					String why = "the native copy failed";
-					if (e.copy == 1 && (TEST.equals("nowrite") || !dev.cadence.metal.MetalBridge.shaderWritable(dstTex))) {
+					if (e.copy == 1 && (TEST.equals("nowrite") || !dev.cadence.metal.backend.MetalBridge.shaderWritable(dstTex))) {
 						ok = false;  // (the preflight saw a writable atlas texture: this destination isn't, e.g. a spare copy)
 						why = "the copy's destination isn't shader-writable";
 					} else if (e.copy == 2) {
@@ -402,7 +402,7 @@ public final class AnimOnePass {
 					failed.put(atlas, "the copy failed (" + t + ")");
 					continue;
 				}
-				if (spare != null) dev.cadence.metal.AtlasDouble.committed(atlas, drawn);
+				if (spare != null) dev.cadence.metal.backend.AtlasDouble.committed(atlas, drawn);
 			}
 			if (verify || VERIFY_COPY > 0 && e.uploads % VERIFY_COPY == 0) compare(atlas, e, drawn, verify ? "onepass-verify" : "onepass-verifycopy");
 		}

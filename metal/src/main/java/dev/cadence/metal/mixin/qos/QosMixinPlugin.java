@@ -3,7 +3,7 @@ package dev.cadence.metal.mixin.qos;
 
 import java.util.List;
 import java.util.Set;
-import dev.cadence.metal.Qos;
+import dev.cadence.metal.system.Qos;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 /** The QoS mixins apply only for the roles a -Dcadence.qos.ROLE property names, so by default the game is unchanged. */
 public final class QosMixinPlugin implements IMixinConfigPlugin {
 	static {
-		dev.cadence.metal.Profile.apply(); // before any flag is read
+		dev.cadence.metal.system.Profile.apply(); // before any flag is read
 	}
 
 	@Override public void onLoad(String mixinPackage) { }

@@ -2,7 +2,7 @@ package dev.cadence.metal.record;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import net.minecraft.client.Minecraft;

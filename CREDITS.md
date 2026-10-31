@@ -54,4 +54,4 @@ and every implementation (`dev.cadence.irisapi`) is Cadence's own, Apache-2.0.
 
 Cadence used to be called mcopt (backend) plus "Minecraft Shader Loader" (shader module). The old `-Dmcopt.*`,
 `-DminecraftShaders.*` and `-DminecraftScene.*` switches still work. So do the old config files `config/mcopt.properties`
-and `config/minecraft-shader-loader.properties` (`dev.cadence.metal.Legacy`).
+and `config/minecraft-shader-loader.properties` (`dev.cadence.metal.system.Legacy`).

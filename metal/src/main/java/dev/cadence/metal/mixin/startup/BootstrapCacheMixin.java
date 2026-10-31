@@ -1,7 +1,7 @@
 // Cadence: derived from mcopt (c) Noah Dunnagan, Apache-2.0; modified.
 package dev.cadence.metal.mixin.startup;
 
-import dev.cadence.metal.Startup;
+import dev.cadence.metal.system.Startup;
 import net.minecraft.server.Bootstrap;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

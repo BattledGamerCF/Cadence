@@ -55,7 +55,7 @@ processResources {
 
 // Double-clicking the jar (java -jar) explains that it's a Fabric mod and how to install it.
 jar {
-	manifest { attributes 'Main-Class': 'dev.cadence.metal.InstallHelp', 'Implementation-Version': version }
+	manifest { attributes 'Main-Class': 'dev.cadence.metal.system.InstallHelp', 'Implementation-Version': version }
 	// Apache-2.0 asks for LICENSE and NOTICE in every copy.
 	from(rootProject.file('LICENSE'))
 	from(rootProject.file('NOTICE'))

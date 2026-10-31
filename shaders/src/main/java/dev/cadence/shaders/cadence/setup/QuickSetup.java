@@ -2,7 +2,7 @@ package dev.cadence.shaders.cadence.setup;
 
 import dev.cadence.shaders.cadence.system.HeatControl;
 
-import dev.cadence.metal.MacSystem;
+import dev.cadence.metal.backend.MacSystem;
 import dev.cadence.shaders.cadence.ui.CadenceSettings;
 import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import dev.cadence.shaders.cadence.mesh.SmartLeaves;

@@ -1,6 +1,6 @@
 package dev.cadence.shaders.cadence.system;
 
-import dev.cadence.metal.MacSystem;
+import dev.cadence.metal.backend.MacSystem;
 
 /**
  * Cadence: tells macOS how urgent each of the game's threads is (QoS classes). Apple Silicon has fast (performance) and

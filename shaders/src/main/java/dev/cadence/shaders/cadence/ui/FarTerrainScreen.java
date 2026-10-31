@@ -16,7 +16,7 @@ import net.minecraft.network.chat.Component;
  */
 public final class FarTerrainScreen extends OptionsSubScreen {
 	public FarTerrainScreen(Screen parent) {
-		super(parent, Minecraft.getInstance().options, dev.cadence.metal.Lang.literal("Far Terrain (Experimental)"));
+		super(parent, Minecraft.getInstance().options, dev.cadence.metal.system.Lang.literal("Far Terrain (Experimental)"));
 	}
 
 	/** Where a rebuilt page starts scrolled to (the page it replaced). */
@@ -40,12 +40,12 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 	@Override
 	protected void addOptions() {
 		boolean on = chosen();
-		this.list.addHeader(dev.cadence.metal.Lang.literal(on == running() ? (on ? "Far Distance and Look apply now, the rest at the next launch" : "Changes take effect at the next launch")
+		this.list.addHeader(dev.cadence.metal.system.Lang.literal(on == running() ? (on ? "Far Distance and Look apply now, the rest at the next launch" : "Changes take effect at the next launch")
 			: "Restart Minecraft to turn Far Terrain " + (on ? "on" : "off")).withStyle(on == running() ? ChatFormatting.GRAY : ChatFormatting.YELLOW));
 		// (with a pack: whether it draws the far terrain, said up front)
 		Component note = packNote();
 		this.list.addHeader(note != null ? note
-			: dev.cadence.metal.Lang.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
+			: dev.cadence.metal.system.Lang.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
 		this.list.addSmall(cycle("Far Terrain", "farTerrain", "off", new String[] {"off", "on"}, new String[] {"Off", "On"},
 				Tips.of(Tips.Impact.MEDIUM, "The world drawn far past your render distance, like the Distant Horizons mod (experimental).",
 					"#Generated from the world's own terrain and trees, replaced by the real chunks as you explore. Uses some memory "
@@ -84,8 +84,8 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 				Tips.of(Tips.Impact.LOW, "Clouds reach out with the far terrain (to 256 chunks at most) instead of stopping at Cloud Distance.",
 					"#Costs some frame time and memory for the bigger cloud layer.")),
 			null);
-		this.list.addHeader(Component.empty().append(dev.cadence.metal.Lang.literal("Look and Renderer").withStyle(ChatFormatting.BOLD, ChatFormatting.UNDERLINE))
-			.append(dev.cadence.metal.Lang.literal("  applies now").withStyle(ChatFormatting.GRAY)));
+		this.list.addHeader(Component.empty().append(dev.cadence.metal.system.Lang.literal("Look and Renderer").withStyle(ChatFormatting.BOLD, ChatFormatting.UNDERLINE))
+			.append(dev.cadence.metal.system.Lang.literal("  applies now").withStyle(ChatFormatting.GRAY)));
 		this.list.addSmall(cycle("Brightness", "farTerrain.brightness", "1.0", new String[] {"0.6", "0.8", "1.0", "1.2", "1.4"},
 				new String[] {"60%", "80%", "100%", "120%", "140%"}, Tips.of(Tips.Impact.NONE, "How bright the far terrain is drawn (100%: as generated).")),
 			cycle("Saturation", "farTerrain.saturation", "1.0", new String[] {"0.5", "0.75", "1.0", "1.25", "1.5"},
@@ -101,8 +101,8 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 					"Mesh Shaders|the draw culls and builds the faces itself, in Metal's object and mesh stages: no list in between",
 					"#Applies the next time the view moves. Not with a shader pack (it draws the far terrain's records itself).")));
 		if (running()) {
-			this.list.addHeader(Component.empty().append(dev.cadence.metal.Lang.literal("Pre-generate").withStyle(ChatFormatting.BOLD, ChatFormatting.UNDERLINE))
-				.append(dev.cadence.metal.Lang.literal("  the far terrain around you, to disk").withStyle(ChatFormatting.GRAY)));
+			this.list.addHeader(Component.empty().append(dev.cadence.metal.system.Lang.literal("Pre-generate").withStyle(ChatFormatting.BOLD, ChatFormatting.UNDERLINE))
+				.append(dev.cadence.metal.system.Lang.literal("  the far terrain around you, to disk").withStyle(ChatFormatting.GRAY)));
 			this.list.addSmall(pregen("Pre-generate 1 km", 64), pregen("Pre-generate 4 km", 256));
 		}
 	}
@@ -117,8 +117,8 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		if (runtime == null) return null;
 		String pack = ShaderToggle.selectedPack().replaceFirst("(?i)\\.zip$", "");
 		return switch (runtime.distantTerrainState()) {
-			case "none" -> dev.cadence.metal.Lang.literal(pack + " doesn't support Distant Horizons: no far terrain with it").withStyle(ChatFormatting.YELLOW);
-			case "failed" -> dev.cadence.metal.Lang.literal(pack + "'s far terrain program failed to load: no far terrain (the log says why)").withStyle(ChatFormatting.YELLOW);
+			case "none" -> dev.cadence.metal.system.Lang.literal(pack + " doesn't support Distant Horizons: no far terrain with it").withStyle(ChatFormatting.YELLOW);
+			case "failed" -> dev.cadence.metal.system.Lang.literal(pack + "'s far terrain program failed to load: no far terrain (the log says why)").withStyle(ChatFormatting.YELLOW);
 			default -> null;
 		};
 	}
@@ -159,9 +159,9 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 	}
 
 	private Button pregen(String label, int chunks) {
-		return Button.builder(dev.cadence.metal.Lang.literal(label), b -> {
+		return Button.builder(dev.cadence.metal.system.Lang.literal(label), b -> {
 			int queued = dev.cadence.metal.lod.LodPackFrame.pregenerate(chunks);
-			b.setMessage(dev.cadence.metal.Lang.literal(queued < 0 ? "Not here (no generator)" : queued == 0 ? "Already generated" : "Queued " + queued + " tiles"));
+			b.setMessage(dev.cadence.metal.system.Lang.literal(queued < 0 ? "Not here (no generator)" : queued == 0 ? "Already generated" : "Queued " + queued + " tiles"));
 			b.active = false;
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.LOW.because("lowers fps only while it runs"), "Generates the far terrain within " + chunks * 16 / 1000 + " km of you now, in the background, and keeps it"
 			+ " on disk: travelling there later shows it at once.",
@@ -170,7 +170,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 
 	private Button cycle(String label, String key, String def, String[] values, String[] labels, Tooltip tip) {
 		Button[] self = new Button[1];
-		self[0] = Button.builder(dev.cadence.metal.Lang.literal(label + ": " + labelOf(key, def, values, labels)), b -> {
+		self[0] = Button.builder(dev.cadence.metal.system.Lang.literal(label + ": " + labelOf(key, def, values, labels)), b -> {
 			String now = ShaderToggle.configValue(key, def).strip().toLowerCase(java.util.Locale.ROOT);
 			int i = java.util.Arrays.asList(values).indexOf(now);
 			int step = Minecraft.getInstance().hasShiftDown() ? values.length - 1 : 1;
@@ -180,7 +180,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 			progress = -1;
 			// (the label changes in place: rebuilding the page at every click lost its scroll position and what Pre-generate
 			// said. The Far Terrain switch changes the header too: that page is rebuilt, scrolled where this one was)
-			b.setMessage(dev.cadence.metal.Lang.literal(label + ": " + labelOf(key, def, values, labels)));
+			b.setMessage(dev.cadence.metal.system.Lang.literal(label + ": " + labelOf(key, def, values, labels)));
 			if (key.equals("farTerrain")) {
 				FarTerrainScreen next = new FarTerrainScreen(this.lastScreen);
 				next.startScroll = this.list.scrollAmount();
@@ -237,7 +237,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 			@Override
 			protected void updateMessage() {
 				// (as vanilla's "Render Distance: 12 Chunks"; the distance in km is in the tooltip: a longer label scrolled)
-				this.setMessage(dev.cadence.metal.Lang.literal("Far Distance: " + this.chunks() + " Chunks"));
+				this.setMessage(dev.cadence.metal.system.Lang.literal("Far Distance: " + this.chunks() + " Chunks"));
 			}
 
 			@Override
@@ -261,7 +261,7 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 	/** The Video Settings button that opens this page. */
 	public static Button button(Screen parent) {
 		String state = chosen() ? (running() ? "On" : "On next launch") : (running() ? "Off next launch" : "Off");
-		return Button.builder(dev.cadence.metal.Lang.literal("Far Terrain: " + state + "..."), b -> Minecraft.getInstance().gui.setScreen(new FarTerrainScreen(parent)))
+		return Button.builder(dev.cadence.metal.system.Lang.literal("Far Terrain: " + state + "..."), b -> Minecraft.getInstance().gui.setScreen(new FarTerrainScreen(parent)))
 			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.MEDIUM, "Terrain drawn far past your render distance, like the Distant Horizons mod (experimental).",
 				"#Its distance, quality, memory and fog are on this page.")).build();
 	}

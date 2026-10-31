@@ -5,7 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.textures.GpuTexture;
 import com.mojang.renderpearl.frontend.FrontendCommandEncoder;
 import java.util.Arrays;
-import dev.cadence.metal.MetalBridge;
+import dev.cadence.metal.backend.MetalBridge;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;

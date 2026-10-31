@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 /** Allocation-sweep mixins (-Dcadence.alloc.*): each applies with its flag (entity states on unless =false). */
 public final class AllocMixinPlugin implements IMixinConfigPlugin {
 	static {
-		dev.cadence.metal.Profile.apply(); // before any flag is read
+		dev.cadence.metal.system.Profile.apply(); // before any flag is read
 	}
 
 	@Override public void onLoad(String mixinPackage) { }
