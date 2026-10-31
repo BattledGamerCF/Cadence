@@ -1,5 +1,5 @@
 // Cadence: Record Mode (dev.cadence.metal.record, record.metal): the frame as compute only. A render pass costs the M2's GPU
-// about 53 us whatever its size (tools/gpu_frame_floor.m), a compute dispatch far less, so the frame is one dispatch: the world traced
+// about 53 us whatever its size (measured with a standalone probe), a compute dispatch far less, so the frame is one dispatch: the world traced
 // into this frame's colour and depth, the HUD overlay (RecordHud) blended in, and, with interpolation on, the in-between frame
 // of the last two. The game presents the colour texture at most once a refresh (Render Max FPS's uncapped presentation).
 #import <Foundation/Foundation.h>
@@ -21,7 +21,7 @@ double mcrm_gpu_us(void) {
 
 // Frame N writes slot N % RING and makes its in-between frame from frames N-2 and N-3, so it never reads what the frame just
 // before it is still writing, and Metal's own tracking orders the rest. (Untracked textures ordered by fences were tried:
-// a fence wait costs a fixed ~25 us, which halved light frames: 36k vs 65k rendered looking at the sky, tools/record_bench.m
+// a fence wait costs a fixed ~25 us, which halved light frames: 36k vs 65k rendered looking at the sky, measured with a standalone bench
 // RB_FENCE; heavy frames gained 2-8%. The fence fields stay nil.)
 #define RING 5
 #define LAG_A 2

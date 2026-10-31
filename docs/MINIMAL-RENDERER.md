@@ -94,10 +94,7 @@ Tried and dropped (slower or no gain):
 
 ## Measuring without the game
 
-The self-test step `recorddump=name` writes the current record world to `metal/run/screenshots/dump-name/`.
-`tools/record_bench.m` times `record_trace` on it. It supports variants selected by `-D` macro in `record.metal`
-(`RB_NO_TRACE`, `RB_NO_HUD`, `RB_NO_ENT`, `RB_NO_CELLS`, `RB_STEPS`, ...). The variants are alternated in rounds, so the
-Mac's heat drifts across all of them. `RB_PNG=path` writes a frame; compare variants pixel for pixel before keeping one.
-
-    clang -fobjc-arc -O2 -framework Metal -framework Foundation -framework ImageIO -framework CoreGraphics tools/record_bench.m -o /tmp/record_bench
-    /tmp/record_bench metal/run/screenshots/dump-name metal/src/main/resources/cadence/record/record.metal 2000 4 - RB_NO_HUD
+The self-test step `recorddump=name` writes the current record world to `metal/run/screenshots/dump-name/`, so the
+record kernel can be timed outside the game. The measurements above were made with a standalone Metal bench run on such
+dumps, with variants alternated in rounds so the Mac's heat drifts across all of them, and compared pixel for pixel
+before a variant was kept. The bench is a development tool and is not part of this repository.

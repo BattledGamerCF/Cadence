@@ -47,7 +47,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 	static volatile boolean record;
 	/**
 	 * Record Mode: its frames committed recordBatch to a command buffer (-Dcadence.record.batch, 1: each its own). Each frame is
-	 * still its own dispatch rendering its own image; a command buffer costs the M2 ~20 us of its own (tools/record_bench.m
+	 * still its own dispatch rendering its own image; a command buffer costs the M2 ~20 us of its own (a standalone bench
 	 * RB_BATCH), which at 20k frames a second is ~40% of a frame. A frame that presents commits at once.
 	 */
 	static volatile int recordBatch = Math.max(1, Integer.getInteger("cadence.record.batch", 4));

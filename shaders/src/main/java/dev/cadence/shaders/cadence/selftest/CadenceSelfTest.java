@@ -811,7 +811,7 @@ public final class CadenceSelfTest {
 						LOGGER.info("[selftest] histo failed: {}", e.toString());
 					}
 				} else if (lower.equals("heapdump")) {
-					// "heapdump": the live heap to run/heap-HHmmss.hprof (full GC first), for tools/HeapPaths.java
+					// "heapdump": the live heap to run/heap-HHmmss.hprof (full GC first)
 					try {
 						java.nio.file.Path file = mc.gameDirectory.toPath().resolve("heap-" + java.time.LocalTime.now().format(
 							java.time.format.DateTimeFormatter.ofPattern("HHmmss")) + ".hprof");
@@ -1204,7 +1204,7 @@ public final class CadenceSelfTest {
 				} else if (lower.startsWith("recordinterp=")) {
 					dev.cadence.metal.record.Record.interpolate = lower.endsWith("on");
 				} else if (lower.startsWith("recorddump=")) {
-					// "recorddump=name": the record frame's inputs into results-able files (tools/record_bench.m)
+					// "recorddump=name": the record frame's inputs into results-able files (timed outside the game)
 					String name = lower.substring(11);
 					mc.execute(() -> LOGGER.info("[selftest] record dump {}: {}", name,
 						dev.cadence.metal.record.Record.dump(mc.gameDirectory.toPath().resolve("screenshots").resolve("dump-" + name))));

@@ -164,7 +164,7 @@ public final class Record {
 	}
 
 	/**
-	 * (testing) The last frame's inputs as files in dir, for tools/record_bench.m: frame.bin (the Frame struct), grid,
+	 * (testing) The last frame's inputs as files in dir, for timing the kernel outside the game: frame.bin (the Frame struct), grid,
 	 * palette, occ, light, entities, text (the shared buffers as they are now). Render thread. Whether written.
 	 */
 	public static boolean dump(java.nio.file.Path dir) {

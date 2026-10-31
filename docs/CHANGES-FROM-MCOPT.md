@@ -25,7 +25,6 @@ Apache-2.0 §4(b): files Cadence modified or added, relative to mcopt commit `7b
   `PackMipmaps` uses its raster mip path (no partial native mip kernel here yet); mod dependency is `mcopt-metal`.
 - `metal/.../MetalPassHints.java`, `MetalPipelineMath.java`, `SpirvMathPolicy.java`: adapted from minecraft-metal-renderer (MIT).
 - `metal/.../MetalGpuSampler.java`, `MetalPipelineResources.java`: backend extension entry points for the loader.
-- `tools/cadence_native_test.m`: GPU check of the new native functions, no Minecraft needed.
 - `dev-log/PLAN.md`, `CHANGES-FROM-MCOPT.md`.
 
 ## Modified
@@ -192,7 +191,7 @@ Apache-2.0 §4(b): files Cadence modified or added, relative to mcopt commit `7b
   `RenderScale` (Auto holds): "In Background: 15 fps" setting (default on).
 - `CadenceSettings`: Pack Speed-ups label "No World" / "No Pack".
 - `CadenceSelfTest`: meshcache=, meshlight=, meshtint=, facepacked=, releaseregions=, meshreport=, wait=, reload,
-  background=; `tools/icb_bench.m`, `tools/mfx_bench.m` (tier 3 evaluation benches).
+  background=.
 
 ### 2026-10-14 (shader packs: near-universal Iris/OptiFine support; details in SHADER-PACKS.md)
 - `metal/src/main/native/mcpack.m` (added): compute pipelines (MSL 3.1), storage textures and buffers, clears, compute
