@@ -1,57 +1,79 @@
 # Contributing
 
-Thanks for helping! Bug reports are most useful with your Mac model, macOS version, Cadence version, the shader pack and
+Thank you for helping. A useful bug report includes your Mac model, macOS version, Cadence version, the shader pack and
 preset you used, a screenshot, and `logs/latest.log`.
 
 ## Building
 
-You need a JDK 25. `./gradlew build` builds the four mods (with the Iris API module); `tools/release` makes the release jar and zip in `dist/`.
-The native part (`metal/src/main/native`, Objective-C) is compiled by the Gradle build with the Xcode command-line tools
-(`xcode-select --install`).
+You need a JDK 25.
+
+- `./gradlew build` builds the four mods, including the Iris API module.
+- `tools/release` makes the release jar and zip in `dist/`.
+
+The native part (`metal/src/main/native`, Objective-C) is compiled by the Gradle build. It needs the Xcode command-line
+tools (`xcode-select --install`).
 
 ## Running a development client
 
-`./gradlew :metal:runClient` starts Minecraft with the mods from source. Its game folder is `metal/run/` (ignored by git);
-put test shader packs in `metal/run/shaderpacks/`.
+`./gradlew :metal:runClient` starts Minecraft with the mods from source. Its game folder is `metal/run/`, which git
+ignores. Put test shader packs in `metal/run/shaderpacks/`.
 
 ## Automated in-game tests
 
-`tools/cadence-test.sh` launches the development client, runs a list of steps and saves a screenshot and log lines for
-each, in `metal/run/results/<time>/`. For example:
+`tools/cadence-test.sh` launches the development client and runs a list of steps. For each step it saves a screenshot and
+log lines in `metal/run/results/<time>/`. For example:
 
 ```bash
 tools/cadence-test.sh "BSL_v10.1.8.zip,time=18000,cmd=weather rain,off"
 ```
 
-Steps include a pack file name, `off`, `time=`, `cmd=` (a command; `@me` is the player), `scale=`, `profile=`,
-`option=NAME=VALUE`, `debugbuffer=N` (show colortexN), `skipprograms=a+b` (switch pack programs off to measure them) and
-`wait=S`. The full list is at the top of `CadenceSelfTest.java`. The script waits for any other Minecraft to close and
-runs a memory guard (`tools/cadence-guard.sh`), so it's safe on an 8 GB Mac. It expects a singleplayer world called
-`tester`.
+Steps include:
 
-Before running the game after changing a mixin, run `tools/mixin-check.sh`: it checks every mixin's targets, methods,
-fields and call sites against Minecraft 26.3 and catches the mistakes that would otherwise crash the game at launch.
+- a pack file name
+- `off`
+- `time=`
+- `cmd=` (a command; `@me` is the player)
+- `scale=`
+- `profile=`
+- `option=NAME=VALUE`
+- `debugbuffer=N` (shows colortexN)
+- `skipprograms=a+b` (switches pack programs off so they can be measured)
+- `wait=S`
+
+The full list is at the top of `CadenceSelfTest.java`.
+
+The script waits for any other Minecraft to close. It also runs a memory guard (`tools/cadence-guard.sh`), so it is safe
+on an 8 GB Mac. It expects a singleplayer world called `tester`.
+
+Run `tools/mixin-check.sh` before starting the game after you change a mixin. It checks every mixin's targets, methods,
+fields and call sites against Minecraft 26.3. This catches mistakes that would otherwise crash the game at launch.
+
 `tools/logic-tests/run.sh` fuzz-tests the game-logic optimizations against Minecraft's own classes.
 
 `tools/pack-census.sh [pack.zip ...]` checks shader packs for unsupported features without starting the game.
 
 ### Measuring
 
-- `benchmark` (the 30-second turning benchmark) and `ab=FEATURE:SECONDS` (a feature switched every 2 s, both states
-  compared in the same run) in a plan; `tools/bench-round.sh` runs a list of plans, each its own launch with a cool-down
-  between (a fanless MacBook Air loses up to half its speed when hot).
-- `gputrace` with `-Dcadence.metal.trace=later` (in `CADENCE_EXTRA_JVM`): the GPU time of every pass of one frame, in
+- `benchmark` is the 30-second turning benchmark. `ab=FEATURE:SECONDS` switches a feature every 2 s and compares both
+  states in the same run. Both go in a plan.
+- `tools/bench-round.sh` runs a list of plans. Each plan is its own launch, with a cool-down between launches. A fanless
+  MacBook Air loses up to half its speed when hot.
+- `gputrace` with `-Dcadence.metal.trace=later` (in `CADENCE_EXTRA_JVM`) logs the GPU time of every pass of one frame in
   `stdout.log`.
-- The stall recorder (on by default) logs every frame over 50 ms with its cause: `grep "\[cadence\] stall" stdout.log`.
-- `tools/compat-run.sh`: the release jar with the tested mods, PASS or FAIL. Run it before a release.
+- The stall recorder is on by default. It logs every frame over 50 ms with its cause. Find the entries with
+  `grep "\[cadence\] stall" stdout.log`.
+- `tools/compat-run.sh` runs the release jar with the tested mods and reports PASS or FAIL. Run it before a release.
 
 ## Code layout
 
-- `metal/`: the Metal backend. `dev.cadence.metal` is the renderer; sub-packages hold terrain (`own`, `chunk`), far
+- `metal/`: the Metal backend. `dev.cadence.metal` is the renderer. Its sub-packages hold terrain (`own`, `chunk`), far
   terrain (`lod`), CPU and startup work (`cpu`), allocation (`alloc`) and compatibility (`compat`).
-- `shaders/`: the shader-pack loader. `pack` reads packs, `compile` translates GLSL to SPIR-V for Metal, `runtime` runs a
-  pack's passes, and `cadence` holds Cadence's own features (Auto resolution, settings screen, self-test).
+- `shaders/`: the shader-pack loader.
+  - `pack` reads packs.
+  - `compile` translates GLSL to SPIR-V for Metal.
+  - `runtime` runs a pack's passes.
+  - `cadence` holds Cadence's own features (Auto resolution, settings screen, self-test).
 - `fpshud/`: the fps counter.
 
-Files that came from mcopt or the Minecraft Shader Loader say so on their first line; keep that line when editing them.
+Files that came from mcopt or the Minecraft Shader Loader say so on their first line. Keep that line when you edit them.
 New code is Apache-2.0.
