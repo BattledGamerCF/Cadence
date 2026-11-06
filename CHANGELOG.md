@@ -2,6 +2,12 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 1.0.0 / shaders 0.3.31 (2026-11-06)
+
+First release. It is the same code as 0.4.0-beta.31, plus one fix:
+
+- **Fix: Pack Settings got darker with each click.** Changing the profile or pressing Reset to Defaults rebuilt the page on top of itself, adding another see-through background each time. The page is now replaced by a fresh copy at the same scroll position.
+
 ## 0.4.0-beta.31 / shaders 0.3.30 (2026-10-31)
 
 - **Fix: freezes near crowds of mobs with the Apple sound engine.** Each new sound started an audio node, and starting one waits for the audio hardware's next cycle (about 10 ms). Near a horde, dozens of sounds a second put the game's sound thread seconds behind, and frames froze for up to 2.6 s. After a freeze the game sent its queued movement at once, which could get you kicked from a server for sending packets too fast. Nodes are now started ahead of time and reused. In a test with 400 zombie sounds a second, frames over 100 ms dropped from 77 to 3, and the worst from 2.6 s to 0.6 s. CPU use is unchanged.

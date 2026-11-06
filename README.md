@@ -4,7 +4,7 @@ Cadence is a Minecraft renderer for Apple Silicon that uses Metal. It is one mod
 
 Cadence replaces Minecraft's OpenGL renderer with a native Apple Metal renderer. It runs shader packs (BSL, Complementary, Bliss and 20 more) on that renderer. It also includes its own versions of what Sodium, Iris, Lithium, Entity Culling, Distant Horizons and dynamic-lights mods do. These parts are built for Apple's GPUs and tested together.
 
-> **Beta software.** Expect occasional bugs, and back up your worlds before trying it.
+> Back up your worlds before trying it, as with any mod that changes how the game runs.
 
 ## Features
 

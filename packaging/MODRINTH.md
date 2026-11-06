@@ -4,7 +4,7 @@
 renderer with a native Apple Metal renderer, runs **shader packs directly on Metal**, and brings its own versions of
 Sodium, Iris, Lithium, Entity Culling, Distant Horizons and dynamic lights, built for Apple's GPUs.
 
-> ⚠️ **Beta.** Expect the occasional bug and back up your worlds.
+> Back up your worlds before trying it, as with any mod that changes how the game runs.
 
 ## Features
 
