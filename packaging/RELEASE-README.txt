@@ -10,7 +10,7 @@ Auto resolution.
 Cadence is a fork of mcopt by Noah Dunnagan (Apache-2.0) and of the Shader Loader of minecraft-metal-renderer by Kausik
 Velaga (MIT). See CREDITS.md.
 
-This is a beta. Expect the occasional bug, and back up your worlds.
+Back up your worlds before trying it, as with any mod that changes how the game runs.
 
 You need
 - An Apple Silicon Mac (M1 or newer) on macOS 26 or later

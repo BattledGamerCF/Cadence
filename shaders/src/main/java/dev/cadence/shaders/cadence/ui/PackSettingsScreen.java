@@ -169,13 +169,25 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			this.session.own.clear();
 			this.session.profile = "";
 			this.session.changed();
-			this.rebuildWidgets();
+			this.redraw();
 		}).width(w).tooltip(Tooltip.create(dev.cadence.metal.system.Lang.literal("Every option back to the pack author's defaults, and no profile."))).build());
 		row.addChild(Button.builder(dev.cadence.metal.system.Lang.literal("Apply"), b -> {
 			if (this.session.changed) this.apply();
 		}).width(w).tooltip(Tips.of("Saves these settings and reloads the pack now, so you can see them.",
 			"#Done does the same as you leave.")).build());
 		row.addChild(Button.builder(net.minecraft.network.chat.CommonComponents.GUI_DONE, b -> this.onClose()).width(w).build());
+	}
+
+	/**
+	 * The page again, after a change that relabels many buttons (a profile, Reset to Defaults), at the same scroll position. A
+	 * new copy of the screen: rebuildWidgets() on an options screen added a second list, title and footer to the same layout
+	 * (its init doesn't empty it), and the lists' see-through backgrounds stacked, darker with every click.
+	 */
+	private void redraw() {
+		double scroll = this.list == null ? 0 : this.list.scrollAmount();
+		PackSettingsScreen next = new PackSettingsScreen(this.lastScreen, this.session, this.screenKey, this.title, this.top);
+		this.minecraft.gui.setScreen(next);
+		if (next.list != null) next.list.setScrollAmount(scroll);
 	}
 
 	private AbstractWidget pageButton(String page) {
@@ -201,7 +213,7 @@ public final class PackSettingsScreen extends OptionsSubScreen {
 			this.session.profile = profiles.get(((i < 0 ? 0 : i) + step) % profiles.size());
 			this.session.own.clear();  // a profile sets the options it names, as in Iris
 			this.session.changed();
-			this.rebuildWidgets();
+			this.redraw();
 		}).tooltip(Tooltip.create(dev.cadence.metal.system.Lang.literal("The pack author's quality presets: " + list
 			+ ". Choosing one sets its options; changing an option afterwards makes it Custom."))).build();
 	}
