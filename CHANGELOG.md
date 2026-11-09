@@ -2,6 +2,11 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## 1.0.1 / shaders 0.3.31 (2026-11-09)
+
+- **Fix: the game didn't start from Prism Launcher (also MultiMC and PolyMC).** Cadence restarts Java at startup to add its recommended Java options (and for macOS Game Mode). These launchers hand the game its settings once, through a pipe, so the restarted Java found nothing to read and Prism stopped with "Bad file descriptor". Under these launchers Cadence now carries on without the restart; the log names the options to add to the instance's Java arguments. Game Mode and the in-game Vivace switch need the restart, so they are off there (Vivace can be chosen as the instance's Java instead). Other launchers are unchanged.
+- New `MODERATION.md`: what Cadence does at a low level (native code, processes it starts, files it writes), for reviewers.
+
 ## 1.0.0 / shaders 0.3.31 (2026-11-06)
 
 First release. It is the same code as 0.4.0-beta.31, plus one fix:

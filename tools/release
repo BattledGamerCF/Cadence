@@ -27,10 +27,12 @@ name=cadence-$version
 if [ "${1:-}" = native ]; then NATIVE=--native; name=cadence-native-$version; fi
 mkdir -p dist
 python3 tools/bundle.py --metal "$jar" --fps "$fps" --shaders "$shaders" --iris "$iris" --out "dist/$name.jar" $NATIVE
+# (reviewers: MODERATION.md at the jar root too)
+zip -qj "dist/$name.jar" MODERATION.md
 rm -rf "dist/$name" "dist/$name.zip"
 mkdir -p "dist/$name"
 cp "dist/$name.jar" "dist/$name/$name.jar"
-cp LICENSE NOTICE CREDITS.md "dist/$name/"
+cp LICENSE NOTICE CREDITS.md MODERATION.md "dist/$name/"
 sed "s/@VERSION@/$version/g" packaging/RELEASE-README.txt > "dist/$name/README.txt"
 # the optional Iris provider (mod id iris for mods that look for Iris; packaging/iris-provider): beside the jar, not nested
 provider="dist/$name/cadence-iris-provider-$version.jar"
