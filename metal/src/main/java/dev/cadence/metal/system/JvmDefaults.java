@@ -154,6 +154,19 @@ public final class JvmDefaults {
 		// (cadence.jvmDefaults=false turns the restart off altogether, Game Mode's too)
 		boolean gameMode = defaults && GameMode.enabled(config(gameDir));
 		if (vivace == null && !gameMode && add.stream().noneMatch(a -> a.startsWith("-XX:"))) return;
+		// (Prism, MultiMC and PolyMC start their own EntryPoint, which reads the game's main class and arguments from stdin; that
+		// script is read once, so a restarted Java waits on an empty or closed pipe: "Bad file descriptor" in Prism, GitHub
+		// report 11-09. The game carries on as launched; the player can put the options in the instance's Java arguments.)
+		String piped = pipedLauncher(System.getProperty("sun.java.command", ""));
+		if (piped != null) {
+			List<String> flags = add.stream().filter(a -> a.startsWith("-XX:")).toList();
+			System.out.println("[cadence] Java defaults: no restart under " + piped + " (it passes the game its settings once,"
+				+ " through a pipe a restarted Java can't read)" + (flags.isEmpty() ? "" : "; to use them, add to the instance's"
+				+ " Java arguments: " + String.join(" ", flags)) + (vivace != null ? "; to use Vivace, pick its java as the"
+				+ " instance's Java" : "") + (gameMode ? "; Game Mode needs the restart and is off here" : ""));
+			summary += " (" + piped + ": no restart)";
+			return;
+		}
 		List<String> argv = new ArrayList<>();
 		argv.add(vivace != null ? vivace.toString() : info.command().get());
 		argv.addAll(add);
@@ -194,6 +207,20 @@ public final class JvmDefaults {
 		int r = exec(argv, env);
 		if (vivace != null) Vivace.execFailed(gameDir);
 		System.out.println("[cadence] Java defaults: restart failed (" + r + "); carrying on as launched");
+	}
+
+	/**
+	 * The launcher's name when Java's main class is a launcher entry point that reads the launch from stdin, else null.
+	 * {@code command} is sun.java.command (main class, then its arguments; only the class is looked at, never logged).
+	 */
+	static String pipedLauncher(String command) {
+		String main = command.strip().split("\\s+", 2)[0];
+		return switch (main) {
+			case "org.prismlauncher.EntryPoint" -> "Prism Launcher";
+			case "org.multimc.EntryPoint" -> "MultiMC";
+			case "org.polymc.EntryPoint" -> "PolyMC";
+			default -> null;
+		};
 	}
 
 	/** The IHOP default under the name a Java of that version knows. */
