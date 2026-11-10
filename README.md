@@ -89,7 +89,7 @@ These settings are in Video Settings > Cadence: Visuals. Voice Control is under 
   - Frame Generation: Neural, which uses Apple's own frame interpolation.
   - Voice Control: spoken commands, recognised on your Mac only.
 - Biome Colours grades the picture for where you are.
-- Game Mode: macOS's Game Mode (priority for the full-screen game, lower Bluetooth latency) turns on for Minecraft, which a launcher's Java never gets.
+- Game Mode: macOS's Game Mode (priority for the full-screen game, lower Bluetooth latency) turns on for Minecraft, normally not enabled.
 - Sound:
   - World Reverb: caves echo and walls muffle.
   - Sound Around Corners: sounds come through the doorway they really come by.
@@ -99,7 +99,7 @@ These settings are in Video Settings > Cadence: Visuals. Voice Control is under 
 - A garbage-collection policy for games.
 - Faster startup, about 15% sooner in a world. Block data is built in parallel, bootstrap data is cached, and the loading fade is quicker.
 - Lighter chunk storage.
-- Threads placed on the right kind of core.
+- Threads placed on the right kind of core (Performance "P" Cores vs Efficiency "E" Cores, and Super "S" Cores on newer chips)
 - Exact frame caps and even pacing.
 - The optional Vivace Java build.
 
@@ -115,7 +115,7 @@ Where another mod hooks code Cadence replaces, Cadence runs Minecraft's own code
 ## Install
 
 1. Install Fabric for Minecraft 26.3 (https://fabricmc.net/use/installer/), or make a 26.3 Fabric instance in Prism or CurseForge.
-2. Download `cadence-<version>.jar` from the Releases page (or Modrinth) and put it in your `mods` folder.
+2. Download `cadence-<version>.jar` from the Releases page and put it in your `mods` folder.
 3. For shaders, open Options > Video Settings > Shaders... (or press O in game). Drop shader pack `.zip` files onto the list, or put them in the `shaderpacks` folder. Click a pack to turn it on. K turns shaders off and back on.
 4. Start the game. To check that Cadence is running, press F3 (fn + F3). The bottom right says `Metal 3 (Cadence)`.
 
