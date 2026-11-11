@@ -24,6 +24,7 @@ public final class ShaderLoaderMod implements ClientModInitializer {
 
   @Override
   public void onInitializeClient() {
+		dev.cadence.shaders.cadence.shaderpack.BuiltinPacks.install(dev.cadence.shaders.cadence.ui.ShaderToggle.packsDirectory());
 		// (the HUD's FPS Counter reads cadence.fpsCounter from the first frame: set from the saved setting now)
 		dev.cadence.shaders.cadence.ui.CadenceSettings.benchmarkDetailed();
     dev.cadence.shaders.cadence.memory.HeapTrim.apply();

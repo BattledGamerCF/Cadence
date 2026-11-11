@@ -104,7 +104,9 @@ public final class ShaderToggle {
 				s.filter(p -> Files.isDirectory(p) || p.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".zip"))
 					.map(p -> p.getFileName().toString())
 					.filter(n -> !n.startsWith("."))
-					.sorted(String.CASE_INSENSITIVE_ORDER)
+					// the built-in pack first, right after Off
+					.sorted(java.util.Comparator.comparing((String n) -> !n.equals(dev.cadence.shaders.cadence.shaderpack.BuiltinPacks.CADENCE_LITE))
+						.thenComparing(String.CASE_INSENSITIVE_ORDER))
 					.forEach(out::add);
 			} catch (IOException e) {
 				// just Off

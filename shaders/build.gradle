@@ -26,9 +26,20 @@ dependencies {
 	compileOnly('com.terraformersmc:modmenu:21.0.0') { transitive = false }
 }
 
+// Cadence Lite, the built-in shader pack: zipped reproducibly (same sources, same bytes), so the copy in shaderpacks/
+// is only rewritten when the pack really changed (BuiltinPacks).
+def cadenceLiteZip = tasks.register('cadenceLiteZip', Zip) {
+	from('src/main/cadence-lite')
+	archiveFileName = 'cadence-lite.zip'
+	destinationDirectory = layout.buildDirectory.dir('generated/cadence-lite/cadence')
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
+}
+
 processResources {
 	inputs.property 'version', version
 	filesMatching('fabric.mod.json') { expand 'version': version }
+	from(cadenceLiteZip) { into 'cadence' }
 }
 
 tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
