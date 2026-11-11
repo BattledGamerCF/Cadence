@@ -45,7 +45,10 @@ public final class MetalBackend implements GpuBackend {
 	public GpuDevice createDevice(GpuDebugOptions debugOptions) throws BackendCreationException {
 		try {
 			if (Boolean.getBoolean("cadence.metal.fakeFailure")) throw new IllegalStateException("a test failure (-Dcadence.metal.fakeFailure)");
-			return new FrontendGpuDevice(new MetalDevice());
+			GpuDevice device = new FrontendGpuDevice(new MetalDevice());
+			// mods that call OpenGL directly get a hidden context, so they don't crash (only when one is installed)
+			dev.cadence.metal.compat.GlFallback.ensure();
+			return device;
 		} catch (BackendCreationException | RuntimeException | LinkageError e) {
 			String why = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
 			failure = why;

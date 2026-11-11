@@ -1,4 +1,4 @@
 #version 330 compatibility
 #define VSH
-#define WATER
+#define PROG_WATER
 #include "/lib/forward.glsl"

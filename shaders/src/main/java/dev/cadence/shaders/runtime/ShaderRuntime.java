@@ -54,6 +54,7 @@ public final class ShaderRuntime implements AutoCloseable {
   // Cadence render scale: the pack draws its whole frame at scale x the window into scaledOutput, then PackUpscale draws
   // that to the window. Null at scale 1 (exactly the original path).
   private com.mojang.renderpearl.api.textures.GpuTexture scaledOutput;
+  private boolean scaledOutputHdr;
   private com.mojang.renderpearl.api.textures.GpuTextureView scaledOutputView;
   private PackUpscale upscale;
   private int frameWidth, frameHeight;
@@ -89,6 +90,7 @@ public final class ShaderRuntime implements AutoCloseable {
     this.pack = pack;
     this.options = Map.copyOf(options);
     this.properties = properties;
+    FrameUniforms.packHdr = "true".equalsIgnoreCase(properties.get("cadence.hdr", "false").strip());
     String materialPath = properties.get("materialPalette", "");
     materialPalette =
         materialPath.isEmpty() ? null : MaterialPalette.parse(pack.text(materialPath));
@@ -1646,11 +1648,17 @@ public final class ShaderRuntime implements AutoCloseable {
       releaseScaledOutput();
       return;
     }
+    boolean hdr = dev.cadence.metal.backend.Hdr.active();
     if (scaledOutput != null
         && scaledOutput.getWidth(0) == frameWidth
-        && scaledOutput.getHeight(0) == frameHeight) return;
+        && scaledOutput.getHeight(0) == frameHeight
+        && scaledOutputHdr == hdr) return;
     releaseScaledOutput();
+    scaledOutputHdr = hdr;
     var format = main.getColorTexture().getFormat();
+    // (Cadence HDR: a float texture like the main target's, so the final program's expanded highlights survive the upscale)
+    dev.cadence.metal.backend.Hdr.creatingFrame = hdr;
+    try {
     scaledOutput =
         device()
             .createTexture(
@@ -1663,6 +1671,9 @@ public final class ShaderRuntime implements AutoCloseable {
                 frameHeight,
                 1,
                 1);
+    } finally {
+      dev.cadence.metal.backend.Hdr.creatingFrame = false;
+    }
     scaledOutputView = device().createTextureView(scaledOutput);
     float sharpen = dev.cadence.shaders.cadence.render.RenderScale.sharpenFor(dev.cadence.shaders.cadence.render.RenderScale.get());
     if (upscale == null || upscale.sharpen() != sharpen) {

@@ -28,3 +28,10 @@ vec3 wind(vec3 worldPos, float id, bool top, float amount) {
 }
 
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+// Cadence HDR: the brightest value the display shows now, as a linear multiple of SDR white (1.0 = SDR, HDR off).
+// This pack's colours are sRGB-encoded, so the encoded peak is its 1/2.2 power.
+uniform float cadenceHdrPeak;
+float hdrPeakEncoded() { return pow(max(cadenceHdrPeak, 1.0), 0.4545); }
+// How far a light source goes past white: most of the headroom, at most 4x SDR (the rest is left for the sun).
+float hdrEmissive() { return pow(clamp(cadenceHdrPeak * 0.6, 1.0, 4.0), 0.4545); }

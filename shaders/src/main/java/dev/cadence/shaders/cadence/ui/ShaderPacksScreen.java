@@ -77,6 +77,7 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 		bottom.addChild(Button.builder(dev.cadence.metal.system.Lang.literal("Open Packs Folder..."), b -> ShaderToggle.openPacksFolder())
 			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Opens the shaderpacks folder in Finder.",
 				"#Packs are .zip files (BSL, Complementary...). Leave them zipped.")).build());
+		bottom.addChild(CreateShaderScreen.button(this));
 		bottom.addChild(Button.builder(CommonComponents.GUI_DONE, b -> this.onClose()).width(Button.DEFAULT_WIDTH).build());
 		this.updateButtons();
 	}

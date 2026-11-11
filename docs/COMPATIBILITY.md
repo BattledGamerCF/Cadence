@@ -108,15 +108,39 @@ has already been selected", and Essential didn't load.
 Now, when any other mod has a pre-launch step, Cadence's preload waits until all of them are done. It starts with the
 client mods instead. Without such a mod nothing changes.
 
+## Incompatible mods are named at launch
+
+At the title screen Cadence names any installed mod that can't run with it, says why, and offers Continue Anyway or Quit
+Game. It does this every launch until the mod is removed. Known by id: other Metal renderers (Metallum, MetalRender, Metal
+translator), VulkanMod, OptiFine (OptiFabric) and Nvidium. A mod not known by id is also named if its name says Metal or
+Vulkan and its description says it renders. Each one is logged (`[cadence] incompatible mod: ...`). Sodium is refused by
+Fabric itself.
+
+With Lithium installed, a one-time notice says you can keep it: Cadence Logic does the same job and steps aside for it.
+
+## Mods that call OpenGL directly
+
+Under Metal there is no OpenGL context, so a mod's first direct OpenGL call (LWJGL's `GL11`..., or Minecraft's OpenGL
+backend classes) used to crash the game. At launch Cadence searches every other mod's classes for OpenGL references (once
+per set of mods; cached in `config/cadence-gl-users.txt`). If any mod has them, Cadence makes a hidden 1x1 window with an
+OpenGL 3.2 core context, current on the render thread. Those mods' calls then run: their textures, buffers and state work,
+and they don't crash. What they draw into OpenGL framebuffers isn't on screen, because the picture is Metal's.
+
+Without such a mod nothing is made, so it costs nothing. With one, the idle context costs a few MB and no GPU time.
+`-Dcadence.glFallback=true` always makes it; `false` never does.
+
 ## What still doesn't work
 
-- Mods that draw with OpenGL directly. Cadence's renderer is Metal. Mods that use Minecraft's own rendering API work.
+- What mods draw with OpenGL directly isn't shown (they no longer crash, see above). Mods that draw through Minecraft's own
+  rendering API work fully.
 - Sodium and Iris. Cadence replaces them. Mods that need Iris's internals (beyond its API) don't load without Iris.
 
 ## Apple Hardware features with shader packs and other mods
 
-- **HDR** with a shader pack: the pack's picture is shown as the pack made it (SDR). The frame stays 8-bit-compatible for
-  the pack's own passes. Mods that read the frame back (screenshots, replays, map mods) get SDR values, because the copy
+- **HDR** with a shader pack: the pack's final picture is expanded into the screen's extra brightness (Auto-HDR style:
+  only the brightest part of the range, hue kept; everything else looks as in SDR). A pack can do its own HDR instead by
+  setting `cadence.hdr=true` in its shaders.properties and reading the `cadenceHdrPeak` uniform (the brightest value the
+  screen shows now, as a multiple of SDR white; 1.0 without HDR). Cadence Lite does this. Mods that read the frame back (screenshots, replays, map mods) get SDR values, because the copy
   scales the float frame's highlights into 0-1.
 - **Ray Tracing** is off with a shader pack (the pack has its own shadows) and with World Resolution below 100%. The
   button's tooltip says so. Blocks added by mods are traced as full cubes in their texture's average colour.

@@ -573,6 +573,22 @@ public final class ShaderCompatibilityCompiler implements AutoCloseable {
               + "\nvoid main() { gl_FragDepth = gl_FragCoord.z; sl_depth_fragment_main();"
               + " gl_FragDepth = max(gl_FragDepth, gl_FragCoord.z); }\n";
     }
+    // Cadence HDR: the final program's colour expanded into the display's headroom (Auto-HDR style: only the brightest
+    // ~20% of the range, hue kept). cadenceHdrExpand = 0 when HDR is off or the pack does its own HDR (cadence.hdr=true in
+    // shaders.properties): then the output is exactly the pack's. Values are clamped to 0..1 first, as an 8-bit target would.
+    if (mode == VertexMode.FULLSCREEN && (label.equals("final") || label.endsWith("/final"))
+        && outputCount > 0 && !integerOutputs.containsKey(0) && token(fragmentBody, "sl_FragData0")) {
+      Matcher finalMain = MAIN.matcher(fragmentBody);
+      if (finalMain.find()) {
+        merge(uniforms, "cadenceHdrExpand", new UniformLayout.Declaration("float", 0));
+        fragmentBody =
+            finalMain.replaceFirst("void sl_hdr_final_main()")
+                + "\nvoid main() { sl_hdr_final_main(); if (cadenceHdrExpand > 0.0) {"
+                + " vec3 c = clamp(sl_FragData0.rgb, 0.0, 1.0); float m = max(c.r, max(c.g, c.b));"
+                + " float t = clamp((m - 0.8) * 5.0, 0.0, 1.0);"
+                + " sl_FragData0.rgb = c * pow(1.0 + (cadenceHdrExpand - 1.0) * t * t, 0.4545); } }\n";
+      }
+    }
     validate(vertexBody, knownVertex, label);
     validate(fragmentBody, knownFragment, label);
     UniformLayout layout = UniformLayout.of(uniforms, uniformDefaults);

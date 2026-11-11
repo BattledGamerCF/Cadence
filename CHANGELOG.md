@@ -2,6 +2,15 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased
+
+- **Cadence Lite, a built-in shader pack.** The vanilla look with real shadows, a little warm sunlight and soft moonlight, waving plants, reflective water, bloom, light shafts and a gentle colour grade. Four presets: Low runs on any Mac, Ultra is a showcase for the biggest chips. Passes a preset doesn't use are switched off entirely, so they cost nothing. It's listed first in Shader Packs. It draws its own sky, sun, moon and stars (Minecraft 26 gives the sky programs no colour), and its nights are a little darker than vanilla's where only the sky lights a place.
+- **Create Shader** (Shader Packs > Create Shader...): make your own shader from Cadence Lite. Every setting says what it does and what it costs, a reference picture of one scene follows your choices, and Create saves it as a new pack and turns it on.
+- **HDR with shader packs.** Packs no longer look flat with HDR on: their brightest highlights are expanded into the screen's extra brightness (Auto-HDR style; everything else looks as in SDR). Packs can do their own HDR instead (`cadence.hdr=true` and the `cadenceHdrPeak` uniform); Cadence Lite does. With World Resolution below 100% the scaled image is kept in HDR too.
+- **Incompatible mods are named at launch.** Other renderers (Metallum and other Metal renderers, VulkanMod, OptiFine, Nvidium) get a screen saying why they can't run with Cadence, with Continue Anyway or Quit. With Lithium, a one-time notice says you can keep it: Cadence Logic does the same job and steps aside.
+- **Mods that call OpenGL directly no longer crash.** When an installed mod uses OpenGL, Cadence gives it a hidden OpenGL context, so its calls run (what it draws with OpenGL itself isn't shown). Nothing is made when no mod needs it.
+- Self-test steps `look=YAW:PITCH`, `screen=conflicts`, `screen=createshader`; `-Dcadence.hdr.testHeadroom=H` tests HDR on a screen without headroom.
+
 ## 1.0.1 / shaders 0.3.31 (2026-11-09)
 
 - **Fix: the game didn't start from Prism Launcher (also MultiMC and PolyMC).** Cadence restarts Java at startup to add its recommended Java options (and for macOS Game Mode). These launchers hand the game its settings once, through a pipe, so the restarted Java found nothing to read and Prism stopped with "Bad file descriptor". Under these launchers Cadence now carries on without the restart; the log names the options to add to the instance's Java arguments. Game Mode and the in-game Vivace switch need the restart, so they are off there (Vivace can be chosen as the instance's Java instead). Other launchers are unchanged.

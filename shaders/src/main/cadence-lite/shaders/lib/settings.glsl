@@ -4,7 +4,7 @@
 #define SHADOW_FILTER 0         // [0 1 2] 0 = one hardware tap, 1 = 4 taps, 2 = 12 soft taps
 #define SHADOW_STRENGTH 0.55    // [0.35 0.45 0.55 0.65 0.75] How dark shadows get
 #define WAVING                  // Leaves, grass, flowers and crops move in the wind
-#define SUN_LIGHT 1             // [0 1 2] Warm direct sunlight on top of vanilla light: off, subtle, rich
+#define SUN_LIGHT 1             // [0 1 2] A little warm sunlight (and soft moonlight) on top of vanilla light: off, subtle, rich
 #define WATER 1                 // [0 1] 0 = vanilla, 1 = sky reflection, waves and sun glint
 //#define WATER_SSR             // Water also reflects the world (screen-space)
 //#define BLOOM                 // Glow around bright light
@@ -28,3 +28,4 @@ const float ambientOcclusionLevel = 1.0;
 #define ID_TALL_LOWER 10003
 #define ID_TALL_UPPER 10004
 #define ID_WATER 10005
+#define ID_EMISSIVE 10006

@@ -367,6 +367,22 @@ public final class CadenceSelfTest {
 						: "time set " + arg;
 					var cmdServer = mc.getSingleplayerServer();
 					if (cmdServer != null) cmdServer.execute(() -> cmdServer.getCommands().performPrefixedCommand(cmdServer.createCommandSourceStack().withSuppressedOutput(), command));
+				} else if (lower.startsWith("makeshader=")) {
+					// "makeshader=NAME:PRESET": Create Shader's Create, from a preset (the pack is written and turned on)
+					String[] np = step.substring(11).split(":");
+					mc.execute(() -> {
+						try {
+							LOGGER.info("[selftest] makeshader: {}", dev.cadence.shaders.cadence.ui.CreateShaderScreen.makeForTest(np[0], np.length > 1 ? np[1] : "MEDIUM"));
+						} catch (Exception e) {
+							LOGGER.info("[selftest] makeshader failed: {}", e.toString());
+						}
+					});
+				} else if (lower.startsWith("look=")) {
+					// "look=YAW:PITCH": face an absolute direction (yaw -90 = east), for reference pictures
+					String[] yp = lower.substring(5).split(":");
+					var lookServer = mc.getSingleplayerServer();
+					if (lookServer != null) lookServer.execute(() -> lookServer.getCommands().performPrefixedCommand(lookServer.createCommandSourceStack().withSuppressedOutput(),
+						"execute as " + mc.getUser().getName() + " at @s run tp @s ~ ~ ~ " + yp[0] + " " + (yp.length > 1 ? yp[1] : "0")));
 				} else if (lower.startsWith("tp=")) {
 					// "tp=DX": move the player DX blocks east (new chunks to build, old tasks cancelled; the camera moves)
 					String dx = lower.substring(3);
@@ -563,6 +579,9 @@ public final class CadenceSelfTest {
 					else if (lower.endsWith("sounds")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.options.SoundOptionsScreen(null, mc.options)));
 					else if (lower.endsWith("inventory")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player)));
 					else if (lower.endsWith("=chat")) mc.execute(() -> mc.gui.setScreen(new net.minecraft.client.gui.screens.ChatScreen("hello", false)));
+					else if (lower.endsWith("createshader")) mc.execute(() -> mc.gui.setScreen(new dev.cadence.shaders.cadence.ui.CreateShaderScreen(null)));
+					else if (lower.endsWith("conflicts")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.compat.ModConflicts.make(mc.gui.screen(),
+						dev.cadence.shaders.cadence.compat.ModConflicts.find())));
 					else if (lower.endsWith("benchmarkoffer")) mc.execute(() -> mc.gui.setScreen(dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.offer(null)));
 					else if (lower.endsWith("benchmarkrun")) mc.execute(() -> dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.run(null));
 					else if (lower.endsWith("benchmarksave")) mc.execute(() -> dev.cadence.shaders.cadence.benchmark.BenchmarkScreens.pressSave(mc.gui.screen()));

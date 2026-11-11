@@ -15,20 +15,25 @@ import org.lwjgl.system.MemoryUtil;
  * read every quarter second: it follows the brightness setting, and is 1.0 at full brightness). Readers that want 8 bits
  * (screenshots, copies into 8-bit targets) get the frame with highlights scaled back (mcmetal.m tex_convert).
  *
- * <p>With a shader pack the pack's own tone mapping decides the picture: the present only clamps (mode 0), the pack looks as
- * in SDR. The setting applies at once: the targets are made again (the main target's resize) and the layer reconfigured.
+ * <p>With a shader pack, the loader expands the pack's final output into the headroom (Auto-HDR style, packExpand), or a pack
+ * that declares cadence.hdr=true writes HDR values itself (packPeak); the present rolls off as without a pack.
+ * The setting applies at once: the targets are made again (the main target's resize) and the layer reconfigured.
  * -Dcadence.hdr=false: never.
  */
 public final class Hdr {
 	private static final boolean ALLOWED = !"false".equals(System.getProperty("cadence.hdr"));
 	/** -Dcadence.hdr.gain: how much brighter than SDR white the brightest emissive texel is meant to be (linear), default 4. */
 	private static final float GAIN = Float.parseFloat(System.getProperty("cadence.hdr.gain", "4"));
+	/** -Dcadence.hdr.testHeadroom=H: map as if the screen had headroom H (tests on a screen at full brightness, which has none). */
+	private static final float TEST_HEADROOM = Float.parseFloat(System.getProperty("cadence.hdr.testHeadroom", "0"));
 	private static volatile boolean wanted;
 	/** The targets made while this is true are float ones; the layer follows it. Render thread. */
 	private static boolean active;
 	private static float now = 1, potential = 1;
 	private static long readAt;
 	private static long scratch;
+	/** The headroom the present maps to (1: none). */
+	private static volatile float packPeak = 1;
 	private static final List<Runnable> rebuilt = new ArrayList<>();
 
 	private Hdr() {
@@ -55,6 +60,19 @@ public final class Hdr {
 
 	public static float potentialHeadroom() {
 		return potential;
+	}
+
+	/**
+	 * Shader packs (uniforms): the peak a pack that does its own HDR may write, linear multiple of SDR white (cadenceHdrPeak; 1 =
+	 * SDR), and the gain the loader's Auto-HDR expansion of other packs' final output uses (cadenceHdrExpand; 0 = off).
+	 */
+	public static float packPeak() {
+		return active && packPeak >= 1.05f ? packPeak : 1f;
+	}
+
+	public static float packExpand() {
+		float p = packPeak();
+		return p > 1f ? Math.min(6f, 2f * p - 1f) : 0f;
 	}
 
 	/** Linear multiple of SDR white for a fully emissive texel (Cadence's terrain renderer; 1 without HDR). */
@@ -105,14 +123,14 @@ public final class Hdr {
 			if (a > 0) now = a / 1000f;
 			if (b > 0) potential = b / 1000f;
 		}
-		boolean pack = dev.cadence.metal.own.OwnTerrain.packActive();
 		// (the knee: everything up to SDR white unchanged once there is real headroom; with a little, the roll-off starts lower so
 		// highlights still read as brighter than white)
 		// (the target: the headroom now once macOS gives some; before that, what the screen can reach. macOS raises the headroom only
 		// while a layer shows values above 1.0, so mapping to "now" = 1.0 would never ask for it; until it arrives, highlights clip)
-		float h = Math.max(1f, now > 1.05f ? now : potential);
+		float h = TEST_HEADROOM > 0 ? TEST_HEADROOM : Math.max(1f, now > 1.05f ? now : potential);
 		float knee = h >= 1.5f ? 1f : Math.max(0.75f, h - 0.5f);
-		Native.hdrTone(h, knee, pack || h < 1.05f ? 0 : 1);
+		packPeak = h;
+		Native.hdrTone(h, knee, h < 1.05f ? 0 : 1);
 	}
 
 	private static final boolean[] hookFailed = new boolean[3];

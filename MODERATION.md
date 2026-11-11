@@ -32,7 +32,8 @@ which needs `--enable-native-access` (Java prints a warning without it; the mod 
 
 ## Files it writes
 
-- Game folder: `config/cadence*.properties` (settings), `cadence-cache/` (translated shader packs and other caches, with a size
+- Game folder: `config/cadence*.properties` (settings), `config/cadence-gl-users.txt`, `shaderpacks/Cadence Lite.zip` (the built-in
+  shader pack, written when missing or changed) and packs made with Create Shader, `cadence-cache/` (translated shader packs and other caches, with a size
   limit), `cadence-chunks/servers/` (chunks kept from servers the player joined, for far terrain; Keep Server Chunks), `replays/` (Instant Replay clips, only when saved), `screenshots/`.
 - `~/Library/Application Support/Cadence/`: the Game Mode bundle, the unpacked helper app, trained Style Filters.
 - The system temporary folder: the native library (see above).
@@ -46,6 +47,9 @@ already made to the server the player joined, with the same data; off with the J
 
 - Mixins into many Minecraft classes: that is the renderer replacement. They are listed in the `*.mixins.json` files.
 - `java.lang.foreign` native memory access: vertex and texture buffers shared with Metal.
+- A hidden 1x1 OpenGL window/context, only when another installed mod calls OpenGL directly (so that mod doesn't crash under
+  Metal; `metal/.../compat/GlFallback.java`, off with `-Dcadence.glFallback=false`). It searches other mods' class files for
+  OpenGL references once per set of mods and caches the answer in `config/cadence-gl-users.txt`.
 - Nested jars (`META-INF/jars/`): Cadence HUD, the shader-pack loader and Cadence Iris API, all from the same repository.
 
 Questions: https://github.com/BattledGamerCF/Cadence/issues

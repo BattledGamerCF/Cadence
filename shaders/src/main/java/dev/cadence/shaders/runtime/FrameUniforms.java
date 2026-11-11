@@ -40,6 +40,9 @@ import org.slf4j.LoggerFactory;
  * OpenGL -1..1 depth; the compiler converts their vertex output to Metal 0..1 depth.
  */
 public final class FrameUniforms {
+  /** The active pack writes HDR itself (cadence.hdr=true in its shaders.properties): no Auto-HDR expansion. */
+  static volatile boolean packHdr;
+
   private static final float[] IDENTITY = new Matrix4f().get(new float[16]);
   /** Cadence: Iris's full-screen projection (its quad's corners are 0..1). */
   private static final float[] FULLSCREEN_ORTHO = new Matrix4f().setOrtho(0, 1, 0, 1, 0, 1).get(new float[16]);
@@ -216,6 +219,9 @@ public final class FrameUniforms {
     setShadowMatrices(shadowProjection, shadowModelView);
     put("frameTime", elapsed);
     put("frameTimeCounter", ((now - startedNanos) * 1.0e-9) % 3600);
+    // Cadence HDR: see Hdr.packPeak / packExpand and the final-program wrapper in ShaderCompatibilityCompiler
+    put("cadenceHdrPeak", dev.cadence.metal.backend.Hdr.packPeak());
+    put("cadenceHdrExpand", packHdr ? 0 : dev.cadence.metal.backend.Hdr.packExpand());
     put("frameCounter", frameCounter);
     put("viewWidth", width);
     put("viewHeight", height);

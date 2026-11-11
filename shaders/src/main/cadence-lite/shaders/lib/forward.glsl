@@ -1,10 +1,10 @@
 // Forward shading for every world program. A program file defines VSH or FSH and one kind:
-// LIT (terrain, entities, hand, block entities, particles), WATER, UNLIT (sky, clouds, glowing eyes, beams).
+// LIT (terrain, entities, hand, block entities, particles), PROG_WATER, UNLIT (sky, clouds, glowing eyes, beams).
 // TERRAIN adds wind, ENTITY adds the hurt flash, FOLIAGE_SAFE marks programs that never get plant ids.
 #include "/lib/settings.glsl"
 #include "/lib/common.glsl"
 
-#if defined LIT || defined WATER
+#if defined LIT || defined PROG_WATER
 #define SHADED
 #endif
 
@@ -18,18 +18,19 @@ out float fogDist;
 out vec3 viewN;
 out vec3 shadowPos;
 out float foliage;
+out float emissive;
 uniform mat4 gbufferModelView;
 uniform mat4 gbufferModelViewInverse;
 uniform mat4 shadowModelView;
 uniform mat4 shadowProjection;
 uniform vec3 cameraPosition;
 #endif
-#ifdef WATER
+#ifdef PROG_WATER
 out vec3 viewPos;
 out vec3 worldPos;
 out float isWater;
 #endif
-#if defined TERRAIN || defined WATER
+#if defined TERRAIN || defined PROG_WATER
 in vec4 mc_Entity;
 in vec2 mc_midTexCoord;
 #endif
@@ -42,9 +43,11 @@ void main() {
 #ifdef SHADED
 	vec3 pp = (gbufferModelViewInverse * vp).xyz;
 	foliage = 0.0;
+	emissive = 0.0;
 #if defined TERRAIN
 	float id = mc_Entity.x;
 	foliage = (id >= ID_PLANT && id <= ID_TALL_UPPER) ? 1.0 : 0.0;
+	emissive = id == ID_EMISSIVE ? 1.0 : 0.0;
 #ifdef WAVING
 	if (foliage > 0.5) {
 		bool top = gl_MultiTexCoord0.t < mc_midTexCoord.t;
@@ -63,7 +66,7 @@ void main() {
 #else
 	fogDist = length(vp.xyz);
 #endif
-#ifdef WATER
+#ifdef PROG_WATER
 	viewPos = vp.xyz;
 	worldPos = pp + cameraPosition;
 	isWater = mc_Entity.x == ID_WATER ? 1.0 : 0.0;
@@ -89,13 +92,16 @@ uniform vec4 entityColor;
 in vec3 viewN;
 in vec3 shadowPos;
 in float foliage;
+in float emissive;
+#ifdef SHADOWS
 uniform sampler2DShadow shadowtex0;
+#endif
 uniform vec3 shadowLightPosition;
 uniform float sunAngle;
 uniform float rainStrength;
 uniform float viewWidth;
 #endif
-#ifdef WATER
+#ifdef PROG_WATER
 in vec3 viewPos;
 in vec3 worldPos;
 in float isWater;
@@ -103,7 +109,7 @@ uniform vec3 skyColor;
 uniform mat4 gbufferModelView;
 #endif
 
-#if defined WATER && defined WATER_SSR
+#if defined PROG_WATER && defined WATER_SSR
 /* RENDERTARGETS: 0,3 */
 layout(location = 1) out vec4 outWater;
 #else
@@ -111,7 +117,7 @@ layout(location = 1) out vec4 outWater;
 #endif
 layout(location = 0) out vec4 outColor;
 
-#ifdef SHADED
+#if defined SHADED && defined SHADOWS
 float shadowVisibility() {
 	vec3 p = distortShadow(shadowPos) * 0.5 + 0.5;
 	if (any(lessThan(p, vec3(0.0))) || any(greaterThan(p, vec3(1.0)))) return 1.0;
@@ -145,7 +151,7 @@ void main() {
 #else
 	vec4 c = texture(gtexture, uv) * tint;
 #endif
-#if !defined WATER && !defined NOTEX
+#if !defined PROG_WATER && !defined NOTEX
 	if (c.a < 0.1) discard;
 #endif
 #ifdef ENTITY
@@ -178,14 +184,21 @@ void main() {
 	}
 	float direct = vis * clamp(NdotL * 3.0, 0.0, 1.0);
 	light *= mix(1.0, 1.0 - SHADOW_STRENGTH, skyW * (1.0 - direct));
-	vec3 sunCol = day ? mix(vec3(1.0, 0.5, 0.25), vec3(1.0, 0.9, 0.75), smoothstep(0.0, 0.4, sunH)) : vec3(0.5, 0.62, 1.0) * 0.35;
+	// nights a little darker than vanilla's where only the sky lights a place (torches and other block light untouched)
+	float night = day ? 0.0 : smoothstep(0.0, 0.25, -sunH);
+	light *= mix(1.0, 0.6, night * smoothstep(0.3, 0.95, lm.y) * (1.0 - smoothstep(0.1, 0.6, lm.x)));
+	vec3 sunCol = day ? mix(vec3(1.0, 0.55, 0.28), vec3(1.0, 0.86, 0.66), smoothstep(0.0, 0.4, sunH)) : vec3(0.78, 0.8, 0.95) * 0.5;
 #if SUN_LIGHT > 0
-	light += sunCol * direct * max(NdotL, 0.0) * skyW * (SUN_LIGHT == 1 ? 0.16 : 0.3);
+	light += sunCol * direct * max(NdotL, 0.0) * skyW * (SUN_LIGHT == 1 ? 0.12 : 0.24);
 #endif
 #endif
 	c.rgb *= light;
+#ifdef TERRAIN
+	// HDR: the bright texels of light sources past white (unchanged in SDR, where hdrEmissive() is 1)
+	if (emissive > 0.5) c.rgb *= mix(1.0, hdrEmissive(), smoothstep(0.5, 0.9, luma(c.rgb)));
+#endif
 
-#ifdef WATER
+#ifdef PROG_WATER
 #if WATER > 0
 	if (isWater > 0.5) {
 		vec3 V = normalize(viewPos);
@@ -205,7 +218,7 @@ void main() {
 		vec3 sky = mix(fogColor, skyColor, smoothstep(0.0, 0.4, up)) * smoothstep(0.2, 0.9, lm.y);
 		c.rgb = mix(c.rgb, sky, fres * 0.85);
 		c.a = mix(c.a, 1.0, fres * 0.7);
-		float spec = pow(max(dot(R, L), 0.0), 220.0) * vis * fade * (day ? 2.5 : 0.8);
+		float spec = pow(max(dot(R, L), 0.0), 220.0) * vis * fade * (day ? 2.5 : 0.8) * hdrPeakEncoded();
 		c.rgb += sunCol * spec;
 		c.a = min(1.0, c.a + spec);
 #ifdef WATER_SSR
