@@ -16,7 +16,7 @@ import org.lwjgl.sdl.SDLVideo;
  * Mods that call OpenGL directly (LWJGL's GL classes, or Minecraft's own OpenGL backend classes) crash under Metal: there is no
  * OpenGL context, so their first GL call throws. This makes one: a hidden 1x1 window with a 3.2 core context (as Minecraft's
  * own OpenGL backend asks for), current on the render thread. Their calls then run, their textures and buffers exist, their
- * state changes are harmless; what they draw into OpenGL framebuffers isn't on screen (the picture is Metal's).
+ * state changes are harmless, and what they draw is laid over the frame (mcgl.m, MetalSurface: an IOSurface shared with Metal).
  *
  * <p>Only when a mod needs it: at launch every other mod's classes are searched for OpenGL references (once per set of mods;
  * the answer is cached in config/cadence-gl-users.txt). Nothing is made otherwise, so it costs nothing. A context that sits
@@ -59,7 +59,7 @@ public final class GlFallback {
 			SDLVideo.SDL_GL_MakeCurrent(window, context);
 			GL.createCapabilities();
 			System.out.println("[cadence] OpenGL compatibility context made for " + (users.isEmpty() ? "-Dcadence.glFallback=true" : String.join(", ", users))
-				+ ": their OpenGL calls run, what they draw with OpenGL itself isn't shown");
+				+ ": their OpenGL calls run and what they draw is laid over the frame");
 		} catch (Throwable t) {
 			System.out.println("[cadence] OpenGL compatibility context couldn't be made: " + t);
 			if (context != 0) SDLVideo.SDL_GL_DestroyContext(context);
@@ -75,13 +75,13 @@ public final class GlFallback {
 		StringBuilder key = new StringBuilder();
 		for (ModContainer mod : loader.getAllMods()) {
 			String id = mod.getMetadata().getId();
-			if (builtin(id) || mod.getContainingMod().isPresent()) continue;  // (nested jars are searched with their parent)
+			if (builtin(id) || KNOWN_FINE.contains(id) || mod.getContainingMod().isPresent()) continue;  // (nested jars are searched with their parent)
 			mods.add(mod);
 		}
 		mods.sort(java.util.Comparator.comparing(m -> m.getMetadata().getId()));
 		for (ModContainer mod : mods) key.append(mod.getMetadata().getId()).append('@').append(mod.getMetadata().getVersion().getFriendlyString()).append(' ');
 		Path cache = loader.getConfigDir().resolve("cadence-gl-users.txt");
-		String keyLine = Integer.toHexString(key.toString().hashCode());
+		String keyLine = "v2 " + Integer.toHexString(key.toString().hashCode());
 		if (Files.isRegularFile(cache)) {
 			List<String> lines = Files.readAllLines(cache);
 			if (!lines.isEmpty() && lines.get(0).equals(keyLine)) return List.copyOf(lines.subList(1, lines.size()));
@@ -101,6 +101,13 @@ public final class GlFallback {
 		System.out.println("[cadence] OpenGL users searched in " + (System.nanoTime() - t) / 1_000_000 + " ms: " + (found.isEmpty() ? "none" : found));
 		return found;
 	}
+
+	/**
+	 * Mods with OpenGL code that only runs when the game itself is on OpenGL: tested with Cadence and fine without the context
+	 * (docs/COMPATIBILITY.md), so none is made for them.
+	 */
+	private static final java.util.Set<String> KNOWN_FINE = java.util.Set.of("essential", "essential-container", "elementa", "universalcraft",
+		"immediatelyfast", "xaerominimap", "xaeroworldmap", "xaerolib");
 
 	private static boolean builtin(String id) {
 		return id.equals("minecraft") || id.equals("java") || id.equals("fabricloader") || id.startsWith("cadence") || id.startsWith("fabric-")

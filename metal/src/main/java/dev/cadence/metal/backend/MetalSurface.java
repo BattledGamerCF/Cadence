@@ -39,6 +39,9 @@ final class MetalSurface implements GpuSurfaceBackend {
 	private boolean paced;
 	private final long ctx;
 	private final MetalEncoder encoder;
+	/** -Dcadence.glOverlay=false: OpenGL draws of mods stay invisible (they still run). */
+	private static boolean GL_OVERLAY = !"false".equals(System.getProperty("cadence.glOverlay"));
+	private boolean glOverlay;
 	private final long view;
 	private final long layer;
 
@@ -107,6 +110,18 @@ final class MetalSurface implements GpuSurfaceBackend {
 	@Override
 	public void blitFromTexture(CommandEncoderBackend commandEncoder, GpuTextureView textureView) {
 		Hdr.frame(this);
+		// OpenGL compatibility (GlFallback, mcgl.m): what mods drew with OpenGL this frame laid over it, then their target cleared
+		// for the next. Only while the compatibility context exists.
+		if (dev.cadence.metal.compat.GlFallback.active() && GL_OVERLAY) {
+			try {
+				long target = ((MetalTexture.View) textureView).handle;
+				if (this.glOverlay) Native.glOverlayEnd(this.encoder.enc, target);
+				this.glOverlay = Native.glOverlayBegin(this.encoder.ctx, textureView.getWidth(0), textureView.getHeight(0));
+			} catch (RuntimeException e) {
+				GL_OVERLAY = false;
+				System.out.println("[cadence] OpenGL compatibility overlay stopped: " + e);
+			}
+		}
 		// cadence.rec hook: the opt-in recorder (-Dcadence.rec, dev.cadence.metal.rec) takes the finished frame, GUI included. Rec.ON is a constant false without it.
 		if (dev.cadence.metal.rec.Rec.ON) dev.cadence.metal.rec.Rec.frame(this.encoder, textureView);
 		// (Instant Replay: nothing unless it's on; not while Render Max FPS presents its own frame, which this isn't, BH4-04)

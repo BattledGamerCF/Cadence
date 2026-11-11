@@ -156,6 +156,8 @@ final class Native {
 	private static final MethodHandle LAYER_CONFIGURE = fn("mc_layer_configure", false, null, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_INT, JAVA_INT);
 	private static final MethodHandle LAYER_NEXT = fn("mc_layer_next", false, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle HDR_TONE = fn("mc_hdr_tone", true, null, JAVA_FLOAT, JAVA_FLOAT, JAVA_INT);
+	private static final MethodHandle GL_OVERLAY_BEGIN = fn("mc_gl_overlay_begin", false, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_INT);
+	private static final MethodHandle GL_OVERLAY_END = fn("mc_gl_overlay_end", false, null, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle SCREEN_HEADROOM = fn("mc_screen_headroom", false, null, JAVA_LONG);
 	private static final MethodHandle PRESENT = fn("mc_present", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle PRESENT_FENCED = fn("mc_present_fenced", false, null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG);
@@ -377,6 +379,10 @@ final class Native {
 	static void debugPop(long enc) { try { R_DEBUG_POP.invokeExact(enc); } catch (Throwable t) { throw rethrow(t); } }
 	static void clearRect(long enc, long color, long depth, float r, float g, float b, float a, float depthValue, int x, int y, int w, int h, int mip) { if (FrameCapture.FULL && FrameCapture.active()) FrameCapture.clearRect(color, depth, r, g, b, a, depthValue, x, y, w, h, mip); try { CLEAR_RECT.invokeExact(enc, color, depth, r, g, b, a, depthValue, x, y, w, h, mip); } catch (Throwable t) { throw rethrow(t); } }
 	static void layerConfigure(long ctx, long layer, int w, int h, int vsync) { try { LAYER_CONFIGURE.invokeExact(ctx, layer, w, h, vsync); } catch (Throwable t) { throw rethrow(t); } }
+	/** OpenGL compatibility (mcgl.m): the shared target bound and cleared; false if it couldn't be made. */
+	public static boolean glOverlayBegin(long ctx, int w, int h) { try { return (int) GL_OVERLAY_BEGIN.invokeExact(ctx, w, h) != 0; } catch (Throwable t) { throw rethrow(t); } }
+	/** OpenGL compatibility: OpenGL's picture laid over the frame's texture, on the frame's command buffer. */
+	static void glOverlayEnd(long enc, long target) { try { GL_OVERLAY_END.invokeExact(enc, target); } catch (Throwable t) { throw rethrow(t); } }
 	static void hdrTone(float headroom, float knee, int mode) { try { HDR_TONE.invokeExact(headroom, knee, mode); } catch (Throwable t) { throw rethrow(t); } }
 	static void screenHeadroom(long out) { try { SCREEN_HEADROOM.invokeExact(out); } catch (Throwable t) { throw rethrow(t); } }
 	static long layerNext(long layer) { try { return (long) LAYER_NEXT.invokeExact(layer); } catch (Throwable t) { throw rethrow(t); } }

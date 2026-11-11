@@ -124,15 +124,23 @@ Under Metal there is no OpenGL context, so a mod's first direct OpenGL call (LWJ
 backend classes) used to crash the game. At launch Cadence searches every other mod's classes for OpenGL references (once
 per set of mods; cached in `config/cadence-gl-users.txt`). If any mod has them, Cadence makes a hidden 1x1 window with an
 OpenGL 3.2 core context, current on the render thread. Those mods' calls then run: their textures, buffers and state work,
-and they don't crash. What they draw into OpenGL framebuffers isn't on screen, because the picture is Metal's.
+and they don't crash.
 
-Without such a mod nothing is made, so it costs nothing. With one, the idle context costs a few MB and no GPU time.
+What they draw is shown too. The context draws into a picture that Metal shares through an IOSurface (no copy), and each
+frame that picture is laid over the game's frame just before it's shown. An OpenGL query counts whether anything was drawn,
+so on frames where the mods draw nothing there is no clear, no wait and no extra pass. Limits: the overlay has no depth, so
+what such a mod draws is on top of the world (as a HUD is), and a mod that binds OpenGL's own window framebuffer (0)
+explicitly draws where it isn't seen. `-Dcadence.glOverlay=false` turns the overlay off (the calls still run).
+
+Mods whose OpenGL code only runs when the game itself is on OpenGL, and which were tested working without the context
+(Essential with Elementa and UniversalCraft, ImmediatelyFast, Xaero's Minimap and World Map), don't count. Without such a mod
+nothing is made, so it costs nothing. With one, the idle context costs a few MB and no GPU time.
 `-Dcadence.glFallback=true` always makes it; `false` never does.
 
 ## What still doesn't work
 
-- What mods draw with OpenGL directly isn't shown (they no longer crash, see above). Mods that draw through Minecraft's own
-  rendering API work fully.
+- What mods draw with OpenGL directly is shown as an overlay without depth (see above). Mods that draw through Minecraft's
+  own rendering API work fully.
 - Sodium and Iris. Cadence replaces them. Mods that need Iris's internals (beyond its API) don't load without Iris.
 
 ## Apple Hardware features with shader packs and other mods

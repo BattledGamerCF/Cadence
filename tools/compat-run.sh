@@ -8,10 +8,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RUN="$ROOT/metal/run-compat"
 PLAN="${1:-wait=20,screen=video,wait=3,screen=close,benchmark}"
 RD="${2:-12}"
-JAR=$(ls -t "$ROOT"/dist/cadence-0*.jar 2>/dev/null | head -1)
+JAR=$(ls -t "$ROOT"/dist/cadence-[0-9]*.jar 2>/dev/null | head -1)
 [ -n "$JAR" ] || { echo "no dist/cadence-*.jar: run tools/release first"; exit 2; }
 mkdir -p "$RUN/mods-backup"
-for old in "$RUN"/mods/cadence-0*.jar; do
+for old in "$RUN"/mods/cadence-[0-9]*.jar; do
   [ -e "$old" ] || continue
   [ "$(basename "$old")" = "$(basename "$JAR")" ] && continue
   mv "$old" "$RUN/mods-backup/"
