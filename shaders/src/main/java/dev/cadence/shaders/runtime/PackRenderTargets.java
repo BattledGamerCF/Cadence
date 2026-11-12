@@ -141,15 +141,27 @@ public final class PackRenderTargets implements AutoCloseable {
     this.height = height;
     this.shadowSize = shadowSize;
     try {
-      for (int i = 0; i < DH_DEPTH; i++)
+      // (Cadence: depthtex2 and the merged hand depth are made on first use: a pack that never reads depthtex2, or whose
+      // post passes never read depthtex0 with the hand in it, carries neither; 21 MB each at a Retina screen's size)
+      for (int i = 0; i < 2; i++)
         depths[i] = allocate("depthtex" + i, GpuFormat.D32_FLOAT, width, height, 1);
-      mergedDepth = allocate("merged hand depth", GpuFormat.D32_FLOAT, width, height, 1);
       for (int i = 0; i < shadowDepths.length; i++)
         shadowDepths[i] = allocate("shadowtex" + i, GpuFormat.D32_FLOAT, shadowSize, shadowSize, 1);
     } catch (RuntimeException failure) {
       close();
       throw failure;
     }
+  }
+
+  /** Cadence: the bytes these targets hold (size x format x mips; Metal may pad). */
+  public long bytes() {
+    long total = 0;
+    for (PackTexture t : owned) {
+      var tex = t.texture;
+      for (int m = 0; m < tex.getMipLevels(); m++)
+        total += (long) tex.getWidth(m) * tex.getHeight(m) * tex.getFormat().blockSize() * Math.max(1, tex.getDepthOrLayers());
+    }
+    return total;
   }
 
   private PackTexture allocate(String name, GpuFormat format, int w, int h, int mips) {
@@ -215,14 +227,15 @@ public final class PackRenderTargets implements AutoCloseable {
 
   public PackTexture depth(int index) {
     if (depths[index] == null) {
-      // dhDepthTex0/1: made on first use, defined as cleared (far) from then on
-      depths[index] = allocate(index == DH_DEPTH ? "dhDepthTex0" : "dhDepthTex1", GpuFormat.D32_FLOAT, width, height, 1);
+      // depthtex2, dhDepthTex0/1: made on first use, defined as cleared (far) from then on
+      depths[index] = allocate(index == 2 ? "depthtex2" : index == DH_DEPTH ? "dhDepthTex0" : "dhDepthTex1", GpuFormat.D32_FLOAT, width, height, 1);
       clearDepth(device.createCommandEncoder(), depths[index]);
     }
     return depths[index];
   }
 
   PackTexture depthMergeTarget() {
+    if (mergedDepth == null) mergedDepth = allocate("merged hand depth", GpuFormat.D32_FLOAT, width, height, 1);
     return mergedDepth;
   }
 
