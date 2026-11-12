@@ -1186,12 +1186,16 @@ public final class ShaderRuntime implements AutoCloseable {
     if (pipeline.translated().uniforms().byteSize() > 0) {
       var tag =
           pipeline.fullscreen() ? FeatureDrawContext.NONE : FeatureDrawContext.currentDrawTag();
+      // (the sun and the moon share the game's celestial pipeline, tagged SUN: while SkyRenderer.renderMoon draws, the moon's
+      // stage, as Iris gives it; packs tell them apart by renderStage, issue #4)
+      int stage =
+          drawingMoon && pipeline.renderStage() == STAGE_SUN ? STAGE_MOON : pipeline.renderStage();
       GpuBufferSlice buffer =
           frameBuffers.computeIfAbsent(
-              new UniformKey(pipeline, tag),
+              new UniformKey(pipeline, tag, stage),
               key -> {
                 uniforms.setDrawState(
-                    pipeline.renderStage(),
+                    stage,
                     pipeline.alphaTestRef(),
                     tag.entityId(),
                     tag.blockEntityId(),
@@ -1734,15 +1738,23 @@ public final class ShaderRuntime implements AutoCloseable {
   record Variant(
       RenderPipeline original, boolean hand, boolean shadow, boolean blockEntity) {}
 
-  private record UniformKey(PackPipeline pipeline, FeatureDrawContext.DrawTag tag) {
+  private static final int STAGE_SUN = 4, STAGE_MOON = 5;
+
+  /** ShaderSkyFlagsMixin: SkyRenderer.renderMoon is drawing (render thread). */
+  public static boolean drawingMoon;
+
+  private record UniformKey(PackPipeline pipeline, FeatureDrawContext.DrawTag tag, int stage) {
     @Override
     public int hashCode() {
-      return 31 * System.identityHashCode(pipeline) + tag.hashCode();
+      return 31 * (31 * System.identityHashCode(pipeline) + tag.hashCode()) + stage;
     }
 
     @Override
     public boolean equals(Object other) {
-      return other instanceof UniformKey key && pipeline == key.pipeline && tag.equals(key.tag);
+      return other instanceof UniformKey key
+          && pipeline == key.pipeline
+          && stage == key.stage
+          && tag.equals(key.tag);
     }
   }
 }
