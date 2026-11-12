@@ -9,8 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 /** Cadence: the frame-rate limit lowered while the Mac is warm (HeatControl) and while Minecraft isn't the active app (BackgroundFps). */
 @Mixin(FramerateLimitTracker.class)
 public abstract class FramerateCapMixin {
-	private static final boolean DISPLAY_CAP = !"false".equals(System.getProperty("cadence.shaders.displayCap"));
-
 	@ModifyReturnValue(method = "getFramerateLimit", at = @At("RETURN"))
 	private int cadence$heatCap(int limit) {
 		if (dev.cadence.shaders.cadence.setup.QuickSetup.testing) return Math.min(limit, 10);
@@ -52,9 +50,10 @@ public abstract class FramerateCapMixin {
 			return smooth;
 		}
 		// Cadence: a shader pack on a display of 60 Hz or less runs at the display's rate by default: frames past it are never
-		// shown, and a pack's frame is expensive (heat, battery). -Dcadence.shaders.displayCap=false: as the options say.
+		// shown, and a pack's frame is expensive (heat, battery). Video Settings > Shader FPS Cap: Off (or
+		// -Dcadence.shaders.displayCap=false): as the options say.
 		// (a pack is installed: "a pack frame is being drawn" was never true here, the limit is read after the frame)
-		if (DISPLAY_CAP && dev.cadence.shaders.runtime.ShaderRuntime.get() != null && HeatControl.refreshHz() <= 60)
+		if (dev.cadence.shaders.cadence.ui.CadenceSettings.shaderDisplayCap() && dev.cadence.shaders.runtime.ShaderRuntime.get() != null && HeatControl.refreshHz() <= 60)
 			cap = Math.min(cap, HeatControl.refreshHz());
 		// Frame Generation: render at the base rate (Battery Saver 30, else 60, lower when another cap is) and show twice that, up
 		// to the display's rate; only where that is more than the base (on a 60 Hz screen: Battery Saver 30 -> 60, the others a

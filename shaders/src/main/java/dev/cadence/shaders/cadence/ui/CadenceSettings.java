@@ -243,6 +243,40 @@ public final class CadenceSettings {
 		return dev.cadence.metal.system.Lang.literal("Performance: " + current().label);
 	}
 
+	/**
+	 * Shader FPS Cap: with a shader pack on a screen of 60 Hz or less, the frame rate held to the screen's (frames past it are
+	 * never shown, and a pack's frame is expensive), or Off: as Max Framerate says. Saved as "shaderDisplayCap";
+	 * -Dcadence.shaders.displayCap=false still turns it off for a launch.
+	 */
+	private static volatile boolean shaderCap = !"false".equalsIgnoreCase(
+		System.getProperty("cadence.shaders.displayCap", ShaderToggle.configValue("shaderDisplayCap", "true")).strip());
+
+	public static boolean shaderDisplayCap() {
+		return shaderCap;
+	}
+
+	public static void setShaderDisplayCap(boolean on) {
+		shaderCap = on;
+		ShaderToggle.saveKey("shaderDisplayCap", Boolean.toString(on));
+	}
+
+	public static Button shaderCapButton() {
+		Button[] self = new Button[1];
+		self[0] = Button.builder(shaderCapLabel(), b -> {
+			setShaderDisplayCap(!shaderCap);
+			refreshAll();
+		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES.because("Off draws frames your screen can't show"),
+			"With a shader pack, on a screen of 60 Hz or less:",
+			"Screen Rate|the frame rate stays at your screen's refresh rate: cooler and quieter, and nothing you can see is lost",
+			"Off|as fast as Max Framerate allows (for benchmarks; frames past the screen's rate are never shown)")).build();
+		onRefresh(() -> self[0].setMessage(shaderCapLabel()));
+		return self[0];
+	}
+
+	private static Component shaderCapLabel() {
+		return dev.cadence.metal.system.Lang.literal("Shader FPS Cap: " + (shaderCap ? "Screen Rate" : "Off"));
+	}
+
 	/** Cooling (HeatControl.Cooling): how early Cadence eases off as the Mac heats up. */
 	public static Button heatButton() {
 		Button[] self = new Button[1];
