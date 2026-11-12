@@ -226,8 +226,7 @@ public final class FrameGen {
 			height = h;
 			slotFrame[0] = slotFrame[1] = -10;
 		}
-		Matrix4f inv = new Matrix4f(proj).invert();
-		inv.get(MemoryUtil.memByteBuffer(snapBuf, 64));
+		invTemp.set(proj).invert().getToAddress(snapBuf);
 		MemoryUtil.memPutFloat(snapBuf + 64, packDepth ? 1 : 0);
 		MemoryUtil.memPutFloat(snapBuf + 68, 0);
 		MemoryUtil.memPutFloat(snapBuf + 72, 0);
@@ -381,10 +380,12 @@ public final class FrameGen {
 		MemoryUtil.memPutFloat(f + 460, 1f / Math.max(1, height));
 	}
 
+	private static final Matrix4f invTemp = new Matrix4f();
+
 	private static void writeCam(long at, Matrix4fc p, Matrix4fc rot, double x, double y, double z) {
 		viewProj.set(p).mul(rot);
-		viewProj.get(MemoryUtil.memByteBuffer(at, 64));
-		new Matrix4f(viewProj).invert().get(MemoryUtil.memByteBuffer(at + 64, 64));
+		viewProj.getToAddress(at);
+		invTemp.set(viewProj).invert().getToAddress(at + 64);
 		MemoryUtil.memPutFloat(at + 128, (float) x);
 		MemoryUtil.memPutFloat(at + 132, (float) y);
 		MemoryUtil.memPutFloat(at + 136, (float) z);
@@ -394,8 +395,16 @@ public final class FrameGen {
 
 	// ---- Ultra ----
 
-	/** Ultra: real frames a second at the least (1-30); -Dcadence.fg.ultraFloor, the self-test's fgbase. */
-	public static volatile int ultraFloor = Integer.getInteger("cadence.fg.ultraFloor", 4);
+	/** Ultra: real frames a second at the least (0.1-30: 0.25 is one every 4 s); -Dcadence.fg.ultraFloor, the self-test's "ultra=". */
+	public static volatile double ultraFloor = floorProperty();
+
+	private static double floorProperty() {
+		try {
+			return Double.parseDouble(System.getProperty("cadence.fg.ultraFloor", "4"));
+		} catch (NumberFormatException e) {
+			return 4;
+		}
+	}
 	/** A real frame once the view has turned this many degrees since the last one (0: turning never asks for one). */
 	public static volatile float ultraTurn = floatProp("cadence.fg.ultraTurn", 2.0f);
 	/** ... or the camera has moved this many blocks (0: never). */
@@ -519,7 +528,7 @@ public final class FrameGen {
 		if (MetalBridge.isFloatFrame(target.getColorTexture()) != floatSnap) return "size";
 		if (hold) return null;
 		int a = slot;
-		if (now - slotTime[a] >= 1_000_000_000L / Math.max(1, Math.min(60, ultraFloor))) return "floor";
+		if (now - slotTime[a] >= (long) (1e9 / Math.max(0.1, Math.min(60, ultraFloor)))) return "floor";
 		if (ultraTurn > 0) {
 			qNow.setFromNormalized(rotation);
 			qSnap.setFromNormalized(slotRot[a]);

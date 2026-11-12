@@ -307,7 +307,7 @@ public final class CadenceSelfTest {
 					// "ultra=FLOOR[:TURN[:MOVE[:ENTITY]]]": Frame Generation Ultra's real frames a second at the least, and the degrees
 					// turned, blocks moved and blocks an entity moved that ask for a real frame (0: never)
 					String[] u = lower.substring(6).split(":");
-					dev.cadence.metal.framegen.FrameGen.ultraFloor = Integer.parseInt(u[0]);
+					dev.cadence.metal.framegen.FrameGen.ultraFloor = Double.parseDouble(u[0]);
 					if (u.length > 1) dev.cadence.metal.framegen.FrameGen.ultraTurn = Float.parseFloat(u[1]);
 					if (u.length > 2) dev.cadence.metal.framegen.FrameGen.ultraMove = Float.parseFloat(u[2]);
 					if (u.length > 3) dev.cadence.metal.framegen.FrameGen.ultraEntityMove = Float.parseFloat(u[3]);

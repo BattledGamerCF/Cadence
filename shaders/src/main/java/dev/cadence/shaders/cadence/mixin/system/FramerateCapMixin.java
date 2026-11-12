@@ -70,7 +70,7 @@ public abstract class FramerateCapMixin {
 			&& !dev.cadence.shaders.cadence.render.PhotoMode.active();
 		if (dev.cadence.metal.framegen.FrameGen.effective() == dev.cadence.metal.framegen.FrameGen.Mode.ULTRA && (playing || hold)) {
 			int shown = hold ? Math.max(2, Math.min(30, cap)) : Math.min(cap, HeatControl.refreshHz());  // (a held picture needs no more than 30)
-			dev.cadence.metal.framegen.FrameGen.target(cadence$fgAllowed ? Math.max(1, Math.min(shown - 1, dev.cadence.metal.framegen.FrameGen.ultraFloor)) : 0, shown);
+			dev.cadence.metal.framegen.FrameGen.target(cadence$fgAllowed ? Math.max(1, Math.min(shown - 1, (int) Math.ceil(dev.cadence.metal.framegen.FrameGen.ultraFloor))) : 0, shown);
 			if (dev.cadence.metal.framegen.FrameGen.running()) {
 				dev.cadence.shaders.cadence.system.FramePacing.cap(shown);
 				return shown;
