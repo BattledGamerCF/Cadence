@@ -189,6 +189,63 @@ slipped to 27-29 rendered (56-58 shown). Responsive held a steady 30 (60 shown) 
 
 A warm Mac draws more for the same work. The higher ends of these ranges are runs right after others.
 
+## Power: Frame Generation Ultra
+
+Ultra shows 60 frames a second and renders as few as one. Each other frame is the newest rendered frame reprojected to where
+the camera is now. More frames are rendered when the view turns, the player moves or acts, or a mob nearby moves; the
+thresholds below are set by hand for the test (`ultra=FLOOR:TURN:MOVE:ENTITY` self-test step, 0 = that trigger off).
+
+Fullscreen Retina, render distance 16, BSL at 60% world resolution, view still unless noted. Whole Mac (`watts=30`) and
+GPU alone (IOReport "GPU Energy" counter), 30 s each:
+
+| Setup | Rendered / shown a second | Whole Mac | GPU |
+|---|---|---|---|
+| BSL, every frame rendered | 54 / 54 | 23.6 W | 9.8 W |
+| BSL, Ultra, 30 rendered | 20 / 60 | 9.0 W | 1.9 W |
+| BSL, Ultra, 10 rendered | 9 / 54 | 6.4 W | 0.9 W |
+| BSL, Ultra, 5 rendered | 5 / 60 | 6.7 W | 1.1 W |
+| BSL, Ultra, 2 rendered | 2 / 60 | 5.7 W | 0.7 W |
+| **BSL, Ultra, 1 rendered** | **1 / 60** | **5.4 W** | **0.5 W** |
+| BSL, Ultra, 1 rendered every 3 s | 0.33 / 60 | 4.7 W | 0.35 W |
+| BSL, Ultra, 1 rendered every 10 s | 0.1 / 60 | 4.6 W | 0.33 W |
+| **BSL, Ultra, 1 rendered, 30 shown** | **1 / 30** | **4.3 W** | **0.33 W** |
+| Without shaders, every frame rendered | 60 / 60 | 4.7 W | 0.53 W |
+| Without shaders, Ultra, 10 rendered | 9 / 60 | 4.5 W | 0.40 W |
+| Without shaders, Ultra, 1 rendered | 1 / 60 | 4.3 W | 0.37 W |
+| Without shaders, Ultra, 1 rendered every 10 s | 0.1 / 60 | 4.3 W | 0.33 W |
+| Without shaders, Ultra, 1 rendered, 30 shown | 1 / 30 | 3.7 W | 0.19 W |
+| Pause menu, without shaders | | 3.9 W | 0.57 W |
+| BSL, turning 20°/s, every frame rendered | 60 / 60 | 23.8 W | 9.6 W |
+| BSL, turning 20°/s, Ultra with its usual triggers | 16 / 60 | 7.7 W | 1.1 W |
+| BSL, turning 20°/s, Ultra, 1 rendered | 1 / 60 | 5.8 W | 0.5 W |
+
+- A BSL frame costs the GPU about 180 mJ; a generated frame about 5.6 mJ, 32 times less. Without shaders a rendered frame
+  costs about 9 mJ and a generated one about 6 mJ, so there Ultra saves little.
+- A single BSL frame rendered on its own, once a second, costs the whole Mac about 1 J (5.35 W at one a second, 4.71 W at
+  one every 3 s), three times what a frame costs when the pack renders 54 a second (about 0.36 J): the chip wakes up for it.
+  At one every 10 s BSL draws within 0.3 W of the game without shaders.
+- A generated frame costs the whole Mac about 36 mJ (60 shown against 30 shown, both with BSL): mostly the processor running
+  the game loop and drawing the HUD, not the GPU. Showing 30 instead of 60 is the next largest saving after rendering less.
+- No point was found where generating frames costs more than rendering them. The savings flatten out below one rendered frame
+  every 3 s: what is left is the screen, the processor running the game at 60, and the GPU drawing the HUD.
+- At 10 rendered a second BSL showed 54: its frames take 19 ms of GPU time, longer than a 60 Hz frame, so each rendered
+  frame delays the one shown after it.
+- The cost is in the picture: at 1 rendered a second, mobs, water and animated textures move once a second, and when
+  turning, the side the old frame never saw is filled from its nearest edge until the next frame is rendered.
+- In the 5-rendered run mobs nearby triggered more real frames than in the 10-rendered run, so it drew a little more.
+
+### Away from the keyboard
+
+After a minute without input the picture is held (Ultra with no rendered frames, 30 shown) and memory is given back.
+Fullscreen Retina, render distance 16, self-test step `afk=on`:
+
+| Setup | Whole Mac | GPU | Game's memory (footprint) |
+|---|---|---|---|
+| BSL at 60% | 3.9 W (23.6 W playing) | 0.15 W | 2,609 -> 1,922 MB: pack targets -189 MB, picture compressed -41 MB, Java heap 1,065 -> 596 MB committed |
+| Without shaders | 3.65 W (4.7 W playing) | 0.16 W | 1,963 -> 1,627 MB: Java heap 872 -> 536 MB committed |
+
+Without shaders, the GPU memory rose 16 MB: Frame Generation wasn't running before, so the held picture's snapshot is new.
+
 ## Neural Engine features
 
 | Feature | Before | Now |

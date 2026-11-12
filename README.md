@@ -16,9 +16,14 @@ Frame Generation doubles the frames shown relative to the frames rendered, with 
 - On a 120 Hz screen, Recommended and Max Quality render 60 and show 120.
 - Smooth builds the frame between the last two frames.
 - Responsive turns the newest frame to where the mouse looks now, so it adds no delay.
+- Ultra renders as few frames as it can and generates the rest of 60: at least 4 a second, more when you turn, move, act or a mob nearby moves. With BSL, turning slowly, the whole Mac drew 7.7 W instead of 23.8 W in a test; with the floor lowered to one rendered frame a second (`-Dcadence.fg.ultraFloor=1`) and the view still, 5.4 W instead of 23.6 W (docs/BENCHMARKS.md). Mobs, water and animated textures then move only when a frame is rendered, so it suits standing still, building and AFK more than fights.
 - Off disables Frame Generation.
 
 The counter shows "60 fps (30 rendered)".
+
+### Memory while you're away
+
+After a minute with no keyboard or mouse input in a world, Cadence keeps the last picture on screen with Ultra frame generation and gives memory back: the picture moves into a texture that the GPU's hardware keeps compressed (M2 and later), a shader pack's render targets are released, and Java's heap is shrunk. With BSL at Retina fullscreen this took the game from 2,609 MB to 1,922 MB, and the whole Mac's draw from 23.6 W to 3.9 W. Any input brings everything back on the next frame. `-Dcadence.afkMemory=false` turns it off.
 
 ### Shader packs on base Macs
 
