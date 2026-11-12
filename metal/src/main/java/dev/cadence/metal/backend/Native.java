@@ -85,6 +85,7 @@ final class Native {
 	private static final MethodHandle BATTERY_WH = fn("mc_battery_wh", false, java.lang.foreign.ValueLayout.JAVA_DOUBLE);
 	private static final MethodHandle MEM_PRESSURE = fn("mc_memory_pressure", false, JAVA_INT);
 	private static final MethodHandle MEM_PRESSURE_EVENTS = fn("mc_memory_pressure_events", false, JAVA_LONG);
+	private static final MethodHandle FOOTPRINT = fn("mc_footprint", false, JAVA_LONG);
 	private static final MethodHandle SET_QOS = fn("mc_set_qos", false, JAVA_INT, JAVA_INT);
 	private static final MethodHandle QOS_SELF = fn("mc_qos_self", false, JAVA_INT);
 	private static final MethodHandle DISPLAY_HZ = fn("mc_display_hz", false, JAVA_INT);
@@ -325,6 +326,7 @@ final class Native {
 
 	static int lowPower() { try { return (int) LOW_POWER.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int memoryPressure() { try { return (int) MEM_PRESSURE.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
+	static long footprint() { try { return (long) FOOTPRINT.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static long memoryPressureEvents() { try { return (long) MEM_PRESSURE_EVENTS.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }
 	static int setQos(int qos) { try { return (int) SET_QOS.invokeExact(qos); } catch (Throwable t) { throw rethrow(t); } }
 	static int qosSelf() { try { return (int) QOS_SELF.invokeExact(); } catch (Throwable t) { throw rethrow(t); } }

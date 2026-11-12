@@ -34,7 +34,8 @@ public final class PerformanceOverlay {
 		builtAt = now;
 		List<String> l = new ArrayList<>();
 		int shown = dev.cadence.metal.framegen.FrameGen.shownFps(renderedFps);
-		l.add(shown > renderedFps ? "Frames: " + shown + " shown, " + renderedFps + " rendered (" + dev.cadence.metal.framegen.FrameGen.effective().label + ")"
+		if (dev.cadence.metal.framegen.FrameGen.ultra()) l.add("Frames: " + renderedFps + " shown, " + dev.cadence.metal.framegen.FrameGen.ultraRealRate() + " rendered (Ultra)");
+		else l.add(shown > renderedFps ? "Frames: " + shown + " shown, " + renderedFps + " rendered (" + dev.cadence.metal.framegen.FrameGen.effective().label + ")"
 			: "Frames: " + renderedFps + " rendered");
 		double interval = RenderScale.lastIntervalMs(), gpu = RenderScale.lastGpuMs();
 		if (interval > 0) l.add(String.format(Locale.ROOT, "Frame %.2f ms, GPU %.2f ms, scale %d%%", interval, gpu, Math.round(RenderScale.get() * 100)));

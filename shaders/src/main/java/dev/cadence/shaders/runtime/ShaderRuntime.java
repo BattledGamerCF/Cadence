@@ -262,6 +262,20 @@ public final class ShaderRuntime implements AutoCloseable {
     return properties;
   }
 
+  /**
+   * Cadence (AfkMemory): the pack's render targets let go while nothing draws the world (the player is away and every frame
+   * is generated). The next frame the pack draws makes them again, as after a resize (its history buffers start empty).
+   * Returns the bytes given back.
+   */
+  public long releaseTargets() {
+    if (targets == null) return 0;
+    long bytes = targets.bytes();
+    frameBuffers.clear();
+    targets.close();
+    targets = null;
+    return bytes;
+  }
+
   public PackRenderTargets targets() {
     return targets;
   }

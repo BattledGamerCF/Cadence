@@ -39,6 +39,13 @@ public abstract class ShaderGameRendererMixin {
       original.call();
       return;
     }
+    // Cadence (Frame Generation: Ultra): a generated frame draws none of the pack's passes, the newest snapshot (its hand in it)
+    // seen from this frame's camera in their place
+    if (ShaderRuntime.get() != null && dev.cadence.metal.framegen.FrameGen.generating()
+        && dev.cadence.metal.framegen.FrameGen.ultraDraw(((GameRenderer) (Object) this).mainRenderTarget().getColorTexture())) {
+      dev.cadence.metal.lod.Lod.idle();
+      return;
+    }
     dev.cadence.shaders.cadence.shaderpack.ShaderSwitcher.beforeFrame(); // Cadence: a pack that failed last frame goes off here
     boolean success = false;
     try {

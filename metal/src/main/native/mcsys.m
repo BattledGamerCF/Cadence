@@ -1,5 +1,6 @@
 // Cadence: macOS system signals for the heat and memory governors and thread priorities (Foundation, AppKit, libdispatch).
 #import <Foundation/Foundation.h>
+#include <mach/mach.h>
 #import <AppKit/AppKit.h>
 #include <dispatch/dispatch.h>
 #include <pthread.h>
@@ -60,6 +61,15 @@ int mc_memory_pressure(void) {
 		dispatch_resume(pressureSource);
 	});
 	return atomic_load(&pressureLevel);
+}
+
+// The process's memory footprint (what Activity Monitor's Memory column shows: resident, compressed and GPU memory it owns),
+// bytes; -1 if unknown.
+long mc_footprint(void) {
+	task_vm_info_data_t vi;
+	mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+	if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t) &vi, &count) != KERN_SUCCESS) return -1;
+	return (long) vi.phys_footprint;
 }
 
 long mc_memory_pressure_events(void) {

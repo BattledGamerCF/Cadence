@@ -5,7 +5,7 @@ import dev.cadence.shaders.cadence.ui.ShaderToggle;
 import java.util.Locale;
 
 /**
- * Video Settings > Frame Generation (FrameGen in the metal module does the work): Smooth, Responsive, Neural or Off, saved as
+ * Video Settings > Frame Generation (FrameGen in the metal module does the work): Smooth, Responsive, Neural, Ultra or Off, saved as
  * frameGeneration in the config; -Dcadence.frameGeneration overrides it. Smooth by default: it runs only where it adds frames
  * the screen can show (Battery Saver on any screen, Recommended and Max Quality on a 120 Hz one: FramerateCapMixin).
  */
@@ -23,6 +23,7 @@ public final class FrameGenSetting {
 			case "off", "false" -> FrameGen.Mode.OFF;
 			case "responsive" -> FrameGen.Mode.RESPONSIVE;
 			case "neural" -> FrameGen.Mode.NEURAL;
+			case "ultra" -> FrameGen.Mode.ULTRA;
 			default -> FrameGen.Mode.SMOOTH;
 		};
 	}
@@ -32,12 +33,13 @@ public final class FrameGenSetting {
 		ShaderToggle.saveKey("frameGeneration", mode.name().toLowerCase(Locale.ROOT));
 	}
 
-	/** The button's click: Smooth -> Responsive -> Neural -> Off -> Smooth. */
+	/** The button's click: Smooth -> Responsive -> Neural -> Ultra -> Off -> Smooth. */
 	public static void cycle() {
 		set(switch (FrameGen.mode()) {
 			case SMOOTH -> FrameGen.Mode.RESPONSIVE;
 			case RESPONSIVE -> FrameGen.Mode.NEURAL;
-			case NEURAL -> FrameGen.Mode.OFF;
+			case NEURAL -> FrameGen.Mode.ULTRA;
+			case ULTRA -> FrameGen.Mode.OFF;
 			case OFF -> FrameGen.Mode.SMOOTH;
 		});
 	}

@@ -29,13 +29,21 @@ import org.lwjgl.system.MemoryUtil;
  * model has loaded (about a second), and where it can't run (before macOS 26), Smooth's reprojection.
  * </ul>
  *
- * It runs only under a frame cap below the display's rate (the shaders module's FramerateCapMixin decides: {@link #target}):
+ * <li>{@link Mode#ULTRA}: most frames generated, few rendered. The game itself runs every frame (input, ticks, the camera, the
+ * hand and the GUI drawn live), but the world is drawn only on a real frame: when the view has turned or moved more than a
+ * little since the last one, an entity nearby has moved, the player is breaking or using something, a screen is open, or the
+ * newest real frame is older than the floor rate allows (1 a second at the least). Every other frame the newest snapshot is
+ * seen from the frame's own camera (framegen.metal, into the game's target, before its hand and GUI). A still view costs the
+ * world's drawing a few times a second instead of 60 ({@link #ultraBegin}).
+ * </ul>
+ *
+ * Smooth, Responsive and Neural run only under a frame cap below the display's rate (the shaders module's FramerateCapMixin decides: {@link #target}):
  * it renders at the cap and shows twice that, every present at least half the frame interval (FramePacing), so real and
  * generated frames alternate evenly. Not with Render Max FPS (it has its own) or the Metal 4 path.
  */
 public final class FrameGen {
 	public enum Mode {
-		OFF("Off"), SMOOTH("Smooth"), RESPONSIVE("Responsive"), NEURAL("Neural");
+		OFF("Off"), SMOOTH("Smooth"), RESPONSIVE("Responsive"), NEURAL("Neural"), ULTRA("Ultra");
 
 		public final String label;
 
@@ -106,8 +114,9 @@ public final class FrameGen {
 
 	/** The mode in use: the chosen one, Responsive while Battery Saver asks for it. */
 	public static Mode effective() {
+		if (hold) return Mode.ULTRA;
 		Mode m = mode;
-		return m != Mode.OFF && saverResponsive ? Mode.RESPONSIVE : m;
+		return m != Mode.OFF && m != Mode.ULTRA && saverResponsive ? Mode.RESPONSIVE : m;
 	}
 
 	/**
@@ -160,6 +169,8 @@ public final class FrameGen {
 			if (LOG && genRate > 0) System.out.println("cadence-fg: " + genRate + " generated/s, gpu " + String.format(java.util.Locale.ROOT, "%.0f",
 				fg != 0 ? FrameGenNative.gpuMicros(fg) : -1) + " us (responsive frames)");
 		}
+		// (Ultra: every frame, generated or not, is one of the game's own, already counted)
+		if (effective() == Mode.ULTRA) return renderedFps;
 		return running() || genRate > 0 ? renderedFps + genRate : renderedFps;
 	}
 
@@ -234,6 +245,7 @@ public final class FrameGen {
 		slotFrame[s] = ++frames;
 		slotTime[s] = System.nanoTime();
 		hand = handDistance;
+		if (effective() == Mode.ULTRA) ultraEntities();
 		// (the frame's format changed, HDR on or off: mcfg.m made both snapshot textures again, so the other slot holds nothing,
 		// BH7-14)
 		boolean f = MetalBridge.isFloatFrame(color);
@@ -251,6 +263,7 @@ public final class FrameGen {
 	 */
 	public static void beforePresent(long latestTexture) {
 		latest = latestTexture;
+		if (effective() == Mode.ULTRA) return;  // (Ultra's frames are the game's own: presented as they are)
 		boolean fresh = frames != presented;  // (a snapshot since the last present)
 		if (running() && !fresh) {
 			if (++presentsWithout > 30) {
@@ -378,6 +391,231 @@ public final class FrameGen {
 		MemoryUtil.memPutFloat(at + 140, 0);
 	}
 
+
+	// ---- Ultra ----
+
+	/** Ultra: real frames a second at the least (1-30); -Dcadence.fg.ultraFloor, the self-test's fgbase. */
+	public static volatile int ultraFloor = Integer.getInteger("cadence.fg.ultraFloor", 4);
+	/** A real frame once the view has turned this many degrees since the last one (0: turning never asks for one). */
+	public static volatile float ultraTurn = floatProp("cadence.fg.ultraTurn", 2.0f);
+	/** ... or the camera has moved this many blocks (0: never). */
+	public static volatile float ultraMove = floatProp("cadence.fg.ultraMove", 0.5f);
+	/** ... or an entity near the player has moved this many blocks (0: entities never ask for one). */
+	public static volatile float ultraEntityMove = floatProp("cadence.fg.ultraEntities", 0.15f);
+
+	private static float floatProp(String name, float def) {
+		try {
+			return Float.parseFloat(System.getProperty(name, Float.toString(def)));
+		} catch (NumberFormatException e) {
+			return def;
+		}
+	}
+
+	/**
+	 * AfkMemory: the player is away. Ultra whatever the chosen mode, with nothing asking for real frames but the start, a new
+	 * size or format: the world is drawn once and every frame after is made from that picture (the camera may still move:
+	 * a current, a vehicle), until the player is back.
+	 */
+	public static volatile boolean hold;
+	private static boolean held;
+
+	/**
+	 * AfkMemory, once the hold's frames are being generated: only the newest snapshot is kept, its colour in a texture the GPU
+	 * keeps compressed (lossy, Apple8 GPUs). Returns the bytes given back (0: nothing yet, no snapshot or not generating).
+	 */
+	public static long holdCompress() {
+		if (!hold || held || fg == 0 || slot < 0 || !generating) return 0;
+		long freed = FrameGenNative.hold(fg, ctx);
+		held = true;
+		slotFrame[slot ^ 1] = -10;
+		return freed;
+	}
+
+	/** AfkMemory: the player is back; the next real frame takes snapshots as usual again. */
+	public static void endHold() {
+		hold = false;
+		held = false;
+	}
+
+	/** This frame's world is generated (Ultra), decided at the frame's start. */
+	private static boolean generating;
+	private static final Matrix4f uProj = new Matrix4f(), uRot = new Matrix4f();
+	private static double uX, uY, uZ;
+	private static final Quaternionf qNow = new Quaternionf(), qSnap = new Quaternionf();
+	private static long ultraReal, ultraGen, ultraReported, ultraGenReported, ultraReportNanos;
+	private static int ultraRealRate, ultraGenRate;
+	/** Why the last real frame was rendered (self-tests, the overlay). */
+	private static String ultraWhy = "";
+	private static final java.util.Map<String, Integer> whyCounts = new java.util.concurrent.ConcurrentSkipListMap<>();
+	// the entities near the player at the newest snapshot: id and position
+	private static final int ENTITIES = 32;
+	private static final int[] entityIds = new int[ENTITIES];
+	private static final double[] entityPos = new double[ENTITIES * 3];
+	private static int entityCount;
+
+	/** Ultra is running (frames generated whenever nothing asks for a real one). */
+	public static boolean ultra() {
+		return effective() == Mode.ULTRA && running();
+	}
+
+	/** Whether this frame's world is generated (the game's world drawing is skipped). */
+	public static boolean generating() {
+		return generating;
+	}
+
+	/** Real (rendered) and generated frames in the last second (Ultra). */
+	public static int ultraRealRate() {
+		return ultraRealRate;
+	}
+
+	public static int ultraGeneratedRate() {
+		return ultraGenRate;
+	}
+
+	/**
+	 * GameRenderer.render, before anything is drawn: is this frame's world generated? The camera as the game extracted it this
+	 * frame (position, rotation) and the projection the world would be drawn with (view bobbing included). A real frame when
+	 * anything asks for one.
+	 */
+	public static void ultraBegin(double x, double y, double z, Matrix4fc rotation, Matrix4fc projection) {
+		generating = false;
+		long now = System.nanoTime();
+		if (ultraReportNanos == 0) ultraReportNanos = now;
+		if (now - ultraReportNanos > 1_000_000_000L) {
+			double k = 1e9 / (now - ultraReportNanos);
+			ultraRealRate = (int) Math.round((ultraReal - ultraReported) * k);
+			ultraGenRate = (int) Math.round((ultraGen - ultraGenReported) * k);
+			ultraReported = ultraReal;
+			ultraGenReported = ultraGen;
+			ultraReportNanos = now;
+			if (LOG && ultra()) System.out.println("cadence-fg ultra: " + ultraRealRate + " real, " + ultraGenRate + " generated /s; real frames because " + whyCounts);
+		}
+		if (!ultra() || rotation == null || projection == null) return;
+		String why = ultraWhy(now, x, y, z, rotation);
+		if (why != null) {
+			ultraReal++;
+			ultraWhy = why;
+			whyCounts.merge(why, 1, Integer::sum);
+			return;
+		}
+		generating = true;
+		uX = x;
+		uY = y;
+		uZ = z;
+		uRot.set(rotation);
+		uProj.set(projection);
+	}
+
+	/** Why this frame must be real (null: it can be generated). */
+	private static String ultraWhy(long now, double x, double y, double z, Matrix4fc rotation) {
+		if (fg == 0 || slot < 0) return "start";
+		Minecraft mc = Minecraft.getInstance();
+		var player = mc.player;
+		if (player == null || mc.level == null) return "start";
+		// (holding: a screen opened over the world draws over the generated one as over any)
+		if (!hold && mc.gui.screen() != null) return "screen";
+		var target = mc.gameRenderer.mainRenderTarget();
+		if (target == null || target.width != width || target.height != height) return "size";
+		if (MetalBridge.isFloatFrame(target.getColorTexture()) != floatSnap) return "size";
+		if (hold) return null;
+		int a = slot;
+		if (now - slotTime[a] >= 1_000_000_000L / Math.max(1, Math.min(60, ultraFloor))) return "floor";
+		if (ultraTurn > 0) {
+			qNow.setFromNormalized(rotation);
+			qSnap.setFromNormalized(slotRot[a]);
+			if (Math.toDegrees(qNow.difference(qSnap).angle()) > ultraTurn) return "turn";
+		}
+		if (ultraMove > 0) {
+			double dx = x - slotPos[a][0], dy = y - slotPos[a][1], dz = z - slotPos[a][2];
+			if (dx * dx + dy * dy + dz * dz > ultraMove * ultraMove) return "move";
+		}
+		if (mc.options.keyAttack.isDown() || mc.options.keyUse.isDown() || player.hurtTime > 0 || player.isUsingItem()) return "action";
+		if (ultraEntityMove > 0) {
+			double limit = ultraEntityMove * ultraEntityMove;
+			for (int i = 0; i < entityCount; i++) {
+				var e = mc.level.getEntity(entityIds[i]);
+				if (e == null) return "entity";
+				double dx = e.getX() - entityPos[i * 3], dy = e.getY() - entityPos[i * 3 + 1], dz = e.getZ() - entityPos[i * 3 + 2];
+				if (dx * dx + dy * dy + dz * dz > limit) return "entity";
+			}
+		}
+		return null;
+	}
+
+	/** After a real frame's snapshot (Ultra): the entities near the player, nearest first, and where they are. */
+	private static void ultraEntities() {
+		entityCount = 0;
+		Minecraft mc = Minecraft.getInstance();
+		var player = mc.player;
+		if (ultraEntityMove <= 0 || player == null || mc.level == null) return;
+		double px = player.getX(), py = player.getY(), pz = player.getZ();
+		double[] d = new double[ENTITIES];
+		for (var e : mc.level.entitiesForRendering()) {
+			if (e == player || e.isRemoved()) continue;
+			double dx = e.getX() - px, dy = e.getY() - py, dz = e.getZ() - pz, dd = dx * dx + dy * dy + dz * dz;
+			if (dd > 48 * 48) continue;
+			int at = entityCount < ENTITIES ? entityCount++ : ENTITIES;
+			if (at == ENTITIES) {
+				int far = 0;
+				for (int i = 1; i < ENTITIES; i++) if (d[i] > d[far]) far = i;
+				if (d[far] <= dd) continue;
+				at = far;
+			}
+			d[at] = dd;
+			entityIds[at] = e.getId();
+			entityPos[at * 3] = e.getX();
+			entityPos[at * 3 + 1] = e.getY();
+			entityPos[at * 3 + 2] = e.getZ();
+		}
+	}
+
+	/** Whether snapshot b may fill in what a couldn't see: the one before it, taken under 3 s before, not across a teleport. */
+	private static boolean ultraUsable(int a, int b) {
+		if (slotFrame[b] != slotFrame[a] - 1 || slotTime[a] - slotTime[b] > 3_000_000_000L) return false;
+		double dx = slotPos[a][0] - slotPos[b][0], dy = slotPos[a][1] - slotPos[b][1], dz = slotPos[a][2] - slotPos[b][2];
+		return dx * dx + dy * dy + dz * dz <= 256;
+	}
+
+	/**
+	 * Ultra's generated world, in place of the game's: the newest snapshot seen from this frame's camera, drawn into the game's
+	 * target (the hand and GUI are drawn after it as in any frame). Returns whether it was drawn (else the caller draws the world).
+	 */
+	public static boolean ultraDraw(GpuTexture target) {
+		if (!generating || fg == 0 || slot < 0 || target == null) {
+			generating = false;
+			return false;
+		}
+		int a = slot, b = slot ^ 1;
+		boolean haveB = ultraUsable(a, b);
+		writeFrame(a, b, haveB, uX, uY, uZ, uProj, uRot, true);
+		MemoryUtil.memPutFloat(frameBuf + 444, 1);
+		boolean ok;
+		try {
+			// (the game cleared the target at the frame's start; the backend defers that clear to the next pass drawing into it,
+			// which would wipe this picture: it is dropped, as every pixel is written here)
+			MetalBridge.dropPendingClear(encoder, target);
+			ok = FrameGenNative.drawInto(fg, enc, MetalBridge.textureHandle(target), frameBuf, FRAME_BYTES);
+		} catch (RuntimeException | LinkageError e) {
+			System.out.println("cadence-fg: ultra frame failed: " + e);
+			ok = false;
+		}
+		if (LOG && ultraGen % 120 == 0)
+			System.out.println("cadence-fg ultra: drew into " + target.getWidth(0) + "x" + target.getHeight(0) + " " + target.getFormat() + " '" + target.getLabel()
+				+ "' from slot " + a + " (" + width + "x" + height + ", float " + floatSnap + ", hand " + hand + ", b " + haveB + ") ok " + ok);
+		if (ok) {
+			ultraGen++;
+			if (genCount++ == 0) System.out.println("[cadence] frame generation: first frame generated (Ultra)");
+		} else {
+			generating = false;
+		}
+		return ok;
+	}
+
+	/** The last real frame's reasons so far (self-tests): reason -> count. */
+	public static String ultraReasons() {
+		return whyCounts.toString();
+	}
+
 	/** Self-tests: the rate rendered while Frame Generation runs, whatever the preset says (0: as the preset says). */
 	public static volatile int forceBase;
 
@@ -456,6 +694,7 @@ public final class FrameGen {
 
 	/** The world closed: the snapshots go (their memory too). */
 	public static void reset() {
+		held = false;
 		slot = -1;
 		slotFrame[0] = slotFrame[1] = -10;
 		responsiveFor = -1;

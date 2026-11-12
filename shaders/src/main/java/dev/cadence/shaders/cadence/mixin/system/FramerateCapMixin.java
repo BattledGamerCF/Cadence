@@ -62,7 +62,20 @@ public abstract class FramerateCapMixin {
 		// (and not while vanilla holds the rate down itself: idle (its Inactivity FPS Limit), minimized, menus)
 		// (with a pack: Responsive, whose frames hold a steady 30 at Battery Saver's low clocks, FrameGen.saverResponsive)
 		dev.cadence.metal.framegen.FrameGen.saverResponsive = cadence$saver;
-		if (dev.cadence.metal.framegen.FrameGen.mode() != dev.cadence.metal.framegen.FrameGen.Mode.OFF && playing) {
+		// (Ultra: every frame runs through the game at the screen's rate, the world drawn only when something asks for it,
+		// FrameGen.ultraBegin)
+		// (AfkMemory's hold: the same, at whatever rate the game holds an idle player to)
+		dev.cadence.shaders.cadence.memory.AfkMemory.frame();
+		boolean hold = dev.cadence.metal.framegen.FrameGen.hold && net.minecraft.client.Minecraft.getInstance().level != null
+			&& !dev.cadence.shaders.cadence.render.PhotoMode.active();
+		if (dev.cadence.metal.framegen.FrameGen.effective() == dev.cadence.metal.framegen.FrameGen.Mode.ULTRA && (playing || hold)) {
+			int shown = hold ? Math.max(2, Math.min(30, cap)) : Math.min(cap, HeatControl.refreshHz());  // (a held picture needs no more than 30)
+			dev.cadence.metal.framegen.FrameGen.target(cadence$fgAllowed ? Math.max(1, Math.min(shown - 1, dev.cadence.metal.framegen.FrameGen.ultraFloor)) : 0, shown);
+			if (dev.cadence.metal.framegen.FrameGen.running()) {
+				dev.cadence.shaders.cadence.system.FramePacing.cap(shown);
+				return shown;
+			}
+		} else if (dev.cadence.metal.framegen.FrameGen.mode() != dev.cadence.metal.framegen.FrameGen.Mode.OFF && playing) {
 			int forced = dev.cadence.metal.framegen.FrameGen.forceBase;
 			int hz = HeatControl.refreshHz(), base = Math.min(forced > 0 ? forced : cadence$saver ? 30 : 60, cap), shown = 2 * base;
 			// (Ray Traced Lighting, when the Mac can't render the screen's rate: half of it rendered, the rest generated, e.g. 30 -> 60)

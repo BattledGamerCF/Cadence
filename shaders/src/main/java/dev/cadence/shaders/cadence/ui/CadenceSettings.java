@@ -388,7 +388,7 @@ public final class CadenceSettings {
 		return dev.cadence.metal.system.Lang.literal("On Battery: " + dev.cadence.shaders.cadence.system.BatteryMode.mode().label);
 	}
 
-	/** Frame Generation (FrameGenSetting, FrameGen): Smooth, Responsive, Neural, Off. */
+	/** Frame Generation (FrameGenSetting, FrameGen): Smooth, Responsive, Neural, Ultra, Off. */
 	public static Button frameGenButton() {
 		Button[] self = new Button[1];
 		self[0] = Button.builder(frameGenLabel(), b -> {
@@ -398,6 +398,7 @@ public final class CadenceSettings {
 			"Smooth|the frame halfway between the last two, shown before the newest (one frame later on screen)",
 			"Responsive|the newest frame turned to where your mouse looks now: no added delay, a little blur at moving edges",
 			"Neural|as Smooth, the frame in between made by Apple's own frame interpolation, a neural network on the Neural Engine (beside the graphics chip; macOS 26)",
+			"Ultra|the world rendered only when something changes (you turn or move, a mob moves, you break or use something; a few times a second at the least), every other frame made from the last one: least battery, mobs and water move in steps",
 			"Off|every frame rendered",
 			"#Only where it adds frames your screen can show: Battery Saver renders 30 and shows 60 with a shader pack; Recommended and Max Quality render "
 				+ "60 and show 120 on a 120 Hz screen. Not with Max FPS. The fps counter shows both (\"120 fps (60 rendered)\").")).build();
@@ -413,6 +414,8 @@ public final class CadenceSettings {
 			default -> "";
 		};
 		if (!neural.isEmpty()) return dev.cadence.metal.system.Lang.literal("Frame Generation: " + mode.label + neural);
+		if (mode == dev.cadence.metal.framegen.FrameGen.Mode.ULTRA && dev.cadence.metal.framegen.FrameGen.running())
+			return dev.cadence.metal.system.Lang.literal("Frame Generation: Ultra (" + dev.cadence.metal.framegen.FrameGen.ultraRealRate() + " rendered)");
 		return dev.cadence.metal.system.Lang.literal("Frame Generation: " + mode.label + (mode != dev.cadence.metal.framegen.FrameGen.Mode.OFF && dev.cadence.metal.framegen.FrameGen.running()
 			? " (" + dev.cadence.metal.framegen.FrameGen.renderedRate() + " -> " + 2 * dev.cadence.metal.framegen.FrameGen.renderedRate() + ")" : ""));
 	}

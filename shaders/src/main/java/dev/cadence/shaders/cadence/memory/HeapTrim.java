@@ -78,13 +78,35 @@ public final class HeapTrim {
 			lastSoft = 0;
 			follow(maxHeap);
 			// (G1 shrinks by the free ratios; the order keeps Min <= Max at every step)
-			if (tight && !was) {
+			if (tight && !was && !away) {
 				set("MinHeapFreeRatio", "5");
 				set("MaxHeapFreeRatio", "15");
-			} else if (!tight && was) {
+			} else if (!tight && was && !away) {
 				set("MaxHeapFreeRatio", "30");
 				set("MinHeapFreeRatio", "10");
 			}
+		}
+	}
+
+	private static volatile boolean away;
+
+	/**
+	 * Cadence (AfkMemory): the player is away. G1's free ratios at their tightest (5 / 10: a collection hands back all but a
+	 * tenth of the free heap) and one full collection (on its own thread; the game is only drawing generated frames meanwhile),
+	 * so the heap shrinks to what is live. Back: the usual ratios (or memory pressure's), the heap grows again as it is used.
+	 */
+	public static void away(boolean on) {
+		if (on == away) return;
+		away = on;
+		if (on) {
+			set("MinHeapFreeRatio", "5");
+			set("MaxHeapFreeRatio", "10");
+			Thread t = new Thread(System::gc, "cadence-away-gc");
+			t.setDaemon(true);
+			t.start();
+		} else {
+			set("MaxHeapFreeRatio", tight ? "15" : "30");
+			set("MinHeapFreeRatio", tight ? "5" : "10");
 		}
 	}
 

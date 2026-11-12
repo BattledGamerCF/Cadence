@@ -128,7 +128,8 @@ final class MetalSurface implements GpuSurfaceBackend {
 		if (!dev.cadence.metal.record.Record.active()) dev.cadence.metal.rec.Replay.frame(this.encoder, textureView);
 		long t0 = WaitStats.ON ? System.nanoTime() : 0;
 		// Frame Generation: every real frame is presented (the cap times them), Smooth's generated one first
-		boolean fg = dev.cadence.metal.framegen.FrameGen.running() && !MetalEncoder.PRESENT_ACQUIRE;
+		// (Ultra's frames, generated or not, are the game's own: presented and paced as any frame)
+		boolean fg = dev.cadence.metal.framegen.FrameGen.running() && !dev.cadence.metal.framegen.FrameGen.ultra() && !MetalEncoder.PRESENT_ACQUIRE;
 		if (fg) dev.cadence.metal.framegen.FrameGen.beforePresent(((MetalTexture.View) textureView).handle);
 		if (!fg && this.paced && !Native.pace(PACE_MARGIN_S)) {
 			if (WaitStats.ON) WaitStats.wait(WaitStats.PACE, System.nanoTime() - t0, 0);

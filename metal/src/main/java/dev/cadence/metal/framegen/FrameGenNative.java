@@ -20,6 +20,8 @@ final class FrameGenNative {
 	private static final MethodHandle ALONE = fn("mcfg_present_alone", null, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
 	private static final MethodHandle GPU_US = fn("mcfg_gpu_us", JAVA_DOUBLE, JAVA_LONG);
 	private static final MethodHandle NEURAL = fn("mcfg_neural", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT);
+	private static final MethodHandle DRAW_INTO = fn("mcfg_draw_into", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_LONG, JAVA_INT);
+	private static final MethodHandle HOLD = fn("mcfg_hold", JAVA_LONG, JAVA_LONG, JAVA_LONG);
 	private static final MethodHandle DEBUG = fn("mcfg_debug", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_LONG);
 
 	private FrameGenNative() {
@@ -35,6 +37,24 @@ final class FrameGenNative {
 		if (t instanceof RuntimeException r) return r;
 		if (t instanceof Error e) throw e;
 		return new RuntimeException(t);
+	}
+
+	/** Ultra: the generated world into the game's target (the frame's command buffer); whether it was drawn. */
+	static boolean drawInto(long fg, long enc, long target, long frame, int len) {
+		try {
+			return (int) DRAW_INTO.invokeExact(fg, enc, target, frame, len) != 0;
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
+	}
+
+	/** AfkMemory: only the newest snapshot kept, its colour compressed by the GPU; the bytes given back. */
+	static long hold(long fg, long ctx) {
+		try {
+			return (long) HOLD.invokeExact(fg, ctx);
+		} catch (Throwable t) {
+			throw rethrow(t);
+		}
 	}
 
 	static long create(long ctx, long source, long err, int errCap) {

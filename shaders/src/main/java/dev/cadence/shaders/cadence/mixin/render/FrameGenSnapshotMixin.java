@@ -19,6 +19,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 abstract class FrameGenSnapshotMixin {
 	@Inject(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GameRenderer;render3dHud(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lnet/minecraft/client/renderer/state/level/PlayerRenderState;Lnet/minecraft/client/renderer/state/OptionsRenderState;Z)V"))
 	private void cadence$fgWorld(CallbackInfo ci) {
+		if (FrameGen.generating()) return;  // (Ultra: this frame's world is the reprojected snapshot, already graded and lit)
 		// (Ray Tracing's shadows go into the world first, so the snapshot has them; called when off too, which lets its world go,
 		// BH7-03)
 		var main = ((GameRenderer) (Object) this).mainRenderTarget();

@@ -42,6 +42,12 @@ typedef struct {
 	id<MTLFunction> vs, fs, fsHdr;
 	id<MTLRenderPipelineState> gen;
 	MTLPixelFormat genFormat;
+	// Ultra: the generated world drawn into the game's own target (its hand and GUI drawn after, as in a real frame)
+	id<MTLFunction> vsT;
+	id<MTLRenderPipelineState> genT;
+	MTLPixelFormat genTFormat;
+	long drawnInto;
+	int held;  // (AfkMemory) the newest snapshot kept alone, its colour compressed: the next snapshot makes both slots again
 	id<MTLTexture> color[2], dist[2];
 	int w, h, cur;  // cur: the slot the last snapshot wrote
 	long generated;
@@ -84,6 +90,7 @@ void *mcfg_new(Ctx *ctx, const char *source, char *err, int errCap) {
 		g->snap = [ctx->device newComputePipelineStateWithFunction:s error:&e];
 		if (g->snap) g->snapF = [ctx->device newComputePipelineStateWithFunction:sf error:&e];
 		g->vs = [lib newFunctionWithName:@"fg_vs"];
+		g->vsT = [lib newFunctionWithName:@"fg_vs_target"];
 		g->fs = [lib newFunctionWithName:@"fg_fs"];
 		g->fsHdr = [lib newFunctionWithName:@"fg_fs_hdr"];
 		g->fsN = [lib newFunctionWithName:@"fg_fs_neural"];
@@ -364,14 +371,27 @@ void mcfg_size(void *fg, Ctx *ctx, int w, int h) {
 // slot. params: SnapParams (the projection inverted, the depth convention). Returns the slot written, -1 if none.
 int mcfg_snapshot(void *fg, Enc *enc, id<MTLTexture> color, id<MTLTexture> depth, const void *params, int len) {
 	Fg *g = fg;
-	if (!g->color[0] || !color || !depth) return -1;
-	if (g->color[0].pixelFormat != (color.pixelFormat == MTLPixelFormatRGBA16Float ? MTLPixelFormatRGBA16Float : MTLPixelFormatRGBA8Unorm)) {
+	if (g->w <= 0 || !color || !depth) return -1;
+	if (g->color[0] && g->color[0].pixelFormat != (color.pixelFormat == MTLPixelFormatRGBA16Float ? MTLPixelFormatRGBA16Float : MTLPixelFormatRGBA8Unorm)) {
 		// (HDR turned on or off: the snapshots in the frame's format, so highlights above 1.0 survive)
 		MTLPixelFormat f = color.pixelFormat == MTLPixelFormatRGBA16Float ? MTLPixelFormatRGBA16Float : MTLPixelFormatRGBA8Unorm;
 		for (int k = 0; k < 2; k++) {
 			[g->color[k] release];
 			g->color[k] = tex(enc->ctx, f, g->w, g->h);
 		}
+	}
+	if (g->held || !g->color[0] || !g->color[1] || !g->dist[0] || !g->dist[1]) {
+		// (after a hold: both slots made again, in the frame's format)
+		int w = g->w, h = g->h;
+		dropTextures(g);
+		MTLPixelFormat f = color.pixelFormat == MTLPixelFormatRGBA16Float ? MTLPixelFormatRGBA16Float : MTLPixelFormatRGBA8Unorm;
+		for (int k = 0; k < 2; k++) {
+			g->color[k] = tex(enc->ctx, f, w, h);
+			g->dist[k] = tex(enc->ctx, MTLPixelFormatR16Float, w, h);
+		}
+		g->w = w;
+		g->h = h;
+		g->held = 0;
 	}
 	int slot = g->cur ^ 1;
 	@autoreleasepool {
@@ -470,6 +490,90 @@ void mcfg_present_alone(void *fg, Ctx *ctx, id<CAMetalDrawable> drawable, id<MTL
 	}
 }
 
+// Ultra: the world of the newest snapshot (and the one before, where it saw what the newest couldn't) seen from this frame's
+// camera, drawn into the game's own target on the frame's command buffer, in place of the world the game didn't draw. The
+// target's format as it is (no tone mapping: the frame's own present does that). Returns 1 if drawn.
+int mcfg_draw_into(void *fg, Enc *enc, id<MTLTexture> target, const void *frame, int len) {
+	Fg *g = fg;
+	if (!g->color[g->cur] || !g->dist[g->cur] || !target || !g->vsT) return 0;
+	@autoreleasepool {
+		MTLPixelFormat format = target.pixelFormat;
+		if (g->genTFormat != format || !g->genT) {
+			if (g->genTFormat == format && !g->genT) return 0;  // (failed for this format before)
+			MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor new] autorelease];
+			d.vertexFunction = g->vsT;
+			d.fragmentFunction = g->fs;
+			d.colorAttachments[0].pixelFormat = format;
+			NSError *e = nil;
+			[g->genT release];
+			g->genT = [enc->ctx->device newRenderPipelineStateWithDescriptor:d error:&e];
+			g->genTFormat = format;
+			if (!g->genT) {
+				NSLog(@"cadence-fg: ultra pipeline: %@", e);
+				return 0;
+			}
+		}
+		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
+		MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
+		rp.colorAttachments[0].texture = target;
+		rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+		rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+		id<MTLRenderCommandEncoder> r = [cb renderCommandEncoderWithDescriptor:rp];
+		[r setRenderPipelineState:g->genT];
+		int a = g->cur, b = g->cur ^ 1;
+		[r setFragmentBytes:frame length:len atIndex:0];
+		[r setFragmentTexture:g->color[a] atIndex:0];
+		[r setFragmentTexture:g->dist[a] atIndex:1];
+		[r setFragmentTexture:g->color[b] atIndex:2];
+		[r setFragmentTexture:g->dist[b] atIndex:3];
+		[r setFragmentTexture:g->color[a] atIndex:4];  // (no GUI to keep: the shader doesn't read it, params.w)
+		[r drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+		[r endEncoding];
+		g->drawnInto++;
+	}
+	return 1;
+}
+
+// AfkMemory: while the player is away the newest snapshot is all that is drawn from, so the other slot goes and the newest
+// one's colour is copied into a texture the GPU keeps compressed (Metal's lossy compression, Apple8 GPUs: M2 and later, A15
+// and later): half the memory, decompressed by the GPU's own hardware as it is read. Returns the bytes given back, 0 if nothing
+// changed. The next snapshot makes both slots again (mcfg_snapshot).
+long mcfg_hold(void *fg, Ctx *ctx) {
+	Fg *g = fg;
+	if (!g->color[g->cur] || g->held) return 0;
+	int a = g->cur, b = a ^ 1;
+	long freed = 0;
+	@autoreleasepool {
+		freed += (long) g->color[b].allocatedSize + (long) g->dist[b].allocatedSize;
+		[g->color[b] release];
+		[g->dist[b] release];
+		g->color[b] = g->dist[b] = nil;
+		id<MTLTexture> src = g->color[a];
+		if (@available(macOS 12.5, *)) {
+			if ([ctx->device supportsFamily:MTLGPUFamilyApple8]) {
+				MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:src.pixelFormat width:g->w height:g->h mipmapped:NO];
+				d.usage = MTLTextureUsageShaderRead;
+				d.storageMode = MTLStorageModePrivate;
+				d.compressionType = MTLTextureCompressionTypeLossy;
+				id<MTLTexture> lossy = [ctx->device newTextureWithDescriptor:d];
+				if (lossy) {
+					id<MTLCommandBuffer> cb = [ctx->queue commandBuffer];
+					id<MTLBlitCommandEncoder> bl = [cb blitCommandEncoder];
+					[bl copyFromTexture:src toTexture:lossy];
+					[bl endEncoding];
+					[cb commit];
+					[cb waitUntilCompleted];
+					freed += (long) src.allocatedSize - (long) lossy.allocatedSize;
+					[src release];
+					g->color[a] = lossy;
+				}
+			}
+		}
+	}
+	g->held = 1;
+	return freed;
+}
+
 // Measurement (the self-test's fgcheck): the generated frame from slot src alone (Responsive, no older frame) for the camera
 // in frame, drawn offscreen; it and the other slot's snapshot (the real frame at that camera) read into out (2 x w x h RGBA8,
 // generated first). Waits for the GPU. Returns 0, or -1 without snapshots.
@@ -542,5 +646,7 @@ void mcfg_free(void *fg) {
 	[g->fs release];
 	[g->fsHdr release];
 	[g->gen release];
+	[g->genT release];
+	[g->vsT release];
 	free(g);
 }

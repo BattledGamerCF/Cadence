@@ -296,12 +296,38 @@ public final class CadenceSelfTest {
 					dev.cadence.metal.framegen.FrameGen.setMode(switch (lower.substring(9)) {
 						case "responsive" -> dev.cadence.metal.framegen.FrameGen.Mode.RESPONSIVE;
 						case "neural" -> dev.cadence.metal.framegen.FrameGen.Mode.NEURAL;
+						case "ultra" -> dev.cadence.metal.framegen.FrameGen.Mode.ULTRA;
 						case "off" -> dev.cadence.metal.framegen.FrameGen.Mode.OFF;
 						default -> dev.cadence.metal.framegen.FrameGen.Mode.SMOOTH;
 					});
 				} else if (lower.equals("fgstate")) {
 					LOGGER.info("[selftest] fgstate: mode {} running {} rendered {} neural {}", dev.cadence.metal.framegen.FrameGen.mode(),
 						dev.cadence.metal.framegen.FrameGen.running(), dev.cadence.metal.framegen.FrameGen.renderedRate(), dev.cadence.metal.framegen.FrameGen.neuralState());
+				} else if (lower.startsWith("ultra=")) {
+					// "ultra=FLOOR[:TURN[:MOVE[:ENTITY]]]": Frame Generation Ultra's real frames a second at the least, and the degrees
+					// turned, blocks moved and blocks an entity moved that ask for a real frame (0: never)
+					String[] u = lower.substring(6).split(":");
+					dev.cadence.metal.framegen.FrameGen.ultraFloor = Integer.parseInt(u[0]);
+					if (u.length > 1) dev.cadence.metal.framegen.FrameGen.ultraTurn = Float.parseFloat(u[1]);
+					if (u.length > 2) dev.cadence.metal.framegen.FrameGen.ultraMove = Float.parseFloat(u[2]);
+					if (u.length > 3) dev.cadence.metal.framegen.FrameGen.ultraEntityMove = Float.parseFloat(u[3]);
+					LOGGER.info("[selftest] ultra: floor {} /s, turn {} deg, move {}, entities {}", u[0], dev.cadence.metal.framegen.FrameGen.ultraTurn,
+						dev.cadence.metal.framegen.FrameGen.ultraMove, dev.cadence.metal.framegen.FrameGen.ultraEntityMove);
+				} else if (lower.startsWith("afk=")) {
+					// "afk=on|off|auto": AfkMemory as if the player were away (on), back (off), or as the input says (auto)
+					String v = lower.substring(4);
+					dev.cadence.shaders.cadence.memory.AfkMemory.forced = v.equals("on") ? Boolean.TRUE : v.equals("off") ? Boolean.FALSE : null;
+					LOGGER.info("[selftest] afk: {} (memory {} MB)", v, dev.cadence.metal.backend.MacSystem.footprint() >> 20);
+				} else if (lower.equals("afkstats")) {
+					// "afkstats": what the last time away gave back, and the memory now
+					LOGGER.info("[selftest] afkstats: away {}, {}; memory now {} MB, GPU {} MB, heap {} MB committed", dev.cadence.shaders.cadence.memory.AfkMemory.away(),
+						dev.cadence.shaders.cadence.memory.AfkMemory.last(), dev.cadence.metal.backend.MacSystem.footprint() >> 20,
+						dev.cadence.metal.backend.GpuMemory.allocatedBytes() >> 20, Runtime.getRuntime().totalMemory() >> 20);
+				} else if (lower.equals("ultrastats")) {
+					// "ultrastats": Frame Generation Ultra's real and generated frames in the last second and why real frames were made
+					LOGGER.info("[selftest] ultrastats: running {}, {} real/s, {} generated/s, fps {}, reasons {}", dev.cadence.metal.framegen.FrameGen.ultra(),
+						dev.cadence.metal.framegen.FrameGen.ultraRealRate(), dev.cadence.metal.framegen.FrameGen.ultraGeneratedRate(), mc.getFps(),
+						dev.cadence.metal.framegen.FrameGen.ultraReasons());
 				} else if (lower.startsWith("fgbase=")) {
 					// "fgbase=N": Frame Generation renders N frames a second whatever the preset (0: as the preset says)
 					dev.cadence.metal.framegen.FrameGen.forceBase = Integer.parseInt(lower.substring(7));

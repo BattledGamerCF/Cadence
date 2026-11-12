@@ -179,6 +179,15 @@ public final class MacSystem {
 		}
 	}
 
+	/** The game's memory footprint in bytes, as Activity Monitor shows it (-1 if unknown). */
+	public static long footprint() {
+		try {
+			return Native.footprint();
+		} catch (Throwable t) {
+			return -1;
+		}
+	}
+
 	/** How many memory-pressure changes macOS has reported. */
 	public static long memoryPressureEvents() {
 		try {

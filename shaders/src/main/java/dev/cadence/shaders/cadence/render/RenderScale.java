@@ -306,7 +306,9 @@ public final class RenderScale {
 		lastIntervalMs = intervalMs;
 		lastGpuMs = gpuMs;
 		windowCount++;
-		if (!auto) { // a fixed scale: measured (lastWindow) but never changed
+		// (a fixed scale: measured (lastWindow) but never changed; also while Frame Generation's Ultra runs, whose frames are
+		// mostly generated: their GPU time says nothing about a real frame's)
+		if (!auto || dev.cadence.metal.framegen.FrameGen.ultra()) {
 			windowStart = nowNanos;
 			frames = 0;
 			busySum = 0;

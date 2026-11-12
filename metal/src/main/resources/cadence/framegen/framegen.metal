@@ -23,7 +23,8 @@ struct Cam {
 struct Frame {
 	Cam a, b, m;      // a: the newest real frame; b: the one before it; m: the camera of the frame made here
 	float4 params;    // x: Responsive (1) or Smooth (0); y: whether frame b is usable; z: hand distance (blocks: nearer pixels
-	                  // stay where they are on screen); w: unused
+	                  // stay where they are on screen); w: Ultra (1: drawn into the game's own frame before its hand and GUI, so
+	                  // there is no GUI to keep from the newest frame)
 	float4 size;      // xy: the output size; zw: 1 / it
 };
 
@@ -76,6 +77,15 @@ struct VOut {
 	float2 uv;  // game-texture space: (0, 0) bottom left
 };
 
+// (Ultra: into the game's own target, whose first row is the bottom of the screen)
+vertex VOut fg_vs_target(uint id [[vertex_id]]) {
+	float2 p = float2((id << 1) & 2, id & 2);
+	VOut o;
+	o.pos = float4(p * 2.0f - 1.0f, 0.0f, 1.0f);
+	o.uv = float2(p.x, 1.0f - p.y);
+	return o;
+}
+
 vertex VOut fg_vs(uint id [[vertex_id]]) {
 	float2 p = float2((id << 1) & 2, id & 2);
 	VOut o;
@@ -116,8 +126,11 @@ static float3 fgColor(VOut in, constant Frame &f, texture2d<float> colorA, textu
 	constexpr sampler lin(coord::normalized, filter::linear, address::clamp_to_edge);
 	float2 uv = in.uv;
 	// drawn after the snapshot (the hand, the HUD, chat, a screen): as the newest frame has it
-	float4 fin = latest.sample(near, uv), snap = colorA.sample(near, uv);
-	if (any(abs(fin.rgb - snap.rgb) > 1.5f / 255.0f)) return fin.rgb;
+	float4 snap = colorA.sample(near, uv);
+	if (f.params.w < 0.5f) {
+		float4 fin = latest.sample(near, uv);
+		if (any(abs(fin.rgb - snap.rgb) > 1.5f / 255.0f)) return fin.rgb;
+	}
 	float here = distA.sample(near, uv).r;
 	if (here < f.params.z) return snap.rgb;  // the hand (a shader pack's frame has it in its depth): on screen as it was
 	bool smooth = f.params.x < 0.5f, haveB = f.params.y > 0.5f;
