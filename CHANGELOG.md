@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased
+## 1.1.0-beta.1 / shaders 0.3.32 (2026-11-12)
 
 - **Cadence Lite, a built-in shader pack.** The vanilla look with real shadows, a little warm sunlight and soft moonlight, waving plants, reflective water, bloom, light shafts and a gentle colour grade. Four presets: Low runs on any Mac, Ultra is a showcase for the biggest chips. Passes a preset doesn't use are switched off entirely, so they cost nothing. It's listed first in Shader Packs. It draws its own sky, sun, moon and stars (Minecraft 26 gives the sky programs no colour), and its nights are a little darker than vanilla's where only the sky lights a place.
 - **Create Shader** (Shader Packs > Create Shader...): make your own shader from Cadence Lite. Every setting says what it does and what it costs, a reference picture of one scene follows your choices, and Create saves it as a new pack and turns it on.
