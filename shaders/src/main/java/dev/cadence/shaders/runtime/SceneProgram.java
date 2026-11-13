@@ -33,7 +33,12 @@ public record SceneProgram(String name, int stage) {
     } else if (path.endsWith("/sky") || path.endsWith("/sunrise_sunset")) {
       name = "gbuffers_skybasic";
       stage = path.endsWith("/sky") ? "SKY" : "SUNSET";
-    } else if (path.contains("celestial") || path.contains("end_sky")) {
+    } else if (path.contains("end_sky")) {
+      // (Iris: the End's sky is CUSTOM_SKY, drawn by gbuffers_skytextured)
+      name = "gbuffers_skytextured";
+      stage = "CUSTOM_SKY";
+    } else if (path.contains("celestial")) {
+      // (sun, moon and End flash share this pipeline; the moon's draw is told apart in ShaderRuntime.bindUniforms)
       name = "gbuffers_skytextured";
       stage = "SUN";
     } else if (path.contains("cloud")) {
