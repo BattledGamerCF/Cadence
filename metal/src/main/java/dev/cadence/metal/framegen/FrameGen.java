@@ -98,6 +98,8 @@ public final class FrameGen {
 	/** Video Settings > Frame Generation. */
 	public static void setMode(Mode m) {
 		mode = m == null ? Mode.OFF : m;
+		smoothSlow = false;
+		slowSeconds = 0;
 		if (mode == Mode.OFF) target(0, 0);
 	}
 
@@ -123,7 +125,36 @@ public final class FrameGen {
 		if (hold) return Mode.ULTRA;
 		Mode m = mode;
 		if (m != Mode.OFF && saverUltra) return Mode.ULTRA;
+		if (m == Mode.SMOOTH && smoothSlow) return Mode.RESPONSIVE;
 		return m != Mode.OFF && m != Mode.ULTRA && saverResponsive ? Mode.RESPONSIVE : m;
+	}
+
+	/**
+	 * Smooth that couldn't hold the rate it renders at: Responsive until the mode, the rate, the pack or the window's size
+	 * changes. Smooth draws its generated frame in the real frame's work; with BSL fullscreen on Retina (60% world
+	 * resolution, 30 rendered) that work outgrew the GPU and real frames slid from 30 to 12 within a minute, where Responsive
+	 * held 30. Windowed, Smooth held 27-28.
+	 */
+	private static boolean smoothSlow;
+	private static int slowSeconds, slowBase, slowKey;
+	private static long slowCheckAt;
+
+	/** FramerateCapMixin, each frame Smooth runs: the rate it renders at, the game's frames last second, what is drawn. */
+	public static void smoothCheck(int base, int fps, int key) {
+		if (base != slowBase || key != slowKey) {
+			smoothSlow = false;
+			slowSeconds = 0;
+			slowBase = base;
+			slowKey = key;
+		}
+		long now = System.nanoTime();
+		if (smoothSlow || now - slowCheckAt < 1_000_000_000L) return;
+		slowCheckAt = now;
+		slowSeconds = fps < base * 0.8 ? slowSeconds + 1 : 0;
+		if (slowSeconds >= 3) {
+			smoothSlow = true;
+			System.out.println("[cadence] frame generation: Smooth rendered " + fps + " of " + base + " frames a second; Responsive instead");
+		}
 	}
 
 	/** Ultra's real frames a second at the least: Battery Saver's one, else the chosen floor. */

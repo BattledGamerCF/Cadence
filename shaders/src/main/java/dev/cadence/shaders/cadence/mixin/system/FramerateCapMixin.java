@@ -94,6 +94,11 @@ public abstract class FramerateCapMixin {
 			if (shown > hz) shown = base;
 			dev.cadence.metal.framegen.FrameGen.target(cadence$fgAllowed ? base : 0, shown);
 			if (dev.cadence.metal.framegen.FrameGen.running()) {
+				if (dev.cadence.metal.framegen.FrameGen.mode() == dev.cadence.metal.framegen.FrameGen.Mode.SMOOTH && shown > base) {
+					var mc = net.minecraft.client.Minecraft.getInstance();
+					dev.cadence.metal.framegen.FrameGen.smoothCheck(base, mc.getFps(),
+						31 * System.identityHashCode(dev.cadence.shaders.runtime.ShaderRuntime.get()) + mc.getWindow().getWidth() * 7919 + mc.getWindow().getHeight());
+				}
 				dev.cadence.shaders.cadence.system.FramePacing.cap(shown);
 				return base;
 			}
