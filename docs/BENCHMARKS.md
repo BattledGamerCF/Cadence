@@ -164,30 +164,45 @@ change fps. The frame rate stayed at the test's 120 fps cap either way, with the
 | Fast math for shader packs' shaders (vertex and pixel) | BSL 74 vs 70 fps (within noise) | Packs may rely on exact infinities and NaN, so math is kept exact |
 | Two Neural Engine upscaler sessions in parallel | 4.48-4.50 ms vs 4.50-4.62 ms for two tiles | The Neural Engine is already fully busy |
 | Computing a pack's per-frame values (BSL's sun, up and east directions) once per pixel instead of passing them from every vertex | 81 vs 79, 73 vs 76 and 68 vs 72 fps (BSL, 50%) | No difference. The vertex stage is not what limits a pack |
+| Ultra: a "dome" of past frames (every direction) to fill the edge a turn uncovers, instead of stretching it | The dome kept the hand from the frames it was built from and showed a seam where it met the frame | Worse than the stretch; turning already asks for a real frame every 2° |
+| Memoryless render targets for pack buffers written and never read | 0 such buffers in BSL, Complementary, Cadence Lite, Photon, Sildur's Vibrant and MakeUp | Nothing to save |
+| Reusing a pack's shadow map for 4 frames while the camera, sun and nearby mobs are still | Never still in a normal world (mobs within 64 blocks always move); same fps | No gain |
+| Pacing frames on a steady clock instead of in bursts | Cadence Lite at 60: 7.85 vs 7.61 W; BSL at 30: 6.8 vs 7.0 W | Within noise |
+| Ultra: not gathering entities for generated frames | BSL 5.56-5.60 W against 5.16-5.30 W gathering them | Used more power |
 | Drawing a pack's shadow map every 3rd frame instead of every 2nd | Every frame costs 1.15 ms more than every 2nd, so every 3rd would save about 0.4 ms (3%) | Not worth the shadows lagging behind movement |
 
 ## Power: Battery Saver
 
-These figures are the whole Mac's draw at render distance 16, fullscreen Retina, with the view turning.
+Whole Mac's draw at render distance 16, fullscreen Retina, on an M2 Air.
 
 | Setup | Without shaders | BSL |
 |---|---|---|
 | No frame cap | 24 W | |
 | 60 fps, every frame rendered | 5.0-5.2 W | 21.3-21.5 W |
-| 30 fps, every frame rendered | 3.9-4.4 W | |
-| Battery Saver before (30 rendered, 30 generated, Auto resolution) | 5.1 W | 14.4-15.5 W |
-| **Battery Saver now** | **5.2-5.7 W, a true 60** | **10.9-12.4 W, a steady 30 rendered shown as 60, 50% resolution** |
+| 30 fps, every frame rendered | 3.9-4.4 W | 9.7 W (60% resolution) |
+| Battery Saver up to 1.1.0-beta.1 (30 rendered, 60 shown, 50% resolution) | | 10.9-12.4 W, turning |
+| **Battery Saver now** | **5.2-5.7 W, a true 60** | **5.4 W still (30 shown), 6.9 W turning (60 shown)** |
 
-Without shaders, rendering a frame costs no more than generating one. Battery Saver therefore renders a true 60, which uses
-the same power, looks sharper and adds a frame less delay.
+Without shaders, rendering a frame costs no more than generating one, so Battery Saver renders a true 60: the same power,
+sharper, one frame less delay.
 
-With a shader pack, a frame is expensive. Battery Saver renders 30, shows 60, and holds the world at 50% resolution or below,
-about half of what the pack draws at 60 fps.
+With a shader pack, Battery Saver uses Ultra: a frame is rendered when the view turns or moves, at least one a second and at
+most two a second for moving mobs, and the rest are generated; 30 are shown while the camera is still. With mobs allowed to
+ask for a frame each time they moved (Ultra's usual rule), a few animals nearby kept BSL at 19 rendered a second and 7.9 W.
 
-Its frames are generated the Responsive way. The Smooth way drew 9.4-10.6 W, but at Battery Saver's low clocks its frames
-slipped to 27-29 rendered (56-58 shown). Responsive held a steady 30 (60 shown) for about 1 W more.
+## Frame Generation: Smooth at a low cap
 
-A warm Mac draws more for the same work. The higher ends of these ranges are runs right after others.
+Smooth draws its generated frame inside the next real frame's work. BSL fullscreen on Retina, 60% resolution, 30 fps cap:
+
+| Mode | Rendered a second | Whole Mac |
+|---|---|---|
+| Off | 30 | 9.7 W |
+| Responsive | 30 (60 shown) | 11.2 W |
+| Smooth | 30, falling to 12 within a minute | 6.1 W at 12 |
+| Smooth, 1920 x 1080 window | 27 | 7.3 W |
+
+When Smooth renders under 80% of its rate for 3 s it now runs as Responsive (a steady 30 in the same test), then tries Smooth
+again after a minute, and after twice as long each time it falls back again.
 
 ## Power: Frame Generation Ultra
 
@@ -233,6 +248,8 @@ GPU alone (IOReport "GPU Energy" counter), 30 s each:
 - The cost is in the picture: at 1 rendered a second, mobs, water and animated textures move once a second, and when
   turning, the side the old frame never saw is filled from its nearest edge until the next frame is rendered.
 - In the 5-rendered run mobs nearby triggered more real frames than in the 10-rendered run, so it drew a little more.
+- With a pack, a generated frame no longer chooses which chunk sections cast shadows (Java Flight Recorder: level extraction
+  on the render thread halved, 48 to 24 samples in 30 s). Whole-Mac power stayed within run-to-run noise (5.2-5.8 W).
 
 ### Away from the keyboard
 

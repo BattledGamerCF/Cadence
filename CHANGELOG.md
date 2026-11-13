@@ -2,6 +2,20 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
+## Unreleased
+
+- **Battery Saver uses Ultra with shader packs.** A frame is rendered when the view changes (at least one a second, at most two a second for moving mobs) and the rest are generated; 30 are shown while the camera is still. BSL fullscreen: 5.4 W still and 6.9 W turning, against 10.9-12.4 W before.
+- **Smooth falls back to Responsive when it can't keep up.** With BSL fullscreen on Retina at a 30 fps cap, Smooth's real frames slid from 30 to 12 within a minute. After 3 s under 80% of its rate it now runs as Responsive (a steady 30 in the same test) and tries Smooth again after a minute, then after longer waits.
+- Ultra's generated frames with a shader pack no longer choose shadow-casting chunk sections, which halves their level-extraction time on the render thread.
+- The End's sky is tagged with Iris's `CUSTOM_SKY` stage instead of `SUN`.
+- Fix: under Ultra, a Nether portal's or nausea's swirl pulsed on and off; every frame is now rendered while it shows.
+- Fix: on battery without a shader pack, the away state never ended after the first time away, and Java kept its tightest heap settings for the session.
+- Fix: switching shader packs with HDR on could give the pack still on screen the new pack's HDR setting.
+- Fix: memory given back while away now also works where Frame Generation can't run (heap and native memory only), never changes Java's heap settings when Cadence's heap trim is off, and releases the Neural interpolator.
+- Fix: away detection also counts turning the view (controllers) and taking damage, and its minute starts in a world rather than at launch.
+- Fix: mods shipped inside another mod's jar are included in the OpenGL-user scan.
+- Fix: Create Shader's settings overlapped its buttons in a default-size window, and a name already used by a pack overwrote it; the name now gets " (2)".
+
 ## 1.1.0-beta.1 / shaders 0.3.32 (2026-11-12)
 
 - **Cadence Lite, a built-in shader pack.** The vanilla look with real shadows, a little warm sunlight and soft moonlight, waving plants, reflective water, bloom, light shafts and a gentle colour grade. Four presets: Low runs on any Mac, Ultra is a showcase for the biggest chips. Passes a preset doesn't use are switched off entirely, so they cost nothing. It's listed first in Shader Packs. It draws its own sky, sun, moon and stars (Minecraft 26 gives the sky programs no colour), and its nights are a little darker than vanilla's where only the sky lights a place.
