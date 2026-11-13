@@ -112,11 +112,44 @@ public final class FrameGen {
 	 */
 	public static volatile boolean saverResponsive;
 
-	/** The mode in use: the chosen one, Responsive while Battery Saver asks for it. */
+	/**
+	 * Battery Saver with a shader pack: Ultra whatever the chosen mode (unless Off), at least one rendered frame a second, 30
+	 * shown while the camera is still and the screen's rate while it moves (FramerateCapMixin). Measured with BSL on an M2 Air.
+	 */
+	public static volatile boolean saverUltra;
+
+	/** The mode in use: the chosen one, Ultra while Battery Saver or the away hold asks for it. */
 	public static Mode effective() {
 		if (hold) return Mode.ULTRA;
 		Mode m = mode;
+		if (m != Mode.OFF && saverUltra) return Mode.ULTRA;
 		return m != Mode.OFF && m != Mode.ULTRA && saverResponsive ? Mode.RESPONSIVE : m;
+	}
+
+	/** Ultra's real frames a second at the least: Battery Saver's one, else the chosen floor. */
+	public static double floorRate() {
+		return saverUltra && mode != Mode.ULTRA ? 1 : ultraFloor;
+	}
+
+	private static long lastMotion;
+	private static double mX = Double.NaN, mY, mZ;
+	private static final org.joml.Quaternionf mRot = new org.joml.Quaternionf(), mNow = new org.joml.Quaternionf();
+
+	/** Whether the camera has stood still (no turn or move) for half a second (Ultra; FramerateCapMixin). */
+	public static boolean still() {
+		return System.nanoTime() - lastMotion > 500_000_000L;
+	}
+
+	/** Each frame's camera, before Ultra decides: any turn or move since the last frame counts as motion. */
+	private static void trackMotion(long now, double x, double y, double z, Matrix4fc rotation) {
+		mNow.setFromNormalized(rotation);
+		boolean moved = Double.isNaN(mX) || Math.abs(x - mX) + Math.abs(y - mY) + Math.abs(z - mZ) > 1e-3
+			|| Math.toDegrees(mNow.difference(mRot, new org.joml.Quaternionf()).angle()) > 0.05;
+		if (moved) lastMotion = now;
+		mX = x;
+		mY = y;
+		mZ = z;
+		mRot.set(mNow);
 	}
 
 	/**
@@ -500,6 +533,7 @@ public final class FrameGen {
 			if (LOG && ultra()) System.out.println("cadence-fg ultra: " + ultraRealRate + " real, " + ultraGenRate + " generated /s; real frames because " + whyCounts);
 		}
 		if (!ultra() || rotation == null || projection == null) return;
+		trackMotion(now, x, y, z, rotation);
 		String why = ultraWhy(now, x, y, z, rotation);
 		if (why != null) {
 			ultraReal++;
@@ -528,7 +562,7 @@ public final class FrameGen {
 		if (MetalBridge.isFloatFrame(target.getColorTexture()) != floatSnap) return "size";
 		if (hold) return null;
 		int a = slot;
-		if (now - slotTime[a] >= (long) (1e9 / Math.max(0.1, Math.min(60, ultraFloor)))) return "floor";
+		if (now - slotTime[a] >= (long) (1e9 / Math.max(0.1, Math.min(60, floorRate())))) return "floor";
 		if (ultraTurn > 0) {
 			qNow.setFromNormalized(rotation);
 			qSnap.setFromNormalized(slotRot[a]);
@@ -539,7 +573,9 @@ public final class FrameGen {
 			if (dx * dx + dy * dy + dz * dz > ultraMove * ultraMove) return "move";
 		}
 		if (mc.options.keyAttack.isDown() || mc.options.keyUse.isDown() || player.hurtTime > 0 || player.isUsingItem()) return "action";
-		if (ultraEntityMove > 0) {
+		// (Battery Saver: moving mobs ask for at most two real frames a second; at the usual rate a few nearby animals kept
+		// BSL near 19 real frames a second, 7.9 W instead of 4-5)
+		if (ultraEntityMove > 0 && (!(saverUltra && mode != Mode.ULTRA) || now - slotTime[a] >= 500_000_000L)) {
 			double limit = ultraEntityMove * ultraEntityMove;
 			for (int i = 0; i < entityCount; i++) {
 				var e = mc.level.getEntity(entityIds[i]);

@@ -229,7 +229,7 @@ public final class CadenceSettings {
 			apply(next);
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES, "One click sets the options below.",
-			"Battery Saver|the least power that stays smooth: a true 60 fps without shaders (about 5 W for the whole Mac on an M2 Air); with them 30 rendered and 60 shown, the world at half resolution (11-12 W with BSL, about half of Recommended's)",
+			"Battery Saver|the least power that stays smooth: a true 60 fps without shaders (about 5 W for the whole Mac on an M2 Air); with them a frame is rendered only when the view changes (at least one a second) and the rest are generated, 30 shown while still and 60 while moving (5-7 W with BSL, a quarter of Recommended's)",
 			"Recommended|smooth 60 fps, sharp whenever it can be",
 			"Max Quality|always full sharpness; the Mac may run hot",
 			"Max FPS|Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air",

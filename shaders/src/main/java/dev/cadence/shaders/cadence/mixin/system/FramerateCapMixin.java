@@ -59,8 +59,11 @@ public abstract class FramerateCapMixin {
 		// to the display's rate; only where that is more than the base (on a 60 Hz screen: Battery Saver 30 -> 60, the others a
 		// true 60). Not with Max FPS (as many real frames as the Mac makes) or outside a world.
 		// (and not while vanilla holds the rate down itself: idle (its Inactivity FPS Limit), minimized, menus)
-		// (with a pack: Responsive, whose frames hold a steady 30 at Battery Saver's low clocks, FrameGen.saverResponsive)
+		// (Responsive where Battery Saver doesn't use Ultra: its frames hold a steady 30 at low clocks, FrameGen.saverResponsive)
 		dev.cadence.metal.framegen.FrameGen.saverResponsive = cadence$saver;
+		// (with a pack, Battery Saver is Ultra: one rendered frame a second at the least, two at most for moving mobs, 30 shown
+		// while the camera is still; BSL on an M2 Air 5.4 W still, 6.9 W turning)
+		dev.cadence.metal.framegen.FrameGen.saverUltra = cadence$saver && cadence$fgAllowed && dev.cadence.shaders.runtime.ShaderRuntime.get() != null;
 		// (Ultra: every frame runs through the game at the screen's rate, the world drawn only when something asks for it,
 		// FrameGen.ultraBegin)
 		// (AfkMemory's hold: the same, at whatever rate the game holds an idle player to)
@@ -69,7 +72,9 @@ public abstract class FramerateCapMixin {
 			&& !dev.cadence.shaders.cadence.render.PhotoMode.active();
 		if (dev.cadence.metal.framegen.FrameGen.effective() == dev.cadence.metal.framegen.FrameGen.Mode.ULTRA && (playing || hold)) {
 			int shown = hold ? Math.max(2, Math.min(30, cap)) : Math.min(cap, HeatControl.refreshHz());  // (a held picture needs no more than 30)
-			dev.cadence.metal.framegen.FrameGen.target(cadence$fgAllowed ? Math.max(1, Math.min(shown - 1, (int) Math.ceil(dev.cadence.metal.framegen.FrameGen.ultraFloor))) : 0, shown);
+			if (dev.cadence.metal.framegen.FrameGen.saverUltra && !hold && dev.cadence.metal.framegen.FrameGen.still()) shown = Math.min(shown, 30);
+			double floor = dev.cadence.metal.framegen.FrameGen.floorRate();
+			dev.cadence.metal.framegen.FrameGen.target(cadence$fgAllowed ? Math.max(1, Math.min(shown - 1, (int) Math.ceil(floor))) : 0, shown);
 			if (dev.cadence.metal.framegen.FrameGen.running()) {
 				dev.cadence.shaders.cadence.system.FramePacing.cap(shown);
 				return shown;
