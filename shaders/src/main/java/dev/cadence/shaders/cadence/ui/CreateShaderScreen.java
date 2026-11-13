@@ -212,15 +212,17 @@ public final class CreateShaderScreen extends Screen {
 	protected void init() {
 		this.buttons.clear();
 		int left = this.leftWidth(), colW = Math.max(80, (left - 12) / 2), x0 = 8, y0 = 30;
+		// (rows packed closer on a short screen: they end above the status line and the preset button, BH11-09)
+		int rows = (SETTINGS.size() + 1) / 2, rowH = Math.max(14, Math.min(22, (this.height - 28 - 24 - 14 - y0) / rows));
 		for (int i = 0; i < SETTINGS.size(); i++) {
 			Setting s = SETTINGS.get(i);
-			int x = x0 + (i % 2) * (colW + 4), y = y0 + (i / 2) * 22;
+			int x = x0 + (i % 2) * (colW + 4), y = y0 + (i / 2) * rowH;
 			Button b = Button.builder(Component.empty(), btn -> {
 				int step = this.minecraft.hasShiftDown() ? s.values().length - 1 : 1;
 				this.values.put(s.key(), s.values()[(this.index(s) + step) % s.values().length]);
 				this.described = s;
 				this.refresh();
-			}).bounds(x, y, colW, 20).build();
+			}).bounds(x, y, colW, Math.min(20, rowH - 2)).build();
 			this.buttons.add(this.addRenderableWidget(b));
 		}
 		int bottom = this.height - 28;
@@ -279,7 +281,7 @@ public final class CreateShaderScreen extends Screen {
 		} else {
 			g.text(this.font, "No reference picture in this build.", px, 30, 0xFF9A9AA8);
 		}
-		if (!this.status.isEmpty()) g.text(this.font, this.status, 8, this.height - 64, this.status.startsWith("Couldn") ? 0xFFE88080 : 0xFF7CE08A);
+		if (!this.status.isEmpty()) g.text(this.font, this.status, 8, this.height - 64 + 2, this.status.startsWith("Couldn") ? 0xFFE88080 : 0xFF7CE08A);
 	}
 
 	// ------------------------------------------------------------------ the reference picture
@@ -386,8 +388,10 @@ public final class CreateShaderScreen extends Screen {
 		String n = name.strip().replaceAll("[\\\\/:*?\"<>|]", "");
 		if (n.isEmpty()) n = "My Shader";
 		Path dir = ShaderToggle.packsDirectory();
+		// (never over another pack or the built-in one's settings: macOS names ignore case, BH11-09)
 		String file = n + ".zip";
-		if (file.equals(BuiltinPacks.CADENCE_LITE)) file = n + " (mine).zip";
+		if (file.equalsIgnoreCase(BuiltinPacks.CADENCE_LITE)) file = n + " (mine).zip";
+		for (int k = 2; Files.exists(dir.resolve(file)) || file.equalsIgnoreCase(BuiltinPacks.CADENCE_LITE); k++) file = n + " (" + k + ").zip";
 		try (InputStream in = CreateShaderScreen.class.getResourceAsStream("/cadence/cadence-lite.zip")) {
 			if (in == null) throw new IOException("Cadence Lite isn't in this build");
 			Files.createDirectories(dir);

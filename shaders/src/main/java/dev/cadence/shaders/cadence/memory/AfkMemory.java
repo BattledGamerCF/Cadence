@@ -36,6 +36,7 @@ public final class AfkMemory {
 	public static volatile Boolean forced;
 
 	private static volatile long lastInput = System.nanoTime();
+	private static float lastYaw, lastPitch;
 	private static boolean away;
 	private static int step;
 	private static long awaySince, stepAt;
@@ -64,6 +65,18 @@ public final class AfkMemory {
 	public static void frame() {
 		Minecraft mc = Minecraft.getInstance();
 		long now = System.nanoTime();
+		// (activity the input hook doesn't see: a controller mod or a bot turning the view, or the player being hurt; and the
+		// minute starts in a world, not at launch, BH11-10. Riding turns the view by itself, so it doesn't count then)
+		var player = mc.player;
+		if (mc.level == null || player == null) {
+			lastInput = now;
+		} else {
+			float yaw = player.getYRot(), pitch = player.getXRot();
+			if (player.hurtTime > 0 || !player.isPassenger() && (Math.abs(yaw - lastYaw) > 0.5f || Math.abs(pitch - lastPitch) > 0.5f))
+				lastInput = now;
+			lastYaw = yaw;
+			lastPitch = pitch;
+		}
 		boolean want = forced != null ? forced : ENABLED && mc.level != null && now - lastInput > AFTER;
 		if (want && mc.level == null) want = false;
 		if (want != away) {
@@ -83,15 +96,20 @@ public final class AfkMemory {
 		Runtime rt = Runtime.getRuntime();
 		beforeHeap = rt.totalMemory();
 		FrameGen.hold = true;
-		LOGGER.info("[cadence] Away: holding the picture; memory {} MB (GPU {} MB, Java heap {} MB committed)", mb(beforeFootprint), mb(beforeGpu), mb(beforeHeap));
+		LOGGER.info("[cadence] Away: holding the picture where Frame Generation can; memory {} MB (GPU {} MB, Java heap {} MB committed)", mb(beforeFootprint), mb(beforeGpu), mb(beforeHeap));
 	}
 
 	/** Once the held frames are being generated: compress the picture, let the pack's targets go, then trim. */
 	private static void steps(long now) {
-		if (step == 0 && FrameGen.generating()) {
-			freedPicture = FrameGen.holdCompress();
-			ShaderRuntime runtime = ShaderRuntime.get();
-			if (runtime != null) freedPack = runtime.releaseTargets();
+		// (no generated frame 5 s in: Frame Generation can't run here (Max FPS preset, World Resolution under 100% without a pack,
+		// no generator), so the world is still drawn: only the heap and native pages are trimmed, BH11-06)
+		boolean drawing = step == 0 && !FrameGen.generating() && now - awaySince > 5_000_000_000L;
+		if (step == 0 && (FrameGen.generating() || drawing)) {
+			if (!drawing) {
+				freedPicture = FrameGen.holdCompress();
+				ShaderRuntime runtime = ShaderRuntime.get();
+				if (runtime != null) freedPack = runtime.releaseTargets();
+			}
 			HeapTrim.away(true);
 			NativeTrim.purge();
 			step = 1;

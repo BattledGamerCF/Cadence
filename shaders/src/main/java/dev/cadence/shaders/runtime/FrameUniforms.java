@@ -41,7 +41,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class FrameUniforms {
   /** The active pack writes HDR itself (cadence.hdr=true in its shaders.properties): no Auto-HDR expansion. */
-  static volatile boolean packHdr;
+  boolean packHdr;
 
   private static final float[] IDENTITY = new Matrix4f().get(new float[16]);
   /** Cadence: Iris's full-screen projection (its quad's corners are 0..1). */

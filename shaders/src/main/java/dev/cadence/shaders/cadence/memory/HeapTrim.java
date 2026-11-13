@@ -96,7 +96,9 @@ public final class HeapTrim {
 	 * so the heap shrinks to what is live. Back: the usual ratios (or memory pressure's), the heap grows again as it is used.
 	 */
 	public static void away(boolean on) {
-		if (on == away) return;
+		// (only where the trim is applied: -Dcadence.heapTrim=false, a small -Xmx or more than 16 GB keep the JVM as launched,
+		// BH11-04)
+		if (on == away || !applied) return;
 		away = on;
 		if (on) {
 			set("MinHeapFreeRatio", "5");

@@ -75,13 +75,17 @@ public final class GlFallback {
 		StringBuilder key = new StringBuilder();
 		for (ModContainer mod : loader.getAllMods()) {
 			String id = mod.getMetadata().getId();
-			if (builtin(id) || KNOWN_FINE.contains(id) || mod.getContainingMod().isPresent()) continue;  // (nested jars are searched with their parent)
+			// (nested jar-in-jar mods are searched too: their classes are inside the parent's jar file, which its walk doesn't
+			// open, BH11-08)
+			if (builtin(id) || KNOWN_FINE.contains(id)) continue;
+			String parent = mod.getContainingMod().map(p -> p.getMetadata().getId()).orElse(null);
+			if (parent != null && (builtin(parent) || KNOWN_FINE.contains(parent))) continue;  // (tested along with its parent)
 			mods.add(mod);
 		}
 		mods.sort(java.util.Comparator.comparing(m -> m.getMetadata().getId()));
 		for (ModContainer mod : mods) key.append(mod.getMetadata().getId()).append('@').append(mod.getMetadata().getVersion().getFriendlyString()).append(' ');
 		Path cache = loader.getConfigDir().resolve("cadence-gl-users.txt");
-		String keyLine = "v2 " + Integer.toHexString(key.toString().hashCode());
+		String keyLine = "v3 " + Integer.toHexString(key.toString().hashCode());
 		if (Files.isRegularFile(cache)) {
 			List<String> lines = Files.readAllLines(cache);
 			if (!lines.isEmpty() && lines.get(0).equals(keyLine)) return List.copyOf(lines.subList(1, lines.size()));

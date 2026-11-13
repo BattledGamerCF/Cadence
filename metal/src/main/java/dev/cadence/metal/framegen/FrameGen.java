@@ -125,35 +125,46 @@ public final class FrameGen {
 		if (hold) return Mode.ULTRA;
 		Mode m = mode;
 		if (m != Mode.OFF && saverUltra) return Mode.ULTRA;
-		if (m == Mode.SMOOTH && smoothSlow) return Mode.RESPONSIVE;
+		if (m == Mode.SMOOTH && smoothSlow && dev.cadence.metal.backend.FrameWait.ENABLED) return Mode.RESPONSIVE;
 		return m != Mode.OFF && m != Mode.ULTRA && saverResponsive ? Mode.RESPONSIVE : m;
 	}
 
 	/**
-	 * Smooth that couldn't hold the rate it renders at: Responsive until the mode, the rate, the pack or the window's size
-	 * changes. Smooth draws its generated frame in the real frame's work; with BSL fullscreen on Retina (60% world
-	 * resolution, 30 rendered) that work outgrew the GPU and real frames slid from 30 to 12 within a minute, where Responsive
-	 * held 30. Windowed, Smooth held 27-28.
+	 * Smooth that couldn't hold the rate it renders at: Responsive for a while (a minute, doubling each time it falls back
+	 * again), until the mode, the rate, the pack or the window's size changes. Smooth draws its generated frame in the real
+	 * frame's work; with BSL fullscreen on Retina (60% world resolution, 30 rendered) that work outgrew the GPU and real
+	 * frames slid from 30 to 12 within a minute, where Responsive held 30. Windowed, Smooth held 27-28. (Retried, as a dip can
+	 * also come from loading chunks, BH11-07.)
 	 */
 	private static boolean smoothSlow;
 	private static int slowSeconds, slowBase, slowKey;
-	private static long slowCheckAt;
+	private static long slowCheckAt, slowUntil, slowFor = 60_000_000_000L;
 
-	/** FramerateCapMixin, each frame Smooth runs: the rate it renders at, the game's frames last second, what is drawn. */
+	/** FramerateCapMixin, each frame Smooth is chosen: the rate it renders at, the game's frames last second, what is drawn. */
 	public static void smoothCheck(int base, int fps, int key) {
 		if (base != slowBase || key != slowKey) {
 			smoothSlow = false;
 			slowSeconds = 0;
+			slowFor = 60_000_000_000L;
 			slowBase = base;
 			slowKey = key;
 		}
 		long now = System.nanoTime();
-		if (smoothSlow || now - slowCheckAt < 1_000_000_000L) return;
+		if (smoothSlow && now - slowUntil > 0) {
+			smoothSlow = false;
+			slowSeconds = -2;  // (the first seconds back are Smooth settling in)
+			slowCheckAt = now;
+		}
+		// (only while Smooth itself runs: Battery Saver's Responsive says nothing about it)
+		if (smoothSlow || effective() != Mode.SMOOTH || now - slowCheckAt < 1_000_000_000L) return;
 		slowCheckAt = now;
-		slowSeconds = fps < base * 0.8 ? slowSeconds + 1 : 0;
+		slowSeconds = fps < base * 0.8 ? slowSeconds + 1 : Math.min(0, slowSeconds + 1);
 		if (slowSeconds >= 3) {
 			smoothSlow = true;
-			System.out.println("[cadence] frame generation: Smooth rendered " + fps + " of " + base + " frames a second; Responsive instead");
+			slowUntil = now + slowFor;
+			System.out.println("[cadence] frame generation: Smooth rendered " + fps + " of " + base + " frames a second; Responsive for "
+				+ slowFor / 1_000_000_000L + " s");
+			slowFor = Math.min(slowFor * 2, 16 * 60_000_000_000L);
 		}
 	}
 
@@ -326,7 +337,12 @@ public final class FrameGen {
 	 */
 	public static void beforePresent(long latestTexture) {
 		latest = latestTexture;
-		if (effective() == Mode.ULTRA) return;  // (Ultra's frames are the game's own: presented as they are)
+		if (effective() == Mode.ULTRA) {
+			// (Ultra's frames are the game's own: presented as they are. Neural's interpolator, if it was running, is let go: its
+			// session, buffers and model aren't needed while Ultra (Battery Saver, the away hold) is in effect, BH11-05)
+			if (neuralState != 0 && fg != 0) neuralState = FrameGenNative.neural(fg, ctx, false);
+			return;
+		}
 		boolean fresh = frames != presented;  // (a snapshot since the last present)
 		if (running() && !fresh) {
 			if (++presentsWithout > 30) {
@@ -546,9 +562,9 @@ public final class FrameGen {
 	}
 
 	/**
-	 * GameRenderer.render, before anything is drawn: is this frame's world generated? The camera as the game extracted it this
-	 * frame (position, rotation) and the projection the world would be drawn with (view bobbing included). A real frame when
-	 * anything asks for one.
+	 * GameRenderer.extract, once the camera is extracted and before the level is: is this frame's world generated? The camera
+	 * as the game extracted it this frame (position, rotation) and the projection the world would be drawn with (view bobbing
+	 * included). A real frame when anything asks for one.
 	 */
 	public static void ultraBegin(double x, double y, double z, Matrix4fc rotation, Matrix4fc projection) {
 		generating = false;
@@ -580,6 +596,9 @@ public final class FrameGen {
 		uProj.set(projection);
 	}
 
+	/** The portal or nausea swirl is on screen (FrameGenUltraMixin): every frame rendered. */
+	public static volatile boolean warped;
+
 	/** Why this frame must be real (null: it can be generated). */
 	private static String ultraWhy(long now, double x, double y, double z, Matrix4fc rotation) {
 		if (fg == 0 || slot < 0) return "start";
@@ -604,6 +623,7 @@ public final class FrameGen {
 			if (dx * dx + dy * dy + dz * dz > ultraMove * ultraMove) return "move";
 		}
 		if (mc.options.keyAttack.isDown() || mc.options.keyUse.isDown() || player.hurtTime > 0 || player.isUsingItem()) return "action";
+		if (warped) return "warp";
 		// (Battery Saver: moving mobs ask for at most two real frames a second; at the usual rate a few nearby animals kept
 		// BSL near 19 real frames a second, 7.9 W instead of 4-5)
 		if (ultraEntityMove > 0 && (!(saverUltra && mode != Mode.ULTRA) || now - slotTime[a] >= 500_000_000L)) {

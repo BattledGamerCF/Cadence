@@ -90,7 +90,8 @@ public final class ShaderRuntime implements AutoCloseable {
     this.pack = pack;
     this.options = Map.copyOf(options);
     this.properties = properties;
-    FrameUniforms.packHdr = "true".equalsIgnoreCase(properties.get("cadence.hdr", "false").strip());
+    // (this runtime's own: a switch prepares it on its worker while the old pack still draws, BH11-03)
+    uniforms.packHdr = "true".equalsIgnoreCase(properties.get("cadence.hdr", "false").strip());
     String materialPath = properties.get("materialPalette", "");
     materialPalette =
         materialPath.isEmpty() ? null : MaterialPalette.parse(pack.text(materialPath));

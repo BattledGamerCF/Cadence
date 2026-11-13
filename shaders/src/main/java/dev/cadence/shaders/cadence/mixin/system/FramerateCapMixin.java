@@ -15,6 +15,8 @@ public abstract class FramerateCapMixin {
 		dev.cadence.shaders.cadence.render.AutoRenderDistance.check();
 		dev.cadence.shaders.cadence.server.ServerChunks.check();
 		dev.cadence.shaders.cadence.server.ServerChunks.frame();
+		// (before any early return below: going away and coming back are seen whatever the preset, BH11-02)
+		dev.cadence.shaders.cadence.memory.AfkMemory.frame();
 		// (Photo Mode's countdown runs on ticks without a screen: one opening mid-countdown cancels the shot, BH4-14)
 		if (dev.cadence.shaders.cadence.render.PhotoMode.active() && net.minecraft.client.Minecraft.getInstance().gui.screen() != null)
 			dev.cadence.shaders.cadence.render.PhotoMode.cancel(net.minecraft.client.Minecraft.getInstance());
@@ -66,8 +68,7 @@ public abstract class FramerateCapMixin {
 		dev.cadence.metal.framegen.FrameGen.saverUltra = cadence$saver && cadence$fgAllowed && dev.cadence.shaders.runtime.ShaderRuntime.get() != null;
 		// (Ultra: every frame runs through the game at the screen's rate, the world drawn only when something asks for it,
 		// FrameGen.ultraBegin)
-		// (AfkMemory's hold: the same, at whatever rate the game holds an idle player to)
-		dev.cadence.shaders.cadence.memory.AfkMemory.frame();
+		// (AfkMemory's hold: the same, at whatever rate the game holds an idle player to; AfkMemory.frame() runs at the top)
 		boolean hold = dev.cadence.metal.framegen.FrameGen.hold && net.minecraft.client.Minecraft.getInstance().level != null
 			&& !dev.cadence.shaders.cadence.render.PhotoMode.active();
 		if (dev.cadence.metal.framegen.FrameGen.effective() == dev.cadence.metal.framegen.FrameGen.Mode.ULTRA && (playing || hold)) {
