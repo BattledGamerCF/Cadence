@@ -30,6 +30,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class LevelExtractorShaderMixin {
   @Shadow private SectionUpdateTracker sectionUpdateTracker;
 
+  private static final boolean SKIP_GENERATED =
+      !"true".equals(System.getProperty("cadence.fg.ultraShadowSections"));
+  private static final ObjectArrayList<SectionRenderDispatcher.RenderSection> NO_SECTIONS =
+      new ObjectArrayList<>();
+
   @Inject(method = "extract", at = @At("HEAD"))
   private void shaders$beginExtraction(CallbackInfo callback) {
     FeatureDrawContext.beginExtraction();
@@ -66,6 +71,9 @@ public abstract class LevelExtractorShaderMixin {
                   "Lnet/minecraft/client/renderer/LevelRenderer;visibleSections()Lit/unimi/dsi/fastutil/objects/ObjectArrayList;"))
   private ObjectArrayList<SectionRenderDispatcher.RenderSection> shaders$shadowSections(
       LevelRenderer renderer) {
+    // Cadence (Frame Generation: Ultra): a generated frame draws no world, so the light-view sections aren't chosen for it
+    // (most of the render thread's time in such a frame); their dirty sections are picked up by the next real frame.
+    if (SKIP_GENERATED && dev.cadence.metal.framegen.FrameGen.generating()) return NO_SECTIONS;
     return ShadowRenderer.extractionSections(
         renderer, SceneExtractionRequest.Purpose.DIRTY_SECTIONS, sectionUpdateTracker);
   }

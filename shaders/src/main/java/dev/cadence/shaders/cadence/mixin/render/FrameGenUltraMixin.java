@@ -37,8 +37,24 @@ abstract class FrameGenUltraMixin {
 
 	@Unique private static final Matrix4f CADENCE_PROJ = new Matrix4f();
 
+	@Unique private static boolean cadence$decided;
+
+	/** Decided once the camera is extracted and before the level is (a generated frame skips some of that: ShadowRenderer). */
+	@Inject(method = "extract", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/extract/LevelExtractor;extract(Lnet/minecraft/client/DeltaTracker;Lnet/minecraft/client/Camera;F)V"))
+	private void cadence$ultraDecide(CallbackInfo ci) {
+		cadence$decide();
+		cadence$decided = true;
+	}
+
 	@Inject(method = "render", at = @At("HEAD"))
 	private void cadence$ultraBegin(CallbackInfo ci) {
+		// (no level extracted this frame: decided here)
+		if (!cadence$decided) cadence$decide();
+		cadence$decided = false;
+	}
+
+	@Unique
+	private void cadence$decide() {
 		if (FrameGen.effective() != FrameGen.Mode.ULTRA) {
 			FrameGen.ultraBegin(0, 0, 0, null, null);  // (keeps its per-second counts and "not generating")
 			return;
@@ -54,6 +70,11 @@ abstract class FrameGenUltraMixin {
 		bobHurt(cam, pose);
 		if (state.optionsRenderState.bobView) bobView(cam, pose);
 		CADENCE_PROJ.set(cam.projectionMatrix).mul(pose.last().pose());
+		// (a portal's or nausea's swirl warps the projection further in renderLevel: every frame is rendered while it shows,
+		// else generated frames would pulse between warped and plain, BH11-01)
+		var player = state.levelRenderState.playerRenderState;
+		FrameGen.warped = state.optionsRenderState.screenEffectScale > 0
+			&& Math.max(player.portalEffectIntensity, player.nauseaEffectIntensity) > 0;
 		FrameGen.ultraBegin(cam.pos.x, cam.pos.y, cam.pos.z, cam.viewRotationMatrix, CADENCE_PROJ);
 	}
 
