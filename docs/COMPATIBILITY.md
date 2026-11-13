@@ -55,7 +55,7 @@ There were no errors from Cadence or between the mods.
 | Continuity | 3.0.1 | Works: connected glass. Its built-in "Default Connected Textures" resource pack needs to be on, as without Cadence. |
 | ImmediatelyFast | 1.17.1 | Works: HUD, chat and text. |
 | Zoomify | 2.17.0 | Works: hold-to-zoom. |
-| Dynamic FPS | 3.11.10 | Works: caps the frame rate when the window is in the background (60 fps by default). |
+| Dynamic FPS | 3.11.10 | Works: caps the frame rate when the window is in the background (60 fps by default). While it sets the rate (window in the background, or an idle condition other than Vanilla), Cadence's own frame-rate decisions (Frame Generation, Battery Saver, Heat Control, Shader FPS Cap) step aside. |
 
 Cadence's settings screen showed "Compatibility: 6 areas use vanilla code for Dynamic FPS, Xaero's Minimap, Lithium,
 Zoomify, EntityCulling". These are the places where those mods change the same code as Cadence. The rest of Cadence stays
