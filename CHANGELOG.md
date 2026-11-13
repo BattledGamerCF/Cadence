@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## Unreleased
+## 1.1.0-beta.2 / shaders 0.3.33 (not yet released)
 
 - **Battery Saver uses Ultra with shader packs.** A frame is rendered when the view changes (at least one a second, at most two a second for moving mobs) and the rest are generated; 30 are shown while the camera is still. BSL fullscreen: 5.4 W still and 6.9 W turning, against 10.9-12.4 W before.
 - **Smooth falls back to Responsive when it can't keep up.** With BSL fullscreen on Retina at a 30 fps cap, Smooth's real frames slid from 30 to 12 within a minute. After 3 s under 80% of its rate it now runs as Responsive (a steady 30 in the same test) and tries Smooth again after a minute, then after longer waits.
