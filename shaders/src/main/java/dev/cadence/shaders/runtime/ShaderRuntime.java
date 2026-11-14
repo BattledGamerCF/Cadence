@@ -75,6 +75,7 @@ public final class ShaderRuntime implements AutoCloseable {
   private PackRenderTargets targets;
   private PackTextures textures;
   private MaterialAtlas materialAtlas;
+  private PbrAtlas pbrAtlas;
   private GpuTexture blockAtlas;
   private PackMipmaps mipmaps;
   private UnusedMipmaps unusedMipmaps;
@@ -346,6 +347,12 @@ public final class ShaderRuntime implements AutoCloseable {
         depthMerge = new PackDepthMerge(device());
         dimension = nextDimension;
         warmOtherDimensions();
+      }
+      if (programs.readsSampler("normals") || programs.readsSampler("specular")) {
+        if (pbrAtlas == null) pbrAtlas = new PbrAtlas(device());
+        pbrAtlas.refresh(
+            (TextureAtlas) minecraft.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS),
+            minecraft.getResourceManager());
       }
       if (programs.readsSampler("materialtex")) {
         if (materialAtlas == null) {
@@ -1321,8 +1328,13 @@ public final class ShaderRuntime implements AutoCloseable {
           texture = textures.noise;
           filter = textures.noiseSampler();
         }
-        case NORMAL -> texture = textures.normal;
-        case SPECULAR -> texture = textures.black;
+        case NORMAL, SPECULAR -> {
+          var original = supplied.get(pipeline.primarySampler());
+          GpuTexture albedo = original == null || original.texture() == null ? null : original.texture().texture();
+          PackTexture pbr = pbrAtlas == null || albedo == null ? null
+              : sampler.kind() == PackPipeline.SamplerKind.NORMAL ? pbrAtlas.normalFor(albedo) : pbrAtlas.specularFor(albedo);
+          texture = pbr != null ? pbr : sampler.kind() == PackPipeline.SamplerKind.NORMAL ? textures.normal : textures.black;
+        }
         case MATERIAL -> {
           if (materialAtlas == null) throw new IllegalStateException("Material atlas not prepared");
           var original = supplied.get(pipeline.primarySampler());
@@ -1728,6 +1740,10 @@ public final class ShaderRuntime implements AutoCloseable {
     dev.cadence.shaders.cadence.render.DistantTerrain.want(false);
     suspend();
     disposeGraph();
+    if (pbrAtlas != null) {
+      pbrAtlas.close();
+      pbrAtlas = null;
+    }
     if (materialAtlas != null) {
       materialAtlas.close();
       materialAtlas = null;

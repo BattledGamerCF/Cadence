@@ -98,4 +98,13 @@ public final class ModConflicts {
 			dev.cadence.metal.system.Lang.literal("You can keep Lithium"),
 			dev.cadence.metal.system.Lang.literal("Cadence already does its job (Cadence Logic), so Cadence's version steps aside while Lithium is installed."));
 	}
+
+	/** Dynamic FPS installed: said every launch. It takes the frame-rate limit away from Battery Saver and Frame Generation. */
+	public static void dynamicFpsNotice() {
+		if (!FabricLoader.getInstance().isModLoaded("dynamic_fps") || System.getProperty("cadence.selftest") != null) return;
+		Minecraft mc = Minecraft.getInstance();
+		SystemToast.addOrUpdate(mc.gui.toastManager(), new SystemToast.SystemToastId(10001L),
+			dev.cadence.metal.system.Lang.literal("Remove Dynamic FPS"),
+			dev.cadence.metal.system.Lang.literal("Cadence already does what it does, and it overrides Battery Saver and Frame Generation."));
+	}
 }

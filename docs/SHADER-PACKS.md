@@ -264,9 +264,7 @@ Measured and dropped:
 
 ## Not supported yet
 
-- PBR resource packs.
-  - The `normals` and `specular` samplers are constants (a flat normal, black). A pack's labPBR / seuspbr "resource pack required" modes therefore see no material maps (bug hunt 10-21, BH-22).
-  - The missing piece is reading `_n` / `_s` into material atlases laid out like the block atlas, as Iris does.
+- PBR maps for items and entities. Blocks get theirs (`PbrAtlas`, laid out like the block atlas); animated block textures use their first frame.
 - Shader packs on the OpenGL fallback (`cadence.metal=false`) are refused with a message, because the translated programs are Metal-only.
 - 1D images.
 - Geometry and tessellation stages (Shrimple and Rethinking Voxels need them).

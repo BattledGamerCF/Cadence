@@ -215,6 +215,10 @@ public final class MaterialAtlas implements AutoCloseable {
   }
 
   private void uploadMips(PackTexture target, ByteBuffer base, int width, int height) {
+    uploadMips(device, target, base, width, height);
+  }
+
+  static void uploadMips(GpuDevice device, PackTexture target, ByteBuffer base, int width, int height) {
     ByteBuffer current = base;
     try {
       for (int level = 0; level < target.texture.getMipLevels(); level++) {

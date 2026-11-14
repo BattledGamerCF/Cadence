@@ -31,6 +31,7 @@ public abstract class QuickSetupOfferMixin {
 				return;
 			}
 			dev.cadence.shaders.cadence.compat.ModConflicts.lithiumNotice();
+			dev.cadence.shaders.cadence.compat.ModConflicts.dynamicFpsNotice();
 		}
 		cadence$offered = true;
 		if (!QuickSetup.shouldOffer()) return;

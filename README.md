@@ -27,6 +27,7 @@ Sildur's, MakeUp and Photon ([docs/SHADER-PACKS.md](docs/SHADER-PACKS.md)).
 
 - Auto resolution lowers the pack's internal resolution when needed and upscales with MetalFX.
 - Shadows are reused every other frame, far shadows use simple proxies, and casters that can't shadow anything are skipped.
+- PBR resource packs (labPBR, OldPBR) supply normal and specular maps to packs that use them.
 - Pack options use Iris's files and screens. Mods that call the Iris API get Cadence's answers.
 - Switching packs pauses the game for about 0.2 s.
 
@@ -66,7 +67,7 @@ Shows more frames than are rendered; the HUD and your hand stay sharp.
 - HDR, ray-traced shadows and lighting, Neural Engine upscaling and textures, spatial audio, macOS Game Mode (normally not
   enabled for Minecraft).
 - Threads placed on the right kind of core (Performance "P" Cores vs Efficiency "E" Cores, and Super "S" Cores on newer chips).
-- Video Settings > Java can switch to Vivace, a separately downloaded Java build with shorter garbage-collection pauses.
+- Video Settings > Java can switch to [Vivace](#vivace), a Java build with shorter garbage-collection pauses.
 - Minimal Renderer, an attempt at the Minecraft fps record ([docs/MINIMAL-RENDERER.md](docs/MINIMAL-RENDERER.md)).
 
 ## Requirements
@@ -84,6 +85,17 @@ Shows more frames than are rendered; the HUD and your hand stay sharp.
 
 F3 shows `Metal 3 (Cadence)` at the bottom right when Cadence is running.
 
+## Vivace
+
+Vivace is an optional Java build (OpenJDK with garbage-collection changes) that is its own download, so Cadence stays
+under its own licence and the mod sites' rules.
+
+1. Download the `runtime` archive from [Vivace's releases](https://github.com/BattledGamerCF/Vivace/releases) and unpack it.
+2. Move the `.jdk` folder to `~/Library/Application Support/Vivace/`.
+3. In game: Video Settings > Java > Vivace, then restart.
+
+If macOS refuses to open it, run `xattr -dr com.apple.quarantine ~/Library/Application\ Support/Vivace`.
+
 ## Settings
 
 Everything is in Options > Video Settings, with a tooltip per setting. Keys: O shader packs, K shaders on/off, F9 Photo
@@ -95,7 +107,6 @@ also a `-Dcadence.*` JVM flag. Menus follow the game's language (16 languages, m
 - Mods that require Sodium, Iris internals, or draw with OpenGL directly don't work while the Metal renderer is on
   ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)). `-Dcadence.metal=false` turns the Metal renderer off.
 - Shrimple and Rethinking Voxels need geometry or tessellation shaders, which Metal lacks.
-- PBR resource packs (labPBR, OldPBR) aren't read yet.
 - Far Terrain is experimental.
 
 ## Building
