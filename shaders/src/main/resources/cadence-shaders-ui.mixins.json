@@ -96,6 +96,8 @@
 		"ui.PerformanceOverlayMixin",
 		"ui.QuickSetupOfferMixin",
 		"ui.SoundOptionsEngineMixin",
+		"ui.TooltipAccess",
+		"ui.TooltipPlacementMixin",
 		"ui.VideoSettingsShadersMixin",
 		"worldgen.ChunkLoadSlotsMixin",
 		"worldgen.ChunkMapParallelMixin",
