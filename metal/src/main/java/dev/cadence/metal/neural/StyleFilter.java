@@ -32,15 +32,20 @@ public final class StyleFilter {
 	/** -Dcadence.style.strength: how much of the styled picture is shown (default 0.85). */
 	private static final float STRENGTH = Float.parseFloat(System.getProperty("cadence.style.strength", "0.85"));
 	private static final int CONTENT_PICTURES = 8;
+	/** Pixels per painting pixel in the style picture (writePainting). */
+	private static final int PAINTING_PX = 3;
 
 	public enum Style {
 		OFF("Off", null), SUNFLOWERS("Sunflowers", "sunflowers"), SUNSET("Sunset", "sunset"), WANDERER("Wanderer", "wanderer"), POND("Pond", "pond");
 
 		public final String label, painting;
+		/** The trained network's file name (a new one when the training changes, so older networks are trained again). */
+		final String file;
 
 		Style(String label, String painting) {
 			this.label = label;
 			this.painting = painting;
+			this.file = painting + "-2";
 		}
 	}
 
@@ -146,7 +151,7 @@ public final class StyleFilter {
 			}
 			Path d = dir();
 			Files.createDirectories(d);
-			Path model = d.resolve(s.painting + ".mlmodel");
+			Path model = d.resolve(s.file + ".mlmodel");
 			if (Files.exists(model)) {
 				load(s, model);
 				return;
@@ -176,7 +181,7 @@ public final class StyleFilter {
 				status = "Taking pictures";
 				return;
 			}
-			Path painting = d.resolve(s.painting + ".png");
+			Path painting = d.resolve(s.file + ".png");
 			writePainting(s, painting);
 			train(s, painting, content, model);
 		} catch (Throwable t) {
@@ -199,17 +204,19 @@ public final class StyleFilter {
 		if (++captured >= CONTENT_PICTURES) capturing = null;
 	}
 
-	/** The painting from the game's resources (a resource pack's own if it has one), scaled up by whole pixels to 512. */
+	/**
+	 * The painting from the game's resources (a resource pack's own if it has one) as the style picture: its pixels PAINTING_PX
+	 * wide, repeated over 512 x 512. (Scaled up to 512 whole, a painting pixel was 10-32 pixels and the network painted the
+	 * world in blocks that big.)
+	 */
 	private static void writePainting(Style s, Path out) throws Exception {
 		var mc = Minecraft.getInstance();
 		var res = mc.getResourceManager().getResource(Identifier.withDefaultNamespace("textures/painting/" + s.painting + ".png")).orElseThrow();
-		try (var in = res.open(); NativeImage src = NativeImage.read(in)) {
-			int k = Math.max(1, 512 / Math.max(src.getWidth(), src.getHeight()));
-			try (NativeImage big = new NativeImage(src.getWidth() * k, src.getHeight() * k, false)) {
-				for (int y = 0; y < big.getHeight(); y++)
-					for (int x = 0; x < big.getWidth(); x++) big.setPixel(x, y, src.getPixel(x / k, y / k));
-				big.writeToFile(out);
-			}
+		try (var in = res.open(); NativeImage src = NativeImage.read(in); NativeImage big = new NativeImage(512, 512, false)) {
+			int w = src.getWidth() * PAINTING_PX, h = src.getHeight() * PAINTING_PX;
+			for (int y = 0; y < 512; y++)
+				for (int x = 0; x < 512; x++) big.setPixel(x, y, src.getPixel(x % w / PAINTING_PX, y % h / PAINTING_PX));
+			big.writeToFile(out);
 		}
 	}
 
@@ -224,7 +231,7 @@ public final class StyleFilter {
 		status = "Training 0%";
 		Thread t = new Thread(() -> {
 			try {
-				Path tmp = model.resolveSibling(s.painting + ".training.mlmodel");
+				Path tmp = model.resolveSibling(s.file + ".training.mlmodel");
 				Process p = new ProcessBuilder("/usr/bin/nice", "-n", "15", helper.toString(), "train-style", painting.toString(), content.toString(),
 					String.valueOf(ITERATIONS), tmp.toString()).redirectErrorStream(true).start();
 				training = p;
@@ -280,13 +287,13 @@ public final class StyleFilter {
 		Thread t = new Thread(() -> {
 			long src = 0, cmp = 0, err = MemoryUtil.nmemCalloc(1, 1024);
 			try {
-				Path use = model, compiled = model.resolveSibling(s.painting + ".mlmodelc");
+				Path use = model, compiled = model.resolveSibling(s.file + ".mlmodelc");
 				int margin = 0;
-				Path fitted = model.resolveSibling(s.painting + ".ane-" + key + ".mlmodel");
+				Path fitted = model.resolveSibling(s.file + ".ane-" + key + ".mlmodel");
 				try {
 					if (Files.exists(fitted) || StyleSpec.rewrite(model, fitted, size[0], size[1])) {
 						use = fitted;
-						compiled = model.resolveSibling(s.painting + ".ane-" + key + ".mlmodelc");
+						compiled = model.resolveSibling(s.file + ".ane-" + key + ".mlmodelc");
 						margin = StyleSpec.MARGIN;
 					}
 				} catch (Exception e) {
@@ -320,12 +327,16 @@ public final class StyleFilter {
 		t.start();
 	}
 
-	/** The style's networks fitted to other window shapes deleted (each is a few MB; the window's shape rarely changes back). */
+	/**
+	 * The style's networks fitted to other window shapes deleted (each is a few MB; the window's shape rarely changes back), and
+	 * the files of its network as trained before (painting.*: big painting pixels, which it painted as big blocks).
+	 */
 	private static void forgetOtherSizes(Style s, String keep) {
 		try (var files = Files.list(dir())) {
 			for (Path p : files.toList()) {
 				String n = p.getFileName().toString();
-				if (!n.startsWith(s.painting + ".ane-") || n.startsWith(s.painting + ".ane-" + keep + ".")) continue;
+				boolean old = n.startsWith(s.painting + ".");
+				if (!old && (!n.startsWith(s.file + ".ane-") || n.startsWith(s.file + ".ane-" + keep + "."))) continue;
 				if (Files.isDirectory(p)) {
 					try (var walk = Files.walk(p)) {
 						for (Path q : walk.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(q);
