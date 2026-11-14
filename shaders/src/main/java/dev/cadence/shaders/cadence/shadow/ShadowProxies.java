@@ -58,6 +58,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class ShadowProxies {
 	private static final int REGION = 8, BUILD_BUDGET = 16;
+	private static final long BUILD_NANOS = 2_000_000L;
 	private static final boolean LOG = Boolean.getBoolean("cadence.probe") || System.getProperty("cadence.selftest") != null;
 	private static volatile int distance = parseDistance();
 	private static ShadowProxies instance;
@@ -175,8 +176,14 @@ public final class ShadowProxies {
 		for (long c : wanted) if (!columns.containsKey(c) || dirty.contains(c)) todo.add(c);
 		todo.sort((a, b) -> Double.compare(dist2(a, camX, camZ), dist2(b, camX, camZ)));
 		// a pack check needs the picture settled: everything at once while it runs
-		int budget = dev.cadence.shaders.cadence.packcheck.PackCheck.running() ? todo.size() : BUILD_BUDGET;
-		for (int i = 0; i < Math.min(budget, todo.size()); i++) build(todo.getLong(i));
+		// (and at most BUILD_NANOS of the render thread: a column can take milliseconds, and 16 of them made 50-70 ms frames)
+		boolean all = dev.cadence.shaders.cadence.packcheck.PackCheck.running();
+		int budget = all ? todo.size() : BUILD_BUDGET;
+		long start = System.nanoTime();
+		for (int i = 0; i < Math.min(budget, todo.size()); i++) {
+			build(todo.getLong(i));
+			if (!all && System.nanoTime() - start > BUILD_NANOS) break;
+		}
 		// drop columns far outside anything wanted for a while is left to close() (world/RD change); regions rebuilt lazily
 		LongOpenHashSet ready = new LongOpenHashSet();
 		for (long c : wanted) if (ready(c)) ready.add(c);

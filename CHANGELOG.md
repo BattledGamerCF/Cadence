@@ -5,6 +5,7 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
 ## 1.1.0-beta.3 / shaders 0.3.34 (not yet released)
 
 - **PBR resource packs.** Blocks' normal and specular maps (`_n`, `_s`, labPBR or OldPBR) reach shader packs that read them.
+- Far shadow proxies are built for at most 2 ms a frame. With BSL, a frame that built 16 of them took up to 67 ms.
 - With Dynamic FPS installed, a notice at launch suggests removing it: Cadence already lowers the frame rate in the background and while away, and Dynamic FPS overrides Battery Saver and Frame Generation.
 
 ## 1.1.0-beta.2 / shaders 0.3.33 (2026-11-13)

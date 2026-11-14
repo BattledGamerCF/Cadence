@@ -170,6 +170,7 @@ change fps. The frame rate stayed at the test's 120 fps cap either way, with the
 | Pacing frames on a steady clock instead of in bursts | Cadence Lite at 60: 7.85 vs 7.61 W; BSL at 30: 6.8 vs 7.0 W | Within noise |
 | Ultra: not gathering entities for generated frames | BSL 5.56-5.60 W against 5.16-5.30 W gathering them | Used more power |
 | Drawing a pack's shadow map every 3rd frame instead of every 2nd | Every frame costs 1.15 ms more than every 2nd, so every 3rd would save about 0.4 ms (3%) | Not worth the shadows lagging behind movement |
+| Not writing the frame's depth back to memory at the end of the frame (`cadence.metal.frameDepthDiscard`) | 1.87 vs 1.89 ms GPU (fullscreen Retina, no shaders) | No difference |
 
 ## Power: Battery Saver
 
