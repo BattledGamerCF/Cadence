@@ -426,7 +426,11 @@ public final class Lod {
 		this.camX = camera.pos.x;
 		this.camY = camera.pos.y;
 		this.camZ = camera.pos.z;
+		// (the projection as the level is drawn with it: view bobbing, hurt shake and nausea are in it, not in the camera's)
 		Matrix4f proj = new Matrix4f(camera.projectionMatrix);
+		var projection = RenderSystem.getProjectionMatrixBuffer();
+		long pa = projection == null ? 0 : MetalBridge.bufferAddress(projection.buffer());
+		if (pa != 0) proj.setFromAddress(pa + projection.offset());
 		this.viewProj.set(proj).mul(camera.viewRotationMatrix);
 		camera.viewRotationMatrix.positiveZ(this.forward).negate();
 		this.frustum.set(this.viewProj, false);
