@@ -655,9 +655,8 @@ final class LodNoise {
 						texTop = this.ice;
 					} else {
 						texTop = null;
-						int waterColor = LodColors.top(this.water, b, bx, bz);
-						float f = Math.min(1.0F, 0.55F + depth / 24.0F);
-						topColor = LodColors.mix(topColor, waterColor, f);
+						sideColor = topColor;  // (the floor: LodChunks.summarize)
+						topColor = LodColors.underWater(topColor, LodColors.top(this.water, b, bx, bz), depth);
 					}
 					t.water[i] = (short) waterTop;
 				} else {

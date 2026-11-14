@@ -35,8 +35,11 @@ import org.joml.FrustumIntersection;
  * Tiles that took real chunks are saved back to the cache from the clipmap every few seconds.
  */
 final class LodField {
-	/** The disk cache's format; 11 added the resource packs a tile was made under (10 is still read: packs unknown). */
-	static final int FORMAT = 11;
+	/**
+	 * The disk cache's format; 11 added the resource packs a tile was made under (10 is still read: packs unknown); 14: water
+	 * colored as the game draws it (LodColors.underWater; 10 to 13 are still read, and a generated world makes them again).
+	 */
+	static final int FORMAT = 14;
 	final LodNoise noise;
 	final LodClip clip;
 	/** The game's own trees on level-0 tiles (null: -Dcadence.lod.trees=false). */
@@ -368,10 +371,11 @@ final class LodField {
 		if (!Files.exists(f)) return false;
 		try (DataInputStream in = new DataInputStream(new InflaterInputStream(new BufferedInputStream(Files.newInputStream(f)), new java.util.zip.Inflater(), 65536))) {
 			int format = in.readInt();
-			if (format != FORMAT && format != 10) return false;
-			// colors made under other resource packs (or unknown ones): a generated world makes the tile again; explored land
-			// (no generator) keeps it, it can't be made again away from the player
-			if ((format == FORMAT ? in.readInt() : ~this.resources) != this.resources && this.generates) return false;
+			if (format < 10 || format > FORMAT) return false;
+			// colors made under other resource packs (or unknown ones), or by an older format: a generated world makes the tile
+			// again; explored land (no generator) keeps it, it can't be made again away from the player
+			int packs = format >= 11 ? in.readInt() : ~this.resources;
+			if ((format == FORMAT ? packs : ~this.resources) != this.resources && this.generates) return false;
 			for (int i = 0; i < LodTile.CELLS; i++) g[i] = in.readInt();
 			for (int i = 0; i < LodTile.CELLS; i++) c[i] = in.readInt();
 			boolean hasCrowns = in.readBoolean();

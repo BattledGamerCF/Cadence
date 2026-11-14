@@ -115,6 +115,27 @@ public final class LodColors {
 		return r << 16 | g << 8 | bl;
 	}
 
+	/** How much of a column's floor an underwater plant on it covers, seen from above. */
+	static final float UNDERWATER_PLANT = 0.6F;
+
+	/**
+	 * Water over its floor as the game draws it: the water's texture (70% opaque on average) over the floor, which is lit by
+	 * the sky light left at its depth (one level less per block of water). Before, the water's color took 55% at the surface
+	 * and all of it from 11 blocks down: a shallow sea the game shows with its floor and seagrass was a flat blue past the
+	 * render distance.
+	 */
+	static int underWater(int floor, int water, int depth) {
+		float level = Math.clamp(15 - depth, 0, 15) / 15.0F;
+		float lit = level / (4 - 3 * level);
+		// (the game's default brightness, halfway between its dark and bright curves)
+		float light = 0.5F * lit + 0.5F * (1 - (float) Math.pow(1 - lit, 4));
+		return mix(scale(floor, light), water, 0.706F);
+	}
+
+	static int scale(int c, float f) {
+		return (int) (((c >> 16) & 255) * f) << 16 | (int) (((c >> 8) & 255) * f) << 8 | (int) ((c & 255) * f);
+	}
+
 	static int multiply(int a, int b) {
 		int r = ((a >> 16) & 255) * ((b >> 16) & 255) / 255;
 		int g = ((a >> 8) & 255) * ((b >> 8) & 255) / 255;

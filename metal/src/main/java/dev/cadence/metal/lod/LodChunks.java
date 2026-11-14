@@ -167,6 +167,8 @@ final class LodChunks {
 				if (s.getFluidState().is(FluidTags.WATER)) {
 					wet = (short) (y + 1);
 					for (int guard = 0; guard < 96 && y > minY && (s.getFluidState().is(FluidTags.WATER) || s.isAir()); guard++) {
+						// (the highest plant in the water, seagrass or kelp: seen through the water with the floor)
+						if (above[i * 3] == null && !s.isAir() && !s.is(Blocks.WATER)) above[i * 3] = s;
 						s = chunk.getBlockState(pos.set(px, --y, pz));
 					}
 				}
@@ -263,10 +265,14 @@ final class LodChunks {
 				fringe[i] = false;
 			}
 			if (s.water[i] != LodTile.DRY) {
+				BlockState plant = s.above[i * 3];
+				if (plant != null) color = LodColors.mix(color, LodColors.side(plant, b, x, z), LodColors.UNDERWATER_PLANT);
 				int depth = s.water[i] - s.height[i];
-				int waterColor = LodColors.top(WATER, b, x, z);
-				color = LodColors.mix(color, waterColor, Math.min(1.0F, 0.55F + depth / 24.0F));
+				// (its sides show only under the surface, through the real water past the render distance, where a sight line
+				// under the surface passes the real terrain's edge before it reaches the floor: the floor, not a second water,
+				// which was a dark band along the render distance)
 				sideColor = color;
+				color = LodColors.underWater(color, LodColors.top(WATER, b, x, z), depth);
 			}
 			int surface = s.water[i] != LodTile.DRY ? Math.max(s.water[i], s.height[i]) : s.height[i];
 			crownHi[i] = (short) surface;

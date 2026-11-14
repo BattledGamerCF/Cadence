@@ -7,6 +7,10 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
 - **PBR resource packs.** Blocks' normal and specular maps (`_n`, `_s`, labPBR or OldPBR) reach shader packs that read them.
 - Far shadow proxies are built for at most 2 ms a frame. With BSL, a frame that built 16 of them took up to 67 ms.
 - With Dynamic FPS installed, a notice at launch suggests removing it: Cadence already lowers the frame rate in the background and while away, and Dynamic FPS overrides Battery Saver and Frame Generation.
+- Tooltips open below a button in the top half of the screen and above it in the bottom half, wherever the list is scrolled, and always stay on screen. One too tall for the screen is wrapped wider.
+- Style Filters keep the world's detail. Each painting was blown up to 512 pixels, so its pixels were 10-32 pixels wide and the network painted the world in blocks that size; it now trains on the painting repeated at 3 pixels a pixel. Styles train again the first time they're chosen (about 4 minutes).
+- **No dark band at the far terrain's edge over water.** Looking across water, the sight lines that pass the render distance under the surface met the far terrain's water-coloured sides, a second water behind the real one. They now show the seabed. Far water itself is drawn as the game draws it (70% water over a seabed that darkens with depth, seagrass and kelp included) instead of turning solid blue a few blocks down. In a generated world the far terrain is made again once, so builds far away return to it when you next go near them.
+- Fix: with view bobbing on, far terrain didn't bob with the rest of the world (nor shake when hurt).
 
 ## 1.1.0-beta.2 / shaders 0.3.33 (2026-11-13)
 
