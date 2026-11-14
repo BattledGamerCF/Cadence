@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(TitleScreen.class)
 public abstract class QuickSetupOfferMixin {
 	@Unique private static boolean cadence$offered;
-	@Unique private static boolean cadence$conflictsShown;
+	@Unique private static boolean cadence$conflictsShown, cadence$noticesShown;
 
 	@Inject(method = "init", at = @At("RETURN"))
 	private void cadence$offer(CallbackInfo ci) {
@@ -30,6 +30,10 @@ public abstract class QuickSetupOfferMixin {
 				mc.execute(() -> mc.gui.setScreen(conflicts));
 				return;
 			}
+		}
+		// (after the conflicts screen's Continue too: it comes back here with the flag already set)
+		if (!cadence$noticesShown) {
+			cadence$noticesShown = true;
 			dev.cadence.shaders.cadence.compat.ModConflicts.lithiumNotice();
 			dev.cadence.shaders.cadence.compat.ModConflicts.dynamicFpsNotice();
 		}

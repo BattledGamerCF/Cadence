@@ -215,6 +215,8 @@ public final class ShaderToggle {
 			} else {
 				try (var zip = new java.util.zip.ZipFile(p.toFile())) {
 					var entry = zip.getEntry("shaders/shaders.properties");
+					// (a pack zipped with its folder: shaders/ one level down, as the loader accepts)
+					if (entry == null) entry = zip.stream().filter(e -> e.getName().matches("[^/]+/shaders/shaders\\.properties")).findFirst().orElse(null);
 					if (entry == null) return out;
 					try (var in = zip.getInputStream(entry)) {
 						text = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);

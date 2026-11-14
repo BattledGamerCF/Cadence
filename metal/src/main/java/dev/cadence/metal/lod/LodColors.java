@@ -72,6 +72,28 @@ public final class LodColors {
 		return l;
 	}
 
+	private static volatile boolean reloadPending;
+	private static boolean watching;
+	private static int reloads;
+
+	/**
+	 * Render thread: resource reloads finished so far (their loading overlay gone), the looks forgotten at each. Ray Tracing and
+	 * Record Mode build their palettes again when it changes; without the far terrain nothing else forgot the old pack's colors.
+	 */
+	public static int reloads(Minecraft mc) {
+		if (!watching) {
+			watching = true;
+			if (mc.getResourceManager() instanceof net.minecraft.server.packs.resources.ReloadableResourceManager r)
+				r.registerReloadListener((net.minecraft.server.packs.resources.ResourceManagerReloadListener) rm -> reloadPending = true);
+		}
+		if (reloadPending && mc.gui.overlay() == null) {
+			reloadPending = false;
+			forget();
+			reloads++;
+		}
+		return reloads;
+	}
+
 	/** The resources reloaded (LodResources): every look, texture average and plant profile is worked out again. */
 	static void forget() {
 		epoch++;

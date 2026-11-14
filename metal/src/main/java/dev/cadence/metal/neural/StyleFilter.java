@@ -251,8 +251,9 @@ public final class StyleFilter {
 					Files.move(tmp, model, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 					System.out.println("[cadence] style filter: " + s.label + " trained");
 					if (style == s) status = "";
-					busy = false;
+					// (busy stays set into the loader, which clears it: cleared first, the render thread could start a second loader)
 					if (style == s) load(s, model);
+					else busy = false;
 				} else {
 					Files.deleteIfExists(tmp);
 					busy = false;

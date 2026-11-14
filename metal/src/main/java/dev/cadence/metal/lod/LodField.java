@@ -222,7 +222,7 @@ final class LodField {
 				for (int tx = tx0; tx <= tx1; tx++) {
 					long key = LodTile.key(level, tx, tz);
 					// (also not one still queued: pressing Pre-generate again queued every tile a second time)
-					if (this.pregenKeys.contains(key) || java.nio.file.Files.exists(this.file(key))) continue;
+					if (this.pregenKeys.contains(key) || this.cached(key)) continue;
 					this.pregenKeys.add(key);
 					// (after every tile in view: a priority no view request reaches; nearer and finer first)
 					double d = Math.hypot((tx + 0.5) * span - x, (tz + 0.5) * span - z);
@@ -238,7 +238,7 @@ final class LodField {
 	/** A worker: one pre-generated tile, generated and saved (not put in the window: the window loads it from disk when needed). */
 	private void pregenerate(long key) {
 		try {
-			if (this.closed || java.nio.file.Files.exists(this.file(key))) return;
+			if (this.closed || this.cached(key)) return;
 			int level = LodTile.levelOf(key);
 			int[] g = new int[LodTile.CELLS], c = new int[LodTile.CELLS];
 			int[] cr = level < this.clip.crownLevels ? new int[LodTile.CELLS] : null;
@@ -362,6 +362,22 @@ final class LodField {
 			}
 			if (cr != null) cr[i] = LodClip.belowWord(t.below[i]);
 			if (rn != null) rn[i] = 0;
+		}
+	}
+
+	/**
+	 * Whether the disk cache holds a tile load() keeps: in this format and made under these resource packs (or explored land, kept
+	 * whatever they were). An older file only existing counted, so Pre-generate said "Already generated" after a format change.
+	 */
+	private boolean cached(long key) {
+		Path f = this.file(key);
+		if (!Files.exists(f)) return false;
+		try (DataInputStream in = new DataInputStream(new InflaterInputStream(new BufferedInputStream(Files.newInputStream(f))))) {
+			int format = in.readInt();
+			if (format < 10 || format > FORMAT) return false;
+			return !this.generates || format == FORMAT && in.readInt() == this.resources;
+		} catch (IOException | RuntimeException e) {
+			return false;
 		}
 	}
 

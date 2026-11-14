@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class TooltipPlacementMixin {
 	@Inject(method = "createTooltipPositioner", at = @At("HEAD"), cancellable = true)
 	private void cadence$place(ScreenRectangle widget, boolean hovered, boolean focused, CallbackInfoReturnable<ClientTooltipPositioner> cir) {
-		cir.setReturnValue(TooltipPlacement.around(widget));
+		cir.setReturnValue(TooltipPlacement.around(widget, !hovered && focused && Minecraft.getInstance().getLastInputType().isKeyboard()));
 	}
 
 	@Redirect(method = "refreshTooltipForNextRenderPass", at = @At(value = "INVOKE",

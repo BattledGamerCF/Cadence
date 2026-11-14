@@ -21,7 +21,8 @@ public final class TooltipPlacement {
 	private TooltipPlacement() {
 	}
 
-	public static ClientTooltipPositioner around(ScreenRectangle widget) {
+	/** keyboard: the widget has focus from the keyboard or a controller, not the mouse: the tooltip starts at its left edge. */
+	public static ClientTooltipPositioner around(ScreenRectangle widget, boolean keyboard) {
 		return (screenWidth, screenHeight, mouseX, mouseY, width, height) -> {
 			int below = widget.bottom() + GAP + FRAME, above = widget.top() - GAP - FRAME - height;
 			boolean fitsBelow = below + height + FRAME + GAP <= screenHeight, fitsAbove = above - FRAME - GAP >= 0;
@@ -29,7 +30,7 @@ public final class TooltipPlacement {
 			if (!fitsBelow && !fitsAbove) down = screenHeight - widget.bottom() > widget.top();
 			int y = down ? below : above;
 			y = Math.max(GAP + FRAME, Math.min(y, screenHeight - GAP - FRAME - height));
-			int x = Math.max(GAP + FRAME, Math.min(mouseX + 12, screenWidth - GAP - FRAME - width));
+			int x = Math.max(GAP + FRAME, Math.min(keyboard ? widget.left() + 3 : mouseX + 12, screenWidth - GAP - FRAME - width));
 			return new Vector2i(x, y);
 		};
 	}

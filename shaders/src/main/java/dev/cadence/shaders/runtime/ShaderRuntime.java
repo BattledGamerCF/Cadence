@@ -1334,6 +1334,8 @@ public final class ShaderRuntime implements AutoCloseable {
           PackTexture pbr = pbrAtlas == null || albedo == null ? null
               : sampler.kind() == PackPipeline.SamplerKind.NORMAL ? pbrAtlas.normalFor(albedo) : pbrAtlas.specularFor(albedo);
           texture = pbr != null ? pbr : sampler.kind() == PackPipeline.SamplerKind.NORMAL ? textures.normal : textures.black;
+          // (sampled as the albedo is, texel for texel: a blend of labPBR's specular words is no material at all)
+          if (pbr != null) filter = textures.albedoSampler(original.texture(), blockAtlas, original.sampler());
         }
         case MATERIAL -> {
           if (materialAtlas == null) throw new IllegalStateException("Material atlas not prepared");

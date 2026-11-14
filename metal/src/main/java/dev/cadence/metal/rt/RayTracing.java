@@ -105,6 +105,7 @@ public final class RayTracing {
 	}
 
 	private static volatile boolean stale;
+	private static int seenReloads;
 
 	/** 2: hardware ray tracing (M3 and newer), 1: Metal's ray tracing in software, 0: none; -1 not known yet (no frame yet). */
 	public static int support() {
@@ -277,6 +278,12 @@ public final class RayTracing {
 		Minecraft mc = Minecraft.getInstance();
 		ClientLevel level = mc.level;
 		if (level == null) return;
+		// (resource packs changed: the palette's block colors are made again)
+		int reloads = dev.cadence.metal.lod.LodColors.reloads(mc);
+		if (reloads != seenReloads) {
+			seenReloads = reloads;
+			stale = true;
+		}
 		// (a world for another level or tracer goes first: dropping a hardware one lets go of its native state, made again below)
 		if (world != null && (world.level() != level || stale)) {
 			// (another level: Neural Lighting's network learned the old one's light at the same coordinates, BH8-08)

@@ -11,6 +11,15 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
 - Style Filters keep the world's detail. Each painting was blown up to 512 pixels, so its pixels were 10-32 pixels wide and the network painted the world in blocks that size; it now trains on the painting repeated at 3 pixels a pixel. Styles train again the first time they're chosen (about 4 minutes).
 - **No dark band at the far terrain's edge over water.** Looking across water, the sight lines that pass the render distance under the surface met the far terrain's water-coloured sides, a second water behind the real one. They now show the seabed. Far water itself is drawn as the game draws it (70% water over a seabed that darkens with depth, seagrass and kelp included) instead of turning solid blue a few blocks down. In a generated world the far terrain is made again once, so builds far away return to it when you next go near them.
 - Fix: with view bobbing on, far terrain didn't bob with the rest of the world (nor shake when hurt).
+- Bug hunt (Sonnet, BH12), all fixed:
+  - PBR maps are read texel for texel like the block textures (blended, labPBR's specular values meant other materials), decoded on all cores, and a map that can't be decoded is skipped instead of turning the shader pack off.
+  - Tooltips of buttons focused with the keyboard or a controller start at the button, not at the mouse.
+  - The Lithium and Dynamic FPS notices also show after the incompatible-mods screen.
+  - A shader pack zipped inside its own folder offers its profiles.
+  - Far Terrain's Pre-generate no longer says "Already generated" for tiles made by an older version or other resource packs.
+  - Smooth Textures tries again when turned off and on after a failure, and a failure while uploading no longer stops it for the session with its memory held.
+  - Ray Tracing and Record Mode take a new resource pack's colours without leaving the world.
+  - A Style Filter that finished training could start loading twice.
 
 ## 1.1.0-beta.2 / shaders 0.3.33 (2026-11-13)
 

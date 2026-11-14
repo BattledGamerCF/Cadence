@@ -41,6 +41,7 @@ public final class Record {
 	private static final int[] HUD_STATE = new int[RecordHud.STATE];
 	private static Object encoder;
 	private static RecordWorld world;
+	private static int seenReloads;
 	private static boolean failed, detached;
 	private static int failures;
 	private static float viewYaw, viewPitch;
@@ -227,7 +228,10 @@ public final class Record {
 		try {
 			if (!init(mc)) return false;
 			ClientLevel level = mc.level;
-			if (world == null || world.minY != level.getMinY() || world.h != level.getHeight() || worldLevel != level) {
+			// (also after resource packs changed: the palette's block colors are made again)
+			int reloads = dev.cadence.metal.lod.LodColors.reloads(mc);
+			if (world == null || world.minY != level.getMinY() || world.h != level.getHeight() || worldLevel != level || reloads != seenReloads) {
+				seenReloads = reloads;
 				if (world != null) world.release();
 				world = null;
 				world = new RecordWorld(ctx, level, WLOG);

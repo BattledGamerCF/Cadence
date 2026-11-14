@@ -59,6 +59,7 @@ public final class SmoothTextures {
 	public static void frame() {
 		if (!wanted) {
 			if (view2x != null) release();
+			else if (state == 0) forAtlas = null;  // (an atlas that failed is tried again when the setting comes back on)
 			if (state == 3) discard();  // (an upscale that finished after the setting went off)
 			return;
 		}
@@ -181,6 +182,22 @@ public final class SmoothTextures {
 	}
 
 	private static void upload(GpuTexture t, Object encoder) {
+		try {
+			uploadOn(t, encoder);
+		} catch (RuntimeException e) {
+			// (thrown on, Hdr.guarded would stop calling frame() for the session with the upscaled atlas still held)
+			release();
+			if (out != 0) MemoryUtil.nmemFree(out);
+			out = 0;
+			status = "Can't: " + e;
+			System.out.println("[cadence] smooth textures: " + e);
+			forAtlas = t;
+			working = null;
+			state = 0;
+		}
+	}
+
+	private static void uploadOn(GpuTexture t, Object encoder) {
 		var device = RenderSystem.getDevice();
 		release();
 		try (var writable = dev.cadence.metal.backend.MetalStorage.writableTextures()) {
