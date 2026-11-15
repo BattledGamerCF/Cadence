@@ -72,7 +72,9 @@ public final class RayTracing {
 	private static boolean failed, rtHw;
 	/** The tracer's programs being compiled off the render thread (1.3 s there: the game stopped when Ray Tracing was turned on). */
 	private static volatile long createdRt;
-	private static volatile boolean creating, createFailed;
+	private static volatile boolean creating, createFailed, createdHw;
+	/** rt was compiled for the hardware tracer (M3 and later with AUTO, or HARDWARE): the world's tracer takes it as it is. */
+	private static boolean rtForHw;
 	private static int support = -1;
 	private static long frames;
 	// this level frame's camera and projection, and the sky's state
@@ -300,8 +302,11 @@ public final class RayTracing {
 			world = new RtWorld(ctx, level, WINDOW);
 			clearCache = true;  // (the lighting cache's keys are world cells: another world's are wrong)
 			if (hw) {
-				if (rt != 0) RtNative.free(rt);
-				rt = createRt(true);
+				if (!rtForHw) {  // (the tracer setting changed since rt was compiled)
+					if (rt != 0) RtNative.free(rt);
+					rt = createRt(true);
+					rtForHw = true;
+				}
 				rtHw = rt != 0 && RtNative.hw(rt);
 				world.rt = rt;
 				world.hw = rtHw;
@@ -452,11 +457,17 @@ public final class RayTracing {
 					support = RtNative.support(ctx);
 					if (frameBuf == 0) frameBuf = MemoryUtil.nmemCalloc(1, FRAME_BYTES);
 					creating = true;
+					// (the tracer the world will want: compiled here, so an M3 doesn't compile the voxel one, then the hardware one on
+					// the render thread, BH13-M01)
+					boolean hw = tracer == Tracer.HARDWARE || tracer == Tracer.AUTO && support == 2;
 					Thread.ofVirtual().name("cadence-rt-compile").start(() -> {
 						try {
-							long h = createRt(false);
+							long h = createRt(hw);
 							if (h == 0) createFailed = true;
-							else createdRt = h;
+							else {
+								createdHw = hw;
+								createdRt = h;
+							}
 						} catch (Throwable t) {
 							System.out.println("[cadence] ray tracing unavailable: " + t);
 							createFailed = true;
@@ -468,6 +479,7 @@ public final class RayTracing {
 				return false;
 			}
 			rt = createdRt;
+			rtForHw = createdHw;
 			createdRt = 0;
 			System.out.println("[cadence] ray tracing: " + (support == 2 ? "hardware ray tracing (Apple GPU family 9)" : support == 1
 				? "Metal ray tracing in software (no ray tracing hardware on this chip)" : "no Metal ray tracing") + "; voxel tracer ready");

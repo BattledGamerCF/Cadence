@@ -28,7 +28,10 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 		if (this.startScroll > 0) this.list.setScrollAmount(this.startScroll);
 	}
 
-	/** A line of text over the settings, wrapped to the list's width (a header is one line; a long one ran off the side). */
+	/**
+	 * A line of text over the settings, wrapped to the list's width (a header is one line; a long one, a long pack name's note,
+	 * ran off the side). Each wrapped line is a header row of its own, so the usual notes are kept to one line.
+	 */
 	private void addWrapped(Component text) {
 		for (var line : this.font.splitIgnoringLanguage(text, this.list.getRowWidth()))
 			this.list.addHeader(Component.literal(line.getString()).withStyle(text.getStyle()));
@@ -46,12 +49,12 @@ public final class FarTerrainScreen extends OptionsSubScreen {
 	@Override
 	protected void addOptions() {
 		boolean on = chosen();
-		addWrapped(dev.cadence.metal.system.Lang.literal(on == running() ? (on ? "Far Distance and Look apply now, the rest at the next launch" : "Changes take effect at the next launch")
+		addWrapped(dev.cadence.metal.system.Lang.literal(on == running() ? (on ? "Far Distance and Look apply now, the rest after a restart" : "Changes take effect at the next launch")
 			: "Restart Minecraft to turn Far Terrain " + (on ? "on" : "off")).withStyle(on == running() ? ChatFormatting.GRAY : ChatFormatting.YELLOW));
 		// (with a pack: whether it draws the far terrain, said up front)
 		Component note = packNote();
 		addWrapped(note != null ? note
-			: dev.cadence.metal.system.Lang.literal("With a shader pack: drawn by packs that support Distant Horizons").withStyle(ChatFormatting.GRAY));
+			: dev.cadence.metal.system.Lang.literal("Shader packs draw it if they support Distant Horizons").withStyle(ChatFormatting.GRAY));
 		this.list.addSmall(cycle("Far Terrain", "farTerrain", "off", new String[] {"off", "on"}, new String[] {"Off", "On"},
 				Tips.of(Tips.Impact.MEDIUM, "The world drawn far past your render distance, like the Distant Horizons mod (experimental).",
 					"#Generated from the world's own terrain and trees, replaced by the real chunks as you explore. Uses some memory "

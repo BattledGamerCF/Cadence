@@ -231,9 +231,11 @@ public final class CreateShaderScreen extends Screen {
 			this.applyPreset(PRESETS[this.preset]);
 			this.refresh();
 		}).bounds(8, bottom - 24, colW * 2 + 4, 20).tooltip(Tips.of("Start from one of Cadence Lite's presets, then change what you like.")).build());
+		// (the name typed so far kept: a resize builds the widgets again, BH13-S04)
+		String typed = this.name == null ? "My Shader" : this.name.getValue();
 		this.name = this.addRenderableWidget(new EditBox(this.font, 8, bottom, colW, 20, dev.cadence.metal.system.Lang.literal("Name")));
 		this.name.setMaxLength(40);
-		if (this.name.getValue().isEmpty()) this.name.setValue("My Shader");
+		this.name.setValue(typed);
 		this.addRenderableWidget(Button.builder(dev.cadence.metal.system.Lang.literal("Create"), b -> this.create())
 			.bounds(8 + colW + 4, bottom, (colW - 4) / 2 + 2, 20).build());
 		this.addRenderableWidget(Button.builder(dev.cadence.metal.system.Lang.literal("Cancel"), b -> this.onClose())

@@ -60,6 +60,20 @@ public final class PackCatalog {
 	private PackCatalog() {
 	}
 
+	private static final java.util.Map<String, Boolean> CREATED = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/** Whether the pack was written by Create Shader (its settings file says so; read once per pack name). */
+	public static boolean madeWithCreateShader(String packName) {
+		return CREATED.computeIfAbsent(packName, n -> {
+			java.nio.file.Path txt = dev.cadence.shaders.cadence.ui.ShaderToggle.packsDirectory().resolve(n + ".txt");
+			try (var lines = java.nio.file.Files.lines(txt)) {
+				return lines.limit(3).anyMatch(l -> l.contains("Made with Cadence's Create Shader"));
+			} catch (java.io.IOException | java.io.UncheckedIOException e) {
+				return false;
+			}
+		});
+	}
+
 	/** What Cadence knows about the pack with this file name, or null for a pack not tested yet. */
 	public static Known lookup(String packName) {
 		String n = squash(packName);

@@ -248,11 +248,32 @@ public final class PackTextures implements AutoCloseable {
         int width = reader.getWidth(0), height = reader.getHeight(0);
         if (width < 1 || height < 1 || (long) width * height > 16_777_216L)
           throw new IOException("Pack image exceeds texture size limit: " + path);
-        return reader.read(0);
+        return rawGray(reader.read(0));
       } finally {
         reader.dispose();
       }
     }
+  }
+
+  /**
+   * Cadence: a greyscale image (PNG colour types 0 and 4) with its samples as they are in the file. ImageIO gives grey a linear
+   * colour space, so getRGB brightened it (a 128 texel read as 186: MakeUp's cloud density map, AstraLex's frozen.png); Iris
+   * uploads the file's values (BH13-S01).
+   */
+  static BufferedImage rawGray(BufferedImage image) {
+    if (image.getColorModel().getColorSpace().getType() != java.awt.color.ColorSpace.TYPE_GRAY) return image;
+    var raster = image.getRaster();
+    int w = image.getWidth(), h = image.getHeight(), bands = raster.getNumBands();
+    int bits = raster.getSampleModel().getSampleSize(0), shift = Math.max(0, bits - 8), max = (1 << Math.min(bits, 8)) - 1;
+    BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+    for (int y = 0; y < h; y++)
+      for (int x = 0; x < w; x++) {
+        // (16-bit samples to their top 8 bits; 1, 2 and 4-bit ones stretched to 0-255)
+        int v = (raster.getSample(x, y, 0) >> shift) * 255 / max;
+        int a = bands > 1 ? (raster.getSample(x, y, 1) >> shift) * 255 / max : 255;
+        out.setRGB(x, y, a << 24 | v << 16 | v << 8 | v);
+      }
+    return out;
   }
 
   private PackTexture upload(String name, int width, int height, ByteBuffer pixels) {

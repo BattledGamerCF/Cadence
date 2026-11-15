@@ -464,7 +464,14 @@ void mca_voice_free(void *p) {
 		[v->node release];
 		[v->connected release];
 		[v->staticBuf release];
-		free(v);
+		v->node = nil;
+		v->connected = nil;
+		v->staticBuf = nil;
+		// (buffer completion handlers hold v and read its generation; one can still be on its way from the audio thread after the
+		// stop: the struct goes a second later, BH13-M02)
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+			free(v);
+		});
 	}
 }
 
@@ -700,9 +707,10 @@ void mca_stats(int *out) {
 
 // on: reverb and occlusion used; preset: an AVAudioUnitReverbPreset; level: the reverb's level (dB); blend: how much of each
 // spatial sound goes into it (0..1).
-void mca_environment(int on, int preset, float level, float blend) {
+// Render thread: returns 0 without waiting when the lock is held (the call is made again next pass), 1 once applied.
+int mca_environment(int on, int preset, float level, float blend) {
 	@autoreleasepool {
-		os_unfair_lock_lock(&gLock);
+		if (!os_unfair_lock_trylock(&gLock)) return 0;
 		if (gEnv) {
 			gEnv.reverbParameters.enable = on ? YES : NO;
 			if (on && preset != gLastPreset) {
@@ -715,6 +723,7 @@ void mca_environment(int on, int preset, float level, float blend) {
 		gReverbBlend = blend;
 		for (int i = 0; i < gVoiceCount; i++) if (gVoices[i]->connected) place(gVoices[i]);
 		os_unfair_lock_unlock(&gLock);
+		return 1;
 	}
 }
 
@@ -736,9 +745,10 @@ int mca_snapshot(void **ids, float *pos, int max) {
 	return n;
 }
 
-// A sound's occlusion (dB, <= 0), if it still exists (the sound thread may have let it go since the snapshot).
+// A sound's occlusion (dB, <= 0), if it still exists (the sound thread may have let it go since the snapshot). Render thread: skipped
+// without waiting when the lock is held (set again next pass).
 void mca_occlusion(void *p, float db) {
-	os_unfair_lock_lock(&gLock);
+	if (!os_unfair_lock_trylock(&gLock)) return;
 	for (int i = 0; i < gVoiceCount; i++)
 		if (gVoices[i] == p) {
 			Voice *v = p;
@@ -750,8 +760,9 @@ void mca_occlusion(void *p, float db) {
 }
 
 // Sound Around Corners: a sound's way round to the listener (routed 0: none found, only the occlusion through the wall counts).
-void mca_route(void *p, int routed, float ax, float ay, float az, float length, float db) {
-	os_unfair_lock_lock(&gLock);
+// Render thread: 0 without waiting when the lock is held, 1 once done (or the sound is gone).
+int mca_route(void *p, int routed, float ax, float ay, float az, float length, float db) {
+	if (!os_unfair_lock_trylock(&gLock)) return 0;
 	for (int i = 0; i < gVoiceCount; i++)
 		if (gVoices[i] == p) {
 			Voice *v = p;
@@ -765,4 +776,5 @@ void mca_route(void *p, int routed, float ax, float ay, float az, float length, 
 			break;
 		}
 	os_unfair_lock_unlock(&gLock);
+	return 1;
 }

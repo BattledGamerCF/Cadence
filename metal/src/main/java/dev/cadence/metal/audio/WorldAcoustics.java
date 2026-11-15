@@ -70,10 +70,7 @@ public final class WorldAcoustics {
 	/** Render thread, every frame (MetalSurface's present): the room and the sounds' occlusion, each on its own clock. */
 	public static void frame() {
 		if (!AppleAudio.running() || !wanted) {
-			if (applied) {
-				AppleAudio.environment(false, 0, -40f, 0f);
-				applied = false;
-			}
+			if (applied && AppleAudio.environment(false, 0, -40f, 0f)) applied = false;
 			return;
 		}
 		Minecraft mc = Minecraft.getInstance();
@@ -181,8 +178,7 @@ public final class WorldAcoustics {
 				AppleAudio.route(id, true, PATHS.ax, PATHS.ay, PATHS.az, PATHS.length, Math.max(-15f, -3f * PATHS.corners));
 			} else if (last[1] != 0) {
 				// (only when it was routed: an unrouted sound's route call was a second locked update a pass, BH8-15)
-				AppleAudio.route(id, false, 0, 0, 0, 0, 0);
-				last[1] = 0;
+				if (AppleAudio.route(id, false, 0, 0, 0, 0, 0)) last[1] = 0;
 			}
 		}
 		LAST.keySet().retainAll(seen);

@@ -27,6 +27,9 @@ abstract class FarTerrainStatusMixin {
 		String line = dev.cadence.metal.lod.LodPackFrame.status();
 		if (line == null) return;
 		int y = "false".equals(System.getProperty("cadence.fpsCounter")) ? 2 : 12;
+		// (below the performance overlay's lines when it's on: both started at 12, drawn over each other, BH13-S05)
+		if (dev.cadence.shaders.cadence.render.PerformanceOverlay.on())
+			y = 12 + 10 * dev.cadence.shaders.cadence.render.PerformanceOverlay.lines(mc.getFps()).size();
 		graphics.text(mc.font, line, 2, y, 0xFFE0E0E0, true);
 	}
 }

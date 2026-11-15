@@ -74,11 +74,14 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 		this.settingsButton = top.addChild(Button.builder(dev.cadence.metal.system.Lang.literal("Pack Settings..."), b -> this.openSettings())
 			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of("The selected pack's own options (sun, clouds, water, shadows...).")).build());
 		LinearLayout bottom = rows.addChild(LinearLayout.horizontal().spacing(8));
+		// (three buttons of 150 are 466 GUI pixels; a Retina window at Auto GUI scale can be 420 wide: narrower then, BH13-S02)
+		int w = Math.max(60, Math.min(Button.DEFAULT_WIDTH, (this.width - 2 * 8 - 12) / 3));
 		bottom.addChild(Button.builder(dev.cadence.metal.system.Lang.literal("Open Packs Folder..."), b -> ShaderToggle.openPacksFolder())
-			.width(Button.DEFAULT_WIDTH).tooltip(Tips.of("Opens the shaderpacks folder in Finder.",
+			.width(w).tooltip(Tips.of("Opens the shaderpacks folder in Finder.",
 				"#Packs are .zip files (BSL, Complementary...). Leave them zipped.")).build());
-		bottom.addChild(CreateShaderScreen.button(this));
-		bottom.addChild(Button.builder(CommonComponents.GUI_DONE, b -> this.onClose()).width(Button.DEFAULT_WIDTH).build());
+		Button create = bottom.addChild(CreateShaderScreen.button(this));
+		create.setWidth(w);
+		bottom.addChild(Button.builder(CommonComponents.GUI_DONE, b -> this.onClose()).width(w).build());
 		this.updateButtons();
 	}
 
@@ -313,6 +316,11 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 			if (!this.installed) return dev.cadence.metal.system.Lang.literal("Its file is no longer in the shaderpacks folder").withStyle(ChatFormatting.RED);
 			String failure = ShaderSwitcher.failure(this.pack);
 			if (failure != null) return dev.cadence.metal.system.Lang.literal("Couldn't load: " + failure).withStyle(ChatFormatting.RED);
+			// (the built-in pack and shaders made from it with Create Shader: Cadence's own, BH13-S07)
+			if (this.pack.equals(dev.cadence.shaders.cadence.shaderpack.BuiltinPacks.CADENCE_LITE))
+				return dev.cadence.metal.system.Lang.literal("Built into Cadence · " + PackCatalog.Weight.LIGHT.label).withStyle(ChatFormatting.GRAY);
+			if (PackCatalog.madeWithCreateShader(this.pack))
+				return dev.cadence.metal.system.Lang.literal("Made with Create Shader · " + PackCatalog.Weight.LIGHT.label).withStyle(ChatFormatting.GRAY);
 			PackCatalog.Known k = PackCatalog.lookup(this.pack);
 			if (k == null) return dev.cadence.metal.system.Lang.literal("Not tested with Cadence yet").withStyle(ChatFormatting.GRAY);
 			if (!k.runs()) return dev.cadence.metal.system.Lang.literal("Doesn't run with Cadence: " + k.note()).withStyle(ChatFormatting.GOLD);

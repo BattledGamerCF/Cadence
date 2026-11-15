@@ -34,8 +34,12 @@ public final class OwnEmission {
 	private static GpuTexture mask, forAtlas;
 	private static boolean bound, failed;
 	/** The mask being worked out off the render thread (it took ~100 ms there: a hitch when HDR turned on), and for which atlas. */
-	private static volatile ByteBuffer built;
-	private static volatile GpuTexture builtFor, building;
+	private static final java.util.concurrent.atomic.AtomicReference<Built> built = new java.util.concurrent.atomic.AtomicReference<>();
+	private static volatile GpuTexture building;
+
+	/** A worked-out mask and the atlas it is for, handed over as one (two fields could pair one atlas with another's texels, BH13-M03). */
+	private record Built(ByteBuffer pixels, GpuTexture forAtlas) {
+	}
 	private static final boolean DEBUG = Boolean.getBoolean("cadence.hdr.debug");
 
 	private OwnEmission() {
@@ -61,13 +65,12 @@ public final class OwnEmission {
 			return;  // (the atlas isn't stitched yet: the loading screen's first frames, BH7-01)
 		}
 		if (t != forAtlas || mask == null) {
-			ByteBuffer pixels = built;
-			if (pixels != null && builtFor == t) {
-				built = null;
+			Built b = built.get();
+			if (b != null && b.forAtlas() == t && built.compareAndSet(b, null)) {
 				try {
-					upload(pixels, t);
+					upload(b.pixels(), t);
 				} finally {
-					MemoryUtil.memFree(pixels);
+					MemoryUtil.memFree(b.pixels());
 				}
 			} else {
 				if (building != t) start(atlas, t);
@@ -87,11 +90,8 @@ public final class OwnEmission {
 		building = t;
 		Thread.ofVirtual().name("cadence-hdr-mask").start(() -> {
 			try {
-				ByteBuffer pixels = build(atlas, t);
-				ByteBuffer old = built;
-				builtFor = t;
-				built = pixels;
-				if (old != null) MemoryUtil.memFree(old);
+				Built old = built.getAndSet(new Built(build(atlas, t), t));
+				if (old != null) MemoryUtil.memFree(old.pixels());
 			} catch (Throwable e) {
 				failed = true;
 				System.out.println("[cadence] HDR: no emission mask for the block atlas: " + e);

@@ -213,10 +213,11 @@ public final class AppleAudio {
 	}
 
 	/** World Reverb (WorldAcoustics): the environment's reverb on or off, its preset (AVAudioUnitReverbPreset), level (dB), each sound's share. */
-	public static void environment(boolean on, int preset, float level, float blend) {
-		if (!running) return;
+	public static boolean environment(boolean on, int preset, float level, float blend) {
+		if (!running) return true;
 		try {
-			ENVIRONMENT.invokeExact(on ? 1 : 0, preset, level, blend);
+			// (false: the sound thread held the voices; not waited for on the render thread, BH13-M04)
+			return (int) ENVIRONMENT.invokeExact(on ? 1 : 0, preset, level, blend) != 0;
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}
@@ -246,10 +247,11 @@ public final class AppleAudio {
 	}
 
 	/** Sound Around Corners: a sound's way round (mca_route); ignored if the sound is gone. */
-	public static void route(long voice, boolean routed, float ax, float ay, float az, float length, float db) {
-		if (!running) return;
+	public static boolean route(long voice, boolean routed, float ax, float ay, float az, float length, float db) {
+		if (!running) return true;
 		try {
-			ROUTE.invokeExact(voice, routed ? 1 : 0, ax, ay, az, length, db);
+			// (false: the sound thread held the voices; not waited for, BH13-M04)
+			return (int) ROUTE.invokeExact(voice, routed ? 1 : 0, ax, ay, az, length, db) != 0;
 		} catch (Throwable t) {
 			throw rethrow(t);
 		}
@@ -300,10 +302,10 @@ public final class AppleAudio {
 		VOICE_STATE = fn("mca_voice_state", JAVA_INT, JAVA_LONG);
 		VOICE_SET = fn("mca_voice_set", null, JAVA_LONG, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT);
 		STATS = fn("mca_stats", null, JAVA_LONG);
-		ENVIRONMENT = fn("mca_environment", null, JAVA_INT, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT);
+		ENVIRONMENT = fn("mca_environment", JAVA_INT, JAVA_INT, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT);
 		SNAPSHOT = fn("mca_snapshot", JAVA_INT, JAVA_LONG, JAVA_LONG, JAVA_INT);
 		OCCLUSION = fn("mca_occlusion", null, JAVA_LONG, JAVA_FLOAT);
-		ROUTE = fn("mca_route", null, JAVA_LONG, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT);
+		ROUTE = fn("mca_route", JAVA_INT, JAVA_LONG, JAVA_INT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT, JAVA_FLOAT);
 	}
 
 	private static MethodHandle fn(String name, MemoryLayout result, MemoryLayout... args) {
