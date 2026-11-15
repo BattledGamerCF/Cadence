@@ -924,7 +924,8 @@ public final class CadenceSelfTest {
 						mc.levelExtractor.allChanged();
 					});
 				} else if (lower.startsWith("maxfps=")) {
-					int f = Integer.parseInt(lower.substring(7));
+					// "maxfps=N": Max Framerate (0: Unlimited, the option's 260)
+					int n = Integer.parseInt(lower.substring(7)), f = n <= 0 ? 260 : n;
 					mc.execute(() -> mc.options.framerateLimit().set(f));
 				} else if (lower.startsWith("clouds=")) {
 					// "clouds=fancy|fast|off": the Clouds video option
