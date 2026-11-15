@@ -8,6 +8,7 @@
     "ShaderScreenEffectMixin",
     "ShaderRenderSystemMixin",
     "ShaderPipelineCacheMixin",
+    "PackPipelineTargetsAccess",
     "ShaderGlslCompilerMixin",
     "ShaderSpirvReflectionMixin",
     "ShaderSkyFlagsMixin",

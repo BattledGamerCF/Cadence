@@ -194,6 +194,9 @@ public record PackPipeline(
                 || original.getColorTargetStates().getFirst() == null
             ? Optional.<BlendFunction>empty()
             : original.getColorTargetStates().getFirst().blendFunction();
+    Map<Integer, ColorTargetState> targetStates = new java.util.TreeMap<>();
+    Optional<BlendFunction> builderBlend = null;
+    boolean mixedBlend = false;
     for (int slot = 0; slot < translated.drawBuffers().size(); slot++) {
       int target = translated.drawBuffers().get(slot);
       if (target < 0 || shadow && !targets.shadowColorAttached(target, slot)) builder.withUnusedColorTargetState(slot);
@@ -207,14 +210,28 @@ public record PackPipeline(
         // Cadence: an integer buffer (Noble's RGBA32UI material data) is never blended, as OpenGL ignores blending for
         // integer formats (Metal refuses it)
         boolean integer = format.name().endsWith("_UINT") || format.name().endsWith("_SINT");
-        builder.withColorTargetState(
-            slot,
+        ColorTargetState state =
             new ColorTargetState(
                 // Cadence: blend.<program>[.<buffer>] from shaders.properties (PackBlend)
                 finalPass || integer ? Optional.empty() : PackBlend.resolve(source.name(), target, shadow, fullscreen ? Optional.empty() : blend),
                 format,
-                ColorTargetState.WRITE_ALL));
+                ColorTargetState.WRITE_ALL);
+        targetStates.put(slot, state);
+        if (state.blendFunction().isPresent()) {
+          if (builderBlend == null) builderBlend = state.blendFunction();
+          else if (!builderBlend.equals(state.blendFunction())) mixedBlend = true;
+        }
       }
+    }
+    // Cadence: blending that differs between targets (blend.<program>.<buffer>) is set after the build: the builder refuses it
+    // (one blend state in OpenGL), Metal takes one per attachment. The builder is given the first blend for every blended target.
+    for (var e : targetStates.entrySet()) {
+      ColorTargetState state = e.getValue();
+      builder.withColorTargetState(
+          e.getKey(),
+          mixedBlend && state.blendFunction().isPresent()
+              ? new ColorTargetState(builderBlend, state.format(), ColorTargetState.WRITE_ALL)
+              : state);
     }
     boolean depth = original != null && original.getDepthStencilState() != null;
     if (depth) {
@@ -252,6 +269,12 @@ public record PackPipeline(
           public void close() {}
         };
     RenderPipeline description = builder.build();
+    if (mixedBlend) {
+      List<ColorTargetState> states = new java.util.ArrayList<>(description.getColorTargetStates());
+      for (var e : targetStates.entrySet()) states.set(e.getKey(), e.getValue());
+      ((dev.cadence.shaders.mixin.PackPipelineTargetsAccess) description)
+          .cadence$setColorTargetStates(java.util.Collections.unmodifiableList(states));
+    }
     CompiledRenderPipeline compiled;
     // Direct executor and joined compilation keep the exact-name backend hint on this thread.
     // Vertex compilation remains Safe; unsupported precision contracts fall back in the backend.
