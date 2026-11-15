@@ -17,18 +17,21 @@ import org.lwjgl.system.MemoryUtil;
 
 /**
  * Style Filters (Video Settings > Cadence: Visuals > Style Filter): the world repainted in the style of one of the game's
- * own paintings, by a neural network on the Neural Engine (mcneural.m: about 8.5 ms a picture on an M2, beside the GPU, at most 60
- * a second; the newest picture is blended over the world, the hand and the HUD drawn on top as always). The trained network is
- * fitted to the Neural Engine and the window's shape first (StyleSpec).
+ * own paintings, by a neural network on the Neural Engine (mcneural.m: about 5 ms a picture 768 wide on an M2, beside the GPU,
+ * at most 60 a second; the newest picture is drawn over the world with the frame's own fine detail added back, the hand and the
+ * HUD drawn on top as always). The trained network is fitted to the Neural Engine and the window's shape first (StyleSpec).
  *
  * <p>Each style's network is trained on this Mac the first time it's chosen: Cadence Helper runs Create ML's style transfer
- * (about 4 minutes on an M2, in the background at low priority) with the painting (from the game's resources, so a resource pack's
+ * (its lighter network, about 2 minutes on an M2, in the background at low priority) with the painting (from the game's resources, so a resource pack's
  * painting gives its own style) and a few pictures of the world (taken as you play, or your screenshots). Nothing is downloaded;
  * the trained networks stay in ~/Library/Application Support/Cadence/styles.
  */
 public final class StyleFilter {
-	/** -Dcadence.style.iterations: Create ML's training iterations per style (default 300). */
-	private static final int ITERATIONS = Integer.getInteger("cadence.style.iterations", 300);
+	/**
+	 * -Dcadence.style.iterations: Create ML's training iterations per style (default 150: the lighter network's loss was 24.4 at
+	 * 150 and 21.6 at 300, the pictures alike; 94 s on an M2 with nothing else running).
+	 */
+	private static final int ITERATIONS = Integer.getInteger("cadence.style.iterations", 150);
 	/** -Dcadence.style.strength: how much of the styled picture is shown (default 0.85). */
 	private static final float STRENGTH = Float.parseFloat(System.getProperty("cadence.style.strength", "0.85"));
 	private static final int CONTENT_PICTURES = 8;
@@ -45,7 +48,7 @@ public final class StyleFilter {
 		Style(String label, String painting) {
 			this.label = label;
 			this.painting = painting;
-			this.file = painting + "-2";
+			this.file = painting + "-3";
 		}
 	}
 
@@ -64,7 +67,7 @@ public final class StyleFilter {
 	/** The running training (destroyed when the style is turned off or another is chosen, BH7-15). */
 	private static volatile Process training;
 	private static volatile Style trainingFor;
-	// pictures of the world for training, taken every half second while a style waits for them
+	// pictures of the world for training, taken every 2 s while a style waits for them
 	private static Path capturing;
 	private static int captured;
 	private static long capturedAt;
@@ -191,7 +194,8 @@ public final class StyleFilter {
 
 	private static void capture() {
 		long now = System.nanoTime();
-		if (now - capturedAt < 500_000_000L) return;  // (a picture every half second: the world as the player moves through it)
+		// (a picture every 2 s: the world as the player moves through it; half a second apart they were nearly the same picture)
+		if (now - capturedAt < 2_000_000_000L) return;
 		capturedAt = now;
 		Path to = capturing.resolve("world-" + System.currentTimeMillis() + ".png");
 		Screenshot.takeScreenshot(Minecraft.getInstance().gameRenderer.mainRenderTarget(), image -> {
@@ -232,8 +236,9 @@ public final class StyleFilter {
 		Thread t = new Thread(() -> {
 			try {
 				Path tmp = model.resolveSibling(s.file + ".training.mlmodel");
+				// (Create ML's lighter network: as good a picture, and fast enough on the Neural Engine to run at twice the width)
 				Process p = new ProcessBuilder("/usr/bin/nice", "-n", "15", helper.toString(), "train-style", painting.toString(), content.toString(),
-					String.valueOf(ITERATIONS), tmp.toString()).redirectErrorStream(true).start();
+					String.valueOf(ITERATIONS), tmp.toString(), "lite").redirectErrorStream(true).start();
 				training = p;
 				if (style != s) p.destroy();  // (turned off while it started)
 				var row = java.util.regex.Pattern.compile("^\\|\\s*(\\d+)\\s*\\|");
@@ -330,13 +335,13 @@ public final class StyleFilter {
 
 	/**
 	 * The style's networks fitted to other window shapes deleted (each is a few MB; the window's shape rarely changes back), and
-	 * the files of its network as trained before (painting.*: big painting pixels, which it painted as big blocks).
+	 * the files of its networks as trained by earlier versions (painting.* and painting-2.*).
 	 */
 	private static void forgetOtherSizes(Style s, String keep) {
 		try (var files = Files.list(dir())) {
 			for (Path p : files.toList()) {
 				String n = p.getFileName().toString();
-				boolean old = n.startsWith(s.painting + ".");
+				boolean old = n.startsWith(s.painting + ".") || n.startsWith(s.painting + "-") && !n.startsWith(s.file + ".");
 				if (!old && (!n.startsWith(s.file + ".ane-") || n.startsWith(s.file + ".ane-" + keep + "."))) continue;
 				if (Files.isDirectory(p)) {
 					try (var walk = Files.walk(p)) {

@@ -1,8 +1,9 @@
 // Cadence Helper (the Apple hardware features): the jobs that need Apple frameworks the game's process can't use for them.
 //
-//   cadence-helper train-style STYLE_IMAGE CONTENT_DIR ITERATIONS OUT.mlmodel
+//   cadence-helper train-style STYLE_IMAGE CONTENT_DIR ITERATIONS OUT.mlmodel [lite]
 //       A style transfer model trained with Create ML on this Mac (no download: Create ML's own feature extractor), for Style
 //       Filters, which run it on the Neural Engine. Create ML's table (a row per iteration) while training, "done" at the end.
+//       lite: Create ML's lighter network (a ninth of the size, about 3x faster a picture, so it runs at twice the width).
 //   cadence-helper wait PID
 //       Game Mode: what the game's first process becomes once it has started the game again as a new process (one macOS
 //       treats as a game): it waits for that process, hands it the signals the launcher sends (quit, interrupt, hang up), and
@@ -30,6 +31,7 @@ func trainStyle() {
 	let style = URL(fileURLWithPath: args[2]), content = URL(fileURLWithPath: args[3], isDirectory: true), out = URL(fileURLWithPath: args[5])
 	var p = MLStyleTransfer.ModelParameters()
 	p.maxIterations = Int(args[4]) ?? 300
+	if args.count > 6 && args[6] == "lite" { p.algorithm = .cnnLite }
 	do {
 		// (Create ML prints its own table, a row per iteration: "| N | ...", which Cadence reads as the progress)
 		let model = try MLStyleTransfer(trainingData: .images(styleImage: style, contentDirectory: content, processingOption: nil), parameters: p)

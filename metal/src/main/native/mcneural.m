@@ -92,11 +92,17 @@ static NSString *neuralSource = @
 	"}\n"
 	"struct V { float4 pos [[position]]; float2 uv; };\n"
 	"vertex V nn_vs(uint id [[vertex_id]]) { float2 p = float2((id << 1) & 2, id & 2); V v; v.pos = float4(p * 2.0 - 1.0, 0.0, 1.0); v.uv = float2(p.x, 1.0 - p.y); return v; }\n"
-	// the model's output (rows top first) over the frame (rows bottom first: the pass's y is flipped by the game's row order)
-	"fragment float4 nn_over(V v [[stage_in]], texture2d<float> t [[texture(0)]], constant float2 &p [[buffer(0)]]) {\n"
+	// the model's output (rows top first) over the frame (rows bottom first: the pass's y is flipped by the game's row order), with
+	// the frame's own fine detail added back: the model paints a picture a fifth of the screen's width, so upscaled alone it's
+	// blurred. low is this frame as small as the model's input (nn_down); the frame minus low upscaled is the detail the small
+	// picture can't hold, added as brightness only (the painting's colours stay), limited to small steps: texture detail is small,
+	// while a silhouette against the sky is a big one that showed as a bright halo. dst: the frame (read in place).
+	"fragment float4 nn_over(V v [[stage_in]], float4 dst [[color(0)]], texture2d<float> t [[texture(0)]], texture2d<float> low [[texture(1)]],\n"
+	"    constant float2 &p [[buffer(0)]]) {\n"
 	"  constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::linear);\n"
 	"  float2 size = float2(t.get_width(), t.get_height()), uv = (p.y + float2(v.uv.x, 1.0 - v.uv.y) * (size - 2.0 * p.y)) / size;\n"
-	"  return float4(t.sample(s, uv).rgb, p.x);\n"
+	"  float detail = clamp(dot(dst.rgb - low.sample(s, uv).rgb, float3(0.2126, 0.7152, 0.0722)), -0.12, 0.12);\n"
+	"  return float4(mix(dst.rgb, max(t.sample(s, uv).rgb + detail, 0.0), p.x), dst.a);\n"
 	"}\n";
 
 typedef struct {
@@ -110,6 +116,7 @@ typedef struct {
 	id<MTLComputePipelineState> down;
 	id<MTLFunction> vs, over;
 	id<MTLRenderPipelineState> overPso[2];
+	id<MTLTexture> low;  // this frame as small as the model's input, for the detail nn_over adds back
 	dispatch_queue_t q;
 	os_unfair_lock lock;
 	CVPixelBufferRef latest;  // the newest result (retained), under lock
@@ -182,12 +189,7 @@ static id<MTLRenderPipelineState> overPipeline(NnStyle *s, MTLPixelFormat format
 	MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor new] autorelease];
 	d.vertexFunction = s->vs;
 	d.fragmentFunction = s->over;
-	d.colorAttachments[0].pixelFormat = format;
-	d.colorAttachments[0].blendingEnabled = YES;
-	d.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
-	d.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
-	d.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorZero;
-	d.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOne;
+	d.colorAttachments[0].pixelFormat = format;  // (no blending: nn_over reads the frame and mixes itself)
 	NSError *e = nil;
 	s->overPso[k] = [s->ctx->device newRenderPipelineStateWithDescriptor:d error:&e];
 	if (!s->overPso[k]) NSLog(@"cadence-style: %@", e);
@@ -281,7 +283,22 @@ int mcst_frame(void *st, Enc *enc, id<MTLTexture> color, float strength) {
 			CVMetalTextureRef tout = NULL;
 			size_t w = CVPixelBufferGetWidth(latest), h = CVPixelBufferGetHeight(latest);
 			id<MTLRenderPipelineState> p = overPipeline(s, color.pixelFormat);
-			if (p && CVMetalTextureCacheCreateTextureFromImage(NULL, s->cache, latest, NULL, MTLPixelFormatBGRA8Unorm, w, h, 0, &tout) == kCVReturnSuccess) {
+			if (!s->low) {
+				MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:(NSUInteger) s->inW
+					height:(NSUInteger) s->inH mipmapped:NO];
+				td.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
+				td.storageMode = MTLStorageModePrivate;
+				s->low = [s->ctx->device newTextureWithDescriptor:td];
+			}
+			if (p && s->low && CVMetalTextureCacheCreateTextureFromImage(NULL, s->cache, latest, NULL, MTLPixelFormatBGRA8Unorm, w, h, 0, &tout) == kCVReturnSuccess) {
+				id<MTLComputeCommandEncoder> c = [cb computeCommandEncoder];
+				c.label = @"Cadence style (frame made small, for its detail)";
+				[c setComputePipelineState:s->down];
+				[c setTexture:color atIndex:0];
+				[c setTexture:s->low atIndex:1];
+				[c setBytes:&s->margin length:4 atIndex:0];
+				[c dispatchThreads:MTLSizeMake((NSUInteger) s->inW, (NSUInteger) s->inH, 1) threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+				[c endEncoding];
 				MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
 				rp.colorAttachments[0].texture = color;
 				rp.colorAttachments[0].loadAction = MTLLoadActionLoad;
@@ -290,6 +307,7 @@ int mcst_frame(void *st, Enc *enc, id<MTLTexture> color, float strength) {
 				re.label = @"Cadence style (over the frame)";
 				[re setRenderPipelineState:p];
 				[re setFragmentTexture:CVMetalTextureGetTexture(tout) atIndex:0];
+				[re setFragmentTexture:s->low atIndex:1];
 				float over[2] = {strength, (float) s->margin};
 				[re setFragmentBytes:over length:8 atIndex:0];
 				[re drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
@@ -344,6 +362,7 @@ void mcst_free(void *st) {
 	[s->vs release];
 	[s->over release];
 	for (int k = 0; k < 2; k++) [s->overPso[k] release];
+	[s->low release];
 	if (s->pool) CVPixelBufferPoolRelease(s->pool);
 	if (s->outPool) CVPixelBufferPoolRelease(s->outPool);
 	if (s->cache) CFRelease(s->cache);

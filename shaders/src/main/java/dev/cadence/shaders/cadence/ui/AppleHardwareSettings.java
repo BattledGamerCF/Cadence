@@ -78,8 +78,8 @@ public final class AppleHardwareSettings {
 			ShaderToggle.saveKey("styleFilter", next.name());
 			CadenceSettings.refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.MEDIUM, "The world repainted in the style of one of Minecraft's paintings, by a neural network on your Mac's Neural Engine.",
-			"#The first time a style is chosen, your Mac learns it (about 4 minutes, in the background while you play; it takes a few "
-				+ "pictures of your world first). Nothing is downloaded. The network then runs beside the graphics chip, about 35 pictures "
+			"#The first time a style is chosen, your Mac learns it (about 2 minutes, in the background while you play; it takes a few "
+				+ "pictures of your world first). Nothing is downloaded. The network then runs beside the graphics chip, up to 60 pictures "
 				+ "a second; your HUD stays sharp. Not with a shader pack or World Resolution below 100%.")).build();
 		CadenceSettings.onRefresh(() -> self[0].setMessage(styleLabel()));
 		return self[0];

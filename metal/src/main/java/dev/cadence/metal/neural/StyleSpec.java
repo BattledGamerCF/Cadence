@@ -13,7 +13,8 @@ import java.util.List;
  * convolution and scales its output by 255 with a Scale layer; the Neural Engine runs neither, so Core ML split the network
  * into 17 pieces with a trip to the CPU between each (28.7 ms a picture on an M2). Here the paddings become zero paddings and
  * the scale a linear activation, so all of it runs on the Neural Engine, and the picture's size is set to the window's shape
- * (512 wide) instead of a 512 x 512 square: 8.5 ms. Zero padding darkens the picture's edges, so the input gets a margin of
+ * (512 wide) instead of a 512 x 512 square: 8.5 ms. Create ML's lighter network (the one trained now) has no such layers and
+ * runs on the Neural Engine as it is; only its size is set (768 wide: 5 ms). Zero padding darkens the picture's edges, so the input gets a margin of
  * mirrored pixels (MARGIN on each side, mcneural.m nn_down) that's cut off again when the result is drawn.
  *
  * <p>Only the few fields this needs are read from the Core ML model (a protobuf): Model.description (2) > input (1) / output (10)
@@ -23,16 +24,24 @@ import java.util.List;
 final class StyleSpec {
 	/** Mirrored pixels on each side of the model's input (a multiple of 4: the network halves the picture twice). */
 	static final int MARGIN = 16;
-	static final int WIDTH = 512;
+	/**
+	 * The picture's width at most. Create ML's lighter network on an M2: 5 ms at 768 wide alone, 8.9 ms at 1024 (the full network
+	 * took 10 ms at 512); in a game the Neural Engine took 14-20 ms at 1024, about 30 pictures a second, so 768.
+	 */
+	static final int WIDTH = 768;
 
 	private StyleSpec() {
 	}
 
-	/** The model's input and output size for a window w x h: 512 wide plus the margins, the height to the window's shape. */
+	/**
+	 * The model's input and output size for a window w x h (pixels): WIDTH wide (the window's width if that's less) plus the
+	 * margins, the height to the window's shape.
+	 */
 	static int[] size(int windowW, int windowH) {
-		int h = Math.round(WIDTH * (float) windowH / Math.max(1, windowW) / 4f) * 4;
-		h = Math.clamp(h, 128, 512);
-		return new int[] {WIDTH + 2 * MARGIN, h + 2 * MARGIN};
+		int w = Math.max(256, Math.min(WIDTH, windowW / 4 * 4));
+		int h = Math.round(w * (float) windowH / Math.max(1, windowW) / 4f) * 4;
+		h = Math.clamp(h, 128, WIDTH);
+		return new int[] {w + 2 * MARGIN, h + 2 * MARGIN};
 	}
 
 	/** The model at src rewritten into dst for a w x h picture; false if it isn't the network this expects (src is used as is). */
@@ -67,7 +76,7 @@ final class StyleSpec {
 				}
 			}
 		}
-		if (pads == 0) return false;
+		// (Create ML's lighter network has no reflection paddings and runs on the Neural Engine as it is: only its size is set)
 		int images = 0;
 		for (Field io : desc.parsed()) {
 			if (io.number != 1 && io.number != 10) continue;
