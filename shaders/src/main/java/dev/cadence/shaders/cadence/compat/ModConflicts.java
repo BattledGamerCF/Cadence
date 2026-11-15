@@ -10,6 +10,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.toasts.SystemToast;
+import net.minecraft.network.chat.Component;
 import net.minecraft.client.gui.screens.Screen;
 
 /**
@@ -76,15 +77,18 @@ public final class ModConflicts {
 
 	/** The screen itself (the self-test opens it with screen=conflicts). */
 	public static Screen make(Screen parent, List<Conflict> list) {
+		// (each sentence translated on its own: the text as one string matched no translation)
 		StringBuilder text = new StringBuilder();
-		for (Conflict c : list) text.append(c.name()).append(": ").append(c.why()).append('\n');
-		text.append("\nRemove ").append(list.size() == 1 ? "it" : "them").append(" from your mods folder, or remove Cadence, then restart. ")
-			.append("Until then, the picture, shader packs and performance may be broken.");
+		for (Conflict c : list) text.append(c.name()).append(": ").append(dev.cadence.metal.system.Lang.tr(c.why())).append('\n');
+		Component remove = list.size() == 1 ? dev.cadence.metal.system.Lang.literal("Remove it from your mods folder, or remove Cadence, then restart.")
+			: dev.cadence.metal.system.Lang.literal("Remove them from your mods folder, or remove Cadence, then restart.");
+		Component until = dev.cadence.metal.system.Lang.literal("Until then, the picture, shader packs and performance may be broken.");
+		text.append('\n').append(remove.getString()).append(' ').append(until.getString());
 		return new CadenceConfirmScreen(cont -> {
 			if (cont) Minecraft.getInstance().gui.setScreen(parent);
 			else Minecraft.getInstance().stop();
 		}, dev.cadence.metal.system.Lang.literal(list.size() == 1 ? "A mod can't run with Cadence" : list.size() + " mods can't run with Cadence"),
-			dev.cadence.metal.system.Lang.literal(text.toString()),
+			net.minecraft.network.chat.Component.literal(text.toString()),
 			dev.cadence.metal.system.Lang.literal("Continue Anyway"), dev.cadence.metal.system.Lang.literal("Quit Game"), 360);
 	}
 

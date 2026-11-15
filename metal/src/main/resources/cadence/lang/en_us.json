@@ -10,5 +10,6 @@
  "reads the biome, its colours, the time and the weather, so biomes from mods get a grade too. Changes ease in over": "reads the biome, its colors, the time and the weather, so biomes from mods get a grade too. Changes ease in over",
  "Biome Colours": "Biome Colors",
  "Generates the far terrain within {} km of you now, in the background, and keeps it on disk: travelling there later shows it at once": "Generates the far terrain within {} km of you now, in the background, and keeps it on disk: traveling there later shows it at once",
- "Biome Colours: {}": "Biome Colors: {}"
+ "Biome Colours: {}": "Biome Colors: {}",
+ "How colourful the picture is. Muted colours are lifted more than strong ones, so it stays natural. Free": "How colorful the picture is. Muted colors are lifted more than strong ones, so it stays natural. Free"
 }
