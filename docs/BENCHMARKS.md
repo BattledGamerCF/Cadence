@@ -171,6 +171,7 @@ change fps. The frame rate stayed at the test's 120 fps cap either way, with the
 | Ultra: not gathering entities for generated frames | BSL 5.56-5.60 W against 5.16-5.30 W gathering them | Used more power |
 | Drawing a pack's shadow map every 3rd frame instead of every 2nd | Every frame costs 1.15 ms more than every 2nd, so every 3rd would save about 0.4 ms (3%) | Not worth the shadows lagging behind movement |
 | Not writing the frame's depth back to memory at the end of the frame (`cadence.metal.frameDepthDiscard`) | 1.87 vs 1.89 ms GPU (fullscreen Retina, no shaders) | No difference |
+| The near-terrain occlusion test's other settings: its depth pyramid drawn by a render pass, started one level coarser, the test off, or more of the near terrain drawn before it | 621, 625, 635 and 624 fps against 613 and 635 for the defaults (fullscreen Retina, render distance 16, no shaders) | Within run-to-run noise; the frame is limited by drawing the terrain itself |
 
 ## Power: Battery Saver
 
@@ -268,7 +269,7 @@ Without shaders, the GPU memory rose 16 MB: Frame Generation wasn't running befo
 
 | Feature | Before | Now |
 |---|---|---|
-| Style Filter (a painting's style over the world) | 38 ms a picture, ~26 a second, 870 fps* | 10 ms, 60 a second, 995 fps* |
+| Style Filter (a painting's style over the world) | Full network 512 wide, stretched over the screen: 10 ms a picture, 60 a second, 995 fps* | Create ML's lighter network 768 wide with the frame's detail added back: 12-14 ms a picture in game, up to 60 a second; 0.7 ms of GPU time a frame fullscreen on Retina (1.5 -> 2.2 ms); trains in about 2 minutes |
 | Neural Engine upscaler | Not available with shader packs; at most 1280-wide pictures; a ~1 s stop at every size change | Shader packs, any size (tiles), started in the background |
 | Smooth Textures | 1,254 sprites upscaled in 167-182 ms at load; +0.2 ms a frame* | Unchanged |
 

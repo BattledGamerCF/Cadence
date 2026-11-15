@@ -2,15 +2,24 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## 1.1.0-beta.3 / shaders 0.3.34 (not yet released)
+## 1.1.0-beta.4 / shaders 0.3.35 (not yet released)
+
+Includes beta.3, which was not released on its own.
 
 - **PBR resource packs.** Blocks' normal and specular maps (`_n`, `_s`, labPBR or OldPBR) reach shader packs that read them.
 - Far shadow proxies are built for at most 2 ms a frame. With BSL, a frame that built 16 of them took up to 67 ms.
 - With Dynamic FPS installed, a notice at launch suggests removing it: Cadence already lowers the frame rate in the background and while away, and Dynamic FPS overrides Battery Saver and Frame Generation.
 - Tooltips open below a button in the top half of the screen and above it in the bottom half, wherever the list is scrolled, and always stay on screen. One too tall for the screen is wrapped wider.
-- Style Filters keep the world's detail. Each painting was blown up to 512 pixels, so its pixels were 10-32 pixels wide and the network painted the world in blocks that size; it now trains on the painting repeated at 3 pixels a pixel. Styles train again the first time they're chosen (about 4 minutes).
+- **Sharper Style Filters.** The painting is drawn at twice the width (768 pixels), with the world's own fine detail added back over it, instead of a blurred 512-pixel picture stretched over the screen. Training uses Create ML's lighter network: a ninth of the size, as good a picture, and about 2 minutes instead of 4. Each painting was also blown up to 512 pixels for training, so the world was painted in blocks 10-32 pixels wide; it now trains on the painting at 3 pixels a pixel. Styles train again the first time they're chosen.
 - **No dark band at the far terrain's edge over water.** Looking across water, the sight lines that pass the render distance under the surface met the far terrain's water-coloured sides, a second water behind the real one. They now show the seabed. Far water itself is drawn as the game draws it (70% water over a seabed that darkens with depth, seagrass and kelp included) instead of turning solid blue a few blocks down. In a generated world the far terrain is made again once, so builds far away return to it when you next go near them.
 - Fix: with view bobbing on, far terrain didn't bob with the rest of the world (nor shake when hurt).
+- Shader packs can blend each buffer differently (`blend.<program>.<buffer>`); a pack that did turned itself off.
+- Greyscale textures in shader packs (MakeUp's cloud map, AstraLex's frozen.png) are read as stored; they were decoded much brighter.
+- No more pauses when turning on Ray Tracing (1.3 s), at a dimension change with Far Terrain (0.4-0.5 s), when turning on HDR (0.1 s), or while the sound engine is busy (World Reverb waited for it).
+- The Far Terrain page's notes fit the screen, Shader Packs' bottom buttons fit narrow windows, Create Shader keeps the name typed when the window is resized, and the far terrain's progress line no longer overlaps the performance overlay.
+- Cadence Lite and shaders made with Create Shader are labelled as Cadence's own in Shader Packs instead of "Not tested".
+- Every language has the newest text (124 strings were still in English), including the incompatible-mods screen, which was never translated.
+- Bug hunt (Sonnet, BH13), all fixed: Ray Tracing on M3 and later compiled its tracer twice, once on the render thread; a sound's buffer callback could touch a freed voice; the HDR mask could pair one atlas with another's data during a resource reload.
 - Bug hunt (Sonnet, BH12), all fixed:
   - PBR maps are read texel for texel like the block textures (blended, labPBR's specular values meant other materials), decoded on all cores, and a map that can't be decoded is skipped instead of turning the shader pack off.
   - Tooltips of buttons focused with the keyboard or a controller start at the button, not at the mouse.

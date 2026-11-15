@@ -42,6 +42,10 @@ Each mod was checked in game with these steps:
 
 There were no errors from Cadence or between the mods.
 
+Last checked with 1.1.0-beta.4 (2026-11-14) by `tools/compat-run.sh`: the release jar with the whole set except Essential
+(offline, its updater waits for a window that never closes), without shader packs and with BSL and Cadence Lite. Both
+passed. AppleSkin's Mod Menu page logs an error without Cloth Config, which this set doesn't include; that is AppleSkin's.
+
 | Mod | Version | Result |
 |---|---|---|
 | AppleSkin | 3.0.10 | Works: hunger and saturation preview on the HUD. |
