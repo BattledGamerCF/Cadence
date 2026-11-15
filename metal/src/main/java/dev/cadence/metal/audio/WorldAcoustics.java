@@ -142,6 +142,7 @@ public final class WorldAcoustics {
 			pos = MemoryUtil.nmemAlloc(MAX_SOUNDS * 12L);
 		}
 		int n = AppleAudio.snapshot(ids, pos, MAX_SOUNDS), occluded = 0, routed = 0;
+		if (n < 0) return;  // (busy: this pass skipped, the sounds keep their last occlusion)
 		boolean searched = false;
 		String first = "";
 		java.util.HashSet<Long> seen = new java.util.HashSet<>();

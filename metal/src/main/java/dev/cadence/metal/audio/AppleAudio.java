@@ -222,7 +222,10 @@ public final class AppleAudio {
 		}
 	}
 
-	/** The playing spatial sounds: up to max handles into ids (8 bytes each) and positions into pos (3 floats each); how many. */
+	/**
+	 * The playing spatial sounds: up to max handles into ids (8 bytes each) and positions into pos (3 floats each); how many, or -1
+	 * when the sound thread holds the voices (the render thread doesn't wait: a 63 ms frame once at a dimension change).
+	 */
 	public static int snapshot(long ids, long pos, int max) {
 		if (!running) return 0;
 		try {

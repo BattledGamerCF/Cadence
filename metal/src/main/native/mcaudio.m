@@ -719,8 +719,9 @@ void mca_environment(int on, int preset, float level, float blend) {
 }
 
 // The playing spatial sounds now: up to max of them, their handles into ids and positions (x, y, z) into pos. Returns how many.
+// -1: the lock is held (the sound thread or an engine restart is busy with the voices): the render thread doesn't wait for it.
 int mca_snapshot(void **ids, float *pos, int max) {
-	os_unfair_lock_lock(&gLock);
+	if (!os_unfair_lock_trylock(&gLock)) return -1;
 	int n = 0;
 	for (int i = 0; i < gVoiceCount && n < max; i++) {
 		Voice *v = gVoices[i];

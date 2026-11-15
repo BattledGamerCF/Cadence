@@ -137,7 +137,13 @@ final class LodField {
 	}
 
 	void close() {
+		// (the changed tiles read here, compressed and written on a thread of their own: done here, a dimension change stopped
+		// the game for 360-480 ms; not a daemon, so quitting waits for the files)
+		this.closing = new java.util.ArrayList<>();
 		this.saveDirty(true);
+		java.util.List<Runnable> saves = this.closing;
+		this.closing = null;
+		if (!saves.isEmpty()) Thread.ofPlatform().name("cadence-lod-save").daemon(false).start(() -> saves.forEach(Runnable::run));
 		this.closed = true;
 		for (Thread t : this.threads) t.interrupt();
 		if (this.scanner != null) this.scanner.shutdownNow();
@@ -822,6 +828,8 @@ final class LodField {
 	}
 
 	private static final long SAVE_EVERY_NS = 30_000_000_000L;
+	/** While close() saves: the tiles' writes, run after on a thread of their own. */
+	private java.util.@org.jspecify.annotations.Nullable List<Runnable> closing;
 	private long lastSave = System.nanoTime();
 
 	/** LodClip, a resident tile about to be cleared (render thread): written now if real chunks changed it. */
@@ -838,7 +846,8 @@ final class LodField {
 		int[] rn = cr != null ? new int[LodTile.CELLS] : null;
 		int[] pl = level == 0 && this.clip.plants ? new int[2 * LodTile.CELLS] : null;
 		this.clip.readLatest(level, tx, tz, g, c, cr, tw, rn, pl);
-		if (now) this.save(key, g, c, cr, tw, rn, pl);
+		if (now && this.closing != null) this.closing.add(() -> this.save(key, g, c, cr, tw, rn, pl));
+		else if (now) this.save(key, g, c, cr, tw, rn, pl);
 		else this.jobs.add(new Job(0, this.seq.incrementAndGet(), 0, () -> this.save(key, g, c, cr, tw, rn, pl)));
 	}
 

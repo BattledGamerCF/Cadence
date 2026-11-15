@@ -27,11 +27,15 @@ import org.lwjgl.system.MemoryUtil;
  * at the same coordinates. A sprite counts as emissive when blocks that give light use it and no block that doesn't: the
  * lit furnace's front and the jack o'lantern's face, not the furnace's sides or the pumpkin's. Its texels hold the block's light
  * level / 15 (the brightest user's); the shader weighs that by each texel's own brightness. Lava (drawn by the fluid renderer,
- * not a block model) is added by name. Made again when the atlas is (a resource reload makes a new one). Render thread.
+ * not a block model) is added by name. Made again when the atlas is (a resource reload makes a new one): worked out on a background
+ * thread, uploaded on the render thread.
  */
 public final class OwnEmission {
 	private static GpuTexture mask, forAtlas;
 	private static boolean bound, failed;
+	/** The mask being worked out off the render thread (it took ~100 ms there: a hitch when HDR turned on), and for which atlas. */
+	private static volatile ByteBuffer built;
+	private static volatile GpuTexture builtFor, building;
 	private static final boolean DEBUG = Boolean.getBoolean("cadence.hdr.debug");
 
 	private OwnEmission() {
@@ -57,11 +61,20 @@ public final class OwnEmission {
 			return;  // (the atlas isn't stitched yet: the loading screen's first frames, BH7-01)
 		}
 		if (t != forAtlas || mask == null) {
-			try {
-				build(atlas, t);
-			} catch (Throwable e) {
-				failed = true;
-				System.out.println("[cadence] HDR: no emission mask for the block atlas: " + e);
+			ByteBuffer pixels = built;
+			if (pixels != null && builtFor == t) {
+				built = null;
+				try {
+					upload(pixels, t);
+				} finally {
+					MemoryUtil.memFree(pixels);
+				}
+			} else {
+				if (building != t) start(atlas, t);
+				if (bound) {  // (the old atlas's mask doesn't fit this one: plain until the new one is ready)
+					OwnNative.hdr(1f, 0);
+					bound = false;
+				}
 				return;
 			}
 		}
@@ -69,7 +82,26 @@ public final class OwnEmission {
 		bound = true;
 	}
 
-	private static void build(TextureAtlas atlas, GpuTexture atlasTexture) {
+	/** The mask's texels worked out on a background thread (models and sprites are only read); handed over in built. */
+	private static void start(TextureAtlas atlas, GpuTexture t) {
+		building = t;
+		Thread.ofVirtual().name("cadence-hdr-mask").start(() -> {
+			try {
+				ByteBuffer pixels = build(atlas, t);
+				ByteBuffer old = built;
+				builtFor = t;
+				built = pixels;
+				if (old != null) MemoryUtil.memFree(old);
+			} catch (Throwable e) {
+				failed = true;
+				System.out.println("[cadence] HDR: no emission mask for the block atlas: " + e);
+			} finally {
+				if (building == t) building = null;
+			}
+		});
+	}
+
+	private static ByteBuffer build(TextureAtlas atlas, GpuTexture atlasTexture) {
 		Minecraft mc = Minecraft.getInstance();
 		long t0 = System.nanoTime();
 		Map<TextureAtlasSprite, Integer> emit = new IdentityHashMap<>();
@@ -101,33 +133,35 @@ public final class OwnEmission {
 		int w = atlasTexture.getWidth(0), h = atlasTexture.getHeight(0);
 		ByteBuffer pixels = MemoryUtil.memCalloc(w * h);
 		int marked = 0;
-		try {
-			for (var entry : emit.entrySet()) {
-				TextureAtlasSprite s = entry.getKey();
-				if (plain.containsKey(s) || s == atlas.missingSprite()) continue;
-				byte v = (byte) Math.min(255, entry.getValue() * 17);
-				// (the sprite's own UV rectangle: getX/getY include the mip padding around it)
-				int x0 = Math.round(s.getU0() * w), x1 = Math.round(s.getU1() * w), y0 = Math.round(s.getV0() * h), y1 = Math.round(s.getV1() * h);
-				int sw = x1 - x0, sh = y1 - y0;
-				for (int y = Math.max(0, y0); y < Math.min(h, y1); y++)
-					for (int x = Math.max(0, x0); x < Math.min(w, x1); x++) pixels.put(y * w + x, v);
-				marked++;
-				if (DEBUG && marked <= 12) System.out.println("[cadence] HDR emissive " + s.contents().name() + " light " + entry.getValue() + " at " + x0 + "," + y0 + " " + sw + "x" + sh);
-			}
-			if (DEBUG) {
-				int nz = 0;
-				for (int i = 0; i < w * h; i++) if (pixels.get(i) != 0) nz++;
-				System.out.println("[cadence] HDR mask texels set: " + nz);
-			}
-			var device = RenderSystem.getDevice();
-			if (mask != null) mask.close();
-			mask = device.createTexture(() -> "Cadence emission mask", GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST, GpuFormat.R8_UNORM, w, h, 1, 1);
-			device.createCommandEncoder().writeToTexture(mask, pixels, 0, 0, 0, 0, w, h);
-			if (DEBUG) Hdr.debugNonZero(mask, 1, "emission mask");
-		} finally {
-			MemoryUtil.memFree(pixels);
+		for (var entry : emit.entrySet()) {
+			TextureAtlasSprite s = entry.getKey();
+			if (plain.containsKey(s) || s == atlas.missingSprite()) continue;
+			byte v = (byte) Math.min(255, entry.getValue() * 17);
+			// (the sprite's own UV rectangle: getX/getY include the mip padding around it)
+			int x0 = Math.round(s.getU0() * w), x1 = Math.round(s.getU1() * w), y0 = Math.round(s.getV0() * h), y1 = Math.round(s.getV1() * h);
+			int sw = x1 - x0, sh = y1 - y0;
+			for (int y = Math.max(0, y0); y < Math.min(h, y1); y++)
+				for (int x = Math.max(0, x0); x < Math.min(w, x1); x++) pixels.put(y * w + x, v);
+			marked++;
+			if (DEBUG && marked <= 12) System.out.println("[cadence] HDR emissive " + s.contents().name() + " light " + entry.getValue() + " at " + x0 + "," + y0 + " " + sw + "x" + sh);
 		}
+		if (DEBUG) {
+			int nz = 0;
+			for (int i = 0; i < w * h; i++) if (pixels.get(i) != 0) nz++;
+			System.out.println("[cadence] HDR mask texels set: " + nz);
+		}
+		System.out.printf(java.util.Locale.ROOT, "[cadence] HDR: emission mask %dx%d, %d emissive sprites (%.0f ms, in the background)%n", w, h, marked, (System.nanoTime() - t0) / 1e6);
+		return pixels;
+	}
+
+	/** Render thread, between frames: the worked-out texels into the mask texture. */
+	private static void upload(ByteBuffer pixels, GpuTexture atlasTexture) {
+		int w = atlasTexture.getWidth(0), h = atlasTexture.getHeight(0);
+		var device = RenderSystem.getDevice();
+		if (mask != null) mask.close();
+		mask = device.createTexture(() -> "Cadence emission mask", GpuTexture.USAGE_TEXTURE_BINDING | GpuTexture.USAGE_COPY_DST, GpuFormat.R8_UNORM, w, h, 1, 1);
+		device.createCommandEncoder().writeToTexture(mask, pixels, 0, 0, 0, 0, w, h);
+		if (DEBUG) Hdr.debugNonZero(mask, 1, "emission mask");
 		forAtlas = atlasTexture;
-		System.out.printf(java.util.Locale.ROOT, "[cadence] HDR: emission mask %dx%d, %d emissive sprites (%.0f ms)%n", w, h, marked, (System.nanoTime() - t0) / 1e6);
 	}
 }
