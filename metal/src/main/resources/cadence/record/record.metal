@@ -1,7 +1,8 @@
 // Cadence: Record Mode's frame (dev.cadence.metal.record). No render pass: the world is ray-marched through a voxel window
 // around the camera (the client's loaded blocks, textured from the block atlas), entities are boxes, and the HUD text is
 // drawn from the game's font, all in one compute dispatch; a second one makes the in-between frame (frame interpolation) by
-// reprojecting the two latest frames.
+// reprojecting the two latest frames. With Frame Generation on Ultra, record_gen makes the frames between real ones from the
+// latest real frame alone.
 #include <metal_stdlib>
 using namespace metal;
 
@@ -19,7 +20,8 @@ struct Frame {
 	uint4 size;               // x, y: output size; z: entity count; w: text lines
 	float4 misc;              // x: atlas max mip; y: text scale; z: fog start; w: the window's top (above every block)
 	uint4 flags;              // x: make the in-between frame of the last two (frame interpolation) in this dispatch (2: the
-	                          // camera didn't move between them, so no reprojection: the two frames' blend);
+	                          // camera didn't move between them, so no reprojection: the two frames' blend); 4: Ultra, the
+	                          // frame's world (no HUD) into outMid instead, for record_gen;
 	                          // y: the sky's darkening (Level.getSkyDarken, 0..11 at night); z: the brightness option (float bits);
 	                          // w: a screen is open (the game draws its HUD over this frame: none of its own)
 	uint4 hud[3];             // the HUD: 9 hotbar slot colours (0: empty); then the selected slot, health and food (0..20)
@@ -80,6 +82,26 @@ static inline float3 rayDir(Camera c, float2 ndc) {
 }
 
 
+
+// The HUD over the world (RecordHud: text, hotbar, bars, drawn by the CPU when it changes) and the crosshair, unless a screen
+// is open (the game draws its own HUD over the frame then).
+static inline float3 overlay(float3 color, uint2 gid, constant Frame &f, device const uint *hud) {
+#ifndef RB_NO_HUD
+	if (f.flags.w == 0) {
+	uint o = hud[gid.y * f.size.x + gid.x];  // (unconditional: skipping the HUD's empty rows cost 14%, the load issued late)
+	if (o != 0) {
+		float4 hc = unpack_unorm4x8_to_float(o);
+		color = mix(color, hc.rgb, hc.a);
+	}
+	uint scale = uint(f.misc.y);
+	// the crosshair (the game stays playable: you can see what you aim at)
+	int2 cc = int2(gid) - int2(f.size.xy / 2);
+	int arm = int(4 * scale), thick = int(max(1u, scale / 2));
+	if ((abs(cc.x) <= arm && abs(cc.y) < thick) || (abs(cc.y) <= arm && abs(cc.x) < thick)) color = 1.0f - color;
+	}
+#endif
+	return color;
+}
 
 // (the in-between frame for one pixel, from the last two frames: see record_interp)
 static float3 interpolated(uint2 gid, constant Frame &f, texture2d<float> colorA, texture2d<float> depthA, texture2d<float> colorB,
@@ -307,27 +329,48 @@ kernel void record_trace(texture2d<float, access::write> outColor [[texture(0)]]
 	if (f.status.z == 1) color = mix(color * float3(0.45f, 0.6f, 1.0f), float3(0.02f, 0.06f, 0.25f), smoothstep(2.0f, 20.0f, hitT));
 	else if (f.status.z == 2) color = mix(color, float3(0.9f, 0.3f, 0.05f), 0.85f);
 	if (f.status.y > 0) color = mix(color, float3(0.8f, 0.0f, 0.0f), float(f.status.y) * 0.035f);
-#ifndef RB_NO_HUD
-	if (f.flags.w == 0) {
-	// the HUD (RecordHud: text, hotbar, bars), drawn by the CPU when it changes, blended over the frame
-	uint o = hud[gid.y * f.size.x + gid.x];  // (unconditional: skipping the HUD's empty rows cost 14%, the load issued late)
-	if (o != 0) {
-		float4 hc = unpack_unorm4x8_to_float(o);
-		color = mix(color, hc.rgb, hc.a);
-	}
-	uint scale = uint(f.misc.y);
-	// the crosshair (the game stays playable: you can see what you aim at)
-	int2 cc = int2(gid) - int2(f.size.xy / 2);
-	int arm = int(4 * scale), thick = int(max(1u, scale / 2));
-	if ((abs(cc.x) <= arm && abs(cc.y) < thick) || (abs(cc.y) <= arm && abs(cc.x) < thick)) color = 1.0f - color;
-	}
-#endif
 	// (stored bottom row first, as the game's targets are: the present flips them; the image above is top row first)
 	uint2 st = uint2(gid.x, f.size.y - 1 - gid.y);
+	// Ultra: the world as it is, before the HUD, for the generated frames to come (record_gen)
+	if (f.flags.x & 4) outMid.write(float4(color, 1), st);
+	color = overlay(color, gid, f, hud);
 	outColor.write(float4(color, 1), st);
 	outDepth.write(float4(hitT), st);
 	// frame interpolation, in the same dispatch: the frame halfway between the last two (one frame behind this one)
 	if (f.flags.x & 3) outMid.write(float4(interpolated(gid, f, colorA, depthA, colorB, depthB), 1), st);
+}
+
+// Ultra's generated frame: the latest real frame's world (colorA, before its HUD; depthA, each pixel's distance) seen from
+// this frame's camera (f.cam; f.a is the real frame's), then this frame's HUD over it. Each pixel's ray finds the distance
+// at which the real frame saw the point it reaches (a few fixed-point steps; exact for a turn alone, which needs none).
+// Where the real frame saw nothing (turned past its edge), its nearest edge pixel.
+kernel void record_gen(texture2d<float, access::write> outColor [[texture(0)]], texture2d<float> colorA [[texture(4)]],
+	texture2d<float> depthA [[texture(5)]], constant Frame &f [[buffer(0)]], device const uint *hud [[buffer(5)]],
+	uint2 gid [[thread_position_in_grid]]) {
+	if (gid.x >= f.size.x || gid.y >= f.size.y) return;
+	float2 size = float2(f.size.xy);
+	float2 ndc = (float2(gid) + 0.5f) / size * 2.0f - 1.0f;
+	ndc.y = -ndc.y;
+	float3 rd = rayDir(f.cam, ndc), eye = f.cam.pos.xyz - f.a.pos.xyz;  // (eye: relative to the real frame's)
+	Camera c = f.a;
+	// first the direction alone (the point far away), then the point at the distance the real frame saw there
+	float3 v = rd;
+	float t = 0;
+	uint2 px = uint2(0);
+	for (int k = 0; k < 4; k++) {
+		float z = max(dot(v, c.fwd.xyz), 1e-4f);
+		float2 q = clamp(float2(dot(v, c.right.xyz) / (z * c.fwd.w), dot(v, c.up.xyz) / (z * c.right.w)), -1.0f, 1.0f);
+		px = uint2(min(float2(q.x * 0.5f + 0.5f, 0.5f - q.y * 0.5f) * size, size - 1.0f));
+		px.y = f.size.y - 1 - px.y;  // (rows bottom first)
+		float d = depthA.read(px).r;
+		if (d >= 1e8f) break;  // (sky: the direction is all there is)
+		float seen = k == 0 ? 0.0f : length(v);
+		t = max(t + d - seen, 0.05f);
+		v = eye + rd * t;
+		if (k > 0 && abs(d - seen) < 0.01f) break;
+	}
+	float3 color = overlay(colorA.read(px).rgb, gid, f, hud);
+	outColor.write(float4(color, 1), uint2(gid.x, f.size.y - 1 - gid.y));
 }
 
 // Frame interpolation: the frame halfway between the last two (a the newer, b the older), by reprojection. Each pixel's ray

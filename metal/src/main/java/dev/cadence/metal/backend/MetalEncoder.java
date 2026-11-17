@@ -51,6 +51,13 @@ final class MetalEncoder implements CommandEncoderBackend {
 	 * RB_BATCH), which at 20k frames a second is ~40% of a frame. A frame that presents commits at once.
 	 */
 	static volatile int recordBatch = Math.max(1, Integer.getInteger("cadence.record.batch", 4));
+	/**
+	 * Record Mode with Ultra's generated frames: at least this many frames a command buffer (Record sets it from the frame
+	 * rate, so command buffers stay near 2,000 a second: at 20 us each, more would be the limit, not the GPU).
+	 */
+	static volatile int recordBatchAuto = 1;
+	/** Record Mode: time the render thread has waited for the GPU (the in-flight limit), nanoseconds. Render thread. */
+	static long recordWaitNanos;
 	/** Set by Record when this frame was a record frame (only those are batched). */
 	public static boolean recordFrame;
 	private int recordBatched;
@@ -220,7 +227,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 		if (this.currentPass != null) throw new IllegalStateException("Cannot submit inside a render pass");
 		boolean recordOnly = recordFrame;
 		recordFrame = false;
-		if (recordOnly && !this.presentedThisSubmit && !profiled(this.submitIndex) && ++this.recordBatched < recordBatch) return;
+		if (recordOnly && !this.presentedThisSubmit && !profiled(this.submitIndex) && ++this.recordBatched < Math.max(recordBatch, recordBatchAuto)) return;
 		this.recordBatched = 0;
 		this.trace("submit");
 		this.transientMemory.endSubmit();
@@ -407,6 +414,7 @@ final class MetalEncoder implements CommandEncoderBackend {
 			MetalEvents.end(event);
 		}
 		this.waitNanos += System.nanoTime() - waitStart;
+		if (record) recordWaitNanos += System.nanoTime() - waitStart;
 		frame.after.forEach(Runnable::run);
 		Native.release(frame.cmd);
 		this.completedIndex = frame.index;

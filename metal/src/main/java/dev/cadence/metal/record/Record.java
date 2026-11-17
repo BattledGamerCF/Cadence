@@ -18,7 +18,10 @@ import org.lwjgl.system.MemoryUtil;
  * client's loaded world ray-marched from a voxel copy (RecordWorld), each block face its texture's average colour; entities as boxes; the F3
  * text from the game's font; no render pass, whose fixed GPU cost (~53 us on an M2) alone would cap the frame rate below
  * the record. With interpolation on, a second dispatch makes the frame halfway between each two (by reprojection) and the
- * counter shows both: frames made, and of them rendered.
+ * counter shows both: frames made, and of them rendered. With Frame Generation on Ultra, up to {@link #ultraRatio} frames
+ * are generated after each rendered one instead (record_gen: the rendered frame seen from each frame's camera, the HUD drawn
+ * fresh), as Ultra does in the game (FrameGen): a real frame as soon as the view turns or moves more than Ultra allows, or
+ * the player attacks or uses something. Counted apart too.
  *
  * <p>Active while chosen, in a world, with no screen open: any screen (pause, inventory, chat) draws the game as usual.
  */
@@ -28,6 +31,11 @@ public final class Record {
 	public static volatile boolean skipExtract = true;
 	/** Frame interpolation (-Dcadence.record.interpolate=false: off). */
 	public static volatile boolean interpolate = !"false".equals(System.getProperty("cadence.record.interpolate"));
+	/**
+	 * Frame Generation on Ultra: frames generated at most after each rendered one (-Dcadence.record.ultraRatio; 0: Ultra
+	 * not used here, the frame interpolation as chosen instead).
+	 */
+	public static volatile int ultraRatio = Integer.getInteger("cadence.record.ultraRatio", 120);
 	/** The record resolution's height (16:9 width); -Dcadence.record.height. */
 	public static volatile int height = Integer.getInteger("cadence.record.height", 180);
 	/** The voxel window's width, log2 (6: 64 blocks, 2 chunks each way, the game's smallest render distance). */
@@ -59,11 +67,13 @@ public final class Record {
 	public static void set(boolean on) {
 		if (on == chosen) return;
 		chosen = on;
+		MetalBridge.recordBatchAuto(1);
 		peak = 0;
 		bucketStart = 0;
 		filled = 0;
 		inBucket = 0;
 		camsKnown = 0;
+		realKnown = false;
 		failures = 0;
 		if (on && rec != 0) failed = false;  // (a failure in a frame: tried again; one in init, no Metal, stays)
 		MetalBridge.recordPresent(on);
@@ -107,7 +117,7 @@ public final class Record {
 		long h = presentHandle;
 		presentHandle = 0;
 		if (h == 0 || !chosen) return 0;
-		if (interpolate && camsKnown >= 4 && (presents++ & 1) != 0) {
+		if (interpolate && !ultra() && camsKnown >= 4 && (presents++ & 1) != 0) {
 			long mid = RecordNative.mid(rec);
 			if (mid != 0) return mid;
 		}
@@ -139,6 +149,7 @@ public final class Record {
 		java.util.Arrays.fill(NEAR, null);
 		chosenCount = -1;
 		camsKnown = 0;
+		realKnown = false;
 	}
 
 	/** (testing) The latest record frame as a PNG at path. Render thread. Whether one was written. */
@@ -200,18 +211,25 @@ public final class Record {
 	/** GameRenderer.render's turn (the game's own drawing skipped): this frame, compute only. False: not drawn here. */
 	public static boolean frame() {
 		long t0 = System.nanoTime();
-		if (lastEnd != 0) outsideNanos += t0 - lastEnd;
+		if (lastEnd != 0) {
+			outsideNanos += t0 - lastEnd;
+			outsideAll += t0 - lastEnd;
+		}
 		try {
 			return frame0();
 		} finally {
 			lastEnd = System.nanoTime();
 			insideNanos += lastEnd - t0;
 			timedFrames++;
+			insideAll += lastEnd - t0;
+			framesAll++;
 		}
 	}
 
 	// (the frame's CPU time, in Record.frame and in the rest of the game's loop between two of them; read by the self-test)
 	private static long lastEnd, insideNanos, outsideNanos, timedFrames;
+	// (the same, never reset: the limit line's)
+	private static long insideAll, outsideAll, framesAll;
 
 	/** "cpu 12.3 us in the record frame + 20.1 us in the game loop" since the last call; resets. */
 	public static String cpuSplit() {
@@ -236,6 +254,7 @@ public final class Record {
 				world = null;
 				world = new RecordWorld(ctx, level, WLOG);
 				worldLevel = level;
+				realKnown = false;  // (a new window: the last frame's coordinates were the old one's)
 			}
 			float partial = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
 			Entity cam = mc.getCameraEntity() != null ? mc.getCameraEntity() : mc.player;
@@ -260,7 +279,13 @@ public final class Record {
 				eye = new Vec3(eye.x - fx * back, eye.y - fy * back, eye.z - fz * back);
 			}
 			// (a gap since the last record frame, a screen or the mode off: the in-between frame's history starts again)
-			if (lastEnd != 0 && System.nanoTime() - lastEnd > 50_000_000L) camsKnown = 0;
+			if (lastEnd != 0 && System.nanoTime() - lastEnd > 50_000_000L) {
+				camsKnown = 0;
+				realKnown = false;
+			}
+			boolean screen = mc.gui.screen() != null;
+			ultraNow = ultra();
+			if (ultraNow && !screen && generate(mc, eye)) return true;
 			world.tintAt(eye.x, eye.z);
 			world.follow(eye.x, eye.z);
 			// window upkeep: a little of it at most frames (it's done in a few seconds after joining or moving far)
@@ -271,11 +296,10 @@ public final class Record {
 				h = size[1];
 				RecordNative.size(rec, ctx, w, h);
 			}
-			boolean screen = mc.gui.screen() != null;
 			writeFrame(mc, cam, eye, partial);
 			MemoryUtil.memPutInt(frameBuf + 348, screen ? 1 : 0);  // (flags.w: no HUD of its own: the game's is drawn over it)
 			if ((frames & 31) == 1 || hudBuffer == 0 || hudW != w || hudH != h) {  // (the HUD state is new on frames & 31 == 0)
-				hudBuffer = hud.frame(frames, w, h, Math.max(1, h / 240), lines, 7, CHAT_SHOWN, chatLines, HUD_STATE);
+				hudBuffer = hud.frame(frames, w, h, Math.max(1, h / 240), lines, TEXT_SHOWN, CHAT_SHOWN, chatLines, HUD_STATE);
 				hudW = w;
 				hudH = h;
 			}
@@ -286,7 +310,16 @@ public final class Record {
 				MetalBridge.recordFrame();
 				presentHandle = tex;
 			}
-			count();
+			// (Ultra: the frames to come are made from this one, seen from their own cameras)
+			realKnown = ultraNow && !screen;
+			if (realKnown) {
+				MemoryUtil.memCopy(frameBuf, realCam, 64);
+				realEye = eye;
+				realYaw = viewYaw;
+				realPitch = viewPitch;
+				made = 0;
+			}
+			count(true);
 			return true;
 		} catch (RuntimeException | LinkageError e) {
 			// tried again with a new world copy; the third failure stops the mode until it's turned on again
@@ -302,6 +335,50 @@ public final class Record {
 
 	private static ClientLevel worldLevel;
 	private static long frames;
+
+	// ---- Ultra (Frame Generation): frames generated from the last rendered one ----
+
+	/** Frame Generation is on Ultra (the chosen mode: Render Max FPS holds the game's own Frame Generation off). */
+	public static boolean ultra() {
+		return ultraRatio > 0 && dev.cadence.metal.framegen.FrameGen.mode() == dev.cadence.metal.framegen.FrameGen.Mode.ULTRA;
+	}
+
+	private static boolean ultraNow, realKnown;
+	/** The last rendered frame's camera (record.metal Camera, window-relative), where it was, and frames generated since. */
+	private static long realCam;
+	private static Vec3 realEye;
+	private static float realYaw, realPitch;
+	private static int made;
+
+	/**
+	 * Ultra: this frame generated from the last rendered one, when nothing asks for a real frame. Whether it was (else the
+	 * frame is rendered).
+	 */
+	private static boolean generate(Minecraft mc, Vec3 eye) {
+		if (!realKnown || made >= ultraRatio || world == null) return false;
+		int[] size = size(mc);
+		if (size[0] != w || size[1] != h) return false;
+		float turnLimit = dev.cadence.metal.framegen.FrameGen.ultraTurn, moveLimit = dev.cadence.metal.framegen.FrameGen.ultraMove;
+		float dYaw = net.minecraft.util.Mth.wrapDegrees(viewYaw - realYaw), dPitch = viewPitch - realPitch;
+		if (turnLimit > 0 && dYaw * dYaw + dPitch * dPitch > turnLimit * turnLimit) return false;
+		if (moveLimit > 0 && eye.distanceToSqr(realEye) > moveLimit * moveLimit) return false;
+		var p = mc.player;
+		if (mc.options.keyAttack.isDown() || mc.options.keyUse.isDown() || p.hurtTime > 0 || p.isUsingItem()) return false;
+		RecordWorld wd = world;
+		long f = frameBuf;
+		double fov = mc.options.fov().get();
+		float tanY = (float) Math.tan(Math.toRadians(fov) / 2), tanX = tanY * w / h;
+		camera(f, eye.x - wd.ox, eye.y - wd.minY, eye.z - wd.oz, viewYaw, viewPitch, tanX, tanY);
+		MemoryUtil.memCopy(realCam, f + 64, 64);
+		MemoryUtil.memPutInt(f + 348, 0);  // (no screen: its own HUD)
+		long tex = RecordNative.gen(rec, encObj, f, FRAME_BYTES, hudBuffer);
+		if (tex == 0) return false;
+		MetalBridge.recordFrame();
+		presentHandle = tex;
+		made++;
+		count(false);
+		return true;
+	}
 
 	private static final int[] SIZE = new int[2];
 
@@ -350,6 +427,7 @@ public final class Record {
 		MemoryUtil.memSet(entitiesAddr, 0, ENTITY_REGION + (long) TILES_MAX * 4);
 		hud = new RecordHud(ctx);
 		frameBuf = MemoryUtil.nmemCalloc(1, FRAME_BYTES);
+		realCam = MemoryUtil.nmemCalloc(1, 64);
 		loadFont(mc);
 		return true;
 	}
@@ -435,7 +513,7 @@ public final class Record {
 		MemoryUtil.memPutFloat(f + 324, Math.max(1, h / 240));
 		MemoryUtil.memPutFloat(f + 328, fogEnd * 0.6f);
 		MemoryUtil.memPutFloat(f + 332, Math.max(1, wd.top));
-		MemoryUtil.memPutInt(f + 336, interpolate && camsKnown >= 4 ? still ? 2 : 1 : 0);
+		MemoryUtil.memPutInt(f + 336, ultraNow ? 4 : interpolate && camsKnown >= 4 ? still ? 2 : 1 : 0);
 		MemoryUtil.memPutInt(f + 340, darken);
 		MemoryUtil.memPutFloat(f + 344, gamma);
 		// (the HUD's values, the player's air, hurt and XP, the fluid at the eye: every 32nd frame, ~1.5 ms; they change at
@@ -762,39 +840,47 @@ public final class Record {
 	// ---- the counter and the text ----
 
 	private static final long BUCKET = 250_000_000L;
-	private static final int[] bucketFrames = new int[4];
+	private static final int[] bucketFrames = new int[4], bucketReal = new int[4];
 	private static final long[] bucketStarts = new long[4];
-	private static int bucket, filled, inBucket, rendered, peak, best;
+	private static int bucket, filled, inBucket, inBucketReal, rendered, all, peak, best;
 	private static long bucketStart;
 	private static long textAt;
 
-	private static void count() {
+	/** A frame made: rendered (real) or generated (Ultra). */
+	private static void count(boolean real) {
 		long now = System.nanoTime();
 		if (bucketStart == 0) {
 			bucketStart = now;
-			inBucket = 0;
+			inBucket = inBucketReal = 0;
 			return;
 		}
 		inBucket++;
+		if (real) inBucketReal++;
 		if (now - bucketStart < BUCKET) return;
 		bucketFrames[bucket] = inBucket;
+		bucketReal[bucket] = inBucketReal;
 		bucketStarts[bucket] = bucketStart;
 		bucket = (bucket + 1) & 3;
 		filled++;
-		inBucket = 0;
+		inBucket = inBucketReal = 0;
 		bucketStart = now;
 		if (filled < 4) return;
-		long total = 0;
-		for (int k : bucketFrames) total += k;
-		rendered = (int) (total * 1_000_000_000L / Math.max(1, now - bucketStarts[bucket]));
+		long total = 0, real0 = 0;
+		for (int k = 0; k < 4; k++) {
+			total += bucketFrames[k];
+			real0 += bucketReal[k];
+		}
+		long span = Math.max(1, now - bucketStarts[bucket]);
+		all = (int) (total * 1_000_000_000L / span);
+		rendered = (int) (real0 * 1_000_000_000L / span);
 		int made = shown();
 		if (made > peak) peak = made;
 		if (made > best) best = made;
 	}
 
-	/** Frames made a second: rendered, and as many again in between with interpolation on. */
+	/** Frames made a second: rendered, and as many again in between with interpolation on, or Ultra's generated ones too. */
 	public static int shown() {
-		return interpolate ? rendered * 2 : rendered;
+		return ultra() ? all : interpolate ? rendered * 2 : rendered;
 	}
 
 	public static int rendered() {
@@ -806,6 +892,39 @@ public final class Record {
 	}
 
 	private static final String[] lines = new String[TEXT_LINES];
+	/** The text lines above (the chat's start at line 8). */
+	private static final int TEXT_SHOWN = 8;
+
+	// ---- the limit: what holds the frame rate (the text's last line), measured over each quarter second ----
+
+	private static long limitAt, limitWait, limitCpu, limitFrames;
+
+	/**
+	 * What holds the frame rate now, and Ultra's command buffers sized to it. A Mac making generated frames by the hundred
+	 * thousand meets these in turn: command buffers (~20 us each on an M2: batched so there are ~2,000 a second), the GPU
+	 * (the render thread then waits at the in-flight limit), the game's own loop on the CPU (the work every frame does
+	 * outside the record frame: input, the tick check, the window), and heat (macOS lowers the clocks; the best stays).
+	 */
+	private static String limit(long now) {
+		long wait = MetalBridge.recordWaitNanos(), cpu = insideAll + outsideAll, n = framesAll;
+		String line = lines[7];
+		if (limitAt != 0 && n > limitFrames && now > limitAt) {
+			double span = now - limitAt, waitShare = (wait - limitWait) / span;
+			double cpuUs = ((cpu - limitCpu) - (wait - limitWait)) / 1000.0 / (n - limitFrames);
+			int thermal = dev.cadence.metal.backend.MacSystem.thermalState();
+			String hot = thermal >= 2 ? ", hot: clocks lowered" : thermal == 1 ? ", warm" : "";
+			line = waitShare > 0.1
+				? String.format(java.util.Locale.ROOT, "Limit: GPU (waited %.0f%% of the time)%s", waitShare * 100, hot)
+				: String.format(java.util.Locale.ROOT, "Limit: CPU, %.1f us a frame%s", cpuUs, hot);
+		}
+		limitAt = now;
+		limitWait = wait;
+		limitCpu = cpu;
+		limitFrames = n;
+		// (Ultra: ~2,000 command buffers a second at most, 64 frames each at the most: 1 ms at a million frames a second)
+		MetalBridge.recordBatchAuto(ultra() ? Math.clamp(all / 2000, 1, 64) : 1);
+		return line == null ? "Limit: measuring..." : line;
+	}
 	private static double gpuUs;
 
 	/** The record frame's GPU time (microseconds, averaged over a sample of frames). */
@@ -835,9 +954,10 @@ public final class Record {
 
 	private static int writeText(Minecraft mc, Vec3 eye, float yaw, float pitch) {
 		long now = System.nanoTime();
-		if (now - textAt < BUCKET && lines[0] != null) return 7;
+		if (now - textAt < BUCKET && lines[0] != null) return TEXT_SHOWN;
 		textAt = now;
-		String fps = rendered == 0 ? "measuring..." : interpolate ? shown() + " fps (" + rendered + " rendered)" : rendered + " fps";
+		boolean gen = ultra() || interpolate;
+		String fps = rendered == 0 ? "measuring..." : gen ? shown() + " fps (" + rendered + " rendered)" : rendered + " fps";
 		lines[0] = "Minecraft 26.3 Cadence Record (Metal " + (MetalBridge.metal4() ? "4" : "3") + ")";
 		lines[1] = fps;
 		lines[2] = String.format(java.util.Locale.ROOT, "XYZ: %.3f / %.5f / %.3f", mc.player.getX(), mc.player.getY(), mc.player.getZ());
@@ -845,12 +965,13 @@ public final class Record {
 		double gpu = RecordNative.gpuMicros();
 		if (gpu > 0) gpuUs = gpu;
 		lines[4] = String.format(java.util.Locale.ROOT, "%dx%d, %d chunks, GPU %.0f us/frame", w, h, world.w / 32, gpuUs);
-		lines[5] = "Best: " + best + " fps" + (interpolate ? " (incl. interpolated)" : "");
-		lines[6] = interpolate ? "Interpolated frames counted apart" : "Every frame rendered";
+		lines[5] = "Best: " + best + " fps" + (ultra() ? " (incl. generated)" : interpolate ? " (incl. interpolated)" : "");
+		lines[6] = ultra() ? "Ultra: up to " + ultraRatio + " generated per rendered" : interpolate ? "Interpolated frames counted apart" : "Every frame rendered";
+		lines[7] = limit(now);
 		// the chat lines still showing (10 s), oldest first
 		chatLines = 0;
 		for (int i = 0; i < CHAT_MAX; i++)
 			if (CHAT[i] != null && now - CHAT_AT[i] < CHAT_NANOS) CHAT_SHOWN[chatLines++] = CHAT[i];
-		return 7;
+		return TEXT_SHOWN;
 	}
 }

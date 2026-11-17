@@ -205,6 +205,16 @@ public final class MetalBridge {
 		MetalEncoder.recordBatch = Math.max(1, n);
 	}
 
+	/** Record Mode, Ultra: at least this many frames a command buffer (1: as recordBatch says). */
+	public static void recordBatchAuto(int n) {
+		MetalEncoder.recordBatchAuto = Math.max(1, n);
+	}
+
+	/** Record Mode: how long the render thread has waited for the GPU so far (nanoseconds; render thread). */
+	public static long recordWaitNanos() {
+		return MetalEncoder.recordWaitNanos;
+	}
+
 	/** Record Mode: this frame was a record frame (its command buffer may take the next ones too: MetalEncoder.recordBatch). */
 	public static void recordFrame() {
 		MetalEncoder.recordFrame = true;

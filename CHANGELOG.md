@@ -6,6 +6,7 @@ Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus 
 
 Includes beta.3, which was not released on its own.
 
+- **Frame Generation Ultra in Render Max FPS.** With Frame Generation on Ultra, Render Max FPS renders one frame and makes up to 120 more from it, each seen from the camera of its moment with the HUD drawn fresh. Turning more than 2 degrees, moving half a block, attacking or using something renders a new one sooner. On an M2 Air: 60,000-70,000 frames a second (about 550 of them rendered; best 97,065), against 30,000-41,000 with frame interpolation. The counter shows both. A new line names what holds the frame rate back (the GPU, the game's own loop on the CPU, or heat); frames are sent to the GPU in batches of up to 64 so sending them isn't the limit.
 - **PBR resource packs.** Blocks' normal and specular maps (`_n`, `_s`, labPBR or OldPBR) reach shader packs that read them.
 - Far shadow proxies are built for at most 2 ms a frame. With BSL, a frame that built 16 of them took up to 67 ms.
 - With Dynamic FPS installed, a notice at launch suggests removing it: Cadence already lowers the frame rate in the background and while away, and Dynamic FPS overrides Battery Saver and Frame Generation.

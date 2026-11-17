@@ -1278,6 +1278,9 @@ public final class CadenceSelfTest {
 					});
 				} else if (lower.startsWith("recordinterp=")) {
 					dev.cadence.metal.record.Record.interpolate = lower.endsWith("on");
+				} else if (lower.startsWith("recordultra=")) {
+					// "recordultra=N": with Frame Generation on Ultra, frames generated at most per rendered one (0: Ultra not used)
+					dev.cadence.metal.record.Record.ultraRatio = Integer.parseInt(lower.substring(12));
 				} else if (lower.startsWith("recorddump=")) {
 					// "recorddump=name": the record frame's inputs into results-able files (timed outside the game)
 					String name = lower.substring(11);

@@ -2,6 +2,7 @@
 // about 53 us whatever its size (measured with a standalone probe), a compute dispatch far less, so the frame is one dispatch: the world traced
 // into this frame's colour and depth, the HUD overlay (RecordHud) blended in, and, with interpolation on, the in-between frame
 // of the last two. The game presents the colour texture at most once a refresh (Render Max FPS's uncapped presentation).
+// With Frame Generation on Ultra, the frames between real ones are made from the latest real frame alone (mcrm_gen).
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import "mcmetal.h"
@@ -28,13 +29,14 @@ double mcrm_gpu_us(void) {
 #define LAG_B 3
 
 typedef struct {
-	id<MTLComputePipelineState> trace;
-	id<MTLTexture> color[RING], depth[RING], mid[RING];
+	id<MTLComputePipelineState> trace, gen;
+	id<MTLTexture> color[RING], depth[RING], mid[RING], made[RING];  // (made: Ultra's generated frames)
 	id<MTLFence> fence[RING];  // updated by the frame that writes the slot (Metal 3 only)
 	id<MTLFunction> drawVs, drawFs;               // the frame drawn into a game target (mcrm_draw), and its pipeline
 	id<MTLRenderPipelineState> draw;
 	MTLPixelFormat drawFormat;
 	int w, h, cur, last;       // the slot the next frame writes; the last frame's
+	int madeCur, madeLast;     // the generated frame's slot next; the last frame's, when it was a generated one (else -1)
 	long frames;
 	id<MTLCommandBuffer> lastCb;  // (retained, so no new one can reuse its address) the command buffer of the last frame
 	_Atomic int *sampledFrames;  // the record frames in it, when it's being sampled
@@ -55,6 +57,8 @@ void *mcrm_new(Ctx *ctx, const char *source, char *err, int errCap) {
 		Rec *r = calloc(1, sizeof(Rec));
 		id<MTLFunction> t = [[lib newFunctionWithName:@"record_trace"] autorelease];
 		r->trace = [ctx->device newComputePipelineStateWithFunction:t error:&e];
+		id<MTLFunction> g = [[lib newFunctionWithName:@"record_gen"] autorelease];
+		if (g) r->gen = [ctx->device newComputePipelineStateWithFunction:g error:nil];
 		r->drawVs = [lib newFunctionWithName:@"record_draw_vs"];
 		r->drawFs = [lib newFunctionWithName:@"record_draw_fs"];
 		[lib release];
@@ -76,11 +80,12 @@ static id<MTLTexture> tex(Ctx *ctx, MTLPixelFormat f, int w, int h) {
 
 static void dropTextures(Rec *r) {
 	for (int k = 0; k < RING; k++) {
-		if (mc4On) { mc4_unpin(r->color[k]); mc4_unpin(r->depth[k]); mc4_unpin(r->mid[k]); }
+		if (mc4On) { mc4_unpin(r->color[k]); mc4_unpin(r->depth[k]); mc4_unpin(r->mid[k]); if (r->made[k]) mc4_unpin(r->made[k]); }
 		[r->color[k] release];
 		[r->depth[k] release];
 		[r->mid[k] release];
-		r->color[k] = r->depth[k] = r->mid[k] = nil;
+		[r->made[k] release];
+		r->color[k] = r->depth[k] = r->mid[k] = r->made[k] = nil;
 	}
 }
 
@@ -97,9 +102,35 @@ void mcrm_size(void *rec, Ctx *ctx, int w, int h) {
 	r->w = w;
 	r->h = h;
 	r->frames = 0;
+	r->madeCur = 0;
+	r->madeLast = -1;
 	r->lastSample = -64;
 }
 
+
+// GPU time sampling: the first record frame in a command buffer starts a sample when one is due; later ones in it count.
+static void sample(Rec *r, id<MTLCommandBuffer> cb) {
+	if (cb != r->lastCb) {
+		[r->lastCb release];
+		r->lastCb = [cb retain];
+		r->sampledFrames = NULL;
+		if (r->frames - r->lastSample >= 64) {
+			r->lastSample = r->frames;
+			_Atomic int *n = calloc(1, sizeof(_Atomic int));
+			atomic_store(n, 1);
+			r->sampledFrames = n;
+			[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
+				double us = (done.GPUEndTime - done.GPUStartTime) * 1e6 / atomic_load(n);
+				if (us > 0 && us < 1e5) {
+					double cur = atomic_load(&gpuSum);
+					while (!atomic_compare_exchange_weak(&gpuSum, &cur, cur + us)) {}
+					atomic_fetch_add(&gpuCount, 1);
+				}
+				free(n);
+			}];
+		}
+	} else if (r->sampledFrames) atomic_fetch_add(r->sampledFrames, 1);
+}
 
 // One frame on the frame's command buffer: one dispatch traces it and, with interpolation on (the game passes it in the
 // frame's flags), makes the in-between frame of the last two. Returns the texture to present: this frame's colour.
@@ -134,32 +165,39 @@ id<MTLTexture> mcrm_frame(void *rec, Enc *enc, const void *frame, int frameLengt
 		[c dispatchThreads:MTLSizeMake(r->w, r->h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
 		if (r->fence[0]) [c updateFence:r->fence[cur]];
 		[c endEncoding];
-		if (cb != r->lastCb) {
-			// the first record frame in this command buffer: sampled when one is due (its time over its record frames)
-			[r->lastCb release];
-			r->lastCb = [cb retain];
-			r->sampledFrames = NULL;
-			if (r->frames - r->lastSample >= 64) {
-				r->lastSample = r->frames;
-				_Atomic int *n = calloc(1, sizeof(_Atomic int));
-				atomic_store(n, 1);
-				r->sampledFrames = n;
-				[cb addCompletedHandler:^(id<MTLCommandBuffer> done) {
-					double us = (done.GPUEndTime - done.GPUStartTime) * 1e6 / atomic_load(n);
-					if (us > 0 && us < 1e5) {
-						double cur = atomic_load(&gpuSum);
-						while (!atomic_compare_exchange_weak(&gpuSum, &cur, cur + us)) {}
-						atomic_fetch_add(&gpuCount, 1);
-					}
-					free(n);
-				}];
-			}
-		} else if (r->sampledFrames) atomic_fetch_add(r->sampledFrames, 1);
+		sample(r, cb);
 	}
 	r->last = cur;
+	r->madeLast = -1;
 	r->cur = (cur + 1) % RING;
 	r->frames++;
 	return r->color[cur];
+}
+
+// Ultra: a generated frame, the last real frame's world (written by it with the Ultra flag) seen from this frame's camera with
+// this frame's HUD over it (record_gen), on the frame's command buffer. Returns the texture to present; nil: none (no real
+// frame yet, or no kernel: the caller renders a real one).
+id<MTLTexture> mcrm_gen(void *rec, Enc *enc, const void *frame, int frameLength, id<MTLBuffer> hud) {
+	Rec *r = rec;
+	if (!r || !r->gen || !r->color[0] || r->frames == 0) return nil;
+	int g = r->madeCur;
+	@autoreleasepool {
+		if (!r->made[g]) r->made[g] = tex(enc->ctx, MTLPixelFormatRGBA8Unorm, r->w, r->h);
+		id<MTLCommandBuffer> cb = mc_frame_cmd(enc);
+		id<MTLComputeCommandEncoder> c = [cb computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
+		[c setComputePipelineState:r->gen];
+		[c setTexture:r->made[g] atIndex:0];
+		[c setTexture:r->mid[r->last] atIndex:4];
+		[c setTexture:r->depth[r->last] atIndex:5];
+		[c setBytes:frame length:frameLength atIndex:0];
+		[c setBuffer:hud offset:0 atIndex:5];
+		[c dispatchThreads:MTLSizeMake(r->w, r->h, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+		[c endEncoding];
+		sample(r, cb);
+	}
+	r->madeLast = g;
+	r->madeCur = (g + 1) % RING;
+	return r->made[g];
 }
 
 // The last frame's in-between frame (frame interpolation's), presented every other present; nil before there is one.
@@ -215,14 +253,15 @@ void mcrm_release(void *rec) {
 	[r->draw release];
 	[r->lastCb release];
 	[r->trace release];
+	[r->gen release];
 	free(r);
 }
 
-// (testing) The latest frame's pixels (RGBA8, w x h) into dst: a copy to shared memory, waited for. 0: no frame yet.
+// (testing) The latest frame's pixels (RGBA8, w x h; Ultra's generated one when that was the latest) into dst: a copy to shared memory, waited for. 0: no frame yet.
 int mcrm_read(void *rec, Ctx *ctx, void *dst) {
 	Rec *r = rec;
 	if (!r || !r->color[0] || r->frames == 0) return 0;
-	id<MTLTexture> t = r->color[r->last];
+	id<MTLTexture> t = r->madeLast >= 0 && r->made[r->madeLast] ? r->made[r->madeLast] : r->color[r->last];
 	@autoreleasepool {
 		id<MTLBuffer> b = [ctx->device newBufferWithLength:(NSUInteger) r->w * r->h * 4 options:MTLResourceStorageModeShared];
 		id<MTLCommandBuffer> cb = [ctx->queue commandBuffer];
