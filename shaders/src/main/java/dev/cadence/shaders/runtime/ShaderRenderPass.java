@@ -40,6 +40,8 @@ public final class ShaderRenderPass implements RenderPass {
   private PackPipeline pipeline;
   private PackPipeline bound;
   private FeatureDrawContext.DrawTag boundTag;
+  /** ShaderRuntime.drawingMoon when the uniforms were bound (the sun and moon share a pipeline and a tag, issue #4). */
+  private boolean boundMoon;
   private boolean closed;
   private boolean skipDraw;
 
@@ -84,10 +86,13 @@ public final class ShaderRenderPass implements RenderPass {
       runtime.bind(pipeline, delegate, textures);
       bound = pipeline;
       boundTag = FeatureDrawContext.currentDrawTag();
-    } else if (!FeatureDrawContext.currentDrawTag().equals(boundTag)) {
-      // Prepared feature groups can share a pipeline while changing material IDs or damage tint.
+      boundMoon = ShaderRuntime.drawingMoon;
+    } else if (!FeatureDrawContext.currentDrawTag().equals(boundTag) || ShaderRuntime.drawingMoon != boundMoon) {
+      // Prepared feature groups can share a pipeline while changing material IDs or damage tint; the moon is drawn with
+      // the sun's pipeline and tag right after it, and needs its own renderStage.
       runtime.bindUniforms(pipeline, delegate);
       boundTag = FeatureDrawContext.currentDrawTag();
+      boundMoon = ShaderRuntime.drawingMoon;
     }
     return delegate;
   }
