@@ -48,8 +48,23 @@ public record SceneProgram(String name, int stage) {
       name = "gbuffers_weather";
       stage = "RAIN_SNOW";
     } else if (path.contains("particle")) {
-      name = "gbuffers_textured_lit";
+      // (Iris: gbuffers_particles, and _translucent for translucent ones; a pack without them falls back to textured_lit)
+      name = path.contains("translucent") ? "gbuffers_particles_translucent" : "gbuffers_particles";
       stage = "PARTICLES";
+    } else if (path.endsWith("/eyes")) {
+      // (spider, enderman, phantom and warden eyes: Iris's gbuffers_spidereyes, the packs' emissive eyes; BH14-S01)
+      name = "gbuffers_spidereyes";
+      stage = "ENTITIES";
+    } else if (path.contains("lightning")) {
+      name = "gbuffers_lightning";
+      stage = "ENTITIES";
+    } else if (path.contains("lines") || path.contains("secondary_block_outline")) {
+      // (the block outline and other lines: Iris's gbuffers_line)
+      name = "gbuffers_line";
+      stage = "OUTLINE";
+    } else if (path.endsWith("/translucent_block")) {
+      name = "gbuffers_block_translucent";
+      stage = "BLOCK_ENTITIES";
     } else if (path.contains("beacon")) {
       name = "gbuffers_beaconbeam";
       stage = "BLOCK_ENTITIES";
@@ -62,10 +77,7 @@ public record SceneProgram(String name, int stage) {
     } else if (path.contains("block") && !path.contains("outline")) {
       name = "gbuffers_block";
       stage = "BLOCK_ENTITIES";
-    } else if (path.contains("lines")
-        || path.contains("outline")
-        || path.contains("debug")
-        || path.contains("lightning")) {
+    } else if (path.contains("outline") || path.contains("debug")) {
       name = "gbuffers_basic";
       stage = "OUTLINE";
     } else if (path.contains("crumbling")) {

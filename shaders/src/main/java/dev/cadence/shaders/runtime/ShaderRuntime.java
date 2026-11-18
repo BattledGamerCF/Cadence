@@ -1245,7 +1245,10 @@ public final class ShaderRuntime implements AutoCloseable {
     for (var sampler : pipeline.samplerBindings()) {
       boolean affected =
           (sampler.kind() == PackPipeline.SamplerKind.ALBEDO
-                      || sampler.kind() == PackPipeline.SamplerKind.MATERIAL)
+                      || sampler.kind() == PackPipeline.SamplerKind.MATERIAL
+                      // (the PBR maps are chosen by the albedo texture: a new one needs its own, BH14-S02)
+                      || sampler.kind() == PackPipeline.SamplerKind.NORMAL
+                      || sampler.kind() == PackPipeline.SamplerKind.SPECULAR)
                   && changed.equals(pipeline.primarySampler())
               || sampler.kind() == PackPipeline.SamplerKind.LIGHTMAP && changed.equals("Sampler2");
       if (affected && textures.custom(pipeline.source().name(), sampler.name()) == null)

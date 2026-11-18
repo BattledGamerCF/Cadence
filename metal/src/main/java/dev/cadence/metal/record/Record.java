@@ -68,6 +68,8 @@ public final class Record {
 		if (on == chosen) return;
 		chosen = on;
 		MetalBridge.recordBatchAuto(1);
+		limitAt = 0;
+		all = rendered = 0;
 		peak = 0;
 		bucketStart = 0;
 		filled = 0;
@@ -116,7 +118,7 @@ public final class Record {
 	public static long presentHandle() {
 		long h = presentHandle;
 		presentHandle = 0;
-		if (h == 0 || !chosen) return 0;
+		if (h == 0 || !chosen || !active() || screenOpen()) return 0;
 		if (interpolate && !ultra() && camsKnown >= 4 && (presents++ & 1) != 0) {
 			long mid = RecordNative.mid(rec);
 			if (mid != 0) return mid;
@@ -211,9 +213,13 @@ public final class Record {
 	/** GameRenderer.render's turn (the game's own drawing skipped): this frame, compute only. False: not drawn here. */
 	public static boolean frame() {
 		long t0 = System.nanoTime();
+		// (a frame not drawn here, or drawn under a screen, presents the game's own target: an older record frame's handle,
+		// never presented while the pacer skipped presents, would show in its place, BH14-M01)
+		presentHandle = 0;
 		if (lastEnd != 0) {
 			outsideNanos += t0 - lastEnd;
-			outsideAll += t0 - lastEnd;
+			// (a pause in record frames, the mode off or a loading screen, isn't the game loop's time, BH14-M02)
+			if (t0 - lastEnd < 50_000_000L) outsideAll += t0 - lastEnd;
 		}
 		try {
 			return frame0();

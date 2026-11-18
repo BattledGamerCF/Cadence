@@ -895,6 +895,19 @@ public final class CadenceSelfTest {
 					} catch (Exception e) {
 						LOGGER.info("[selftest] heapdump failed: {}", e.toString());
 					}
+				} else if (lower.equals("raise")) {
+					// "raise": the game window to the front (SDL_RaiseWindow: the app activated), as when the player clicks it
+					mc.execute(() -> LOGGER.info("[selftest] raise: {}", org.lwjgl.sdl.SDLVideo.SDL_RaiseWindow(mc.getWindow().handle())));
+				} else if (lower.startsWith("screencap=")) {
+					// "screencap=NAME": the whole display as macOS shows it (screencapture), into screenshots/NAME.png: what the
+					// player sees, the window's placement and what's around it included (the game's own screenshots can't show those)
+					java.nio.file.Path out = mc.gameDirectory.toPath().resolve("screenshots").resolve(step.substring(10) + ".png");
+					try {
+						int code = new ProcessBuilder("screencapture", "-x", out.toString()).inheritIO().start().waitFor();
+						LOGGER.info("[selftest] screencap {}: exit {}", out.getFileName(), code);
+					} catch (Exception e) {
+						LOGGER.info("[selftest] screencap failed: {}", e.toString());
+					}
 				} else if (lower.startsWith("cmd=")) {
 					// "cmd=COMMAND": a server command (no commas; "@me" = the player)
 					String command = step.substring(4).replace("@me", mc.getUser().getName());

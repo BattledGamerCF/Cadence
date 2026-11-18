@@ -302,8 +302,15 @@ public final class FrameUniforms {
     put("rainStrength", rain);
     put("thunderStrength", level.getThunderLevel(partialTicks));
     put("wetness", wetness);
-    float blockLight = level.getBrightness(LightLayer.BLOCK, camera.blockPos) * 16;
-    float skyLight = level.getBrightness(LightLayer.SKY, camera.blockPos) * 16;
+    // (as Iris: the light at the camera entity's eyes, not at the render camera, which third person puts up to 4 blocks
+    // away, outside a cave: packs damp cave fog and light shafts by eyeBrightness, BH14-S03)
+    var eyeEntity = minecraft.getCameraEntity();
+    var eyeBlock =
+        eyeEntity != null
+            ? net.minecraft.core.BlockPos.containing(eyeEntity.getX(), eyeEntity.getEyeY(), eyeEntity.getZ())
+            : camera.blockPos;
+    float blockLight = level.getBrightness(LightLayer.BLOCK, eyeBlock) * 16;
+    float skyLight = level.getBrightness(LightLayer.SKY, eyeBlock) * 16;
     float eyeHalfLife = globals.floatConstant("eyeBrightnessHalflife", 10);
     eyeBlockLight =
         historyReset ? blockLight : smooth(eyeBlockLight, blockLight, elapsed, eyeHalfLife);
@@ -447,8 +454,8 @@ public final class FrameUniforms {
         (float) Math.floor(previousCameraPosition.y), (float) Math.floor(previousCameraPosition.z));
     vector("previousCameraPositionFract", fract(previousCameraPosition.x), fract(previousCameraPosition.y),
         fract(previousCameraPosition.z));
-    put("eyeAltitude", cameraPosition.y);
     Vec3 eye = entity == null ? cameraPosition : entity.getEyePosition(partialTicks);
+    put("eyeAltitude", eye.y);  // (Iris: the camera entity's eye height, not the third-person camera's)
     vector("eyePosition", (float) eye.x, (float) eye.y, (float) eye.z);
     Vec3 look = entity == null ? new Vec3(0, 0, 1) : entity.getViewVector(partialTicks);
     vector("playerLookVector", (float) look.x, (float) look.y, (float) look.z);
