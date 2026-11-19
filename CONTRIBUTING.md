@@ -42,6 +42,8 @@ Steps include:
 
 The full list is at the top of `CadenceSelfTest.java`.
 
+Options go in the environment, for example `CADENCE_FULLSCREEN=on` or `CADENCE_RD=16`; the top of the script lists them.
+
 The script waits for any other Minecraft to close. It also runs a memory guard (`tools/cadence-guard.sh`), so it is safe
 on an 8 GB Mac. It expects a singleplayer world called `tester`.
 

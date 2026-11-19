@@ -157,7 +157,11 @@ public final class JvmDefaults {
 		// (Prism, MultiMC and PolyMC start their own EntryPoint, which reads the game's main class and arguments from stdin; that
 		// script is read once, so a restarted Java waits on an empty or closed pipe: "Bad file descriptor" in Prism, GitHub
 		// report 11-09. The game carries on as launched; the player can put the options in the instance's Java arguments.)
+		// (the main class name alone misses a launch through -jar or a wrapper, so the launchers' entry classes are also looked
+		// for on the class path: GitHub #6, the same error again)
 		String piped = pipedLauncher(System.getProperty("sun.java.command", ""));
+		if (piped == null) piped = pipedLauncherOnClassPath(ClassLoader.getSystemClassLoader());
+		if (piped == null) piped = pipedLauncherParent(ProcessHandle.current().parent().flatMap(h -> h.info().command()).orElse(""));
 		if (piped != null) {
 			List<String> flags = add.stream().filter(a -> a.startsWith("-XX:")).toList();
 			System.out.println("[cadence] Java defaults: no restart under " + piped + " (it passes the game its settings once,"
@@ -221,6 +225,23 @@ public final class JvmDefaults {
 			case "org.polymc.EntryPoint" -> "PolyMC";
 			default -> null;
 		};
+	}
+
+	/** The launcher's name when its stdin entry point is on the class path (it started this Java), else null. */
+	static String pipedLauncherOnClassPath(ClassLoader loader) {
+		for (String main : List.of("org.prismlauncher.EntryPoint", "org.multimc.EntryPoint", "org.polymc.EntryPoint")) {
+			if (loader.getResource(main.replace('.', '/') + ".class") != null) return pipedLauncher(main);
+		}
+		return null;
+	}
+
+	/** The launcher's name when the process that started this Java is one of them (its executable's path), else null. */
+	static String pipedLauncherParent(String command) {
+		String c = command.toLowerCase(java.util.Locale.ROOT);
+		if (c.contains("prismlauncher") || c.contains("prism launcher")) return "Prism Launcher";
+		if (c.contains("multimc")) return "MultiMC";
+		if (c.contains("polymc")) return "PolyMC";
+		return null;
 	}
 
 	/** The IHOP default under the name a Java of that version knows. */

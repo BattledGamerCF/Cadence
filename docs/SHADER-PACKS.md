@@ -238,6 +238,7 @@ What changed, for every pack:
   - `type[N] name` declarations, several images in one declaration, and uniform defaults written `- 123` are handled.
   - Integer colour outputs are never blended and have no alpha test.
 - `gcolor` means the block texture (unit 0) in world programs, as in OptiFine. It is colortex0 only in screen passes.
+- Mob eyes (`gbuffers_spidereyes`), lightning, the block outline (`gbuffers_line`), particles and translucent block entities run the pack's own programs, with Iris's fallbacks when a pack has none.
 - A pack with no program for a draw type and nothing to fall back to gets a built-in vanilla program (texture x colour x lightmap) instead of failing.
 - Samplers that belong to other mods (Voxy's `vxDepthTexTrans`, ...) bind a neutral texture: white for depth, black otherwise. This is logged once.
 - Colour formats: R3_G3_B2, RGB4, RGB5, RGBA2, RGBA4, RGB5_A1 (as RGBA8), and RGB12/RGBA12 (as RGBA16). Mipmaps work for SNORM and 16-bit formats.
