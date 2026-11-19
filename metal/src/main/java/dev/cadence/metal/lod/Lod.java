@@ -1254,6 +1254,8 @@ public final class Lod {
 	private void updateMask(Minecraft mc, int rd, boolean refresh) {
 		ClientLevel level = mc.level;
 		if (level == null) return;
+		verticalUntil = System.nanoTime() + 250_000_000L; // vanilla's sections follow the vertical rule (LodVerticalMixin)
+		int sy = net.minecraft.core.SectionPos.blockToSectionCoord(this.camY);
 		int size = Math.min(MASK_MAX, 2 * rd + 5);
 		int ccx = (int) Math.floor(this.camX) >> 4, ccz = (int) Math.floor(this.camZ) >> 4;
 		int mx0 = ccx - size / 2, mz0 = ccz - size / 2;
@@ -1264,6 +1266,7 @@ public final class Lod {
 			// deep inside that was built stays built.
 			if (moved) {
 				boolean[] old = this.ready.clone();
+				int[] oldLo = this.surfLo.clone(), oldHi = this.surfHi.clone();
 				int dx = mx0 - this.readyX, dz = mz0 - this.readyZ;
 				java.util.Arrays.fill(this.ready, false);
 				if (this.readyX != Integer.MIN_VALUE && size == this.readySize) {
@@ -1272,7 +1275,11 @@ public final class Lod {
 						if (oz < 0 || oz >= size) continue;
 						for (int mx = 0; mx < size; mx++) {
 							int ox = mx + dx;
-							if (ox >= 0 && ox < size) this.ready[mz * MASK_MAX + mx] = old[oz * MASK_MAX + ox];
+							if (ox < 0 || ox >= size) continue;
+							int k = mz * MASK_MAX + mx, o = oz * MASK_MAX + ox;
+							this.ready[k] = old[o];
+							this.surfLo[k] = oldLo[o];
+							this.surfHi[k] = oldHi[o];
 						}
 					}
 				}
@@ -1284,18 +1291,33 @@ public final class Lod {
 			for (int mz = 0; mz < size; mz++) {
 				for (int mx = 0; mx < size; mx++) {
 					int cx = mx0 + mx, cz = mz0 + mz, k = mz * MASK_MAX + mx;
-					if (this.ready[k] && Math.max(Math.abs(cx - ccx), Math.abs(cz - ccz)) <= inner && !refreshAll()) continue;
+					boolean all = refreshAll();
+					if (this.ready[k] && Math.max(Math.abs(cx - ccx), Math.abs(cz - ccz)) <= inner && !all) continue;
 					boolean ready = false;
 					LevelChunk chunk = level.getChunkSource().getChunk(cx, cz, false);
 					if (chunk != null) {
 						ready = true;
+						// its surface's height range, for the vertical rule (read when it loads, and again once in a while)
+						if (!this.ready[k] || all) {
+							int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+							for (int bz = 0; bz < 16; bz++) {
+								for (int bx = 0; bx < 16; bx++) {
+									int top = chunk.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE, bx, bz);
+									lo = Math.min(lo, top);
+									hi = Math.max(hi, top);
+								}
+							}
+							this.surfLo[k] = lo;
+							this.surfHi[k] = hi;
+						}
 					}
 					this.ready[k] = ready;
 				}
 			}
 		}
 		// the mask itself only changes with what Sodium has built or a camera move of half a block (a spinning camera skips it)
-		if (!refresh && !moved && this.maskOn && Math.abs(this.camX - this.maskCamX) < 0.5 && Math.abs(this.camZ - this.maskCamZ) < 0.5) return;
+		if (!refresh && !moved && this.maskOn && sy == this.maskSy && Math.abs(this.camX - this.maskCamX) < 0.5 && Math.abs(this.camZ - this.maskCamZ) < 0.5) return;
+		this.maskSy = sy;
 		this.maskCamX = this.camX;
 		this.maskCamZ = this.camZ;
 		LodPk pk = this.pk;
@@ -1312,7 +1334,10 @@ public final class Lod {
 			double dz = Math.max(0, Math.max(oz - 1 - this.camZ, this.camZ - (oz + 17)));
 			if (dz >= max) continue;
 			for (int mx = 0; mx < size; mx++) {
-				if (!this.ready[mz * MASK_MAX + mx]) continue;
+				int k = mz * MASK_MAX + mx;
+				if (!this.ready[k]) continue;
+				// (vanilla draws its sections within rd of the camera's vertically, LodVerticalMixin: a surface outside that stays ours)
+				if ((this.surfLo[k] >> 4) < sy - rd || (this.surfHi[k] >> 4) > sy + rd) continue;
 				int ox = (mx0 + mx) * 16;
 				double dx = Math.max(0, Math.max(ox - 1 - this.camX, this.camX - (ox + 17)));
 				if (dx * dx + dz * dz >= max2) continue;
@@ -1512,7 +1537,22 @@ public final class Lod {
 	private boolean refreshAll() {
 		return this.frames % 512 == 1;
 	}
-	private int readyX = Integer.MIN_VALUE, readyZ, readySize;
+	private int readyX = Integer.MIN_VALUE, readyZ, readySize, maskSy = Integer.MIN_VALUE;
+	/** Per chunk of the ready window: the lowest and highest block of its surface (WORLD_SURFACE heightmap). */
+	private final int[] surfLo = new int[MASK_MAX * MASK_MAX], surfHi = new int[MASK_MAX * MASK_MAX];
+	/** Until when vanilla's terrain is the near terrain under far terrain (Lod.updateMask ran within the last 250 ms). */
+	private static volatile long verticalUntil;
+
+	/**
+	 * Far terrain over vanilla's terrain (a shader pack): whether vanilla's section at node is more than the render distance
+	 * above or below the camera's section, and so left to the far terrain (LodVerticalMixin; render thread).
+	 */
+	public static boolean verticallyFar(long node) {
+		if (System.nanoTime() > verticalUntil) return false;
+		Minecraft mc = Minecraft.getInstance();
+		int sy = net.minecraft.core.SectionPos.blockToSectionCoord(mc.gameRenderer.mainCamera().position().y);
+		return Math.abs(net.minecraft.core.SectionPos.y(node) - sy) > mc.options.getEffectiveRenderDistance();
+	}
 
 	private final float[] sky = new float[3];
 	private long probeLast, probeWindow = -1, probeReport;
