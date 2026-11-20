@@ -1603,6 +1603,7 @@ public final class ShaderRuntime implements AutoCloseable {
         || !pipeline.fullscreen()
         || pipeline.shadow()
         || pipeline.depth()
+        || PackPrograms.scaled(pipeline.translated()) // draws only part of its buffers
         || !device()
             .getDeviceInfo()
             .underlyingExtensions()

@@ -90,6 +90,8 @@ public final class PackPrograms implements AutoCloseable {
   public final String checkKey;
   public final boolean relaxedFragmentMath;
   private final Map<String, Source> sources = new HashMap<>();
+  /** Cadence: scale.PROGRAM = s [x y] (OptiFine/Iris): the screen pass draws into that part of its buffers. */
+  private final Map<String, float[]> viewports = new HashMap<>();
   private final Set<String> samplers = new HashSet<>();
   private final Set<String> postSamplers = new HashSet<>();
   private final ShaderCompatibilityCompiler compiler;
@@ -222,6 +224,8 @@ public final class PackPrograms implements AutoCloseable {
           continue;
         }
         TranslatedProgram translated = (TranslatedProgram) results[j];
+        float[] viewport = viewports.get(program.identifier());
+        if (viewport != null && job.screen()) translated = scaled(translated, viewport);
         if (job.compute()) {
           // workGroups / workGroupsRender are this kernel's own; nothing of it joins the pack's global directives
           computes.put(program.name(), new Source(program.name(), vertex, "", translated,
@@ -454,14 +458,56 @@ public final class PackPrograms implements AutoCloseable {
       refuse(unsupported(program.identifier(), "setup passes"));
       return false;
     }
-    for (String property : properties.values().keySet()) {
+    for (var property : properties.values().entrySet()) {
       // (flip.PASS.BUFFER is honoured: ShaderRuntime.flipsAfter)
-      if (property.equals("scale." + program.name())
-          || property.equals("scale." + program.identifier())) {
-        refuse(unsupported(program.identifier(), property));
+      String key = property.getKey();
+      if (!key.equals("scale." + program.name()) && !key.equals("scale." + program.identifier())) continue;
+      float[] viewport = viewport(property.getValue());
+      if (viewport == null || program.name().startsWith("gbuffers_") || program.name().startsWith("shadow")) {
+        refuse(unsupported(program.identifier(), key));
+        continue;
       }
+      // the dimension's own declaration (scale.world0/composite4) wins over the plain one
+      if (key.equals("scale." + program.identifier()) || !viewports.containsKey(program.identifier()))
+        viewports.put(program.identifier(), viewport);
     }
     return true;
+  }
+
+  /** "s", or "s x y": the scale and the offset as fractions of the buffer; null if malformed. */
+  static float[] viewport(String value) {
+    String[] parts = value.trim().split("\\s+");
+    if (parts.length != 1 && parts.length != 3) return null;
+    try {
+      float s = Float.parseFloat(parts[0]);
+      float x = parts.length == 3 ? Float.parseFloat(parts[1]) : 0, y = parts.length == 3 ? Float.parseFloat(parts[2]) : 0;
+      if (!(s > 0 && s <= 1) || !(x >= 0 && x < 1) || !(y >= 0 && y < 1)) return null;
+      return new float[] {s, x, y};
+    } catch (NumberFormatException e) {
+      return null;
+    }
+  }
+
+  static final String SCALED = "// cadence: scaled viewport\n";
+
+  /**
+   * The viewport OptiFine and Iris set for a scaled pass, made in the vertex shader instead: the full-screen quad (OpenGL
+   * clip space, before the depth remap) is moved into the rectangle s*(0..1) + offset. Texture coordinates stay 0..1.
+   */
+  static TranslatedProgram scaled(TranslatedProgram t, float[] viewport) {
+    String call = "sl_pack_main();\n";
+    int at = t.vertexSource().lastIndexOf(call);
+    if (at < 0) throw unsupported(t.label(), "scale (no full-screen entry point)");
+    float s = viewport[0];
+    String move = SCALED + "gl_Position.xy = gl_Position.xy * " + s + " + vec2(" + (s + 2 * viewport[1] - 1) + ", "
+        + (s + 2 * viewport[2] - 1) + ") * gl_Position.w;\n";
+    String vertex = t.vertexSource().substring(0, at + call.length()) + move + t.vertexSource().substring(at + call.length());
+    return new TranslatedProgram(t.label(), vertex, t.fragmentSource(), t.uniforms(), t.samplers(), t.attributes(),
+        t.drawBuffers(), t.preprocessedVertex(), t.preprocessedFragment(), t.storage());
+  }
+
+  static boolean scaled(TranslatedProgram t) {
+    return t.vertexSource().contains(SCALED);
   }
 
   private static UnsupportedOperationException unsupported(String program, String declaration) {
