@@ -302,11 +302,18 @@ public final class ShaderPacksScreen extends OptionsSubScreen {
 			Component detail = this.detail();
 			String line = font.plainSubstrByWidth(detail.getString(), w);
 			g.text(font, dev.cadence.metal.system.Lang.literal(line).withStyle(detail.getStyle()), x, y + 12, 0xFFFFFFFF);
-			if (hovered && !line.equals(detail.getString())) g.setTooltipForNextFrame(detail, mouseX, mouseY);
+			Component tip = null;
+			if (hovered && !line.equals(detail.getString())) tip = detail;
 			else if (hovered && !this.pack.isEmpty()) {
 				PackCatalog.Known k = PackCatalog.lookup(this.pack);
 				if (k != null && k.runs() && ShaderSwitcher.failure(this.pack) == null)
-					g.setTooltipForNextFrame(dev.cadence.metal.system.Lang.literal(k.weight().label + ": " + k.weight().hint + "."), mouseX, mouseY);
+					tip = dev.cadence.metal.system.Lang.literal(k.weight().label + ": " + k.weight().hint + ".");
+			}
+			// (wrapped and placed as button tooltips are: a single unwrapped line ran off narrow screens)
+			if (tip != null) {
+				var row = new net.minecraft.client.gui.navigation.ScreenRectangle(this.getContentX(), this.getContentY(), this.getContentWidth(), this.getContentHeight());
+				var lines = TooltipPlacement.fit(ShaderPacksScreen.this.minecraft, tip, font.split(tip, 170), row);
+				g.setTooltipForNextFrame(font, lines, TooltipPlacement.around(row, false), mouseX, mouseY, false);
 			}
 		}
 

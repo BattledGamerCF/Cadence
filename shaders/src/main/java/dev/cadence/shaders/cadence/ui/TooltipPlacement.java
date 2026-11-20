@@ -47,6 +47,22 @@ public final class TooltipPlacement {
 		}
 	}
 
+	/**
+	 * Self-test: where the tooltip of a widget at {@code widget} lands with the mouse on its centre, as drawn; a description of
+	 * what goes off screen, or null if all of it shows.
+	 */
+	public static String offScreen(Minecraft mc, net.minecraft.client.gui.components.Tooltip tooltip, Component message, ScreenRectangle widget) {
+		int sw = mc.getWindow().getGuiScaledWidth(), sh = mc.getWindow().getGuiScaledHeight();
+		List<FormattedCharSequence> lines = fit(mc, message, tooltip.toCharSequence(mc), widget);
+		int w = 0;
+		for (FormattedCharSequence l : lines) w = Math.max(w, mc.font.width(l));
+		int h = height(lines);
+		Vector2ic at = around(widget, false).positionTooltip(sw, sh, widget.left() + widget.width() / 2, widget.top() + widget.height() / 2, w, h);
+		int left = at.x() - FRAME, top = at.y() - FRAME, right = at.x() + w + FRAME, bottom = at.y() + h + FRAME;
+		if (left >= 0 && top >= 0 && right <= sw && bottom <= sh) return null;
+		return "box " + left + "," + top + " to " + right + "," + bottom + " on a " + sw + " x " + sh + " screen, " + lines.size() + " lines";
+	}
+
 	private static int height(List<FormattedCharSequence> lines) {
 		return lines.size() * LINE + (lines.size() > 1 ? 2 : 0);
 	}

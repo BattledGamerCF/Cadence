@@ -2,9 +2,9 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## 1.1.0-beta.4 / shaders 0.3.35 (not yet released)
+## 1.1.0-beta.5 / shaders 0.3.36 (not yet released)
 
-Includes beta.3, which was not released on its own.
+Includes beta.3 and beta.4, which were not released on their own.
 
 - **Frame Generation Ultra in Render Max FPS.** With Frame Generation on Ultra, Render Max FPS renders one frame and makes up to 120 more from it, each seen from the camera of its moment with the HUD drawn fresh. Turning more than 2 degrees, moving half a block, attacking or using something renders a new one sooner. On an M2 Air: 60,000-70,000 frames a second (about 550 of them rendered; best 97,065), against 30,000-41,000 with frame interpolation. The counter shows both. A new line names what holds the frame rate back (the GPU, the game's own loop on the CPU, or heat); frames are sent to the GPU in batches of up to 64 so sending them isn't the limit.
 - **PBR resource packs.** Blocks' normal and specular maps (`_n`, `_s`, labPBR or OldPBR) reach shader packs that read them.
@@ -15,6 +15,8 @@ Includes beta.3, which was not released on its own.
 - **No dark band at the far terrain's edge over water.** Looking across water, the sight lines that pass the render distance under the surface met the far terrain's water-coloured sides, a second water behind the real one. They now show the seabed. Far water itself is drawn as the game draws it (70% water over a seabed that darkens with depth, seagrass and kelp included) instead of turning solid blue a few blocks down. In a generated world the far terrain is made again once, so builds far away return to it when you next go near them.
 - Fix: with a shader pack and Far Terrain, flying high showed a fog-coloured square of land under you. The game still drew the chunks below, past the pack's fog, over the far terrain. Chunks more than the render distance above or below you are now left to the far terrain, as without a pack.
 - Fix: under Prism Launcher (also MultiMC and PolyMC), the game could still fail to start with "Bad file descriptor" (#6). These launchers pass the game its settings once, so Cadence must not restart Java under them; it now recognises them by their launch class on the class path and by the launcher process, not only by Java's main class.
+- Fix: some Cadence buttons' text was wider than the button, so part of it was always hidden: Shader FPS Cap (now On/Off), Instant Replay (On (F10)), Frame Generation (now Frame Gen; its rates are on the fps counter) and Dynamic Lights with LambDynamicLights (Lamb).
+- Fix: the Shader Packs list's notes on hover (a pack's weight, a status too long for its row) were one unwrapped line that ran off narrow screens; they wrap and stay on screen like the other tooltips.
 - Fix: with view bobbing on, far terrain didn't bob with the rest of the world (nor shake when hurt).
 - Fix: with Complementary Reimagined's vanilla-style sun and moon, the moon was still drawn as the sun (an orange square). The moon reused the uniforms bound for the sun's draw just before it, which shares its pipeline (#4; diagnosis by the reporter).
 - Shader packs can blend each buffer differently (`blend.<program>.<buffer>`); a pack that did turned itself off.
@@ -23,7 +25,7 @@ Includes beta.3, which was not released on its own.
 - The Far Terrain page's notes fit the screen, Shader Packs' bottom buttons fit narrow windows, Create Shader keeps the name typed when the window is resized, and the far terrain's progress line no longer overlaps the performance overlay.
 - Cadence Lite and shaders made with Create Shader are labelled as Cadence's own in Shader Packs instead of "Not tested".
 - Every language has the newest text (124 strings were still in English), including the incompatible-mods screen, which was never translated.
-- Exclusive Fullscreen is borderless fullscreen on macOS. When its Fullscreen Resolution differed from the desktop's, the picture sat shifted, with the desktop showing beside or below it; Minecraft 26.3 does this with every renderer, Vulkan and OpenGL included.
+- Exclusive Fullscreen is borderless fullscreen on macOS. When its Fullscreen Resolution differed from the desktop's, the picture sat shifted, with the desktop showing beside or below it; Minecraft 26.3 does this with every renderer, Vulkan and OpenGL included (#5).
 - Shader packs' own programs for mob eyes (spiders, endermen, phantoms, the warden), lightning, the block outline, particles and translucent block entities run where the pack has them, as with Iris. Eyes lost Complementary's and BSL's glow, among others.
 - Bug hunt (Sonnet, BH14), all fixed: a block's normal and specular maps could stay those of the texture drawn before it in the same batch; in third person, `eyeBrightness` and `eyeAltitude` were read at the camera instead of the player's eyes, so a pack could show cave light shafts and lose cave fog when the camera was outside the cave; Render Max FPS could show its last frame for a moment after Esc; its new Limit line read a huge CPU time after a pause.
 - Bug hunt (Sonnet, BH13), all fixed: Ray Tracing on M3 and later compiled its tracer twice, once on the render thread; a sound's buffer callback could touch a freed voice; the HDR mask could pair one atlas with another's data during a resource reload.

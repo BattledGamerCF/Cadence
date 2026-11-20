@@ -267,14 +267,14 @@ public final class CadenceSettings {
 			refreshAll();
 		}).width(Button.DEFAULT_WIDTH).tooltip(Tips.of(Tips.Impact.VARIES.because("Off draws frames your screen can't show"),
 			"With a shader pack, on a screen of 60 Hz or less:",
-			"Screen Rate|the frame rate stays at your screen's refresh rate: cooler and quieter, and nothing you can see is lost",
+			"On|the frame rate stays at your screen's refresh rate: cooler and quieter, and nothing you can see is lost",
 			"Off|as fast as Max Framerate allows (for benchmarks; frames past the screen's rate are never shown)")).build();
 		onRefresh(() -> self[0].setMessage(shaderCapLabel()));
 		return self[0];
 	}
 
 	private static Component shaderCapLabel() {
-		return dev.cadence.metal.system.Lang.literal("Shader FPS Cap: " + (shaderCap ? "Screen Rate" : "Off"));
+		return dev.cadence.metal.system.Lang.literal("Shader FPS Cap: " + (shaderCap ? "On" : "Off"));
 	}
 
 	/** Cooling (HeatControl.Cooling): how early Cadence eases off as the Mac heats up. */
@@ -356,7 +356,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component replayLabel() {
-		return dev.cadence.metal.system.Lang.literal("Instant Replay: " + (dev.cadence.metal.rec.Replay.enabled() ? "On (F10 saves)" : "Off"));
+		return dev.cadence.metal.system.Lang.literal("Instant Replay: " + (dev.cadence.metal.rec.Replay.enabled() ? "On (F10)" : "Off"));
 	}
 
 	/** Overlay: Off, FPS (the counter in the top-left corner), Full (the counter and the performance lines under it). */
@@ -441,17 +441,11 @@ public final class CadenceSettings {
 	}
 
 	private static Component frameGenLabel() {
+		// (short enough for its button: the rates are on the fps counter, the details in the tooltip)
 		var mode = dev.cadence.metal.framegen.FrameGen.mode();
-		String neural = mode != dev.cadence.metal.framegen.FrameGen.Mode.NEURAL ? "" : switch (dev.cadence.metal.framegen.FrameGen.neuralState()) {
-			case 1 -> " (loading)";
-			case -1 -> " (not here: Smooth)";
-			default -> "";
-		};
-		if (!neural.isEmpty()) return dev.cadence.metal.system.Lang.literal("Frame Generation: " + mode.label + neural);
-		if (mode == dev.cadence.metal.framegen.FrameGen.Mode.ULTRA && dev.cadence.metal.framegen.FrameGen.running())
-			return dev.cadence.metal.system.Lang.literal("Frame Generation: Ultra (" + dev.cadence.metal.framegen.FrameGen.ultraRealRate() + " rendered)");
-		return dev.cadence.metal.system.Lang.literal("Frame Generation: " + mode.label + (mode != dev.cadence.metal.framegen.FrameGen.Mode.OFF && dev.cadence.metal.framegen.FrameGen.running()
-			? " (" + dev.cadence.metal.framegen.FrameGen.renderedRate() + " -> " + 2 * dev.cadence.metal.framegen.FrameGen.renderedRate() + ")" : ""));
+		String shown = mode == dev.cadence.metal.framegen.FrameGen.Mode.NEURAL && dev.cadence.metal.framegen.FrameGen.neuralState() == -1
+			? dev.cadence.metal.framegen.FrameGen.Mode.SMOOTH.label : mode.label;
+		return dev.cadence.metal.system.Lang.literal("Frame Gen: " + shown);
 	}
 
 	/** Render Distance: Auto (AutoRenderDistance). */
@@ -515,7 +509,7 @@ public final class CadenceSettings {
 	}
 
 	private static Component dynamicLightsLabel() {
-		return dev.cadence.metal.system.Lang.literal("Dynamic Lights: " + (DynamicLights.LAMB ? "LambDynamicLights" : DynamicLights.mode().label));
+		return dev.cadence.metal.system.Lang.literal("Dynamic Lights: " + (DynamicLights.LAMB ? "Lamb" : DynamicLights.mode().label));
 	}
 
 	/** Cadence Messages (CadenceMessages): the join line and the corner notices. */

@@ -38,6 +38,7 @@ Steps include:
 - `option=NAME=VALUE`
 - `debugbuffer=N` (shows colortexN)
 - `skipprograms=a+b` (switches pack programs off so they can be measured)
+- `tipcheck` (logs any tooltip of the open screen that would go off screen, and any button text wider than its button)
 - `wait=S`
 
 The full list is at the top of `CadenceSelfTest.java`.

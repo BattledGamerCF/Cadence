@@ -665,6 +665,10 @@ public final class CadenceSelfTest {
 					});
 					sleep(1500);
 					LOGGER.info("[selftest] fullscreen: {} ({} x {} pixels)", mc.options.fullscreen().get(), mc.getWindow().getWidth(), mc.getWindow().getHeight());
+				} else if (lower.equals("tipcheck")) {
+					// "tipcheck": every tooltip of the open screen's visible widgets placed as when hovered; any that would go off
+					// screen is logged ("tipcheck: N checked, M off screen")
+					mc.execute(() -> tipCheck(mc));
 				} else if (lower.startsWith("hover=")) {
 					// "hover=TEXT": the mouse put on the open screen's first widget whose label starts with TEXT (its tooltip shows)
 					String want = step.substring(6).strip();
@@ -1368,6 +1372,43 @@ public final class CadenceSelfTest {
 				}
 			}
 			mc.execute(mc::stop);
+		}
+	}
+
+	private static void tipCheck(Minecraft mc) {
+		var screen = mc.gui.screen();
+		if (screen == null) return;
+		int[] n = new int[2];
+		tipCheck(mc, screen.children(), n, mc.getWindow().getGuiScaledHeight());
+		LOGGER.info("[selftest] tipcheck {} (gui scale {}): {} checked, {} off screen", screen.getClass().getSimpleName(),
+			mc.getWindow().getGuiScale(), n[0], n[1]);
+	}
+
+	private static void tipCheck(Minecraft mc, java.util.List<? extends net.minecraft.client.gui.components.events.GuiEventListener> children, int[] n, int screenHeight) {
+		for (var c : children) {
+			if (c instanceof net.minecraft.client.gui.components.AbstractWidget w && w.visible && w.getY() >= 0 && w.getY() + w.getHeight() <= screenHeight) {
+				// (a label wider than its button scrolls, so part of it is always hidden)
+				if (w instanceof net.minecraft.client.gui.components.AbstractButton && mc.font.width(w.getMessage()) > w.getWidth() - 4)
+					LOGGER.info("[selftest] tipcheck LABEL TOO WIDE '{}': {} px in a {} px button", w.getMessage().getString(), mc.font.width(w.getMessage()), w.getWidth());
+				try {
+					var f = net.minecraft.client.gui.components.AbstractWidget.class.getDeclaredField("tooltip");
+					f.setAccessible(true);
+					var t = ((net.minecraft.client.gui.components.WidgetTooltipHolder) f.get(w)).get();
+					if (t != null) {
+						n[0]++;
+						String off = dev.cadence.shaders.cadence.ui.TooltipPlacement.offScreen(mc, t,
+							((dev.cadence.shaders.cadence.mixin.ui.TooltipAccess) t).cadence$message(), w.getRectangle());
+						if (off != null) {
+							n[1]++;
+							LOGGER.info("[selftest] tipcheck OFF SCREEN '{}': {}", w.getMessage().getString(), off);
+						}
+					}
+				} catch (ReflectiveOperationException | RuntimeException e) {
+					LOGGER.info("[selftest] tipcheck failed: {}", e.toString());
+					return;
+				}
+			}
+			if (c instanceof net.minecraft.client.gui.components.events.ContainerEventHandler h) tipCheck(mc, h.children(), n, screenHeight);
 		}
 	}
 
