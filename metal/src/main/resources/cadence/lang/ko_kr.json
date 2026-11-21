@@ -210,7 +210,7 @@
  "One click sets the options below": "한 번 클릭으로 아래 옵션이 설정됩니다",
  "smooth 60 fps, sharp whenever it can be": "부드러운 60fps, 가능하면 항상 선명하게",
  "always full sharpness; the Mac may run hot": "항상 최대 선명도. Mac이 뜨거워질 수 있습니다",
- "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina 끔 (선명한 2x2 픽셀, fps 약 두 배, 다음 실행 때 적용), 빠른 나뭇잎, 구름 없음, 제한 없음: M2 Air 전체 화면에서 2,000+ fps",
+ "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no texture filtering, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina 끔 (선명한 2x2 픽셀, fps 약 두 배, 다음 실행 때 적용), 빠른 나뭇잎, 구름 없음, 텍스처 필터링 없음, 제한 없음: M2 Air 전체 화면에서 2,000+ fps",
  "you changed something by hand": "직접 변경했습니다",
  "Vanilla's Preset further down is separate: it sets Minecraft's own quality options": "아래의 바닐라 프리셋은 별개이며 Minecraft 자체 품질 옵션을 설정합니다",
  "Performance": "성능",

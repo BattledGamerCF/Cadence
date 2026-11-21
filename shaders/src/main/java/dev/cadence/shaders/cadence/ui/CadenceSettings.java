@@ -104,7 +104,8 @@ public final class CadenceSettings {
 	}
 
 	/**
-	 * Max FPS: leaves drawn solid (vanilla's Leaves: Fast) and no clouds, the player's own choices kept in the config to come
+	 * Max FPS: leaves drawn solid (vanilla's Leaves: Fast), no clouds and Texture Filtering: None (RGSS's extra samples of far
+	 * terrain: GPU 1.90 -> 1.62 ms looking at the horizon, fullscreen Retina, render distance 16), the player's own choices kept in the config to come
 	 * back with any other preset. Measured on an M2 Air, fullscreen with Retina off, render distance 6, cooled runs: 1,781 fps
 	 * as the player had them, 2,095 with these (alpha-tested leaves turn off the GPU's hidden-surface removal; the clouds were 5%).
 	 */
@@ -115,9 +116,12 @@ public final class CadenceSettings {
 			ShaderToggle.saveKey("maxFps.clouds", o.cloudStatus().get().name());
 			ShaderToggle.saveKey("maxFps.entityDistance", Double.toString(o.entityDistanceScaling().get()));
 		}
+		if (ShaderToggle.configValue("maxFps.filtering", "").isEmpty())
+			ShaderToggle.saveKey("maxFps.filtering", o.textureFiltering().get().name());
 		boolean rebuild = o.cutoutLeaves().get();
 		o.cutoutLeaves().set(false);
 		o.cloudStatus().set(net.minecraft.client.CloudStatus.OFF);
+		o.textureFiltering().set(net.minecraft.client.TextureFilteringMethod.NONE);
 		o.entityDistanceScaling().set(Math.min(o.entityDistanceScaling().get(), MAX_FPS_ENTITY_DISTANCE));
 		// (what Max FPS set: leaving it restores only the options still at these values, BH5-07)
 		ShaderToggle.saveKey("maxFps.setEntityDistance", Double.toString(o.entityDistanceScaling().get()));
@@ -132,7 +136,7 @@ public final class CadenceSettings {
 	private static final double MAX_FPS_ENTITY_DISTANCE = 0.75;
 
 	/**
-	 * Leaving Max FPS for another preset: the player's leaves, clouds and entity distance as they were before it, each only if
+	 * Leaving Max FPS for another preset: the player's leaves, clouds, texture filtering and entity distance as they were before it, each only if
 	 * it is still what Max FPS set (one the player changed since stays as they set it, BH5-07).
 	 */
 	private static void restoreLooks() {
@@ -152,6 +156,14 @@ public final class CadenceSettings {
 				o.cloudStatus().set(net.minecraft.client.CloudStatus.FANCY);
 			}
 		}
+		String filtering = ShaderToggle.configValue("maxFps.filtering", "").strip();
+		if (!filtering.isEmpty() && o.textureFiltering().get() == net.minecraft.client.TextureFilteringMethod.NONE) {
+			try {
+				o.textureFiltering().set(net.minecraft.client.TextureFilteringMethod.valueOf(filtering));
+			} catch (IllegalArgumentException e) {
+				// (an edited config: filtering stays as it is)
+			}
+		}
 		String entities = ShaderToggle.configValue("maxFps.entityDistance", "").strip(), set = ShaderToggle.configValue("maxFps.setEntityDistance", "").strip();
 		try {
 			if (!entities.isEmpty() && (set.isEmpty() || Math.abs(o.entityDistanceScaling().get() - Double.parseDouble(set)) < 1e-6))
@@ -160,7 +172,7 @@ public final class CadenceSettings {
 			// (an edited config: entity distance stays as it is)
 		}
 		o.save();
-		for (String key : new String[] {"maxFps.leaves", "maxFps.clouds", "maxFps.entityDistance", "maxFps.setEntityDistance"}) ShaderToggle.saveKey(key, "");
+		for (String key : new String[] {"maxFps.leaves", "maxFps.clouds", "maxFps.entityDistance", "maxFps.setEntityDistance", "maxFps.filtering"}) ShaderToggle.saveKey(key, "");
 		if (rebuild && net.minecraft.client.Minecraft.getInstance().level != null) net.minecraft.client.Minecraft.getInstance().levelExtractor.allChanged();
 	}
 
@@ -232,7 +244,7 @@ public final class CadenceSettings {
 			"Battery Saver|the least power that stays smooth: a true 60 fps without shaders (about 5 W for the whole Mac on an M2 Air); with them a frame is rendered only when the view changes (at least one a second) and the rest are generated, 30 shown while still and 60 while moving (5-7 W with BSL, a quarter of Recommended's)",
 			"Recommended|smooth 60 fps, sharp whenever it can be",
 			"Max Quality|always full sharpness; the Mac may run hot",
-			"Max FPS|Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air",
+			"Max FPS|Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no texture filtering, no limits: 2,000+ fps fullscreen on an M2 Air",
 			"Custom|you changed something by hand",
 			"#Vanilla's Preset further down is separate: it sets Minecraft's own quality options.")).build();
 		onRefresh(() -> self[0].setMessage(presetLabel()));

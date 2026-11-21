@@ -210,7 +210,7 @@
  "One click sets the options below": "ワンクリックで以下の項目を設定します",
  "smooth 60 fps, sharp whenever it can be": "滑らかな60 fps、可能なときは常に鮮明",
  "always full sharpness; the Mac may run hot": "常に最高の鮮明さ。Macが高温になることがあります",
- "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air": "Retinaオフ (鮮明な2x2ピクセル、fpsは約2倍、次回起動時)、高速な葉、雲なし、制限なし: M2 Airのフルスクリーンで2,000+ fps",
+ "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no texture filtering, no limits: 2,000+ fps fullscreen on an M2 Air": "Retinaオフ (鮮明な2x2ピクセル、fpsは約2倍、次回起動時)、高速な葉、雲なし、テクスチャフィルタリングなし、制限なし: M2 Airのフルスクリーンで2,000+ fps",
  "you changed something by hand": "手動で何かを変更しました",
  "Vanilla's Preset further down is separate: it sets Minecraft's own quality options": "下にあるバニラのプリセットは別物で、Minecraft標準の画質オプションを設定します",
  "Performance": "パフォーマンス",

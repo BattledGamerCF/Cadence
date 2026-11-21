@@ -210,7 +210,7 @@
  "One click sets the options below": "Tek tıkla aşağıdaki seçenekler ayarlanır",
  "smooth 60 fps, sharp whenever it can be": "akıcı 60 fps, mümkün olduğunda keskin",
  "always full sharpness; the Mac may run hot": "her zaman tam keskinlik; Mac ısınabilir",
- "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina kapalı (net 2x2 pikseller, yaklaşık iki kat fps; sonraki açılışta), hızlı yapraklar, bulut yok, sınır yok: M2 Air'de tam ekranda 2.000+ fps",
+ "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no texture filtering, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina kapalı (net 2x2 pikseller, yaklaşık iki kat fps; sonraki açılışta), hızlı yapraklar, bulut yok, doku filtreleme yok, sınır yok: M2 Air'de tam ekranda 2.000+ fps",
  "you changed something by hand": "elle bir şey değiştirdiniz",
  "Vanilla's Preset further down is separate: it sets Minecraft's own quality options": "Aşağıdaki vanilla Ön Ayarı ayrıdır: Minecraft'ın kendi kalite seçeneklerini ayarlar",
  "Performance": "Performans",

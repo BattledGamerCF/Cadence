@@ -210,7 +210,7 @@
  "One click sets the options below": "Ein Klick stellt die Optionen unten ein",
  "smooth 60 fps, sharp whenever it can be": "flüssige 60 FPS, scharf, wann immer möglich",
  "always full sharpness; the Mac may run hot": "immer volle Schärfe; der Mac kann heiß werden",
- "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina aus (scharfe 2x2-Pixel, etwa doppelte FPS; ab dem nächsten Start), schnelles Laub, keine Wolken, keine Limits: über 2.000 FPS im Vollbild auf einem M2 Air",
+ "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no texture filtering, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina aus (scharfe 2x2-Pixel, etwa doppelte FPS; ab dem nächsten Start), schnelles Laub, keine Wolken, keine Texturfilterung, keine Limits: über 2.000 FPS im Vollbild auf einem M2 Air",
  "you changed something by hand": "Sie haben etwas von Hand geändert",
  "Vanilla's Preset further down is separate: it sets Minecraft's own quality options": "Die Vorgabe von Vanilla weiter unten ist getrennt: Sie stellt die eigenen Qualitätsoptionen von Minecraft ein",
  "Performance": "Leistung",

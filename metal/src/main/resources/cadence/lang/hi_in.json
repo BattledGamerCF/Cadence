@@ -210,7 +210,7 @@
  "One click sets the options below": "एक क्लिक से नीचे के विकल्प सेट हो जाते हैं",
  "smooth 60 fps, sharp whenever it can be": "सुचारू 60 fps, जब भी हो सके स्पष्ट",
  "always full sharpness; the Mac may run hot": "हमेशा पूरी स्पष्टता; Mac गरम हो सकता है",
- "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina बंद (साफ़ 2x2 पिक्सेल, लगभग दोगुना fps; अगली बार शुरू करने पर), तेज़ पत्ते, कोई बादल नहीं, कोई सीमा नहीं: M2 Air पर फ़ुल स्क्रीन में 2,000+ fps",
+ "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no texture filtering, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina बंद (साफ़ 2x2 पिक्सेल, लगभग दोगुना fps; अगली बार शुरू करने पर), तेज़ पत्ते, कोई बादल नहीं, कोई टेक्सचर फ़िल्टरिंग नहीं, कोई सीमा नहीं: M2 Air पर फ़ुल स्क्रीन में 2,000+ fps",
  "you changed something by hand": "आपने कुछ हाथ से बदला है",
  "Vanilla's Preset further down is separate: it sets Minecraft's own quality options": "नीचे वैनिला का प्रीसेट अलग है: वह Minecraft के अपने गुणवत्ता विकल्प सेट करता है",
  "Performance": "प्रदर्शन",

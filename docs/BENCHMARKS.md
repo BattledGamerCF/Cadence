@@ -28,12 +28,16 @@ Numbers from a laptop move by a few percent from run to run. Differences under ~
 | Setup | Average fps | 1% low |
 |---|---|---|
 | Fullscreen, Retina on (2940 x 1846) | 506-618 | 291-327 |
-| Fullscreen, Max FPS preset (Retina off, 1470 x 923, fast leaves, no clouds) | 1,303-1,365 | 592-619 |
+| Fullscreen, Max FPS preset (Retina off, 1470 x 923, fast leaves, no clouds, no texture filtering) | 1,303-1,365 | 592-619 |
 | Retina on, with Far Terrain (Medium, 1,024 chunks) | 494-510 | 281-294 |
 | Retina on, macOS Game Mode off (`cadence.gameMode=false`) | 607 | 324 |
 
 Game Mode makes no difference to these numbers on a Mac with nothing else running. It gives the game priority over
 background work and lower Bluetooth latency, which matters when something else is busy.
+
+Texture Filtering: RGSS (vanilla's option) samples distant terrain several times a pixel. Switched every 2 seconds in one
+launch: GPU 1.90 ms with it and 1.62 ms without, fullscreen Retina looking at the horizon (0.07 ms looking 30 degrees down);
+0.92 against 0.86 ms at the Max FPS resolution. The Max FPS preset turns it off.
 
 ## Shader packs
 

@@ -210,7 +210,7 @@
  "One click sets the options below": "Один щелчок задаёт параметры ниже",
  "smooth 60 fps, sharp whenever it can be": "плавные 60 fps, чёткая картинка, когда возможно",
  "always full sharpness; the Mac may run hot": "всегда полная чёткость; Mac может сильно нагреваться",
- "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina выкл. (чёткие пиксели 2x2, примерно вдвое больше fps; при следующем запуске), быстрая листва, без облаков, без ограничений: 2000+ fps в полноэкранном режиме на M2 Air",
+ "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no texture filtering, no limits: 2,000+ fps fullscreen on an M2 Air": "Retina выкл. (чёткие пиксели 2x2, примерно вдвое больше fps; при следующем запуске), быстрая листва, без облаков, без фильтрации текстур, без ограничений: 2000+ fps в полноэкранном режиме на M2 Air",
  "you changed something by hand": "вы изменили что-то вручную",
  "Vanilla's Preset further down is separate: it sets Minecraft's own quality options": "Пресет ванильной игры ниже — это отдельное: он задаёт собственные параметры качества Minecraft",
  "Performance": "Производительность",

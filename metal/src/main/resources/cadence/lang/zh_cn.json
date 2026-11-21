@@ -210,7 +210,7 @@
  "One click sets the options below": "一键设置下方的选项",
  "smooth 60 fps, sharp whenever it can be": "流畅的 60 fps，条件允许时保持清晰",
  "always full sharpness; the Mac may run hot": "始终保持完全清晰；Mac 可能会很热",
- "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no limits: 2,000+ fps fullscreen on an M2 Air": "关闭 Retina（清晰的 2x2 像素，fps 约为两倍；下次启动生效），快速树叶，无云，无限制：M2 Air 全屏可达 2,000+ fps",
+ "Retina off (crisp 2x2 pixels, about twice the fps; next launch), fast leaves, no clouds, no texture filtering, no limits: 2,000+ fps fullscreen on an M2 Air": "关闭 Retina（清晰的 2x2 像素，fps 约为两倍；下次启动生效），快速树叶，无云，无纹理过滤，无限制：M2 Air 全屏可达 2,000+ fps",
  "you changed something by hand": "你手动更改了某些设置",
  "Vanilla's Preset further down is separate: it sets Minecraft's own quality options": "下方原版的预设是独立的：它设置的是 Minecraft 自带的画质选项",
  "Performance": "性能",

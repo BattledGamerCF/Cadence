@@ -1465,6 +1465,7 @@ public final class CadenceSelfTest {
 				// (measurement: what the HUD and hand, the clouds cost: "on" = shown)
 				case "smartleaves" -> dev.cadence.shaders.cadence.mesh.SmartLeaves.setEnabled(on);
 				case "hud" -> { if (mc.gui.hud.isHidden() == on) mc.gui.hud.toggle(); }
+				case "rgss" -> mc.options.textureFiltering().set(on ? net.minecraft.client.TextureFilteringMethod.RGSS : net.minecraft.client.TextureFilteringMethod.NONE);
 				case "clouds" -> mc.options.cloudStatus().set(on ? net.minecraft.client.CloudStatus.FANCY : net.minecraft.client.CloudStatus.OFF);
 				case "farplants" -> dev.cadence.metal.own.OwnTerrain.farPlantBlocks = on ? Float.parseFloat(System.getProperty("cadence.test.farPlants", "96")) : 0;
 				case "entitydist" -> mc.options.entityDistanceScaling().set(on ? Double.parseDouble(System.getProperty("cadence.test.entityDist", "0.75")) : 1.0);
