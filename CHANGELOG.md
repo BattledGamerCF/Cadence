@@ -2,7 +2,7 @@
 
 Versions are `cadence` / `cadence_shaders`. The release jar contains both, plus Cadence HUD.
 
-## 1.1.0-beta.5 / shaders 0.3.36 (not yet released)
+## 1.1.0-beta.5 / shaders 0.3.36 (2026-11-21)
 
 Includes beta.3 and beta.4, which were not released on their own.
 
